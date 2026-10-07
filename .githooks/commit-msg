@@ -1,0 +1,31 @@
+#!/bin/bash
+# .git/hooks/commit-msg
+# version 0.1.0
+#
+# Verifies Git Commit Guidelines
+#   https://ec.europa.eu/component-library/v1.15.0/eu/docs/conventions/git/
+#
+# INSTALL:
+#   cp pre-commit .git/hooks/commit-msg
+#   chmod +x .git/hooks/commit-msg
+
+# ############################################################# Colour helpers #
+RED='\033[0;31m'
+YELLOW='\033[1;33m'
+RESET='\033[0m'
+
+# ############################################################ Commit message  #
+SHORT_MSG=$(head -1 "$1")
+
+PATTERN="^(fix|feat|test|style|docs|build|ops|chore|perf|refactor)(\([^)]+\))?: .+"
+
+if ! echo "$SHORT_MSG" | grep -qE "$PATTERN"; then
+    echo -e "${RED}ERROR:${RESET} bad commit message format."
+    echo    "  Expected: <type>(<scope>): <description>"
+    echo    "  Types:    fix feat test style docs build ops chore perf refactor"
+    echo -e "  input:    \"${YELLOW}${SHORT_MSG}${RESET}\""
+    
+    exit 1
+fi
+
+exit 0
