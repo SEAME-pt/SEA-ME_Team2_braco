@@ -12,7 +12,7 @@ The following team members have attended all mandatory laboratory training modul
 | :--- | :--- | :---: | :---: | :---: | :--- |
 | 2026-10-09 | `@larocqueg` | [x] | [x] | [x] | Completed |
 | 2026-10-09 | `@denionline` | [x] | [x] | [x] | Completed |
-| 2026-10-09 | `@d-branco` | [ ] | [ ] | [ ] | Pending |
+| 2026-10-09 | `@d-branco` | [x] | [x] | [x] | Pending |
 | 2026-10-09 | `@magusk89` | [x] | [x] | [x] | Pending |
 | 2026-10-09 | `@carlos-lvt` | [ ] | [ ] | [ ] | Pending |
 
