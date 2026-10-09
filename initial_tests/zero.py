@@ -8,9 +8,12 @@ SPEED = 30
 
 print("Before:", mc.get_angles())
 
-for motor in range(1, 7):
-    print(f"motor {motor} → 0°")
-    mc.send_angle(motor, 0, SPEED)
-    time.sleep(1)
+# Envia o comando para todas as 6 juntas se moverem simultaneamente
+target_angles = [0, 0, 0, 0, 0, 0]
+mc.send_angles(target_angles, SPEED)
+
+# Aguarda o movimento completar antes de ler os ângulos novamente
+# (sleep fixo ou verificação com is_moving)
+time.sleep(3)
 
 print("After:", mc.get_angles())
