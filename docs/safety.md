@@ -11,7 +11,7 @@ The following team members have attended all mandatory laboratory training modul
 | Date | GitHub Handle | Electrical & Guarded Cell | LiPo Lab Handling | Emergency Protocol Verified | Induction Status |
 | :--- | :--- | :---: | :---: | :---: | :--- |
 | 2026-10-09 | `@larocqueg` | [x] | [x] | [x] | Completed |
-| 2026-10-09 | `@denionline` | [ ] | [ ] | [ ] | Pending |
+| 2026-10-09 | `@denionline` | [x] | [x] | [x] | Completed |
 | 2026-10-09 | `@d-branco` | [ ] | [ ] | [ ] | Pending |
 | 2026-10-09 | `@magusk89` | [ ] | [ ] | [ ] | Pending |
 | 2026-10-09 | `@carlos-lvt` | [ ] | [ ] | [ ] | Pending |
