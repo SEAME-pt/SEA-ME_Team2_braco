@@ -17,3 +17,4 @@ mc.set_color(0, 0, 255)    # azul
 time.sleep(2)
 
 mc.set_color(0, 0, 0)      # apagado
+mc.set_color(255, 255, 255)      # Ligar tudo
