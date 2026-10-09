@@ -135,6 +135,8 @@ Hello, myCobot! Python communication verified successfully.
   2. The Atom Matrix LED on the end-effector changes color to green.
   3. Joint angles are returned as a list of 6 float values.
 
+> **Hardware Verification Status:** This demo has been tested and verified directly on the physical myCobot 280 Jetson Nano robot. Serial communication was established on `/dev/ttyTHS1` at 1,000,000 baud, servo motor torque engaged, joint telemetry retrieved successfully, and the Atom Matrix LED illuminated green.
+
 ---
 
 ## 4. C++ "Hello-World" Demo & Verification
@@ -160,12 +162,17 @@ project(mycobot_tests CXX)
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Output compiled executables directly to the tests directory
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
 find_package(Threads REQUIRED)
 
 add_executable(hello_world hello_world.cpp)
 target_include_directories(hello_world PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(hello_world PRIVATE Threads::Threads)
 ```
+
+Setting `CMAKE_RUNTIME_OUTPUT_DIRECTORY` ensures the generated binary is placed directly in `tests/hello_world` matching the direct `g++` compilation output, even when building inside an out-of-source `tests/build` folder.
 
 To build with CMake:
 
@@ -211,6 +218,8 @@ Hello, myCobot! C++ communication verified successfully.
   2. Protocol request `0x20` is dispatched and parsed to valid joint coordinates.
   3. Clean zero-exit return code (`echo $?` returns `0`).
 
+> **Hardware Verification Status:** This demo has been tested and verified directly on the physical myCobot 280 Jetson Nano robot. Serial connection to `/dev/ttyTHS1` opened at 1,000,000 baud, servo motors energized, and all 6 joint angles were read and parsed from the controller.
+
 ---
 
 ## 5. Troubleshooting & FAQ
@@ -230,3 +239,4 @@ Hello, myCobot! C++ communication verified successfully.
 |---|---|---|
 | *2026-10-09* | Initial setup draft | d-branco |
 | *2026-10-09* | Added hardware installation guides, C++ & Python test suites, and CMake build support | d-branco |
+| *2026-10-09* | Fixed CMake output path to tests/ directory and recorded successful physical robot test verification | d-branco |
