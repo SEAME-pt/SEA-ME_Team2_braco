@@ -2,19 +2,16 @@
 """
 Joystick control of all 6 joints of the myCobot 280 (Jetson Nano).
 
-Safety model: step-ahead (bounded-lead) jogging
-------------------------------------------------
-The arm is never given a far-away goal. On every loop tick the script reads
-the real joint angles and commands a target only a few degrees ahead of them,
-in the direction you are pushing. The commands have to keep arriving for the
-joint to keep moving. If they stop for any reason (crash, kill -9, frozen
-process, lost serial data, joystick unplugged), each joint coasts at most
-LEAD_MAX_DEG degrees and then stops on its own.
+Continuous motion with dynamic speed (capped at SPEED_CAP %):
+- Analog sticks: speed varies proportionally to stick deflection beyond deadzone.
+- Shoulder buttons (L1 / R1): control Joint 6 rotation (tool/gripper).
+- Releasing a control immediately stops movement.
 
-Homing works the same way: Y is hold-to-run. Holding Y walks every joint
-toward 0 in bounded steps; releasing Y stops the arm where it is.
-
-All arm motion is capped at 30 % speed (SPEED_CAP).
+Joint 6 protection (J4 drift fix):
+- While L1 / R1 is held, the right stick (J4 / J5) is ignored, so stray
+  right-stick readings cannot move the wrist during a tool rotation.
+- J4 and J5 angles are recorded when J6 starts moving. When J6 stops, any
+  drift larger than DRIFT_TOLERANCE_DEG is corrected back automatically.
 
 Mapping:
     Left stick  X / Y  joint 1 / joint 2 (base yaw [inverted] / shoulder pitch)
@@ -22,12 +19,12 @@ Mapping:
     L1 / R1 (6 / 7)    joint 6 (tool/gripper rotation)
     D-pad Y            joint 3 (elbow pitch)
     A / B              close / open gripper
-    Y (hold)           all joints toward 0 (release to stop)
+    button 3           all joints back to 0
     Ctrl+C             quit (safely stops the arm)
 
 Usage:
     python3 joystick_all_joints.py           # control the arm
-    python3 joystick_all_joints.py --debug   # print joystick events and targets
+    python3 joystick_all_joints.py --debug   # print joystick events and J4/J5 drift
 """
 
 import os
@@ -42,26 +39,23 @@ SERIAL_PORT = "/dev/ttyTHS1"
 BAUD_RATE = 1000000
 JOYSTICK_DEVICE = "/dev/input/js0"
 
-# Speed parameters (pymycobot speed units are 1..100, i.e. percent)
-SPEED_CAP = 30            # global cap: no arm motion faster than 30 %
+# Speed parameters (pymycobot speed units are 1..100, i.e. percent).
+# Change SPEED_CAP to make the whole arm faster or slower.
+SPEED_CAP = 30            # no arm motion faster than this
 MIN_SPEED = 10            # minimum speed upon exiting deadzone
 MAX_SPEED = SPEED_CAP     # maximum speed at full stick deflection
-BUMPER_SPEED = SPEED_CAP  # fixed speed for L1 / R1 shoulder buttons
+BUMPER_SPEED = 20         # J6 speed on L1 / R1 (kept low: less jerk on the wrist)
 HOME_SPEED = SPEED_CAP
+HOME_WAIT = 8.0           # seconds to wait for the home move (slower move -> longer wait)
 GRIPPER_SPEED = 50        # gripper is a separate actuator; not affected by SPEED_CAP
-SPEED_STEP = 5            # quantization step for stick speeds
+SPEED_STEP = 5            # quantization step for stick speeds (10, 15, 20, 25, 30)
 
-# Step-ahead parameters.
-# LEAD_MAX_DEG is the worst-case distance a joint can travel after commands stop.
-# If motion pulses (start/stop) while a stick is held, the arm is reaching the
-# target before the next command arrives: raise LEAD_MAX_DEG a little.
-LEAD_MIN_DEG = 3.0        # lead at MIN_SPEED
-LEAD_MAX_DEG = 10.0       # lead at SPEED_CAP
-HOME_TOLERANCE_DEG = 1.0  # all joints within this of 0 -> home reached
+# J4 / J5 drift correction after a J6 move
+DRIFT_TOLERANCE_DEG = 1.0  # ignore drift smaller than this (servo noise / resolution)
+RESTORE_SPEED = 15         # speed used to put J4 / J5 back
 
 AXIS_THRESHOLD = 16000    # deadzone (axis range is -32767 to 32767)
 COMMAND_GAP = 0.05        # safety delay between serial commands
-LOOP_PERIOD = 0.02        # idle sleep per loop iteration
 
 # axis number -> (joint 1..6, direction: 1 or -1)
 AXIS_TO_JOINT = {
@@ -72,10 +66,13 @@ AXIS_TO_JOINT = {
     7: (3, 1),   # d-pad Y       -> joint 3 (elbow)
 }
 
+# Axes ignored while L1 / R1 is held (the right stick: J4 and J5)
+LOCKED_DURING_J6 = {3, 4}
+
 # Controller buttons
 BUTTON_GRIPPER_CLOSE = 0  # A
 BUTTON_GRIPPER_OPEN = 1   # B
-BUTTON_HOME = 3           # Y (hold-to-run)
+BUTTON_HOME = 3           # home (check with --debug which physical button this is)
 BUTTON_L1 = 6             # L1 -> Joint 6 counter-clockwise / negative
 BUTTON_R1 = 7             # R1 -> Joint 6 clockwise / positive
 
@@ -106,45 +103,8 @@ def read_events(fd):
     return events
 
 
-def calculate_speed(raw_value):
-    """Calculate proportional speed based on stick deflection beyond deadzone."""
-    magnitude = abs(raw_value)
-    if magnitude <= AXIS_THRESHOLD:
-        return 0
-    # Normalized ratio between 0.0 and 1.0 above deadzone
-    ratio = (magnitude - AXIS_THRESHOLD) / (32767.0 - AXIS_THRESHOLD)
-    raw_speed = MIN_SPEED + ratio * (MAX_SPEED - MIN_SPEED)
-    quantized_speed = int(round(raw_speed / SPEED_STEP) * SPEED_STEP)
-    return max(MIN_SPEED, min(SPEED_CAP, quantized_speed))
-
-
-def lead_for_speed(spd):
-    """Degrees ahead of the current angle to command; faster speed -> longer lead."""
-    ratio = (spd - MIN_SPEED) / float(SPEED_CAP - MIN_SPEED)
-    ratio = max(0.0, min(1.0, ratio))
-    return LEAD_MIN_DEG + ratio * (LEAD_MAX_DEG - LEAD_MIN_DEG)
-
-
-def clamp_to_limit(joint, angle):
-    """Keep a target inside the joint's safe range."""
-    lim = LIMITS[joint]
-    return max(-lim, min(lim, angle))
-
-
-def step_toward(current, goal, max_step):
-    """Move from current toward goal by at most max_step degrees."""
-    delta = goal - current
-    if abs(delta) <= max_step:
-        return goal
-    return current + max_step if delta > 0 else current - max_step
-
-
 def read_angles(mc):
-    """Return the 6 current joint angles, or None if the reading is invalid.
-
-    pymycobot can return -1, [] or a short list when the serial link hiccups.
-    Without valid feedback we refuse to compute new targets.
-    """
+    """Return the 6 current joint angles, or None if the reading is invalid."""
     try:
         angles = mc.get_angles()
     except Exception:
@@ -155,26 +115,61 @@ def read_angles(mc):
     return None
 
 
+def calculate_speed(raw_value):
+    """Calculate proportional speed based on stick deflection beyond deadzone."""
+    magnitude = abs(raw_value)
+    if magnitude <= AXIS_THRESHOLD:
+        return 0
+    # Normalized ratio between 0.0 and 1.0 above deadzone
+    ratio = (magnitude - AXIS_THRESHOLD) / (32767.0 - AXIS_THRESHOLD)
+    raw_speed = MIN_SPEED + ratio * (MAX_SPEED - MIN_SPEED)
+    # Quantize to avoid flooding the serial bus
+    quantized_speed = int(round(raw_speed / SPEED_STEP) * SPEED_STEP)
+    return max(MIN_SPEED, min(SPEED_CAP, quantized_speed))
+
+
 def wanted_motion(axis_state, button_state):
     """Return desired {joint: (direction, speed)} for axes and L1/R1 buttons."""
     wanted = {}
 
+    l1_active = button_state.get(BUTTON_L1, 0) == 1
+    r1_active = button_state.get(BUTTON_R1, 0) == 1
+    bumper_active = l1_active or r1_active
+
+    # Configured analog axes (right stick locked while a bumper is held)
     for axis, (joint, direction) in AXIS_TO_JOINT.items():
+        if bumper_active and axis in LOCKED_DURING_J6:
+            continue
         value = axis_state.get(axis, 0)
         spd = calculate_speed(value)
         if spd > 0:
             dir_factor = direction if value > 0 else -direction
             wanted[joint] = (dir_factor, spd)
 
-    l1_active = button_state.get(BUTTON_L1, 0) == 1
-    r1_active = button_state.get(BUTTON_R1, 0) == 1
-
+    # Joint 6 controlled by L1 and R1 shoulder buttons
     if l1_active and not r1_active:
         wanted[6] = (-1, BUMPER_SPEED)
     elif r1_active and not l1_active:
         wanted[6] = (1, BUMPER_SPEED)
 
     return wanted
+
+
+def restore_wrist(mc, snapshot, wanted, debug):
+    """After a J6 move, put J4 / J5 back where they were if they drifted."""
+    time.sleep(0.2)  # let the arm settle before measuring
+    now = read_angles(mc)
+    if now is None:
+        print("!!! could not read angles, J4/J5 drift not checked")
+        return
+    for joint, before in snapshot.items():
+        drift = now[joint - 1] - before
+        if debug or abs(drift) > DRIFT_TOLERANCE_DEG:
+            print("    J%d drift during J6 move: %+.1f deg" % (joint, drift))
+        if abs(drift) > DRIFT_TOLERANCE_DEG and joint not in wanted:
+            print(">>> restoring J%d to %.1f" % (joint, before))
+            mc.send_angle(joint, round(before, 1), RESTORE_SPEED)
+            time.sleep(COMMAND_GAP)
 
 
 def quit_on_signal(signum, frame):
@@ -198,17 +193,14 @@ def main():
     time.sleep(0.5)
     print("    Current angles:", mc.get_angles())
 
-    print("Ready. Step-ahead jogging, speed cap %d %%, max coast %.0f deg. "
-          "Hold Y to home. Ctrl+C quits." % (SPEED_CAP, LEAD_MAX_DEG))
+    print("Ready. Speed cap %d %%, J6 at %d %%. Ctrl+C quits." % (SPEED_CAP, BUMPER_SPEED))
     axis_state = {}
     button_state = {}
-    active = set()          # joints commanded on the previous tick
-    homing = False          # True while Y is held and homing is in progress
-    home_reported = False
+    moving = {}          # joint -> (direction, speed) currently in execution
+    wrist_snapshot = None  # {4: angle, 5: angle} recorded when J6 starts moving
 
     try:
         while True:
-            # 1. Drain joystick events
             for ev_type, number, value in read_events(fd):
                 if ev_type == TYPE_AXIS:
                     axis_state[number] = value
@@ -218,87 +210,69 @@ def main():
                     button_state[number] = value
                     if debug:
                         print("button %d = %d" % (number, value))
+
                     if value == 1:
-                        if number == BUTTON_GRIPPER_CLOSE:
+                        if number == BUTTON_HOME:
+                            print(">>> all joints to 0")
+                            mc.stop()
+                            time.sleep(COMMAND_GAP)
+                            mc.send_angles([0, 0, 0, 0, 0, 0], HOME_SPEED)
+                            time.sleep(HOME_WAIT)
+                            read_events(fd)
+                            axis_state.clear()
+                            button_state.clear()
+                            moving.clear()
+                            wrist_snapshot = None
+                        elif number == BUTTON_GRIPPER_CLOSE:
                             print(">>> close gripper")
                             mc.set_gripper_state(1, GRIPPER_SPEED)
                         elif number == BUTTON_GRIPPER_OPEN:
                             print(">>> open gripper")
                             mc.set_gripper_state(0, GRIPPER_SPEED)
 
-            # 2. Decide what is requested (homing has priority over the sticks)
-            home_held = button_state.get(BUTTON_HOME, 0) == 1
-            wanted = {} if home_held else wanted_motion(axis_state, button_state)
+            wanted = wanted_motion(axis_state, button_state)
 
-            # 3. Y released during homing -> stop where we are
-            if homing and not home_held:
-                print(">>> home released, stop")
-                mc.stop()
-                time.sleep(COMMAND_GAP)
-                active.clear()
-                homing = False
+            if wanted != moving:
+                # Detect joints that were released or reversed direction
+                stopped_or_reversed = [
+                    j for j, (cur_dir, _) in moving.items()
+                    if j not in wanted or wanted[j][0] != cur_dir
+                ]
 
-            # 4. Nothing requested -> stop once, then idle (no serial traffic)
-            if not home_held and not wanted:
-                if active:
+                # If any joint stopped or reversed, execute stop()
+                if stopped_or_reversed:
                     print(">>> stop")
                     mc.stop()
                     time.sleep(COMMAND_GAP)
-                    active.clear()
-                time.sleep(LOOP_PERIOD)
-                continue
+                    moving.clear()
 
-            # 5. Motion requested -> fresh feedback is mandatory
-            angles = read_angles(mc)
-            if angles is None:
-                print("!!! no valid angle feedback, stopping")
-                mc.stop()
-                time.sleep(COMMAND_GAP)
-                active.clear()
-                time.sleep(LOOP_PERIOD)
-                continue
+                # J6 finished: check and correct J4 / J5 drift
+                if 6 not in wanted and wrist_snapshot is not None:
+                    restore_wrist(mc, wrist_snapshot, wanted, debug)
+                    wrist_snapshot = None
 
-            # 6a. Hold-to-run homing: every joint steps toward 0
-            if home_held:
-                if not homing:
-                    print(">>> homing (keep holding Y)")
-                    homing = True
-                    home_reported = False
-                    active.clear()
-                if all(abs(a) <= HOME_TOLERANCE_DEG for a in angles):
-                    if not home_reported:
-                        print(">>> home reached")
-                        home_reported = True
-                else:
-                    targets = [round(step_toward(a, 0.0, LEAD_MAX_DEG), 1)
-                               for a in angles]
-                    if debug:
-                        print("home targets", targets)
-                    mc.send_angles(targets, HOME_SPEED)
-                    time.sleep(COMMAND_GAP)
-                time.sleep(LOOP_PERIOD)
-                continue
+                # J6 starting: record J4 / J5 before it moves
+                if 6 in wanted and wrist_snapshot is None:
+                    angles = read_angles(mc)
+                    if angles is not None:
+                        wrist_snapshot = {4: angles[3], 5: angles[4]}
 
-            # 6b. Jogging: released joints hold their current angle
-            #     (per-joint stop, so the other joints keep moving smoothly)
-            for joint in sorted(active - set(wanted)):
-                mc.send_angle(joint, round(angles[joint - 1], 1), SPEED_CAP)
-                time.sleep(COMMAND_GAP)
+                # Send commands to newly engaged joints or joints with updated speed steps
+                for joint, (direction, spd) in wanted.items():
+                    if joint in moving:
+                        if moving[joint][1] != spd:
+                            target = direction * LIMITS[joint]
+                            mc.send_angle(joint, target, spd)
+                            moving[joint] = (direction, spd)
+                            time.sleep(COMMAND_GAP)
+                    else:
+                        target = direction * LIMITS[joint]
+                        print(">>> send_angle(%d, %d, vel=%d)" % (joint, target, spd))
+                        mc.send_angle(joint, target, spd)
+                        moving[joint] = (direction, spd)
+                        time.sleep(COMMAND_GAP)
 
-            # 6c. Jogging: held joints get a target a short lead ahead
-            for joint, (direction, spd) in wanted.items():
-                lead = lead_for_speed(spd)
-                target = clamp_to_limit(joint, angles[joint - 1] + direction * lead)
-                if debug:
-                    print("J%d %.1f -> %.1f @%d" % (joint, angles[joint - 1], target, spd))
-                mc.send_angle(joint, round(target, 1), spd)
-                time.sleep(COMMAND_GAP)
-
-            if set(wanted) != active:
-                print(">>> jogging joints", sorted(wanted))
-            active = set(wanted)
-            time.sleep(LOOP_PERIOD)
-
+            time.sleep(0.02)
     except KeyboardInterrupt:
         print("\nQuitting.")
     except OSError as error:
