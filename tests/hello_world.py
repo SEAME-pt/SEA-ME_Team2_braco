@@ -59,16 +59,17 @@ def main():
         print("[INFO] Querying current joint angles...")
         angles = mc.get_angles()
 
-        if angles:
-            print(f"[OK] Received joint angles: {angles}")
-        else:
-            print("[WARN] No angle data returned (check robot power switch).")
+        if not isinstance(angles, (list, tuple)) or len(angles) != 6:
+            print(f"[ERROR] No valid angle data returned (got {angles!r}); check robot power switch and baud rate.")
+            print("\nHello-world FAILED: no telemetry received from the robot.")
+            sys.exit(2)
+        print(f"[OK] Received joint angles: {angles}")
 
         print("[INFO] Setting Atom Matrix LED to green (0, 255, 0)...")
         try:
             mc.set_color(0, 255, 0)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[WARN] Could not set LED color: {e}")
 
         print("\n========================================")
         print("Hello, myCobot! Python communication verified successfully.")

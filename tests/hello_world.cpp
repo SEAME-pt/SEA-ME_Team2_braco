@@ -36,15 +36,17 @@ int main(int argc, char* argv[]) {
     std::cout << "[INFO] Reading current joint angles..." << std::endl;
     std::vector<float> angles = mc.get_angles();
 
-    if (!angles.empty()) {
-        std::cout << "[OK] Received joint angles: [ ";
-        for (size_t i = 0; i < angles.size(); ++i) {
-            std::cout << "J" << (i + 1) << ": " << angles[i] << "° ";
-        }
-        std::cout << "]" << std::endl;
-    } else {
-        std::cout << "[WARN] No response to get_angles query (check power switch and baud rate)." << std::endl;
+    if (angles.size() != 6) {
+        std::cerr << "[ERROR] No valid response to get_angles query (check power switch and baud rate)." << std::endl;
+        std::cerr << "\nHello-world FAILED: no telemetry received from the robot." << std::endl;
+        return 2;
     }
+
+    std::cout << "[OK] Received joint angles: [ ";
+    for (size_t i = 0; i < angles.size(); ++i) {
+        std::cout << "J" << (i + 1) << ": " << angles[i] << "° ";
+    }
+    std::cout << "]" << std::endl;
 
     std::cout << "\n========================================" << std::endl;
     std::cout << "Hello, myCobot! C++ communication verified successfully." << std::endl;
