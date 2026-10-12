@@ -83,10 +83,15 @@ def main():
         else:
             print(f"[OK] Received joint angles: {angles}")
 
-            print("[INFO] Setting Atom Matrix LED to green (0, 255, 0)...")
+            print("[INFO] Showing LED colors: red, green, blue, then green...")
             try:
+                mc.set_color(255, 0, 0)
+                time.sleep(1)
                 mc.set_color(0, 255, 0)
-
+                time.sleep(1)
+                mc.set_color(0, 0, 255)
+                time.sleep(1)
+                mc.set_color(0, 255, 0)
             except Exception as e:
                 print(f"[WARN] Could not set LED color: {e}")
 

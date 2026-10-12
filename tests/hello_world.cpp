@@ -88,6 +88,16 @@ int main(int argc, char* argv[]) {
     }
     std::cout << "]" << std::endl;
 
+    std::cout << "[INFO] Showing LED colors: red, green, blue, then green..." << std::endl;
+    const std::chrono::seconds step(1);
+    mc.set_color(255, 0, 0);
+    std::this_thread::sleep_for(step);
+    mc.set_color(0, 255, 0);
+    std::this_thread::sleep_for(step);
+    mc.set_color(0, 0, 255);
+    std::this_thread::sleep_for(step);
+    mc.set_color(0, 255, 0);
+
     std::cout << "\n========================================" << std::endl;
     std::cout << "Hello, myCobot! C++ communication verified successfully." << std::endl;
     std::cout << "========================================" << std::endl;

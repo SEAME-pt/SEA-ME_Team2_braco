@@ -25,6 +25,7 @@ private:
     const uint8_t CMD_GET_ANGLES         = 0x20;
     const uint8_t CMD_SEND_ANGLES        = 0x22;
     const uint8_t CMD_SEND_ANGLE         = 0x21;
+    const uint8_t CMD_SET_COLOR          = 0x6A;
 
     bool write_bytes(const std::vector<uint8_t>& data) {
         if (fd < 0) return false;
@@ -103,6 +104,12 @@ public:
     // Power on and engage servo torque
     void power_on() {
         std::vector<uint8_t> frame = {HEADER, HEADER, 3, CMD_POWER_ON, 1, FOOTER};
+        write_bytes(frame);
+    }
+
+    // Set the Atom Matrix LED color (RGB, 0-255 each)
+    void set_color(uint8_t r, uint8_t g, uint8_t b) {
+        std::vector<uint8_t> frame = {HEADER, HEADER, 5, CMD_SET_COLOR, r, g, b, FOOTER};
         write_bytes(frame);
     }
 
