@@ -1,2 +1,2 @@
-pymycobot
-pyserial
+pymycobot==4.0.4
+pyserial==3.4
