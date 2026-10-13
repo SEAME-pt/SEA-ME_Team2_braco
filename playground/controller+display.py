@@ -21,11 +21,10 @@ JOYSTICK_DEVICE = "/dev/input/js0"
 # ---- LCD1602 Driver Helper --------------------------------------------------
 class WaveshareLCD:
     LCD_ADDR = 0x3E
-    RGB_ADDRS = [0x60, 0x62, 0x6B]
+    RGB_ADDR = 0x60
 
     def __init__(self, bus_num=0):
         self.bus = None
-        self.active_rgb = None
         try:
             self.bus = SMBus(bus_num)
             self._init_rgb()
@@ -40,21 +39,16 @@ class WaveshareLCD:
             pass
 
     def _init_rgb(self):
-        for addr in self.RGB_ADDRS:
-            try:
-                self.bus.write_quick(addr)
-                self.active_rgb = addr
-                self._write_reg(addr, 0x00, 0x00)  # Mode 1
-                self._write_reg(addr, 0x08, 0xAA)  # Output enable
-                break
-            except Exception:
-                continue
-
-    def set_color(self, r, g, b):
-        if not self.bus or not self.active_rgb:
+        """Exact sequence from test_raw_sweep that successfully lit the backlight."""
+        if not self.bus:
             return
-        for pwm_reg, val in [(0x04, r), (0x03, g), (0x02, b)]:
-            self._write_reg(self.active_rgb, pwm_reg, val)
+        # Wake up & set register modes
+        self._write_reg(self.RGB_ADDR, 0x00, 0x00)
+        self._write_reg(self.RGB_ADDR, 0x01, 0x00)
+        self._write_reg(self.RGB_ADDR, 0x08, 0xAA)
+        # Turn every PWM channel fully ON (registers 0x02 to 0x05 at 0xFF)
+        for reg in range(2, 6):
+            self._write_reg(self.RGB_ADDR, reg, 0xFF)
 
     def _send_cmd(self, cmd):
         if not self.bus:
@@ -101,15 +95,12 @@ class WaveshareLCD:
         """Format 6 joint angles across the two lines (exact 16 chars each)."""
         if not angles or len(angles) < 6:
             return
-        # Fits in 16 chars: "1:-12 2: 45 3:0  "
         l1 = f"1:{int(angles[0]):>3} 2:{int(angles[1]):>3} 3:{int(angles[2]):<3}"[:16]
         l2 = f"4:{int(angles[3]):>3} 5:{int(angles[4]):>3} 6:{int(angles[5]):<3}"[:16]
-        self.set_color(0, 255, 0)  # Pure Green
         self.write_line(1, l1)
         self.write_line(2, l2)
 
     def show_moving(self, text="MOVING..."):
-        self.set_color(0, 255, 0)  # Pure Green
         self.write_line(1, "ARM MOVING...")
         self.write_line(2, text.center(16)[:16])
 
@@ -286,7 +277,6 @@ def main():
 
     print("1/3 Initializing LCD1602 RGB on I2C bus 0...")
     lcd = WaveshareLCD(bus_num=0)
-    lcd.set_color(0, 255, 0)
 
     print("2/3 Opening joystick:", JOYSTICK_DEVICE)
     fd = os.open(JOYSTICK_DEVICE, os.O_RDONLY | os.O_NONBLOCK)
