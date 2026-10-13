@@ -1,0 +1,10 @@
+ARG ROS_DISTRO=lyrical
+FROM ros:${ROS_DISTRO}
+ARG ROS_DISTRO
+RUN apt-get update \
+ && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      ros-${ROS_DISTRO}-demo-nodes-cpp ros-${ROS_DISTRO}-demo-nodes-py \
+ && rm -rf /var/lib/apt/lists/*
+COPY docker/smoke-local.sh /usr/local/bin/smoke-local.sh
+RUN chmod +x /usr/local/bin/smoke-local.sh
+# TODO non-root: check `getent passwd 1000` in the base image, then add USER.
