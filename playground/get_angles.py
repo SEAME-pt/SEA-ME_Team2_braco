@@ -122,6 +122,7 @@ def main():
     if not locked:
         input("Hold the arm, then press Enter to lock the joints...")
         lock(mc)
+
     print("Joints locked.")
 
     if saved:
