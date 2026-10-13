@@ -7,12 +7,15 @@ Safety model: step-ahead (bounded-lead) jogging
 The arm is never given a far-away goal. On every loop tick the script reads
 the real joint angles and commands a target only a few degrees ahead of them.
 If commands stop arriving (crash, kill -9, frozen process, lost serial data,
-joystick unplugged), each joint coasts at most LEAD_MAX_DEG (jogging) or
-HOME_LEAD_DEG (homing) and then stops on its own.
+joystick unplugged), each joint coasts at most the active mode's lead_max
+(jogging) or HOME_LEAD_DEG (homing) and then stops on its own.
 
 Behaviour:
   * Stick speed is proportional to deflection (continuous, with an expo curve
     for fine control near the centre).
+  * Five speed modes, cycled with button 9. The Atom LED shows the active
+    mode: blue = slow (12%), green = medium (30%), purple = 50%,
+    white = 75%, red = 100%.
   * Near a joint limit, speed and step shrink with the remaining distance.
   * Idle joints are latched and held while other joints jog (prevents J4 sag
     while J6 rotates the off-centre gripper).
@@ -26,6 +29,7 @@ Mapping:
     D-pad Y            joint 3 (elbow pitch)
     A / B              close / open gripper
     X (click)          home all joints to 0 (click again to abort)
+    Button 9           cycle speed: blue -> green -> purple -> white -> red -> blue ...
     Ctrl+C             quit (safely stops the arm)
 
 Usage:
@@ -45,17 +49,31 @@ SERIAL_PORT = "/dev/ttyTHS1"
 BAUD_RATE = 1000000
 JOYSTICK_DEVICE = "/dev/input/js0"
 
-# ---- Jog speed (pymycobot speed units 1..100 = percent) --------------------
-SPEED_CAP = 30            # max jog speed
+# ---- Speed modes (pymycobot speed units 1..100 = percent) ------------------
+# max_speed:    jog speed at full stick deflection
+# lead_max:     step-ahead at full deflection (= worst-case coast if commands stop)
+# bumper_speed: fixed J6 speed for L1/R1 (lower = less reaction torque on J4/J5)
+# color:        Atom LED colour (R, G, B)
+SPEED_MODES = [
+    {"name": "slow",   "max_speed": 12, "lead_max": 5.0,  "bumper_speed": 10,
+     "color": (0, 0, 255)},
+    {"name": "medium", "max_speed": 30, "lead_max": 10.0, "bumper_speed": 20,
+     "color": (0, 255, 0)},
+    {"name": "50%",    "max_speed": 50, "lead_max": 15.0, "bumper_speed": 30,
+     "color": (128, 0, 255)},   # purple
+    {"name": "75%",    "max_speed": 75, "lead_max": 20.0, "bumper_speed": 40,
+     "color": (255, 255, 255)}, # white
+    {"name": "100%",   "max_speed": 100, "lead_max": 25.0, "bumper_speed": 50,
+     "color": (255, 0, 0)},     # red
+]
+START_MODE = 1            # index into SPEED_MODES (1 = medium, original behaviour)
+
 MIN_SPEED = 3             # speed just outside the deadzone (fine positioning)
-MAX_SPEED = SPEED_CAP     # speed at full deflection
 STICK_EXPO = 1.8          # 1.0 = linear; >1 = more resolution near centre
-BUMPER_SPEED = 20         # J6 fixed speed; lower = less reaction torque on J4/J5
 GRIPPER_SPEED = 50        # gripper is a separate actuator
 
-# ---- Step-ahead lead (worst-case coast if commands stop) -------------------
+# ---- Step-ahead lead --------------------------------------------------------
 LEAD_MIN_DEG = 1.0        # lead at MIN_SPEED (raise if small moves pulse)
-LEAD_MAX_DEG = 10.0       # lead at MAX_SPEED
 
 # ---- Soft limit zone --------------------------------------------------------
 SLOW_ZONE_DEG = 25.0      # start slowing this far from a limit
@@ -63,7 +81,7 @@ MIN_LIMIT_FACTOR = 0.15   # slowest scaling inside the zone (keeps a creep)
 AT_LIMIT_DEG = 0.3        # closer than this -> treat as at the limit
 
 # ---- One-click homing -------------------------------------------------------
-HOME_SPEED = 60           # deliberately above SPEED_CAP ("fast home")
+HOME_SPEED = 60           # "fast home", independent of the jog speed mode
 HOME_LEAD_DEG = 15.0      # bounded step per tick while homing
 HOME_TOLERANCE_DEG = 1.0  # all joints within this of 0 -> home reached
 HOME_MAX_BAD_READS = 3    # consecutive invalid feedback reads before aborting
@@ -86,15 +104,26 @@ AXIS_TO_JOINT = {
     0: (1, -1),  # left stick X  -> joint 1 (base yaw) [inverted]
     1: (2, 1),   # left stick Y  -> joint 2 (shoulder pitch)
     3: (4, -1),  # right stick vertical   -> joint 4
-    4: (5, -1),  # right stick horizontal -> joint 5
+    2: (5, -1),  # right stick horizontal -> joint 5
     7: (3, 1),   # d-pad Y       -> joint 3 (elbow)
 }
+
+# Analog trigger axes. Button 9 (R2) also drives axis 4 (-32767 released,
+# +32767 pressed), so these axes are ignored completely and never move a joint.
+TRIGGER_AXES = {4, 5}
 
 BUTTON_GRIPPER_CLOSE = 0  # A
 BUTTON_GRIPPER_OPEN = 1   # B
 BUTTON_HOME = 3           # X (click)
 BUTTON_L1 = 6             # J6 negative
 BUTTON_R1 = 7             # J6 positive
+BUTTON_SPEED_MODE = 9     # cycle speed mode (never moves the arm)
+
+# Some controllers send axis events together with button 9 (e.g. an analog
+# trigger that reports both an axis and a button). Any axis that changes while
+# button 9 is held, or within this window around its press/release, is ignored
+# until that axis returns to its centre (deadzone).
+SPEED_BUTTON_GUARD_MS = 250
 
 # Safe mechanical limits (deg) to avoid firmware command rejections
 LIMITS = [None, 160, 130, 140, 120, 135, 170]
@@ -116,10 +145,10 @@ def read_events(fd):
             break
         if len(data) < EVENT_SIZE:
             break
-        _, value, ev_type, number = struct.unpack(EVENT_FORMAT, data)
+        t_ms, value, ev_type, number = struct.unpack(EVENT_FORMAT, data)
         if ev_type & TYPE_INIT:
             continue
-        events.append((ev_type, number, value))
+        events.append((t_ms, ev_type, number, value))
     return events
 
 
@@ -132,14 +161,17 @@ def stick_ratio(raw_value):
     return ratio ** STICK_EXPO
 
 
-def motion_for_ratio(ratio):
-    """Map a 0..1 command ratio to (speed, lead). Both grow with deflection."""
-    speed = MIN_SPEED + ratio * (MAX_SPEED - MIN_SPEED)
-    lead = LEAD_MIN_DEG + ratio * (LEAD_MAX_DEG - LEAD_MIN_DEG)
+def motion_for_ratio(ratio, mode):
+    """Map a 0..1 command ratio to (speed, lead) for the given speed mode."""
+    speed = MIN_SPEED + ratio * (mode["max_speed"] - MIN_SPEED)
+    lead = LEAD_MIN_DEG + ratio * (mode["lead_max"] - LEAD_MIN_DEG)
     return speed, lead
 
 
-BUMPER_RATIO = (BUMPER_SPEED - MIN_SPEED) / float(MAX_SPEED - MIN_SPEED)
+def bumper_ratio(mode):
+    """Ratio that yields the mode's fixed J6 bumper speed."""
+    span = float(mode["max_speed"] - MIN_SPEED)
+    return max(0.0, min(1.0, (mode["bumper_speed"] - MIN_SPEED) / span))
 
 
 def shape_near_limit(joint, angle, direction, speed, lead):
@@ -173,25 +205,40 @@ def read_angles(mc):
     return None
 
 
-def wanted_motion(axis_state, button_state):
-    """Return desired {joint: (direction, speed, lead)}."""
+def set_led(mc, mode):
+    """Show the speed mode on the Atom LED."""
+    r, g, b = mode["color"]
+    try:
+        mc.set_color(r, g, b)
+    except Exception as error:
+        print("!!! could not set LED colour (%s)" % error)
+    time.sleep(COMMAND_GAP)
+
+
+def wanted_motion(axis_state, button_state, mode, blocked_axes=()):
+    """Return desired {joint: (direction, speed, lead)}.
+
+    Axes in blocked_axes (side effects of button 9) never produce motion.
+    """
     wanted = {}
 
     l1 = button_state.get(BUTTON_L1, 0) == 1
     r1 = button_state.get(BUTTON_R1, 0) == 1
     bumper_dir = -1 if (l1 and not r1) else (1 if (r1 and not l1) else 0)
     if bumper_dir:
-        speed, lead = motion_for_ratio(BUMPER_RATIO)
+        speed, lead = motion_for_ratio(bumper_ratio(mode), mode)
         wanted[6] = (bumper_dir, speed, lead)
         if BUMPERS_EXCLUSIVE:
             return wanted  # ignore any (ghost) stick input while J6 rotates
 
     for axis, (joint, direction) in AXIS_TO_JOINT.items():
+        if axis in blocked_axes:
+            continue
         value = axis_state.get(axis, 0)
         ratio = stick_ratio(value)
         if ratio > 0.0:
             sign = direction if value > 0 else -direction
-            speed, lead = motion_for_ratio(ratio)
+            speed, lead = motion_for_ratio(ratio, mode)
             wanted[joint] = (sign, speed, lead)
 
     return wanted
@@ -218,8 +265,13 @@ def main():
     time.sleep(0.5)
     print("    Current angles:", mc.get_angles())
 
-    print("Ready. Jog cap %d %%, max coast %.0f deg. Click X to home. "
-          "Ctrl+C quits." % (SPEED_CAP, LEAD_MAX_DEG))
+    mode_index = START_MODE
+    mode = SPEED_MODES[mode_index]
+    set_led(mc, mode)
+
+    print("Ready. Speed mode: %s (cap %d %%, max coast %.0f deg). "
+          "Button 9 changes speed, X homes, Ctrl+C quits."
+          % (mode["name"], mode["max_speed"], mode["lead_max"]))
 
     axis_state = {}
     button_state = {}
@@ -229,6 +281,9 @@ def main():
     limit_reported = set()  # joints whose "at limit" message was printed
     homing = False
     bad_reads = 0
+    axis_changed_ms = {}    # axis -> joystick time (ms) of its last event
+    blocked_axes = set()    # axes ignored because they fired with button 9
+    speed_btn_ms = None     # joystick time of the last button 9 press/release
 
     def stop_arm():
         mc.stop()
@@ -240,15 +295,38 @@ def main():
         while True:
             # 1. Drain joystick events
             home_clicked = False
-            for ev_type, number, value in read_events(fd):
+            for t_ms, ev_type, number, value in read_events(fd):
                 if ev_type == TYPE_AXIS:
+                    if number in TRIGGER_AXES:
+                        continue  # trigger analog value, never a joint command
                     axis_state[number] = value
+                    axis_changed_ms[number] = t_ms
+                    near_speed_btn = (
+                        button_state.get(BUTTON_SPEED_MODE, 0) == 1
+                        or (speed_btn_ms is not None
+                            and abs(t_ms - speed_btn_ms) <= SPEED_BUTTON_GUARD_MS))
+                    if near_speed_btn and abs(value) > AXIS_DEADZONE:
+                        if number not in blocked_axes and debug:
+                            print("axis   %d blocked (fired with button 9)" % number)
+                        blocked_axes.add(number)
+                    elif number in blocked_axes and abs(value) <= AXIS_DEADZONE:
+                        blocked_axes.discard(number)   # back at centre -> usable
+                        if debug:
+                            print("axis   %d unblocked" % number)
                     if debug:
                         print("axis   %d = %d" % (number, value))
                 elif ev_type == TYPE_BUTTON:
                     button_state[number] = value
                     if debug:
                         print("button %d = %d" % (number, value))
+                    if number == BUTTON_SPEED_MODE:
+                        speed_btn_ms = t_ms
+                        # Block axes that moved just before button 9 fired
+                        # (analog triggers move their axis first).
+                        for ax, ax_ms in axis_changed_ms.items():
+                            if (t_ms - ax_ms <= SPEED_BUTTON_GUARD_MS
+                                    and abs(axis_state.get(ax, 0)) > AXIS_DEADZONE):
+                                blocked_axes.add(ax)
                     if value == 1:
                         if number == BUTTON_GRIPPER_CLOSE:
                             print(">>> close gripper")
@@ -258,8 +336,14 @@ def main():
                             mc.set_gripper_state(0, GRIPPER_SPEED)
                         elif number == BUTTON_HOME:
                             home_clicked = True
+                        elif number == BUTTON_SPEED_MODE:
+                            mode_index = (mode_index + 1) % len(SPEED_MODES)
+                            mode = SPEED_MODES[mode_index]
+                            set_led(mc, mode)
+                            print(">>> speed mode: %s (cap %d %%, max coast %.0f deg)"
+                                  % (mode["name"], mode["max_speed"], mode["lead_max"]))
 
-            wanted = wanted_motion(axis_state, button_state)
+            wanted = wanted_motion(axis_state, button_state, mode, blocked_axes)
 
             # 2. Homing state transitions (click toggles, any jog input aborts)
             if home_clicked:
