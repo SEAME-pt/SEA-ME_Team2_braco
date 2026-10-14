@@ -1,0 +1,12 @@
+# Same build flags on the PC and on the Jetson, so "works on my machine" means the same thing.
+# On the Nano (4 GB RAM) add:  colcon build --parallel-workers 2
+build:
+  symlink-install: true
+  cmake-args:
+    - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+    - -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+    - -DCMAKE_C_COMPILER_LAUNCHER=ccache
+    - -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+test:
+  event-handlers:
+    - console_direct+
