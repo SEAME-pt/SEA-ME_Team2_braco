@@ -93,26 +93,61 @@ std::optional<bool> MyCobot280::isPowerOn() {
     return (*data)[0] == 1;
 }
 
+// ------------------------------------------------------------ joint limits
+
+void MyCobot280::setSoftLimits(const JointLimits& limits) {
+    for (size_t i = 0; i < limits.size(); ++i) {
+        const JointLimit& soft = limits[i];
+        const JointLimit& hard = FIRMWARE_LIMITS[i];
+        const std::string joint = "J" + std::to_string(i + 1);
+        if (!std::isfinite(soft.min) || !std::isfinite(soft.max) || soft.min >= soft.max) {
+            throw std::invalid_argument(joint + " soft limit: min must be below max");
+        }
+        if (soft.min < hard.min || soft.max > hard.max) {
+            throw std::invalid_argument(joint + " soft limit outside firmware range [" +
+                                        std::to_string(hard.min) + ", " +
+                                        std::to_string(hard.max) + "]");
+        }
+    }
+    softLimits_ = limits;
+}
+
+double MyCobot280::limitAngle(int joint, double angle, bool& clamped) const {
+    if (!std::isfinite(angle)) {
+        throw std::invalid_argument("J" + std::to_string(joint) + ": angle is not a finite number");
+    }
+    const JointLimit& lim = softLimits_[joint - 1];
+    const double limited = std::clamp(angle, lim.min, lim.max);
+    if (limited != angle) clamped = true;
+    return limited;
+}
+
 // ------------------------------------------------------------------- motion
 
-void MyCobot280::sendAngles(const Angles& angles, int speed) {
+bool MyCobot280::sendAngles(const Angles& angles, int speed) {
+    bool clamped = false;
     std::vector<uint8_t> data;
-    for (double a : angles) {
+    for (size_t i = 0; i < angles.size(); ++i) {
+        const double a = limitAngle(static_cast<int>(i) + 1, angles[i], clamped);
         appendInt16(data, static_cast<int16_t>(std::lround(a * 100.0)));
     }
     data.push_back(clampSpeed(speed));
     sendCommand(protocol::SEND_ANGLES, data);
+    return clamped;
 }
 
-void MyCobot280::sendAngle(int joint, double angle, int speed) {
+bool MyCobot280::sendAngle(int joint, double angle, int speed) {
     if (joint < 1 || joint > 6) {
         throw std::invalid_argument("joint must be 1..6, got " + std::to_string(joint));
     }
+    bool clamped = false;
+    const double a = limitAngle(joint, angle, clamped);
     std::vector<uint8_t> data;
     data.push_back(static_cast<uint8_t>(joint));
-    appendInt16(data, static_cast<int16_t>(std::lround(angle * 100.0)));
+    appendInt16(data, static_cast<int16_t>(std::lround(a * 100.0)));
     data.push_back(clampSpeed(speed));
     sendCommand(protocol::SEND_ANGLE, data);
+    return clamped;
 }
 
 void MyCobot280::stop() {

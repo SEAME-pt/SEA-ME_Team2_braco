@@ -25,6 +25,36 @@ namespace mycobot {
 using Angles = std::array<double, 6>;  // J1..J6 in degrees
 using Coords = std::array<double, 6>;  // X, Y, Z (mm), RX, RY, RZ (deg)
 
+struct JointLimit {
+    double min;   // degrees
+    double max;   // degrees
+};
+using JointLimits = std::array<JointLimit, 6>;   // index 0 = J1 ... 5 = J6
+
+// Limits enforced by the arm's firmware, read from this arm with
+// get_joint_min_angle() / get_joint_max_angle(). Absolute ceiling: soft
+// limits can never be set outside these.
+constexpr JointLimits FIRMWARE_LIMITS = {{
+    {-168.0, 168.0},   // J1
+    {-140.0, 140.0},   // J2
+    {-150.0, 150.0},   // J3
+    {-150.0, 150.0},   // J4
+    {-155.0, 160.0},   // J5
+    {-180.0, 180.0},   // J6
+}};
+
+// Default soft limits for this setup (from the joystick program). Tighter
+// than the firmware to keep the arm away from collisions with itself, the
+// table and cables. Change per setup with setSoftLimits().
+constexpr JointLimits DEFAULT_SOFT_LIMITS = {{
+    {-160.0, 160.0},   // J1
+    {-130.0, 130.0},   // J2
+    {-140.0, 140.0},   // J3
+    {-120.0, 120.0},   // J4
+    {-135.0, 135.0},   // J5
+    {-170.0, 170.0},   // J6
+}};
+
 // Command codes, taken from pymycobot's ProtocolCode.
 // Verify against your installed version:
 //   grep -nE "= 0x" ~/.local/lib/python3.8/site-packages/pymycobot/common.py
@@ -67,9 +97,19 @@ public:
     void releaseAllServos();              // free all joints (move by hand)
     std::optional<bool> isPowerOn();      // nullopt if no valid reply
 
+    // ---- Joint limits --------------------------------------------------------
+    // Every angle sent to the arm is clamped to the soft limits, so no program
+    // can command a joint outside them. Throws std::invalid_argument if any
+    // limit lies outside FIRMWARE_LIMITS or has min >= max.
+    void setSoftLimits(const JointLimits& limits);
+    const JointLimits& softLimits() const { return softLimits_; }
+
     // ---- Motion (fire-and-forget, like pymycobot) --------------------------
-    void sendAngles(const Angles& angles, int speed);
-    void sendAngle(int joint, double angle, int speed);   // joint 1..6
+    // Angles outside the soft limits are clamped to the nearest limit.
+    // Returns true if any angle was clamped. Throws std::invalid_argument for
+    // non-finite angles (NaN/inf) or a joint outside 1..6.
+    bool sendAngles(const Angles& angles, int speed);
+    bool sendAngle(int joint, double angle, int speed);   // joint 1..6
     void stop();
     std::optional<bool> isMoving();       // nullopt if no valid reply
 
@@ -83,6 +123,10 @@ public:
 
 private:
     int fd_ = -1;
+    JointLimits softLimits_ = DEFAULT_SOFT_LIMITS;
+
+    // Clamp one angle to the soft limit of `joint` (1..6); sets `clamped`.
+    double limitAngle(int joint, double angle, bool& clamped) const;
 
     // Build a frame and write it to the port.
     void sendCommand(uint8_t cmd, const std::vector<uint8_t>& data = {});
