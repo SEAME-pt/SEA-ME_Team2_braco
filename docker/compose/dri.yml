@@ -1,0 +1,11 @@
+# Optional override: Intel / AMD GPU (Mesa, /dev/dri) on the PC.
+# Without any GPU override Gazebo still runs, using Mesa software rendering (slow but functional).
+# Enable in .env:  COMPOSE_FILE=docker-compose.yml:compose/dri.yml  (or: make up GPU=dri)
+# Find the numeric group ids on the host with:  getent group video render
+services:
+  pc-dev:
+    devices:
+      - /dev/dri:/dev/dri
+    group_add:
+      - "${VIDEO_GID:-44}"
+      - "${RENDER_GID:-992}"
