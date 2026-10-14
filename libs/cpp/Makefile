@@ -17,8 +17,8 @@ OBJ_DIR  := obj
 
 CPPFLAGS := -I$(INC_DIR)
 
-PROGRAMS := zero
-LIB_OBJS := $(OBJ_DIR)/mycobot.o
+PROGRAMS := zero joystick_all_joints
+LIB_OBJS := $(OBJ_DIR)/mycobot.o $(OBJ_DIR)/joystick.o
 
 .PHONY: all clean fclean re
 
