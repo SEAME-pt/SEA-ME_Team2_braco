@@ -14,11 +14,11 @@ The versions below represent the baseline software environment of the physical r
 |---|---|---|---|
 | OS | Ubuntu 20.04.6 LTS (`focal`) | Ubuntu 20.04 (`focal`) | `lsb_release -a` |
 | Architecture | `aarch64` | `x86_64` or `aarch64`, host-dependent | `uname -m` |
-| Compiler |  8.4.0 | GCC 9.4 (Focal default) | `gcc --version` |
+| Compiler | GCC 8.4.0 | GCC 9.4 (Focal default) | `gcc --version` |
 | Python | Python 3.8.10 | 3.8.x | `python3 --version` |
-| ROS 2 | galatic | `ros-galactic-ros-base` | `printenv ROS_DISTRO` |
-| CMake | 3.16.3| 3.16.3 | `cmake --version` |
-| Colcon | 0.17.0 | x | `python3 -m pyttest --version` |
+| ROS 2 | galactic | `ros-galactic-ros-base` | `printenv ROS_DISTRO` |
+| CMake | 3.16.3 | 3.16.3 | `cmake --version` |
+| Colcon | 0.17.0 | x | `pip3 show colcon-core` |
 
 ---
 
