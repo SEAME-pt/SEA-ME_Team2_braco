@@ -198,6 +198,109 @@ void MyCobot280::setColor(uint8_t r, uint8_t g, uint8_t b) {
     sendCommand(protocol::SET_COLOR, {r, g, b});
 }
 
+// ---------------------------------------------------------------- servo PID
+
+namespace {
+
+constexpr auto SERVO_WRITE_SETTLE = 200ms;   // pause before reading a written value back
+constexpr int SERVO_WRITE_ATTEMPTS = 3;
+
+void checkJoint(int joint) {
+    if (joint < 1 || joint > 6) {
+        throw std::invalid_argument("joint must be 1..6, got " + std::to_string(joint));
+    }
+}
+
+}  // namespace
+
+std::optional<int> MyCobot280::getServoData(int joint, uint8_t address, int retries) {
+    checkJoint(joint);
+    const uint8_t id = static_cast<uint8_t>(joint);
+    auto data = queryWithData(protocol::GET_SERVO_DATA, {id, address}, retries);
+    if (!data) return std::nullopt;
+
+    // Reply formats seen across firmware versions; anything else is refused.
+    switch (data->size()) {
+        case 1:   // value
+            return (*data)[0];
+        case 2:   // 16-bit value, high byte first
+            return (static_cast<int>((*data)[0]) << 8) | (*data)[1];
+        case 3:   // joint, address, value (echo of the request)
+            if ((*data)[0] == id && (*data)[1] == address) return (*data)[2];
+            return std::nullopt;
+        default:
+            return std::nullopt;
+    }
+}
+
+std::optional<Pid> MyCobot280::getPid(int joint) {
+    const auto p = getServoData(joint, servo::ADDR_P);
+    const auto i = getServoData(joint, servo::ADDR_I);
+    const auto d = getServoData(joint, servo::ADDR_D);
+    if (!p || !i || !d) return std::nullopt;
+    return Pid{*p, *i, *d};
+}
+
+void MyCobot280::checkPidBounds(int joint, const Pid& pid) {
+    checkJoint(joint);
+    const Pid& factory = FACTORY_PID[joint - 1];
+    const int maxP = static_cast<int>(factory.p * PID_MAX_FACTOR);
+    const int maxD = static_cast<int>(factory.d * PID_MAX_FACTOR);
+    const std::string j = "J" + std::to_string(joint);
+
+    if (pid.p < 0 || pid.i < 0 || pid.d < 0) {
+        throw std::invalid_argument(j + ": PID values cannot be negative");
+    }
+    if (pid.p > maxP) {
+        throw std::invalid_argument(j + ": P " + std::to_string(pid.p) +
+                                    " above safe maximum " + std::to_string(maxP));
+    }
+    if (pid.i > PID_MAX_I) {
+        throw std::invalid_argument(j + ": I " + std::to_string(pid.i) +
+                                    " above safe maximum " + std::to_string(PID_MAX_I));
+    }
+    if (pid.d > maxD) {
+        throw std::invalid_argument(j + ": D " + std::to_string(pid.d) +
+                                    " above safe maximum " + std::to_string(maxD));
+    }
+}
+
+bool MyCobot280::setPid(int joint, const Pid& pid) {
+    checkPidBounds(joint, pid);   // throws before anything is sent
+
+    // Only write once reading works: proves the protocol before changing anything.
+    const auto current = getPid(joint);
+    if (!current) {
+        throw std::runtime_error("J" + std::to_string(joint) +
+                                 ": cannot read current PID values, nothing was written");
+    }
+    if (isMoving().value_or(false)) {
+        throw std::runtime_error("arm is moving, PID values were not changed");
+    }
+
+    bool ok = true;
+    if (current->p != pid.p) ok = writeServoByte(joint, servo::ADDR_P, pid.p) && ok;
+    if (current->i != pid.i) ok = writeServoByte(joint, servo::ADDR_I, pid.i) && ok;
+    if (current->d != pid.d) ok = writeServoByte(joint, servo::ADDR_D, pid.d) && ok;
+    return ok;
+}
+
+bool MyCobot280::writeServoByte(int joint, uint8_t address, int value) {
+    // Private: only called by setPid() with a PID address and a checked value.
+    if (address != servo::ADDR_P && address != servo::ADDR_I && address != servo::ADDR_D) {
+        throw std::logic_error("writeServoByte: address " + std::to_string(address) +
+                               " is not a PID address");
+    }
+    const std::vector<uint8_t> data = {static_cast<uint8_t>(joint), address,
+                                       static_cast<uint8_t>(value)};
+    for (int attempt = 0; attempt < SERVO_WRITE_ATTEMPTS; ++attempt) {
+        sendCommand(protocol::SET_SERVO_DATA, data);
+        std::this_thread::sleep_for(SERVO_WRITE_SETTLE);
+        if (getServoData(joint, address) == value) return true;
+    }
+    return false;
+}
+
 // ------------------------------------------------------------ serial layer
 
 void MyCobot280::sendCommand(uint8_t cmd, const std::vector<uint8_t>& data) {
@@ -255,6 +358,20 @@ std::optional<std::vector<uint8_t>> MyCobot280::query(
         auto data = readReply(cmd, REPLY_TIMEOUT);
         if (data && data->size() == expected_size) {
             return data;
+        }
+        std::this_thread::sleep_for(RETRY_DELAY);
+    }
+    return std::nullopt;
+}
+
+std::optional<std::vector<uint8_t>> MyCobot280::queryWithData(
+        uint8_t cmd, const std::vector<uint8_t>& data, int retries) {
+    for (int attempt = 0; attempt < std::max(1, retries); ++attempt) {
+        tcflush(fd_, TCIFLUSH);
+        sendCommand(cmd, data);
+        auto reply = readReply(cmd, REPLY_TIMEOUT);
+        if (reply && !reply->empty()) {
+            return reply;
         }
         std::this_thread::sleep_for(RETRY_DELAY);
     }
