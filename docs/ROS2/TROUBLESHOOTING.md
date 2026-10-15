@@ -1,0 +1,107 @@
+# ROS 2 Troubleshooting
+
+Common problems when installing and using ROS 2 in this project, and how to fix them. Problems specific to building the Docker images are also listed in [docker/README.md → If the build fails](../docker/README.md#if-the-build-fails).
+
+When something fails, first collect the basics:
+
+```bash
+printenv | grep -E 'ROS|RMW'        # distro, domain, RMW
+ros2 doctor --report                # environment and network
+ros2 node list; ros2 topic list     # what this machine can see
+```
+
+---
+
+## Environment and commands
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `ros2: command not found` | ROS is not sourced in this shell | In the container use `make shell` (sources automatically). Natively: `source /opt/ros/lyrical/setup.bash`. With `docker compose exec <svc> <cmd>`, prefix with `ros_entrypoint.sh` |
+| `Package 'my_pkg' not found` | Workspace not built or not sourced in this terminal | `cd /ws && colcon build && source install/setup.bash` |
+| `No executable found` | The executable is not installed | C++: add it to `install(TARGETS ... DESTINATION lib/${PROJECT_NAME})`. Python: add it to `entry_points` in `setup.py`. Rebuild and re-source |
+| A Python change has no effect | Built without `--symlink-install`, or a new file/entry point was added | Rebuild. Our images use symlink install by default; new entry points always need a rebuild |
+| Strange errors mixing ROS 1 and ROS 2, or two distros | Several `setup.bash` files sourced in one shell (the Nano host has Noetic and Galactic) | Open a new shell and source only one distro. Never source ROS from `~/.bashrc` on the Nano host |
+| `ModuleNotFoundError: No module named 'seame_interfaces'` | Interface package not built, or built after the shell was sourced | `colcon build --packages-select seame_interfaces && source install/setup.bash` |
+
+## Building (colcon / CMake)
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `Could not find a package configuration file provided by "X"` | Missing dependency | Add `<depend>X</depend>` to `package.xml`, then `rosdep install --from-paths src --ignore-src -y` (or `make ws-deps`). If it is your own package, build it first (colcon orders by `package.xml`) |
+| `colcon build` creates `build/` inside `src/` | Ran from the wrong folder | Always build from the workspace root `/ws`. Delete the stray folders |
+| Build of the interface package fails with action errors | Missing `action_msgs` dependency or `member_of_group` | See [INSTRUCTIONS.md §6](INSTRUCTIONS.md#6-create-a-custom-interfaces-package): `<depend>action_msgs</depend>` and `<member_of_group>rosidl_interface_packages</member_of_group>` |
+| `ament_target_dependencies` deprecation warning | Old tutorial style | Use `target_link_libraries(target rclcpp::rclcpp ${std_msgs_TARGETS})` |
+| Jetson freezes or the compiler is killed (`c++: fatal error: Killed signal`) | Out of memory (4 GB) | `colcon build --parallel-workers 2` (`make ws-build` does it), or `MAKEFLAGS=-j1 colcon build --executor sequential` |
+| `Permission denied` writing `build/`, `install/`, `log/` | `docker/ws` created by Docker as root, or wrong `USER_UID` in `.env` | `sudo chown -R $(id -u):$(id -g) docker/ws` on the host; check `USER_UID`/`USER_GID` in `.env` and rebuild the image |
+| Weird stale build errors after moving/renaming packages | Old build cache | `rm -rf build install log` (or `make ws-clean`) and build again |
+
+## Communication: "my subscriber receives nothing"
+
+Go through this list in order.
+
+1. **Is the publisher really publishing?** `ros2 topic hz /topic` on the publisher's machine.
+2. **Same topic name?** `ros2 topic list`. Watch for relative vs absolute names and namespaces (`/chatter` vs `/robot/chatter`), and for typos.
+3. **Same type?** `ros2 topic info /topic` shows the type; if publisher and subscriber disagree, the tools show two types and nothing connects.
+4. **Compatible QoS?** `ros2 topic info -v /topic`. A `BEST_EFFORT` publisher with a `RELIABLE` subscriber, or a `VOLATILE` publisher with a `TRANSIENT_LOCAL` subscriber, never connect. The node logs an "incompatible QoS" warning. For `ros2 topic echo`, pass matching `--qos-*` options.
+5. **Does the subscriber node actually spin?** A node that is created but never passed to `spin()` (or whose executor is blocked in a long callback) never runs callbacks.
+6. **Lifecycle node?** A lifecycle publisher only publishes while the node is **Active**: `ros2 lifecycle get /node`.
+7. **Different machines?** See the next section.
+
+## Communication between machines (PC ↔ Jetson)
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Nodes on the other machine do not appear at all | Different `ROS_DOMAIN_ID` or `RMW_IMPLEMENTATION` | Compare `printenv | grep -E 'ROS_DOMAIN_ID|RMW'` on both. They come from `docker/.env`; make them identical and `make down && make up` |
+| Still nothing, IDs match | Multicast blocked (typical on Wi-Fi / campus networks) | Test with `ros2 multicast receive` (A) and `ros2 multicast send` (B). If it fails, set `ROS_STATIC_PEERS` to the other machine's IP in `docker/docker-compose.yml` (`x-ros-env`), or use a wired connection / own router |
+| Still nothing | Firewall | `sudo ufw status`. Allow UDP from the other machine: `sudo ufw allow from <other-ip>` |
+| Still nothing | Discovery range | `ROS_AUTOMATIC_DISCOVERY_RANGE` must be `SUBNET` (our default), not `LOCALHOST`, and both machines in the same subnet |
+| Nodes appear but no data, or only small messages arrive | Network MTU / fragmentation, or very large messages over Wi-Fi | Test with small messages first; for images use `SensorDataQoS`, lower resolution or compressed images |
+| Two teams see each other's nodes | Same domain ID on a shared network | Agree on a different `ROS_DOMAIN_ID` per team (0 to 101) |
+| Timestamps / tf look wrong across machines | Clocks out of sync | Enable NTP on both hosts (`timedatectl status`; install `chrony`) |
+| `ros2 node list` shows nodes that were stopped, or misses new ones | CLI daemon cache | `ros2 daemon stop; ros2 daemon start` |
+| Duplicate node names warning | Two nodes with the same name (e.g. same program on both machines) | Rename one: `--ros-args -r __node:=talker_jetson` |
+
+## Services and actions
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Client waits forever "waiting for service" | Server not running, wrong name, different domain | `ros2 service list`; check namespaces and remapping |
+| Program hangs when calling a service from inside a callback | Deadlock: synchronous call on a single-threaded executor | Use `call_async` / `async_send_request` and handle the result in a callback, or a `MultiThreadedExecutor` with the client in a separate callback group |
+| Action cancel requests are ignored | Server's executor is busy in `execute` | Python: spin with `MultiThreadedExecutor` and give the server a `ReentrantCallbackGroup` (as in the example); check `goal_handle.is_cancel_requested` inside the loop |
+| `ros2 service call` / `action send_goal`: "The passed service/action type is invalid" | Type not found in this shell | Build and `source install/setup.bash`; type format is `pkg/srv/Name` or `pkg/action/Name` |
+| YAML errors in `ros2 ... call/pub` | Wrong quoting | Wrap the YAML in double quotes and use `field: value` with a space after the colon: `"{a: 2, b: 3}"`. `ros2 interface proto <type>` prints a template |
+
+## Lifecycle
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `ros2 lifecycle set` says the transition is not available | Not valid from the current state | `ros2 lifecycle get /node` and `ros2 lifecycle list /node` |
+| Node is Active but publishes nothing | Lifecycle publisher not activated | Python: call `super().on_activate(state)`. C++: call `pub_->on_activate()` in `on_activate` |
+| "Trying to publish message on the topic ..., but the publisher is not activated" | Publishing while Inactive | Expected outside Active; check `is_activated` before publishing |
+| C++ compile error spinning a lifecycle node | `rclcpp::spin` expects a node base | `rclcpp::spin(node->get_node_base_interface())` |
+| Transition goes to `ErrorProcessing` | Callback returned `ERROR` or threw an exception | Check the node's log; implement `on_error` to recover |
+
+## GUI tools (rqt, rqt_graph, RViz2, Gazebo)
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `qt.qpa.xcb: could not connect to display` | Container cannot reach your X server | On the host: `xhost +local:` (done by `make up` on the PC) and check `echo $DISPLAY` in the container. Wayland desktops need XWayland |
+| `rqt_graph: command not found` on the Jetson | The Jetson image is headless on purpose | Run `rqt_graph` on the PC; it shows the Jetson's nodes over the network |
+| rqt_graph is empty or outdated | Not refreshed, or filters | Press refresh; select "Nodes/Topics (all)"; uncheck the "Hide" options |
+| RViz2/Gazebo very slow | Software rendering | Use a GPU override: `make up GPU=nvidia` or `GPU=dri` (see docker/README.md) |
+
+## Jetson / hardware
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Container does not start: `error gathering device information ... /dev/ttyTHS1` | Serial device missing on that host | On a PC use `ROLE=pc`. On the Nano, check `ls -l /dev/ttyTHS1` |
+| `Permission denied` / port busy on `/dev/ttyTHS1` | Serial console (`nvgetty`) holds the UART, or wrong `DIALOUT_GID` | `sudo systemctl disable --now nvgetty` on the host; `getent group dialout` and set `DIALOUT_GID` in `.env` |
+| Docker on the Nano freezes during builds | Parallel image builds | Build one image at a time, or build on the PC (`make jetson-cross` + `make jetson-ship`) |
+| SD card full | Images and build caches | `docker system df`; `docker image prune`; `make clean` (asks first) |
+
+## Still stuck
+
+1. Reproduce with the smallest case (CLI `ros2 topic pub` + `ros2 topic echo`).
+2. Run `make smoke` and `make talker-listener` to rule out the installation.
+3. Search the error message in <https://robotics.stackexchange.com/> (tag `ros2`) and the GitHub issues of the package involved.
+4. Write down the fix in this file so the next person does not lose the same time.
