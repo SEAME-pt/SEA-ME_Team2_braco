@@ -17,7 +17,7 @@ OBJ_DIR  := obj
 
 CPPFLAGS := -I$(INC_DIR)
 
-PROGRAMS := zero joystick_all_joints joystick_display
+PROGRAMS := zero joystick_all_joints joystick_display pid_tool
 LIB_OBJS := $(OBJ_DIR)/mycobot.o $(OBJ_DIR)/joystick.o $(OBJ_DIR)/display.o $(OBJ_DIR)/lcd_display.o
 
 .PHONY: all clean fclean re
@@ -46,4 +46,3 @@ re: fclean
 
 # Rebuild automatically when a header in includes/ changes
 -include $(wildcard $(OBJ_DIR)/*.d)
-

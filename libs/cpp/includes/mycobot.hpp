@@ -76,7 +76,41 @@ constexpr uint8_t IS_MOVING = 0x2B;
 
 constexpr uint8_t SET_GRIPPER_STATE = 0x66;
 constexpr uint8_t SET_COLOR = 0x6A;
+
+// Servo configuration. VERIFY these two before using the PID methods:
+//   grep -nE "SERVO_DATA" ~/.local/lib/python3.8/site-packages/pymycobot/common.py
+constexpr uint8_t SET_SERVO_DATA = 0x52;
+constexpr uint8_t GET_SERVO_DATA = 0x53;
 }  // namespace protocol
+
+// ---- Servo PID ---------------------------------------------------------------
+// Servo data addresses of the position-loop gains (see the Motor PID docs).
+namespace servo {
+constexpr uint8_t ADDR_P = 21;
+constexpr uint8_t ADDR_D = 22;
+constexpr uint8_t ADDR_I = 23;
+}  // namespace servo
+
+struct Pid {
+    int p;
+    int i;
+    int d;
+};
+using PidSet = std::array<Pid, 6>;   // index 0 = J1 ... 5 = J6
+
+// Factory values read from this arm with pymycobot (get_servo_data 21/23/22).
+constexpr PidSet FACTORY_PID = {{
+    {15, 0, 20},   // J1
+    {32, 0, 8},    // J2
+    {32, 0, 8},    // J3
+    {25, 0, 25},   // J4
+    {25, 0, 25},   // J5
+    {25, 0, 25},   // J6
+}};
+
+// Safety bounds for setPid(): P and D at most 1.5 x factory, I at most 8.
+constexpr double PID_MAX_FACTOR = 1.5;
+constexpr int PID_MAX_I = 8;
 
 class MyCobot280 {
 public:
@@ -121,6 +155,27 @@ public:
     void setGripperState(int state, int speed);   // 0 = open, 1 = close
     void setColor(uint8_t r, uint8_t g, uint8_t b);
 
+    // ---- Servo PID (configuration only: never call from a control loop) ---
+    // Read one servo data value. Reading never changes the servo.
+    // nullopt if the servo does not answer or the reply has an unknown format.
+    std::optional<int> getServoData(int joint, uint8_t address, int retries = 3);
+
+    // P, I and D of one joint (1..6); nullopt if any of them cannot be read.
+    std::optional<Pid> getPid(int joint);
+
+    // Write P, I and D of one joint and verify each value by reading it back.
+    // Safeguards:
+    //   * only the three PID addresses are ever written
+    //   * throws std::invalid_argument if a value is negative, P or D is above
+    //     PID_MAX_FACTOR x factory, or I is above PID_MAX_I
+    //   * throws std::runtime_error, writing nothing, if the current values
+    //     cannot be read first or the arm reports that it is moving
+    // Returns true if every value was verified, false if any read-back failed.
+    bool setPid(int joint, const Pid& pid);
+
+    // Throws std::invalid_argument if `pid` is outside the safety bounds.
+    static void checkPidBounds(int joint, const Pid& pid);
+
 private:
     int fd_ = -1;
     JointLimits softLimits_ = DEFAULT_SOFT_LIMITS;
@@ -140,6 +195,14 @@ private:
     std::optional<std::vector<uint8_t>> query(uint8_t cmd,
                                               size_t expected_size,
                                               int retries = 5);
+
+    // Send a request with data and return the reply's data bytes, any size.
+    std::optional<std::vector<uint8_t>> queryWithData(uint8_t cmd,
+                                                      const std::vector<uint8_t>& data,
+                                                      int retries);
+
+    // Write one servo data byte, then read it back. True if it matches.
+    bool writeServoByte(int joint, uint8_t address, int value);
 
     static void appendInt16(std::vector<uint8_t>& out, int16_t value);  // big-endian
     static int16_t readInt16(const std::vector<uint8_t>& data, size_t offset);
