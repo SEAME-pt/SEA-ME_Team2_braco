@@ -67,13 +67,13 @@ struct SpeedMode {
 };
 
 const std::array<SpeedMode, 5> SPEED_MODES = {{
-    {"slow",   12,  5.0,  8,  0,   0,   255},   // blue
-    {"medium", 30,  10.0, 15, 0,   255, 0},     // green
+    {"15%",   15,  5.0,  8,  0,   0,   255},   // blue
+    {"30%", 30,  10.0, 15, 0,   255, 0},     // green
     {"50%",    50,  15.0, 22, 128, 0,   255},   // purple
     {"75%",    75,  20.0, 30, 255, 255, 255},   // white
     {"100%",   100, 25.0, 40, 255, 0,   0},     // red
 }};
-constexpr size_t START_MODE = 1;     // 1 = medium
+constexpr size_t START_MODE = 0;
 
 constexpr double MIN_SPEED = 3.0;
 constexpr double STICK_EXPO = 1.8;
@@ -539,6 +539,9 @@ void controlLoop(input::Joystick& js, mycobot::MyCobot280& mc,
             status.atLimit[j - 1] = limitReported.count(j) > 0;
         }
         display.show(status);
+	status.r = 255;
+	status.g = 255;
+	status.b = 255;
         lcd.show(status);
 
         pause(LOOP_PERIOD);
