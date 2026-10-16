@@ -1,8 +1,9 @@
 // joystick_display.cpp - joystick control of the myCobot 280 with live status
 // displays. Same control logic as joystick_all_joints.cpp, plus:
 //   * a full-screen terminal display (display.hpp), over SSH or locally
-//   * the Waveshare LCD1602 RGB on I2C bus 0 (lcd_display.hpp): angles when
-//     idle, "ARM MOVING..." while moving, backlight = speed mode colour
+//   * the Waveshare LCD1602 RGB on I2C bus 0 (lcd_display.hpp): servo
+//     temperatures when idle, "ARM MOVING..." while moving, a warning when a
+//     servo is too hot, backlight = speed mode colour
 // Either display may be missing; the arm control works without them.
 //
 // Safety model: step-ahead (bounded-lead) jogging
@@ -67,13 +68,13 @@ struct SpeedMode {
 };
 
 const std::array<SpeedMode, 5> SPEED_MODES = {{
-    {"15%",   15,  5.0,  8,  0,   0,   255},   // blue
-    {"30%", 30,  10.0, 15, 0,   255, 0},     // green
+    {"slow",   12,  5.0,  8,  0,   0,   255},   // blue
+    {"medium", 30,  10.0, 15, 0,   255, 0},     // green
     {"50%",    50,  15.0, 22, 128, 0,   255},   // purple
     {"75%",    75,  20.0, 30, 255, 255, 255},   // white
     {"100%",   100, 25.0, 40, 255, 0,   0},     // red
 }};
-constexpr size_t START_MODE = 0;
+constexpr size_t START_MODE = 1;     // 1 = medium
 
 constexpr double MIN_SPEED = 3.0;
 constexpr double STICK_EXPO = 1.8;
@@ -105,6 +106,9 @@ constexpr int ANGLE_READ_RETRIES = 1;
 
 // While idle, angles are read only for the display, at most this often.
 constexpr double IDLE_POLL_PERIOD = 0.25;   // seconds
+
+// Servo temperatures change slowly: read them while idle, at most this often.
+constexpr double TEMP_POLL_PERIOD = 2.0;    // seconds
 
 struct AxisMap {
     int joint;
@@ -291,6 +295,8 @@ void controlLoop(input::Joystick& js, mycobot::MyCobot280& mc,
         status.limits[j] = {lim.min, lim.max};
     }
     double lastIdlePoll = 0.0;
+    double lastTempPoll = 0.0;
+    mycobot::TempLevel lastTempLevel = mycobot::TempLevel::Normal;
 
     auto debugMsg = [&](const std::string& text) {
         if (debug) display.addMessage(text);
@@ -443,6 +449,32 @@ void controlLoop(input::Joystick& js, mycobot::MyCobot280& mc,
                 lastIdlePoll = now;
                 recordAngles(mc.getAngles(ANGLE_READ_RETRIES));
             }
+
+            // Servo temperatures, for the LCD and the warnings.
+            if (now - lastTempPoll >= TEMP_POLL_PERIOD) {
+                lastTempPoll = now;
+                const auto check = mc.checkTemps(1);
+                if (!check) {
+                    status.temps.reset();   // unknown: the LCD falls back to angles
+                    status.hotJoint = 0;
+                    return;
+                }
+                status.temps = check->temps;
+                const int j = check->hottestJoint;
+                const int t = check->temps[j - 1];
+                status.hotJoint = check->level == mycobot::TempLevel::Hot ? j : 0;
+
+                if (check->level != lastTempLevel) {
+                    if (check->level == mycobot::TempLevel::Hot) {
+                        display.addMessage(format("!!! servo J:%d HOT (%d C) - let the arm rest", j, t));
+                    } else if (check->level == mycobot::TempLevel::Warm) {
+                        display.addMessage(format(">>> servo J:%d warm (%d C)", j, t));
+                    } else {
+                        display.addMessage(format(">>> servo temperatures normal (max %d C)", t));
+                    }
+                    lastTempLevel = check->level;
+                }
+            }
             return;
         }
 
@@ -539,9 +571,9 @@ void controlLoop(input::Joystick& js, mycobot::MyCobot280& mc,
             status.atLimit[j - 1] = limitReported.count(j) > 0;
         }
         display.show(status);
-	status.r = 255;
-	status.g = 255;
-	status.b = 255;
+        status.r = 255;
+        status.g = 0;
+        status.b = 0;
         lcd.show(status);
 
         pause(LOOP_PERIOD);
@@ -632,4 +664,3 @@ int main(int argc, char** argv) {
         return 1;
     }
 }
-

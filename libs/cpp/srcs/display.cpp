@@ -188,4 +188,3 @@ void TerminalDisplay::writeAll(const std::string& text) {
 }
 
 }  // namespace ui
-

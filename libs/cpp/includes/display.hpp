@@ -37,6 +37,9 @@ struct Status {
     std::array<bool, 6> atLimit{};   // joints stopped at a soft limit
     bool homing = false;
     bool feedbackOk = true;          // false after a failed angle read
+
+    std::optional<std::array<int, 6>> temps;   // servo temperatures (deg C), nullopt = unknown
+    int hotJoint = 0;                          // 1..6 if that servo is too hot, 0 = none
 };
 
 class TerminalDisplay {
@@ -72,4 +75,3 @@ private:
 };
 
 }  // namespace ui
-

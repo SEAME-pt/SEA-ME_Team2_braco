@@ -6,7 +6,9 @@
 //
 // show() takes the same ui::Status as the terminal display and decides what
 // fits on 2 x 16 characters:
-//   idle     J1..J3 angles on line 1, J4..J6 on line 2
+//   idle     servo temperatures "1:31  2:33  3:35" / "4:41  5:38  6:30"
+//            (angles instead, if the temperatures cannot be read)
+//   too hot  "SERVO HOT! J4" and its temperature (overrides moving/idle)
 //   jogging  "ARM MOVING..." and the moving joints
 //   homing   "ARM MOVING..." and "HOMING ALL"
 // The backlight shows the speed mode colour (same as the Atom LED).
@@ -73,4 +75,3 @@ private:
 };
 
 }  // namespace ui
-
