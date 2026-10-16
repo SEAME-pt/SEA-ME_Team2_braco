@@ -1,0 +1,398 @@
+// Copyright 2026 SEA:ME Team 2
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// arm_driver - the only process that talks to the myCobot 280 serial port.
+//
+// Every other node (temperature monitor, joystick teleop, later the automatic
+// mode) goes through the topics and services below, so they can run, stop and
+// crash independently while the port has a single owner.
+//
+//   pub  /joint_states               sensor_msgs/JointState (radians)
+//   pub  /arm/servo_temperatures     seame_interfaces/ServoTemperatures
+//   sub  /arm/command                seame_interfaces/ArmCommand (latest wins)
+//   sub  /arm/led                    std_msgs/ColorRGBA (0..1 per channel)
+//   srv  /arm/power_on               std_srvs/Trigger
+//   srv  /arm/release_servos         std_srvs/Trigger
+//   srv  /arm/set_gripper            std_srvs/SetBool (true = close)
+//
+// One serial thread does all the work, in this order on every pass:
+//   1. a requested stop (drops everything pending)
+//   2. one pending motion command, then COMMAND_GAP (as the C++ programs do)
+//   3. read the angles and publish /joint_states
+//   4. every temp_period_s read the servo temperatures and publish them
+//   5. watchdog: no new motion command for command_timeout_ms after the arm was
+//      told to move -> stop once. Together with the step-ahead targets of the
+//      teleop node this bounds how far the arm coasts if a client dies.
+// The driver never powers the arm on or moves it by itself.
+
+#include <algorithm>
+#include <array>
+#include <atomic>
+#include <chrono>
+#include <cmath>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <string>
+#include <thread>
+#include <utility>
+
+#include "mycobot.hpp"
+#include "rclcpp/rclcpp.hpp"
+#include "seame_interfaces/msg/arm_command.hpp"
+#include "seame_interfaces/msg/servo_temperatures.hpp"
+#include "sensor_msgs/msg/joint_state.hpp"
+#include "std_msgs/msg/color_rgba.hpp"
+#include "std_srvs/srv/set_bool.hpp"
+#include "std_srvs/srv/trigger.hpp"
+
+using namespace std::chrono_literals;
+using seame_interfaces::msg::ArmCommand;
+using seame_interfaces::msg::ServoTemperatures;
+
+namespace
+{
+
+constexpr auto COMMAND_GAP = 50ms;   // pause after each motion command
+constexpr int ANGLE_READ_RETRIES = 1;
+constexpr double DEG_TO_RAD = M_PI / 180.0;
+
+struct Target
+{
+  double angle;
+  int speed;
+};
+
+}  // namespace
+
+class ArmDriver : public rclcpp::Node
+{
+public:
+  ArmDriver()
+  : Node("arm_driver")
+  {
+    const auto port = declare_parameter<std::string>(
+      "port", mycobot::MyCobot280::DEFAULT_PORT);
+    const auto baud = declare_parameter<int>("baud", mycobot::MyCobot280::DEFAULT_BAUD);
+    state_period_ = std::chrono::duration<double>(
+      1.0 / declare_parameter<double>("state_rate_hz", 20.0));
+    temp_period_ = std::chrono::duration<double>(declare_parameter<double>("temp_period_s", 2.0));
+    command_timeout_ = std::chrono::milliseconds(
+      declare_parameter<int>("command_timeout_ms", 300));
+    gripper_speed_ = declare_parameter<int>("gripper_speed", 50);
+
+    // Throws if the port cannot be opened: main() reports it and exits non-zero.
+    mc_ = std::make_unique<mycobot::MyCobot280>(port, static_cast<int>(baud));
+    RCLCPP_INFO(get_logger(), "serial port %s open at %ld baud", port.c_str(), baud);
+
+    joint_pub_ = create_publisher<sensor_msgs::msg::JointState>("joint_states", 10);
+    temp_pub_ = create_publisher<ServoTemperatures>("arm/servo_temperatures", 10);
+
+    command_sub_ = create_subscription<ArmCommand>(
+      "arm/command", 10, [this](ArmCommand::ConstSharedPtr msg) {onCommand(*msg);});
+    led_sub_ = create_subscription<std_msgs::msg::ColorRGBA>(
+      "arm/led", 10, [this](std_msgs::msg::ColorRGBA::ConstSharedPtr msg) {onLed(*msg);});
+
+    power_srv_ = create_service<std_srvs::srv::Trigger>(
+      "arm/power_on",
+      [this](std_srvs::srv::Trigger::Request::ConstSharedPtr,
+      std_srvs::srv::Trigger::Response::SharedPtr res) {
+        runSerial(res->success, res->message, "power on", [this]() {mc_->powerOn();});
+      });
+    release_srv_ = create_service<std_srvs::srv::Trigger>(
+      "arm/release_servos",
+      [this](std_srvs::srv::Trigger::Request::ConstSharedPtr,
+      std_srvs::srv::Trigger::Response::SharedPtr res) {
+        clearPending();
+        runSerial(
+          res->success, res->message, "release servos",
+          [this]() {mc_->releaseAllServos();});
+      });
+    gripper_srv_ = create_service<std_srvs::srv::SetBool>(
+      "arm/set_gripper",
+      [this](std_srvs::srv::SetBool::Request::ConstSharedPtr req,
+      std_srvs::srv::SetBool::Response::SharedPtr res) {
+        const int state = req->data ? 1 : 0;
+        runSerial(
+          res->success, res->message, req->data ? "close gripper" : "open gripper",
+          [this, state]() {mc_->setGripperState(state, gripper_speed_);});
+      });
+
+    serial_thread_ = std::thread([this]() {serialLoop();});
+  }
+
+  ~ArmDriver() override
+  {
+    running_ = false;
+    if (serial_thread_.joinable()) {serial_thread_.join();}
+    // Whatever ended the node, leave the arm stopped.
+    try {
+      std::lock_guard<std::mutex> lock(serial_mutex_);
+      mc_->stop();
+      RCLCPP_INFO(get_logger(), "arm stopped");
+    } catch (const std::exception & e) {
+      RCLCPP_ERROR(get_logger(), "could not send final stop: %s", e.what());
+    }
+  }
+
+private:
+  // ---- Callbacks (executor thread): only record what was asked -------------
+
+  void onCommand(const ArmCommand & msg)
+  {
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    switch (msg.type) {
+      case ArmCommand::STOP:
+        stop_requested_ = true;
+        pending_joints_.clear();
+        pending_all_.reset();
+        return;
+      case ArmCommand::JOINTS:
+        for (const auto & t : msg.targets) {
+          if (t.joint < 1 || t.joint > 6) {
+            RCLCPP_WARN_THROTTLE(
+              get_logger(), *get_clock(), 2000, "ignoring target for joint %u", t.joint);
+            continue;
+          }
+          pending_joints_[t.joint] = Target{t.angle_deg, t.speed};
+        }
+        pending_all_.reset();
+        break;
+      case ArmCommand::ALL_ANGLES: {
+          mycobot::Angles angles{};
+          std::copy(msg.angles_deg.begin(), msg.angles_deg.end(), angles.begin());
+          pending_all_ = std::make_pair(angles, static_cast<int>(msg.speed));
+          pending_joints_.clear();
+          break;
+        }
+      default:
+        RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 2000, "unknown ArmCommand type %u", msg.type);
+        return;
+    }
+    last_motion_command_ = std::chrono::steady_clock::now();
+  }
+
+  void onLed(const std_msgs::msg::ColorRGBA & msg)
+  {
+    auto to8 = [](float v) {
+        return static_cast<uint8_t>(std::lround(std::clamp(v, 0.0f, 1.0f) * 255.0f));
+      };
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    pending_led_ = std::array<uint8_t, 3>{to8(msg.r), to8(msg.g), to8(msg.b)};
+  }
+
+  void clearPending()
+  {
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    pending_joints_.clear();
+    pending_all_.reset();
+    moving_ = false;
+  }
+
+  // Run one serial action for a service and fill its response.
+  template<typename F>
+  void runSerial(bool & success, std::string & message, const char * what, F action)
+  {
+    try {
+      std::lock_guard<std::mutex> lock(serial_mutex_);
+      action();
+      success = true;
+      message = what;
+      RCLCPP_INFO(get_logger(), "%s", what);
+    } catch (const std::exception & e) {
+      success = false;
+      message = std::string(what) + " failed: " + e.what();
+      RCLCPP_ERROR(get_logger(), "%s", message.c_str());
+    }
+  }
+
+  // ---- Serial thread -------------------------------------------------------
+
+  void serialLoop()
+  {
+    auto next_state = std::chrono::steady_clock::now();
+    auto next_temp = next_state;
+
+    while (running_ && rclcpp::ok()) {
+      try {
+        const bool sent = serviceCommands();
+        const auto now = std::chrono::steady_clock::now();
+
+        if (now >= next_state) {
+          publishAngles();
+          next_state = now + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+            state_period_);
+        }
+        if (now >= next_temp) {
+          publishTemps();
+          next_temp = now + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+            temp_period_);
+        }
+        checkWatchdog();
+
+        if (!sent) {std::this_thread::sleep_for(10ms);}
+      } catch (const std::exception & e) {
+        // A serial error here is not fatal: log it and keep serving.
+        RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 2000, "serial error: %s", e.what());
+        std::this_thread::sleep_for(100ms);
+      }
+    }
+  }
+
+  // Stop, LED and at most one motion command. True if a motion command was sent.
+  bool serviceCommands()
+  {
+    bool stop = false;
+    std::optional<std::array<uint8_t, 3>> led;
+    std::optional<std::pair<mycobot::Angles, int>> all;
+    std::optional<std::pair<int, Target>> joint;
+    {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      std::swap(stop, stop_requested_);
+      std::swap(led, pending_led_);
+      if (pending_all_) {
+        std::swap(all, pending_all_);
+      } else if (!pending_joints_.empty()) {
+        // Round robin, so a client that resends every tick cannot starve a joint
+        auto it = pending_joints_.upper_bound(last_joint_);
+        if (it == pending_joints_.end()) {it = pending_joints_.begin();}
+        joint = *it;
+        last_joint_ = it->first;
+        pending_joints_.erase(it);
+      }
+    }
+
+    std::lock_guard<std::mutex> lock(serial_mutex_);
+    if (stop) {
+      mc_->stop();
+      moving_ = false;
+      std::this_thread::sleep_for(COMMAND_GAP);
+    }
+    if (led) {
+      mc_->setColor((*led)[0], (*led)[1], (*led)[2]);
+      std::this_thread::sleep_for(COMMAND_GAP);
+    }
+    if (all) {
+      mc_->sendAngles(all->first, all->second);
+    } else if (joint) {
+      mc_->sendAngle(joint->first, joint->second.angle, joint->second.speed);
+    } else {
+      return false;
+    }
+    moving_ = true;
+    std::this_thread::sleep_for(COMMAND_GAP);
+    return true;
+  }
+
+  void publishAngles()
+  {
+    std::optional<mycobot::Angles> angles;
+    {
+      std::lock_guard<std::mutex> lock(serial_mutex_);
+      angles = mc_->getAngles(ANGLE_READ_RETRIES);
+    }
+    if (!angles) {
+      // No message at all: clients see the state go stale and stop.
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000, "no valid angle feedback");
+      return;
+    }
+    sensor_msgs::msg::JointState msg;
+    msg.header.stamp = now();
+    for (size_t i = 0; i < angles->size(); ++i) {
+      msg.name.push_back("joint" + std::to_string(i + 1));
+      msg.position.push_back((*angles)[i] * DEG_TO_RAD);
+    }
+    joint_pub_->publish(msg);
+  }
+
+  void publishTemps()
+  {
+    std::optional<mycobot::ServoTemps> temps;
+    {
+      std::lock_guard<std::mutex> lock(serial_mutex_);
+      temps = mc_->getTemps();
+    }
+    ServoTemperatures msg;
+    msg.header.stamp = now();
+    msg.valid = temps.has_value();
+    if (temps) {
+      std::copy(temps->begin(), temps->end(), msg.celsius.begin());
+    } else {
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 10000, "no answer to temperature read");
+    }
+    temp_pub_->publish(msg);
+  }
+
+  void checkWatchdog()
+  {
+    bool expired = false;
+    {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      expired = moving_ && pending_joints_.empty() && !pending_all_ &&
+        std::chrono::steady_clock::now() - last_motion_command_ > command_timeout_;
+    }
+    if (expired) {
+      RCLCPP_WARN(
+        get_logger(), "no motion command for %d ms: stopping the arm",
+        static_cast<int>(command_timeout_.count()));
+      std::lock_guard<std::mutex> lock(serial_mutex_);
+      mc_->stop();
+      moving_ = false;
+      std::this_thread::sleep_for(COMMAND_GAP);
+    }
+  }
+
+  std::unique_ptr<mycobot::MyCobot280> mc_;
+  std::mutex serial_mutex_;   // every mc_ call
+  std::mutex state_mutex_;    // everything below that callbacks write
+  std::thread serial_thread_;
+  std::atomic<bool> running_{true};
+
+  bool stop_requested_ = false;
+  std::map<int, Target> pending_joints_;
+  std::optional<std::pair<mycobot::Angles, int>> pending_all_;
+  std::optional<std::array<uint8_t, 3>> pending_led_;
+  int last_joint_ = 0;
+  std::chrono::steady_clock::time_point last_motion_command_{};
+  std::atomic<bool> moving_{false};
+
+  std::chrono::duration<double> state_period_{};
+  std::chrono::duration<double> temp_period_{};
+  std::chrono::milliseconds command_timeout_{};
+  int gripper_speed_ = 50;
+
+  rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr joint_pub_;
+  rclcpp::Publisher<ServoTemperatures>::SharedPtr temp_pub_;
+  rclcpp::Subscription<ArmCommand>::SharedPtr command_sub_;
+  rclcpp::Subscription<std_msgs::msg::ColorRGBA>::SharedPtr led_sub_;
+  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr power_srv_;
+  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr release_srv_;
+  rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr gripper_srv_;
+};
+
+int main(int argc, char ** argv)
+{
+  rclcpp::init(argc, argv);
+  int code = 0;
+  try {
+    rclcpp::spin(std::make_shared<ArmDriver>());
+  } catch (const std::exception & e) {
+    RCLCPP_FATAL(rclcpp::get_logger("arm_driver"), "%s", e.what());
+    code = 1;
+  }
+  rclcpp::shutdown();
+  return code;
+}
