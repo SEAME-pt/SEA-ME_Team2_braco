@@ -15,6 +15,8 @@
 #   compose/    nvidia.yml dri.yml                            finds docker-compose.yml here without -f)
 #   docker/     Dockerfile  config/  scripts/                 image definition (stages: base, jetson-driver, pc-dev)
 #   tests/      talker-listener.sh                            ROS 2 checks; mounted into the containers (no rebuild)
+#   systemd/    seame-arm.service                             boot unit for the arm services (make install-service)
+#   ../libs/    the team's C++ library (mounted read-only at /opt/seame/libs; colcon builds it as mycobot_cpp)
 #   created by make when needed:  .env   ws/src   ws/bags   dist/
 
 .DEFAULT_GOAL := help
@@ -32,6 +34,11 @@ TESTS_DIR    := tests
 TL_SCRIPT    := $(TESTS_DIR)/talker-listener.sh
 # Where docker-compose.yml mounts $(TESTS_DIR) inside the containers (no trailing comment on the next line: it would leak spaces into the value).
 CONTAINER_TESTS := /opt/seame/tests
+# Where docker-compose.yml mounts ../libs; colcon also looks for packages there.
+CONTAINER_LIBS := /opt/seame/libs
+WS_BASE_PATHS  := src $(CONTAINER_LIBS)
+SYSTEMD_UNIT := systemd/seame-arm.service
+SYSTEMD_DEST := /etc/systemd/system/seame-arm.service
 CONFIG_DIR   := $(DOCKER_DIR)/config
 SCRIPTS_DIR  := $(DOCKER_DIR)/scripts
 WS_DIR       := ws
@@ -45,7 +52,7 @@ ARCHIVE      := $(DIST_DIR)/$(PROJECT).tar
 WS_DIRS := $(WS_SRC) $(WS_BAGS)
 
 # Files that must be present for the project to work (checked by `make doctor`).
-PROJECT_FILES := $(COMPOSE_BASE) $(ENV_EXAMPLE) $(DOCKERFILE) $(CONFIG_DIR)/colcon-defaults.yaml $(TL_SCRIPT) \
+PROJECT_FILES := $(COMPOSE_BASE) $(ENV_EXAMPLE) $(DOCKERFILE) $(CONFIG_DIR)/colcon-defaults.yaml $(TL_SCRIPT) $(SYSTEMD_UNIT) \
                  $(addprefix $(COMPOSE_DIR)/,nvidia.yml dri.yml) \
                  $(addprefix $(SCRIPTS_DIR)/,apt-install-optional.sh env.sh install-plotjuggler.sh \
                                              install-ros-apt-source.sh ros_entrypoint.sh smoke-test.sh)
@@ -69,6 +76,12 @@ MYCOBOT_PORT ?= $(or $(call dotenv,MYCOBOT_PORT),/dev/ttyTHS1)
 SERVICE_pc     := pc-dev
 SERVICE_jetson := jetson-driver
 SERVICE        := $(SERVICE_$(ROLE))
+
+# Always-on arm services (profile "arm", Jetson only). S=driver|temperature|teleop picks one; empty = all.
+ARM_SERVICES := arm-driver arm-temperature arm-teleop
+ARM          := docker compose --profile arm
+S            ?=
+ARM_TARGET    = $(if $(S),arm-$(patsubst arm-%,%,$(S)))
 
 # GPU=nvidia|dri adds the matching override file (PC only). Without it, compose uses COMPOSE_FILE from .env.
 COMPOSE_FILES := $(if $(GPU),-f $(COMPOSE_BASE) -f $(COMPOSE_DIR)/$(GPU).yml)
@@ -103,7 +116,8 @@ define confirm
 @if [ "$(FORCE)" != 1 ]; then printf '%s [y/N] ' "$(1)"; read -r ans; [ "$$ans" = y ] || { echo "aborted"; exit 1; }; fi
 endef
 
-.PHONY: help info doctor env dirs lint tar xhost build rebuild pull push up down restart ps logs config \
+.PHONY: _jetson help info doctor env dirs lint tar xhost build rebuild pull push up down restart ps logs config \
+        arm-up arm-down arm-ps arm-logs arm-start arm-stop arm-restart install-service uninstall-service service-status \
         shell exec run smoke talker-listener talker talker-stop listener ping-pub ping-echo ws-deps ws-build ws-test ws-clean \
         clean distclean binfmt jetson-cross jetson-ship _role _xhost
 
@@ -120,7 +134,7 @@ env: _role ## Create .env from .env.example (UID/GID, groups and profile filled 
 	  cp $(ENV_EXAMPLE) $(ENV_FILE) && \
 	  sed -e "s/^USER_UID=.*/USER_UID=$$(id -u)/" -e "s/^USER_GID=.*/USER_GID=$$(id -g)/" \
 	      -e "s/^COMPOSE_PROFILES=.*/COMPOSE_PROFILES=$(ROLE)/" $(ENV_FILE) > $(ENV_FILE).tmp && mv $(ENV_FILE).tmp $(ENV_FILE) && \
-	  for pair in DIALOUT_GID:dialout VIDEO_GID:video RENDER_GID:render; do \
+	  for pair in DIALOUT_GID:dialout VIDEO_GID:video RENDER_GID:render I2C_GID:i2c INPUT_GID:input; do \
 	    var=$${pair%%:*}; grp=$${pair##*:}; gid=$$(getent group $$grp 2>/dev/null | cut -d: -f3); \
 	    if [ -n "$$gid" ]; then sed "s/^$$var=.*/$$var=$$gid/" $(ENV_FILE) > $(ENV_FILE).tmp && mv $(ENV_FILE).tmp $(ENV_FILE); fi; \
 	  done; \
@@ -178,6 +192,8 @@ case "$$ROLE" in
     if [ "$$MYCOBOT_PORT" = /dev/ttyTHS1 ] && command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet nvgetty 2>/dev/null; then
       warn "nvgetty is active and holds /dev/ttyTHS1: sudo systemctl disable --now nvgetty"
     fi
+    if [ -e /dev/i2c-0 ]; then ok "/dev/i2c-0 present (LCD for arm-temperature)"; else warn "/dev/i2c-0 not found: arm-temperature will not start (set LCD_I2C_BUS in .env)"; fi
+    if [ -e /dev/input/js0 ]; then ok "joystick /dev/input/js0 present"; else warn "no joystick at /dev/input/js0 (arm-teleop waits for it)"; fi
     ;;
 esac
 exit $$fail
@@ -199,7 +215,7 @@ $(WS_DIRS):
 
 lint: _role ## Check the project: compose files, scripts and tests (shellcheck), Dockerfile (hadolint) if installed
 	@echo "== compose =="
-	@docker compose --profile pc --profile jetson config -q && echo "  $(COMPOSE_BASE): ok (both profiles)"
+	@docker compose --profile pc --profile jetson --profile arm config -q && echo "  $(COMPOSE_BASE): ok (all profiles)"
 	@for g in nvidia dri; do docker compose -f $(COMPOSE_BASE) -f $(COMPOSE_DIR)/$$g.yml --profile pc config -q && echo "  $(COMPOSE_DIR)/$$g.yml: ok"; done
 	@echo "== shell scripts =="
 	@if command -v shellcheck >/dev/null 2>&1; then shellcheck -x $(SCRIPTS_DIR)/*.sh $(TESTS_DIR)/*.sh && echo "  shellcheck: clean"; else echo "  shellcheck not installed - skipped"; fi
@@ -286,16 +302,58 @@ talker-stop: _role up ## Stop any talker left running in this container (e.g. on
 ##@ Workspace (ws/ is mounted at /ws in the container on both machines)
 
 ws-deps: _role up ## rosdep-install the dependencies of ws/src (lives in the running container only)
-	$(EXEC) bash -c 'rosdep update >/dev/null 2>&1 || true; sudo apt-get update && rosdep install --from-paths src --ignore-src -y'
+	$(EXEC) bash -c 'rosdep update >/dev/null 2>&1 || true; sudo apt-get update && rosdep install --from-paths $(WS_BASE_PATHS) --ignore-src -y'
 
-ws-build: _role up ## colcon build (adds --parallel-workers 2 on the Jetson; override with COLCON_ARGS=...)
-	$(EXEC) colcon build $(COLCON_ARGS)
+ws-build: _role up ## colcon build of ws/src + ../libs (adds --parallel-workers 2 on the Jetson; COLCON_ARGS=...)
+	$(EXEC) colcon build --base-paths $(WS_BASE_PATHS) $(COLCON_ARGS)
 
 ws-test: _role up ## colcon test, then print the results (includes ament lint checks)
-	$(EXEC) bash -c 'colcon test && colcon test-result --verbose'
+	$(EXEC) bash -c 'colcon test --base-paths $(WS_BASE_PATHS) && colcon test-result --verbose'
 
 ws-clean: ## Delete ws/build, ws/install and ws/log
 	rm -rf $(WS_DIR)/build $(WS_DIR)/install $(WS_DIR)/log
+
+##@ Arm services on the Jetson (driver, temperature, teleop - one container each)
+
+arm-up: _jetson | $(WS_DIRS) ## Start the arm services (build the workspace first: make ws-build). S=teleop starts one
+	@test -f $(WS_DIR)/install/seame_arm/share/seame_arm/package.xml || { echo "seame_arm is not built yet: make ws-build ROLE=jetson" >&2; exit 1; }
+	$(ARM) up -d $(ARM_TARGET)
+
+arm-down: _jetson ## Stop and remove the arm services (the dev container is not touched)
+	$(ARM) rm --stop --force $(ARM_SERVICES)
+
+arm-ps: _jetson ## Status of the arm services
+	$(ARM) ps $(ARM_SERVICES)
+
+arm-logs: _jetson ## Follow the arm services' logs (S=driver|temperature|teleop for one)
+	$(ARM) logs -f --tail=100 $(or $(ARM_TARGET),$(ARM_SERVICES))
+
+arm-start: _jetson ## Start one stopped service: make arm-start S=teleop
+	@test -n "$(S)" || { echo "usage: make arm-start S=driver|temperature|teleop" >&2; exit 2; }
+	$(ARM) start $(ARM_TARGET)
+
+arm-stop: _jetson ## Stop one service, the others keep running: make arm-stop S=teleop
+	@test -n "$(S)" || { echo "usage: make arm-stop S=driver|temperature|teleop" >&2; exit 2; }
+	$(ARM) stop $(ARM_TARGET)
+
+arm-restart: _jetson ## Restart the arm services after make ws-build (S=... for one)
+	$(ARM) restart $(or $(ARM_TARGET),$(ARM_SERVICES))
+
+install-service: _jetson ## Start the arm services at boot (systemd unit seame-arm, needs sudo)
+	@test -f $(WS_DIR)/install/seame_arm/share/seame_arm/package.xml || { echo "seame_arm is not built yet: make ws-build ROLE=jetson" >&2; exit 1; }
+	sed -e "s|@WORKDIR@|$(CURDIR)|g" -e "s|@DOCKER@|$$(command -v docker)|g" $(SYSTEMD_UNIT) | sudo tee $(SYSTEMD_DEST) >/dev/null
+	sudo systemctl daemon-reload
+	sudo systemctl enable --now seame-arm.service
+	@echo "installed $(SYSTEMD_DEST): the arm services now start at boot (make service-status)"
+
+uninstall-service: ## Remove the boot unit and stop the arm services
+	-sudo systemctl disable --now seame-arm.service
+	sudo rm -f $(SYSTEMD_DEST)
+	sudo systemctl daemon-reload
+
+service-status: ## Show the boot unit and the arm services
+	-systemctl status --no-pager seame-arm.service
+	$(ARM) ps $(ARM_SERVICES)
 
 ##@ Jetson image from a PC (no Docker build on the Nano)
 
@@ -328,6 +386,9 @@ _role:
 	  case "$(GPU)" in nvidia|dri) ;; *) echo "GPU must be 'nvidia' or 'dri' (got '$(GPU)')" >&2; exit 1;; esac; \
 	  [ "$(ROLE)" = pc ] || { echo "GPU only applies to ROLE=pc" >&2; exit 1; }; \
 	fi
+
+_jetson:
+	@[ "$(ROLE)" = jetson ] || { echo "arm services run on the Jetson only (ROLE=$(ROLE)); use ROLE=jetson" >&2; exit 1; }
 
 _xhost:
 	@if [ "$(ROLE)" = pc ] && [ "$(XHOST)" = 1 ] && command -v xhost >/dev/null 2>&1; then \
