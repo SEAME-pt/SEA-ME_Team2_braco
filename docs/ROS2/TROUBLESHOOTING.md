@@ -21,6 +21,8 @@ ros2 node list; ros2 topic list     # what this machine can see
 | `No executable found` | The executable is not installed | C++: add it to `install(TARGETS ... DESTINATION lib/${PROJECT_NAME})`. Python: add it to `entry_points` in `setup.py`. Rebuild and re-source |
 | A Python change has no effect | Built without `--symlink-install`, or a new file/entry point was added | Rebuild. Our images use symlink install by default; new entry points always need a rebuild |
 | Strange errors mixing ROS 1 and ROS 2, or two distros | Several `setup.bash` files sourced in one shell (the Nano host has Noetic and Galactic) | Open a new shell and source only one distro. Never source ROS from `~/.bashrc` on the Nano host |
+| `bash: /opt/seame/tests/talker-listener.sh: No such file or directory` (from `make talker-listener`) | `docker/tests` was deleted and recreated on the host (e.g. by a `git checkout`) after the container started; the bind mount still points to the old, deleted folder | Recreate the container: `docker compose --profile pc up -d --force-recreate` (`jetson` on the Nano). `ws/` and the named volumes are kept |
+| `AttributeError: 'RcutilsLogger' object has no attribute 'warn'` | Older tutorials use `get_logger().warn()`, which does not exist in Lyrical | Use `get_logger().warning()` |
 | `ModuleNotFoundError: No module named 'seame_interfaces'` | Interface package not built, or built after the shell was sourced | `colcon build --packages-select seame_interfaces && source install/setup.bash` |
 
 ## Building (colcon / CMake)
@@ -30,10 +32,27 @@ ros2 node list; ros2 topic list     # what this machine can see
 | `Could not find a package configuration file provided by "X"` | Missing dependency | Add `<depend>X</depend>` to `package.xml`, then `rosdep install --from-paths src --ignore-src -y` (or `make ws-deps`). If it is your own package, build it first (colcon orders by `package.xml`) |
 | `colcon build` creates `build/` inside `src/` | Ran from the wrong folder | Always build from the workspace root `/ws`. Delete the stray folders |
 | Build of the interface package fails with action errors | Missing `action_msgs` dependency or `member_of_group` | See [INSTRUCTIONS.md §6](INSTRUCTIONS.md#6-create-a-custom-interfaces-package): `<depend>action_msgs</depend>` and `<member_of_group>rosidl_interface_packages</member_of_group>` |
+| `InvalidPackage: Invalid email "...@todo.todo" for person "..."` | `ros2 pkg create --maintainer-name` without `--maintainer-email` derives an address from the name; characters like `:` make it invalid | Put a real address in `<maintainer email="...">` in `package.xml` (and `maintainer_email` in `setup.py`), or pass `--maintainer-email` to `ros2 pkg create` |
+| `CMake Deprecation Warning ... Compatibility with CMake < 3.10 will be removed` | `cmake_minimum_required(VERSION 3.8)` in old tutorials | `cmake_minimum_required(VERSION 3.10)` |
 | `ament_target_dependencies` deprecation warning | Old tutorial style | Use `target_link_libraries(target rclcpp::rclcpp ${std_msgs_TARGETS})` |
 | Jetson freezes or the compiler is killed (`c++: fatal error: Killed signal`) | Out of memory (4 GB) | `colcon build --parallel-workers 2` (`make ws-build` does it), or `MAKEFLAGS=-j1 colcon build --executor sequential` |
 | `Permission denied` writing `build/`, `install/`, `log/` | `docker/ws` created by Docker as root, or wrong `USER_UID` in `.env` | `sudo chown -R $(id -u):$(id -g) docker/ws` on the host; check `USER_UID`/`USER_GID` in `.env` and rebuild the image |
 | Weird stale build errors after moving/renaming packages | Old build cache | `rm -rf build install log` (or `make ws-clean`) and build again |
+
+## Tests and linters (colcon test)
+
+How to run them: [INSTRUCTIONS.md §12.6](INSTRUCTIONS.md#126-run-the-tests-linters). See the failures with `colcon test-result --verbose`.
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Python package: `Ran 0 tests ... NO TESTS RAN` | `setup.py` has no `extras_require={'test': ['pytest']}`, so colcon falls back to `unittest` and skips all the linters | Keep the `extras_require` block that `ros2 pkg create` generates |
+| `copyright`: `could not find copyright notice` / cpplint `legal/copyright` | A `.cpp` file has no license header | Start the file with the Apache-2.0 header (`// Copyright 2026 SEA:ME Team 2` + the license text), see [INSTRUCTIONS.md §11.1](INSTRUCTIONS.md#111-ros2_basics_cppcmakeliststxt) |
+| cpplint `runtime/int`: `Use int16/int64/etc, rather than the C type long` | `long long` (e.g. `static_cast<long long>(x)` for `printf`) | `#include <cinttypes>` and print with `"%" PRId64`, passing the `int64_t` directly |
+| uncrustify fails | Formatting differs from the ROS 2 style | `ament_uncrustify --reformat src/` inside the package |
+| flake8 `I100 Import statements are in the wrong order` | Imports not alphabetical inside a group. `rclpy`, `std_msgs` and your own packages (`ros2_basics_py`) all count as third party | Sort them alphabetically in one group: `from action_msgs... / import rclpy / from rclpy... / from ros2_basics_py... / from std_msgs...`. Standard library first (`from glob import glob` before `import os`) |
+| pep257 `D400`/`D415`: first line should end with a period | One-line docstring without a final `.` | End it with a period |
+| pep257 `D213`: multi-line docstring summary should start at the second line | ROS 2 uses the D213 convention | Keep module docstrings on one line, or start the summary on the line after `"""` |
+| `git status` shows `__pycache__/*.pyc` under `ws/src` | `--symlink-install` runs the Python files straight from `src/` | Already ignored in `docker/.gitignore`; never `git add` them |
 
 ## Communication: "my subscriber receives nothing"
 
