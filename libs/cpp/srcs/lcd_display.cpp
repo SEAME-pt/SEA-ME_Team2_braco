@@ -66,6 +66,16 @@ std::string angleRow(const std::array<double, 6>& a, int first) {
     return buf;
 }
 
+// Three labelled temperatures, e.g. "1:31  2:33  3:35" (exactly 16 characters).
+std::string tempRow(const std::array<int, 6>& t, int first) {
+    auto c = [](int v) { return v < 0 ? 0 : (v > 99 ? 99 : v); };   // keep 2 digits
+    char buf[80];   // large enough for any int, so no truncation warnings
+    std::snprintf(buf, sizeof(buf), "%d:%2d  %d:%2d  %d:%2d",
+                  first + 1, c(t[first]), first + 2, c(t[first + 1]),
+                  first + 3, c(t[first + 2]));
+    return buf;
+}
+
 }  // namespace
 
 // ---------------------------------------------------------------- lifecycle
@@ -125,8 +135,14 @@ std::array<std::string, 2> LcdDisplay::linesFor(const Status& s) {
     }
 
     if (!s.feedbackOk) return {fit("NO FEEDBACK"), fit("check arm power")};
+    if (s.hotJoint >= 1 && s.hotJoint <= 6 && s.temps) {
+        const int t = (*s.temps)[s.hotJoint - 1];
+        return {fit("SERVO HOT! J" + std::to_string(s.hotJoint)),
+                fit(std::to_string(t) + " C - rest arm")};
+    }
     if (s.homing) return {fit("ARM MOVING..."), fit(center("HOMING ALL"))};
     if (!joints.empty()) return {fit("ARM MOVING..."), fit(center(joints))};
+    if (s.temps) return {fit(tempRow(*s.temps, 0)), fit(tempRow(*s.temps, 3))};
     if (!s.angles) return {fit("ANGLES UNKNOWN"), fit("")};
     return {fit(angleRow(*s.angles, 0)), fit(angleRow(*s.angles, 3))};
 }
@@ -203,4 +219,3 @@ bool LcdDisplay::data(uint8_t ch) {
 }
 
 }  // namespace ui
-

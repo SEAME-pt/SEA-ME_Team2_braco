@@ -81,6 +81,10 @@ constexpr uint8_t SET_COLOR = 0x6A;
 //   grep -nE "SERVO_DATA" ~/.local/lib/python3.8/site-packages/pymycobot/common.py
 constexpr uint8_t SET_SERVO_DATA = 0x52;
 constexpr uint8_t GET_SERVO_DATA = 0x53;
+
+// Servo status (read-only). VERIFY against pymycobot:
+//   grep -nE "SERVO_TEMPS" ~/.local/lib/python3.8/site-packages/pymycobot/common.py
+constexpr uint8_t GET_SERVO_TEMPS = 0xE5;
 }  // namespace protocol
 
 // ---- Servo PID ---------------------------------------------------------------
@@ -97,6 +101,22 @@ struct Pid {
     int d;
 };
 using PidSet = std::array<Pid, 6>;   // index 0 = J1 ... 5 = J6
+
+// ---- Servo temperatures --------------------------------------------------------
+using ServoTemps = std::array<int, 6>;   // J1..J6 servo temperature in deg C
+
+// The servos protect themselves from overheating at around 70 deg C; these
+// thresholds warn well before that.
+constexpr int TEMP_WARM_C = 55;   // getting warm: let the arm rest soon
+constexpr int TEMP_HOT_C = 65;    // close to the servos' own protection
+
+enum class TempLevel { Normal, Warm, Hot };
+
+struct TempCheck {
+    ServoTemps temps;   // all six temperatures
+    TempLevel level;    // level of the hottest joint
+    int hottestJoint;   // 1..6
+};
 
 // Factory values read from this arm with pymycobot (get_servo_data 21/23/22).
 constexpr PidSet FACTORY_PID = {{
@@ -175,6 +195,17 @@ public:
 
     // Throws std::invalid_argument if `pid` is outside the safety bounds.
     static void checkPidBounds(int joint, const Pid& pid);
+
+    // ---- Servo temperatures (read-only) -------------------------------------
+    // Temperature of each joint's servo in deg C. Reading changes nothing.
+    // nullopt if the arm does not answer or the reply has an unknown format.
+    std::optional<ServoTemps> getTemps(int retries = 3);
+
+    // getTemps() plus the check against TEMP_WARM_C / TEMP_HOT_C.
+    std::optional<TempCheck> checkTemps(int retries = 3);
+
+    // Level of one temperature: Normal, Warm (>= TEMP_WARM_C), Hot (>= TEMP_HOT_C).
+    static TempLevel tempLevel(int celsius);
 
 private:
     int fd_ = -1;

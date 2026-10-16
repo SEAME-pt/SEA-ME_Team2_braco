@@ -301,6 +301,40 @@ bool MyCobot280::writeServoByte(int joint, uint8_t address, int value) {
     return false;
 }
 
+// ------------------------------------------------------------- servo status
+
+std::optional<ServoTemps> MyCobot280::getTemps(int retries) {
+    auto data = queryWithData(protocol::GET_SERVO_TEMPS, {}, retries);
+    if (!data) return std::nullopt;
+
+    ServoTemps temps{};
+    if (data->size() == 6) {            // one byte per joint
+        for (size_t i = 0; i < 6; ++i) temps[i] = (*data)[i];
+    } else if (data->size() == 12) {    // 16-bit value per joint, high byte first
+        for (size_t i = 0; i < 6; ++i) temps[i] = readInt16(*data, 2 * i);
+    } else {
+        return std::nullopt;            // unknown format: refuse to guess
+    }
+    return temps;
+}
+
+TempLevel MyCobot280::tempLevel(int celsius) {
+    if (celsius >= TEMP_HOT_C) return TempLevel::Hot;
+    if (celsius >= TEMP_WARM_C) return TempLevel::Warm;
+    return TempLevel::Normal;
+}
+
+std::optional<TempCheck> MyCobot280::checkTemps(int retries) {
+    const auto temps = getTemps(retries);
+    if (!temps) return std::nullopt;
+
+    int hottest = 0;   // index of the hottest joint
+    for (int i = 1; i < 6; ++i) {
+        if ((*temps)[i] > (*temps)[hottest]) hottest = i;
+    }
+    return TempCheck{*temps, tempLevel((*temps)[hottest]), hottest + 1};
+}
+
 // ------------------------------------------------------------ serial layer
 
 void MyCobot280::sendCommand(uint8_t cmd, const std::vector<uint8_t>& data) {
