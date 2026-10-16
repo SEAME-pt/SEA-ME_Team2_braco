@@ -343,7 +343,7 @@ container$ ros2 action send_goal --feedback /turtle1/rotate_absolute \
            turtlesim/action/RotateAbsolute "{theta: 1.57}"
 container$ ros2 param list /turtlesim
 container$ ros2 param set /turtlesim background_r 150
-container$ rqt_graph                                 # picture of the graph
+container$ ros2 run rqt_graph rqt_graph                # picture of the graph
 ```
 
 If no window opens, run `xhost +local:` on the host (`make up` does it for you) and check `DISPLAY` (see [TROUBLESHOOTING.md](TROUBLESHOOTING.md)).
@@ -378,7 +378,7 @@ container$ ros2 pkg create ros2_basics_py \
     --dependencies rclpy std_msgs action_msgs seame_interfaces
 ```
 
-`ros2 pkg create` generates the skeleton: `package.xml`, `CMakeLists.txt` or `setup.py`, and empty folders. Open `package.xml` in each package and fill in `<description>` and `<maintainer>`.
+`ros2 pkg create` generates the skeleton: `package.xml`, `CMakeLists.txt` or `setup.py`, and empty folders. Open `package.xml` in each package and fill in `<description>` and `<maintainer>` (or pass `--maintainer-name "Your Name" --maintainer-email you@example.com` to `ros2 pkg create`: without `--maintainer-email` it derives an address from the name, and a name with characters like `:` gives an invalid e-mail that makes the build fail with `Invalid email`).
 
 The interfaces package does not need `include/` or `src/`:
 
@@ -427,7 +427,7 @@ int32[] partial_sequence
 **Step 2. `seame_interfaces/CMakeLists.txt`** (replace the generated one):
 
 ```cmake
-cmake_minimum_required(VERSION 3.8)
+cmake_minimum_required(VERSION 3.10)
 project(seame_interfaces)
 
 find_package(ament_cmake REQUIRED)
@@ -537,9 +537,8 @@ if __name__ == '__main__':
 import rclpy
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
-from std_msgs.msg import String
-
 from ros2_basics_py.talker import CHATTER_QOS
+from std_msgs.msg import String
 
 
 class Listener(Node):
@@ -733,7 +732,7 @@ if __name__ == '__main__':
 `ros2_basics_py/ros2_basics_py/add_two_ints_client.py`:
 
 ```python
-"""Service client: ros2 run ros2_basics_py add_two_ints_client 2 3"""
+"""Service client, usage: ros2 run ros2_basics_py add_two_ints_client 2 3."""
 import sys
 
 import rclpy
@@ -785,6 +784,7 @@ Note `call_async` + `spin_until_future_complete`: the client never blocks inside
 
 ```cpp
 // Service server: returns a + b.
+#include <cinttypes>
 #include <memory>
 
 #include "rclcpp/rclcpp.hpp"
@@ -804,9 +804,8 @@ public:
       std::shared_ptr<AddTwoInts::Response> response) {
         response->sum = request->a + request->b;
         RCLCPP_INFO(
-          get_logger(), "%lld + %lld = %lld",
-          static_cast<long long>(request->a), static_cast<long long>(request->b),
-          static_cast<long long>(response->sum));
+          get_logger(), "%" PRId64 " + %" PRId64 " = %" PRId64,
+          request->a, request->b, response->sum);
       });
   }
 
@@ -828,6 +827,7 @@ int main(int argc, char ** argv)
 ```cpp
 // Service client: ros2 run ros2_basics_cpp add_two_ints_client 2 3
 #include <chrono>
+#include <cinttypes>
 #include <cstdlib>
 #include <memory>
 #include <string>
@@ -865,7 +865,7 @@ int main(int argc, char ** argv)
 
   auto future = client->async_send_request(request);
   if (rclcpp::spin_until_future_complete(node, future) == rclcpp::FutureReturnCode::SUCCESS) {
-    RCLCPP_INFO(node->get_logger(), "Result: %lld", static_cast<long long>(future.get()->sum));
+    RCLCPP_INFO(node->get_logger(), "Result: %" PRId64, future.get()->sum);
   } else {
     RCLCPP_ERROR(node->get_logger(), "service call failed");
   }
@@ -882,6 +882,8 @@ int main(int argc, char ** argv)
 Action `fibonacci` of type `seame_interfaces/action/Fibonacci`: computes the sequence one number per second, publishes feedback, can be canceled, rejects goals that are too large.
 
 The examples are in Python. For C++ (`rclcpp_action`), follow the official tutorial "Writing an action server and client (C++)" at <https://docs.ros.org/en/lyrical/Tutorials/Intermediate/Writing-an-Action-Server-Client/Cpp.html> using the same `seame_interfaces/action/Fibonacci` type; it is good practice for whoever implements the arm's motion action later.
+
+> Use `get_logger().warning(...)`, not `.warn(...)`: older tutorials use `.warn`, which no longer exists in Lyrical (`AttributeError: 'RcutilsLogger' object has no attribute 'warn'`) and crashes the node the first time that line runs.
 
 `ros2_basics_py/ros2_basics_py/fibonacci_server.py`:
 
@@ -914,7 +916,7 @@ class FibonacciServer(Node):
 
     def _on_goal(self, goal_request):
         if not 1 <= goal_request.order <= MAX_ORDER:
-            self.get_logger().warn(f'Rejecting goal: order={goal_request.order}')
+            self.get_logger().warning(f'Rejecting goal: order={goal_request.order}')
             return GoalResponse.REJECT
         self.get_logger().info(f'Accepting goal: order={goal_request.order}')
         return GoalResponse.ACCEPT
@@ -963,11 +965,11 @@ if __name__ == '__main__':
 `ros2_basics_py/ros2_basics_py/fibonacci_client.py`:
 
 ```python
-"""Action client: ros2 run ros2_basics_py fibonacci_client 10"""
+"""Action client, usage: ros2 run ros2_basics_py fibonacci_client 10."""
 import sys
 
-import rclpy
 from action_msgs.msg import GoalStatus
+import rclpy
 from rclpy.action import ActionClient
 from rclpy.node import Node
 from rclpy.utilities import remove_ros_args
@@ -993,7 +995,7 @@ class FibonacciClient(Node):
     def _on_goal_response(self, future):
         goal_handle = future.result()
         if not goal_handle.accepted:
-            self.get_logger().warn('Goal rejected')
+            self.get_logger().warning('Goal rejected')
             self.done = True
             return
         self.get_logger().info('Goal accepted')
@@ -1007,7 +1009,7 @@ class FibonacciClient(Node):
         if response.status == GoalStatus.STATUS_SUCCEEDED:
             self.get_logger().info(f'Result: {list(response.result.sequence)}')
         else:
-            self.get_logger().warn(f'Goal finished with status {response.status}')
+            self.get_logger().warning(f'Goal finished with status {response.status}')
         self.done = True
 
 
@@ -1046,9 +1048,8 @@ A talker that only publishes while **Active**. It creates its publisher and time
 import rclpy
 from rclpy.executors import ExternalShutdownException
 from rclpy.lifecycle import Node, Publisher, State, TransitionCallbackReturn
-from std_msgs.msg import String
-
 from ros2_basics_py.talker import CHATTER_QOS
+from std_msgs.msg import String
 
 
 class ManagedTalker(Node):
@@ -1221,7 +1222,7 @@ int main(int argc, char ** argv)
 Replace the generated file:
 
 ```cmake
-cmake_minimum_required(VERSION 3.8)
+cmake_minimum_required(VERSION 3.10)
 project(ros2_basics_cpp)
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
@@ -1262,6 +1263,17 @@ endif()
 ament_package()
 ```
 
+Every `.cpp` file must start with a license header, or `colcon test` fails the `copyright` and `cpplint` linters. The examples above leave it out to stay short; the files in `docker/ws/src` have it:
+
+```cpp
+// Copyright 2026 SEA:ME Team 2
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// ... (the rest of the standard Apache-2.0 header)
+```
+
+cpplint also rejects `long long`: print `int64` fields with `PRId64` from `<cinttypes>`, as the service examples do.
+
 Executables must be installed to `lib/<package>` or `ros2 run` will not find them. `ament_target_dependencies` (seen in older tutorials) is deprecated; use `target_link_libraries` with the exported targets as above.
 
 ### 11.2 `ros2_basics_cpp/package.xml`
@@ -1280,8 +1292,8 @@ Executables must be installed to `lib/<package>` or `ros2 run` will not find the
 Edit the generated file: add the launch files to `data_files` and every node to `entry_points`:
 
 ```python
-import os
 from glob import glob
+import os
 
 from setuptools import find_packages, setup
 
@@ -1296,12 +1308,18 @@ setup(
         ('share/' + package_name, ['package.xml']),
         (os.path.join('share', package_name, 'launch'), glob('launch/*.launch.py')),
     ],
+    package_data={'': ['py.typed']},
     install_requires=['setuptools'],
     zip_safe=True,
     maintainer='SEA:ME Team 2',
     maintainer_email='team2@example.com',
     description='ROS 2 basics in Python: topics with QoS, service, action, lifecycle',
     license='Apache-2.0',
+    extras_require={
+        'test': [
+            'pytest',
+        ],
+    },
     entry_points={
         'console_scripts': [
             'talker = ros2_basics_py.talker:main',
@@ -1316,7 +1334,7 @@ setup(
 )
 ```
 
-Replace `maintainer_email` with a real address. Every new Python node needs a line in `console_scripts`, then a rebuild.
+Replace `maintainer_email` with a real address. Every new Python node needs a line in `console_scripts`, then a rebuild. Keep the generated `extras_require={'test': ['pytest']}`: without it `colcon test` runs no tests for this package (`NO TESTS RAN`), so the flake8/pep257/mypy linters are silently skipped.
 
 ### 11.4 `ros2_basics_py/package.xml`
 
@@ -1559,7 +1577,7 @@ container$ ros2 interface package seame_interfaces
 ### rqt_graph (PC only)
 
 ```bash
-container$ rqt_graph
+container$ ros2 run rqt_graph rqt_graph       # or: rqt --standalone rqt_graph
 ```
 
 - Press the refresh button after starting new nodes.
@@ -1614,7 +1632,7 @@ container$ ros2 run ros2_basics_cpp talker             # on the Jetson
 
 host$ make shell
 container$ ros2 run ros2_basics_py listener            # on the PC
-container$ rqt_graph                                   # shows the Jetson's node too
+container$ ros2 run rqt_graph rqt_graph                 # shows the Jetson's node too
 ```
 
 If nothing arrives: check the firewall (`sudo ufw status`; allow UDP between the machines), multicast (set `ROS_STATIC_PEERS` with the other machine's IP in `docker/docker-compose.yml`), and the domain/RMW values. More in [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
