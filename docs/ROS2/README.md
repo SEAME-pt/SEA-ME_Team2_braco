@@ -129,7 +129,7 @@ ros2 node list          # all nodes
 ros2 topic list -t      # all topics with their types
 ros2 service list       # all services
 ros2 action list        # all actions
-rqt_graph               # a picture of it (PC only, needs a display)
+ros2 run rqt_graph rqt_graph   # a picture of it (PC only, needs a display)
 ```
 
 ---
@@ -686,7 +686,7 @@ Our images configure `colcon` with `symlink-install`, `RelWithDebInfo` and `ccac
 | Tool | Command | What it is for |
 |---|---|---|
 | ros2 CLI | `ros2 <verb> ...` | Inspect and interact with everything: `node`, `topic`, `service`, `action`, `param`, `interface`, `lifecycle`, `bag`, `launch`, `run`, `pkg`, `doctor` |
-| rqt_graph | `rqt_graph` | Picture of nodes and topics |
+| rqt_graph | `ros2 run rqt_graph rqt_graph` | Picture of nodes and topics |
 | rqt | `rqt` | Plugin GUI: topic monitor, service caller, parameter editor, console, plot |
 | RViz2 | `rviz2` | 3D visualisation: robot model, tf frames, camera images, point clouds, planned trajectories |
 | rosbag2 | `ros2 bag record / play / info` | Record topics to a file and replay them later (MCAP storage is installed) |

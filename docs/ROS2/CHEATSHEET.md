@@ -152,7 +152,7 @@ ros2 bag play /ws/bags/<name> [--rate 0.5] [--loop]
 ## GUI tools (PC image only)
 
 ```bash
-rqt_graph          # node/topic graph
+ros2 run rqt_graph rqt_graph   # node/topic graph (no bare `rqt_graph` command in Lyrical)
 rqt                # plugin GUI (topic monitor, service caller, console, plot...)
 rviz2              # 3D visualisation
 plotjuggler4       # plots, live or from bags
