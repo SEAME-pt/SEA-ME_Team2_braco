@@ -1,17 +1,20 @@
-## Descrição da Tarefa
-<!-- O que foi alterado e qual o objetivo deste PR? -->
+## Task Description
+<!-- 
+Provide a concise summary of the changes and the goal of this PR.
+-->
+
 
 ---
 
 ## Definition of Done (DoD)
 
-### Testes Manuais (Marcar N/A se não se aplicar)
-- [ ] **Validação no Robô ou Simulador:** Testado no robô real ou no Gazebo/simulador
-- [ ] **Movimentos e Trajetórias:** Executa os movimentos previstos sem falhas
-- [ ] **Casos de Erro e Segurança:** Testado comportamento em limites ou perda de sinal
-- [ ] **E-Stop:** Botão de emergência responde instantaneamente
-- [ ] **Consola / Serial:** Sem erros no terminal, logs do ROS ou ligação Serial/UART
+### Manual Tests (Mark N/A if not applicable)
+<!-- 
+List any manual testing performed (e.g., hardware/E-Stop checks, Gazebo simulator runs, or ROS/Serial terminal outputs).
+-->
 
-### Qualidade e Documentação
-- [ ] **Code Review:** Revisto por pelo menos 1 colega de equipa
-- [ ] **Documentação:** README ou pinout de hardware atualizado (se aplicável)
+
+### Quality & Documentation
+<!-- 
+Indicate code review approval and any documentation updates (e.g., README, wiring/pinout diagrams, or ROS topic definitions).
+-->
