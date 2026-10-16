@@ -42,7 +42,7 @@ fclean: clean
 	rm -f $(PROGRAMS)
 
 re: fclean
-	$(MAKE) all
+	$(MAKE) --no-print-directory all
 
 # Rebuild automatically when a header in includes/ changes
 -include $(wildcard $(OBJ_DIR)/*.d)

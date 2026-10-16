@@ -43,19 +43,19 @@ void onSignal(int) {
 // Backlight colour for each temperature level
 void setColour(ui::Status& status, mycobot::TempLevel level) {
     switch (level) {
-        case mycobot::TempLevel::Normal: status.r = 255; status.g = 255; status.b = 255; break;
-        case mycobot::TempLevel::Warm:   status.r = 255; status.g = 160; status.b = 0;   break;
+        case mycobot::TempLevel::Normal: status.r = 0; status.g = 255; status.b = 0; break;
+        case mycobot::TempLevel::Warm:   status.r = 255; status.g = 255; status.b = 0;   break;
         case mycobot::TempLevel::Hot:    status.r = 255; status.g = 0;   status.b = 0;   break;
     }
 }
 
-const char* levelName(mycobot::TempLevel level) {
-    switch (level) {
-        case mycobot::TempLevel::Warm: return "  <- warm";
-        case mycobot::TempLevel::Hot:  return "  <- HOT, let the arm rest";
-        default:                       return "";
-    }
-}
+// const char* levelName(mycobot::TempLevel level) {
+//     switch (level) {
+//         case mycobot::TempLevel::Warm: return "  <- warm";
+//         case mycobot::TempLevel::Hot:  return "  <- HOT, let the arm rest";
+//         default:                       return "";
+//     }
+// }
 
 }  // namespace
 

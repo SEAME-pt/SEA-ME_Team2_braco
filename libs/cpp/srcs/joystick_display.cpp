@@ -1,10 +1,7 @@
-// joystick_display.cpp - joystick control of the myCobot 280 with live status
-// displays. Same control logic as joystick_all_joints.cpp, plus:
-//   * a full-screen terminal display (display.hpp), over SSH or locally
-//   * the Waveshare LCD1602 RGB on I2C bus 0 (lcd_display.hpp): servo
-//     temperatures when idle, "ARM MOVING..." while moving, a warning when a
-//     servo is too hot, backlight = speed mode colour
-// Either display may be missing; the arm control works without them.
+// joystick_display.cpp - joystick control of the myCobot 280 with a live
+// status screen. Same control logic as joystick_all_joints.cpp, plus a
+// full-screen terminal display (display.hpp), over SSH or locally. Servo
+// temperature warnings appear in its message log.
 //
 // Safety model: step-ahead (bounded-lead) jogging
 // ------------------------------------------------
@@ -20,6 +17,10 @@
 //   D-pad Y            joint 3 (elbow pitch)
 //   A / B              close / open gripper
 //   X (click)          home all joints to 0 (click again to abort)
+//   Y (click)          park: fold into the park pose, then release all joints
+//                      (click again or touch a stick to abort). While parked,
+//                      the joints are free and everything else is ignored:
+//                      click Y once more to lock them.
 //   Button 9           cycle speed: blue -> green -> purple -> white -> red
 //   Ctrl+C             quit (safely stops the arm)
 //
@@ -30,7 +31,6 @@
 
 #include "display.hpp"
 #include "joystick.hpp"
-#include "lcd_display.hpp"
 #include "mycobot.hpp"
 
 #include <signal.h>
@@ -68,11 +68,11 @@ struct SpeedMode {
 };
 
 const std::array<SpeedMode, 5> SPEED_MODES = {{
-    {"slow",   12,  5.0,  8,  0,   0,   255},   // blue
-    {"medium", 30,  10.0, 15, 0,   255, 0},     // green
-    {"50%",    50,  15.0, 22, 128, 0,   255},   // purple
-    {"75%",    75,  20.0, 30, 255, 255, 255},   // white
-    {"100%",   100, 25.0, 40, 255, 0,   0},     // red
+    {"15%",   15,  5.0,  8,  0,   0,   255},   // blue
+    {"30%",   30,  10.0, 15, 0,   255, 0},     // green
+    {"50%",   50,  15.0, 22, 128, 0,   255},   // purple
+    {"75%",   75,  20.0, 30, 255, 255, 255},   // white
+    {"100%",  100, 25.0, 40, 255, 0,   0},     // red
 }};
 constexpr size_t START_MODE = 1;     // 1 = medium
 
@@ -90,6 +90,18 @@ constexpr int HOME_SPEED = 60;
 constexpr double HOME_LEAD_DEG = 15.0;
 constexpr double HOME_TOLERANCE_DEG = 1.0;
 constexpr int HOME_MAX_BAD_READS = 3;
+
+// ---- Park (button Y) - same pose and checks as park.py ---------------------
+// The park pose is outside the soft limits (J2 131 > 130, J3 -148 < -140,
+// J4 146 > 120), so parking switches to the firmware limits. They stay active
+// after locking the joints again, until every joint is back inside the normal
+// soft limits (switching earlier would clamp the next command: a sudden jump).
+constexpr mycobot::Angles PARK_ANGLES = {0, 131, -148, 146, 4.5, 0};
+constexpr int PARK_SPEED = 30;
+constexpr double PARK_LEAD_DEG = 15.0;       // bounded step per tick, like homing
+constexpr double PARK_TOLERANCE_DEG = 2.0;
+constexpr double PARK_TIMEOUT_S = 20.0;
+constexpr double PARK_SETTLE_S = 0.5;        // wait after arriving, then release
 
 // Stiffer hold (prevents J4 sag while other joints move)
 constexpr double HOLD_TOLERANCE_DEG = 0.8;
@@ -128,6 +140,7 @@ const std::set<int> TRIGGER_AXES = {4, 5};
 constexpr int BUTTON_GRIPPER_CLOSE = 0;   // A
 constexpr int BUTTON_GRIPPER_OPEN = 1;    // B
 constexpr int BUTTON_HOME = 3;            // X
+constexpr int BUTTON_PARK = 4;            // Y (check with jstest on your controller)
 constexpr int BUTTON_L1 = 6;              // J6 negative
 constexpr int BUTTON_R1 = 7;              // J6 positive
 constexpr int BUTTON_SPEED_MODE = 9;      // cycle speed mode
@@ -187,6 +200,13 @@ std::string fmtAngles(const std::optional<mycobot::Angles>& angles, const char* 
         out += (i ? ", " : "") + format(numFormat, (*angles)[i]);
     }
     return out + "]";
+}
+
+bool insideLimits(const mycobot::Angles& angles, const mycobot::JointLimits& limits) {
+    for (size_t i = 0; i < angles.size(); ++i) {
+        if (angles[i] < limits[i].min || angles[i] > limits[i].max) return false;
+    }
+    return true;
 }
 
 std::string fmtJoints(const std::set<int>& joints) {
@@ -267,11 +287,8 @@ void setLed(mycobot::MyCobot280& mc, const SpeedMode& mode, ui::TerminalDisplay&
 
 // ---- Main control loop -----------------------------------------------------
 
-// `status` belongs to the caller, so the last state is still available after
-// the loop ends (used to show the final angles on the LCD).
 void controlLoop(input::Joystick& js, mycobot::MyCobot280& mc,
-                 ui::TerminalDisplay& display, ui::LcdDisplay& lcd,
-                 ui::Status& status, bool debug) {
+                 ui::TerminalDisplay& display, bool debug) {
     size_t modeIndex = START_MODE;
     const SpeedMode* mode = &SPEED_MODES[modeIndex];
     setLed(mc, *mode, display);
@@ -289,7 +306,17 @@ void controlLoop(input::Joystick& js, mycobot::MyCobot280& mc,
     std::set<int> blockedAxes;
     std::optional<int64_t> speedBtnMs;
 
+    // Park state
+    const mycobot::JointLimits normalLimits = mc.softLimits();
+    bool parking = false;                  // moving to the park pose
+    bool parked = false;                   // joints released in the park pose
+    bool wideLimits = false;               // firmware limits active (see PARK_ANGLES)
+    bool parkedWarned = false;             // "joints are free" shown for this input
+    double parkDeadline = 0.0;
+    std::optional<double> parkReachedAt;
+
     // Display state
+    ui::Status status;
     for (int j = 0; j < 6; ++j) {
         const auto& lim = mc.softLimits()[j];
         status.limits[j] = {lim.min, lim.max};
@@ -309,16 +336,29 @@ void controlLoop(input::Joystick& js, mycobot::MyCobot280& mc,
         hold.clear();
     };
 
-    // Store a fresh angle reading for the display
+    auto endParking = [&]() {
+        parking = false;
+        parkReachedAt.reset();
+    };
+
+    // Store a fresh angle reading for the display. Also switches back to the
+    // normal limits once the arm is inside them again after parking.
     auto recordAngles = [&](const std::optional<mycobot::Angles>& angles) {
         status.feedbackOk = angles.has_value();
-        if (angles) status.angles = *angles;
+        if (!angles) return;
+        status.angles = *angles;
+        if (wideLimits && !parking && !parked && insideLimits(*angles, normalLimits)) {
+            mc.setSoftLimits(normalLimits);
+            wideLimits = false;
+            display.addMessage(">>> back inside the normal joint limits");
+        }
     };
 
     // One loop tick. Returns early where the Python version used `continue`.
     auto tick = [&]() {
         // 1. Drain joystick events
         bool homeClicked = false;
+        bool parkClicked = false;
         for (const input::Event& ev : js.readEvents()) {
             const int64_t tMs = ev.timeMs;
             const int number = ev.number;
@@ -356,8 +396,13 @@ void controlLoop(input::Joystick& js, mycobot::MyCobot280& mc,
                     }
                 }
 
-                if (value == 1) {
-                    if (number == BUTTON_GRIPPER_CLOSE) {
+                if (value == 1 && parked && number != BUTTON_PARK) {
+                    // Joints are free: ignore every command except Y (lock)
+                    display.addMessage(">>> parked: joints are free - click Y to lock them first");
+                } else if (value == 1) {
+                    if (number == BUTTON_PARK) {
+                        parkClicked = true;
+                    } else if (number == BUTTON_GRIPPER_CLOSE) {
                         display.addMessage(">>> close gripper");
                         mc.setGripperState(1, GRIPPER_SPEED);
                     } else if (number == BUTTON_GRIPPER_OPEN) {
@@ -377,6 +422,119 @@ void controlLoop(input::Joystick& js, mycobot::MyCobot280& mc,
         }
 
         const Wanted wanted = wantedMotion(axisState, buttonState, *mode, blockedAxes);
+
+        // P1. Parked: joints released. Only Y does something (lock them).
+        if (parked) {
+            if (parkClicked) {
+                mc.powerOn();
+                pause(COMMAND_GAP);
+                parked = false;
+                active.clear();
+                hold.clear();
+                display.addMessage(">>> joints locked. Firmware limits stay active until the "
+                                   "arm is back inside the normal range (X homes)");
+            } else if (!wanted.empty() && !parkedWarned) {
+                display.addMessage(">>> parked: joints are free - click Y to lock them first");
+                parkedWarned = true;
+            }
+            if (wanted.empty()) parkedWarned = false;
+
+            const double now = nowSeconds();
+            if (display.active() && now - lastIdlePoll >= IDLE_POLL_PERIOD) {
+                lastIdlePoll = now;
+                recordAngles(mc.getAngles(ANGLE_READ_RETRIES));
+            }
+            return;
+        }
+
+        // P2. Park state transitions (click toggles, any jog input aborts)
+        if (parkClicked) {
+            if (parking) {
+                display.addMessage(">>> parking cancelled");
+                endParking();
+                stopArm();
+            } else {
+                if (homing) {
+                    display.addMessage(">>> homing cancelled");
+                    homing = false;
+                }
+                display.addMessage(">>> parking (click Y again or touch a stick to abort)");
+                mc.setSoftLimits(mycobot::FIRMWARE_LIMITS);   // park pose needs them
+                wideLimits = true;
+                parking = true;
+                parkReachedAt.reset();
+                parkDeadline = nowSeconds() + PARK_TIMEOUT_S;
+                badReads = 0;
+                active.clear();
+                hold.clear();
+            }
+        }
+        if (parking && homeClicked) {
+            display.addMessage(">>> parking cancelled");
+            endParking();
+        }
+        if (parking && !wanted.empty()) {
+            display.addMessage(">>> parking aborted by stick/bumper input");
+            endParking();
+            stopArm();
+        }
+
+        // P3. Parking: bounded steps toward the park pose, then settle and release
+        if (parking) {
+            const auto angles = mc.getAngles(ANGLE_READ_RETRIES);
+            recordAngles(angles);
+            if (!angles) {
+                ++badReads;
+                mc.stop();
+                pause(COMMAND_GAP);
+                if (badReads >= HOME_MAX_BAD_READS) {
+                    display.addMessage("!!! no valid angle feedback, parking aborted - joints left locked");
+                    endParking();
+                }
+                return;
+            }
+            badReads = 0;
+
+            const double now = nowSeconds();
+            double maxDev = 0.0;
+            for (size_t i = 0; i < angles->size(); ++i) {
+                maxDev = std::max(maxDev, std::abs(PARK_ANGLES[i] - (*angles)[i]));
+            }
+
+            if (parkReachedAt) {   // arrived: wait PARK_SETTLE_S, then release
+                if (now - *parkReachedAt >= PARK_SETTLE_S) {
+                    mc.releaseAllServos();
+                    pause(COMMAND_GAP);
+                    endParking();
+                    parked = true;
+                    display.addMessage(">>> parked - joints released (click Y to lock them)");
+                }
+                return;
+            }
+            if (maxDev <= PARK_TOLERANCE_DEG) {
+                parkReachedAt = now;
+                display.addMessage(">>> park position reached");
+                return;
+            }
+            if (now > parkDeadline) {
+                display.addMessage("!!! park position not reached - joints left locked");
+                mc.stop();
+                pause(COMMAND_GAP);
+                endParking();
+                return;
+            }
+
+            // Same fraction for every joint, so they all arrive together
+            const double scale = std::min(1.0, PARK_LEAD_DEG / maxDev);
+            mycobot::Angles targets{};
+            for (size_t i = 0; i < targets.size(); ++i) {
+                targets[i] = round1((*angles)[i] + (PARK_ANGLES[i] - (*angles)[i]) * scale);
+            }
+            debugMsg("park targets " + fmtAngles(targets, "%.1f"));
+            mc.sendAngles(targets, PARK_SPEED);
+            pause(COMMAND_GAP);
+            return;
+        }
 
         // 2. Homing state transitions
         if (homeClicked) {
@@ -445,25 +603,19 @@ void controlLoop(input::Joystick& js, mycobot::MyCobot280& mc,
             // Read angles occasionally for the display only. A failed read
             // here moves nothing, it only shows "no feedback".
             const double now = nowSeconds();
-            if ((display.active() || lcd.ok()) && now - lastIdlePoll >= IDLE_POLL_PERIOD) {
+            if (display.active() && now - lastIdlePoll >= IDLE_POLL_PERIOD) {
                 lastIdlePoll = now;
                 recordAngles(mc.getAngles(ANGLE_READ_RETRIES));
             }
 
-            // Servo temperatures, for the LCD and the warnings.
+            // Servo temperatures: warnings in the message log when the level changes.
             if (now - lastTempPoll >= TEMP_POLL_PERIOD) {
                 lastTempPoll = now;
                 const auto check = mc.checkTemps(1);
-                if (!check) {
-                    status.temps.reset();   // unknown: the LCD falls back to angles
-                    status.hotJoint = 0;
-                    return;
-                }
-                status.temps = check->temps;
+                if (!check) return;   // no answer: try again next time
+
                 const int j = check->hottestJoint;
                 const int t = check->temps[j - 1];
-                status.hotJoint = check->level == mycobot::TempLevel::Hot ? j : 0;
-
                 if (check->level != lastTempLevel) {
                     if (check->level == mycobot::TempLevel::Hot) {
                         display.addMessage(format("!!! servo J:%d HOT (%d C) - let the arm rest", j, t));
@@ -571,11 +723,6 @@ void controlLoop(input::Joystick& js, mycobot::MyCobot280& mc,
             status.atLimit[j - 1] = limitReported.count(j) > 0;
         }
         display.show(status);
-        status.r = 255;
-        status.g = 0;
-        status.b = 0;
-        lcd.show(status);
-
         pause(LOOP_PERIOD);
     }
 }
@@ -598,20 +745,11 @@ int main(int argc, char** argv) {
     sigaction(SIGHUP, &sa, nullptr);
 
     try {
-        std::printf("1/3 Initialising LCD1602 RGB on %s\n", ui::LcdDisplay::DEFAULT_BUS);
-        ui::LcdDisplay lcd;
-        if (lcd.ok()) {
-            std::printf("    OK\n");
-        } else {
-            std::printf("!!! LCD not available (%s) - continuing without it\n",
-                        lcd.error().c_str());
-        }
-
-        std::printf("2/3 Opening joystick: %s\n", JOYSTICK_DEVICE);
+        std::printf("1/2 Opening joystick: %s\n", JOYSTICK_DEVICE);
         input::Joystick js(JOYSTICK_DEVICE);
         std::printf("    OK\n");
 
-        std::printf("3/3 Connecting to arm on: %s\n", mycobot::MyCobot280::DEFAULT_PORT);
+        std::printf("2/2 Connecting to arm on: %s\n", mycobot::MyCobot280::DEFAULT_PORT);
         mycobot::MyCobot280 mc;
         pause(1000ms);
         mc.powerOn();
@@ -620,7 +758,6 @@ int main(int argc, char** argv) {
 
         int exitCode = 0;
         std::string endReason = "Quitting.";
-        ui::Status status;
         std::string stopError;
 
         {
@@ -628,7 +765,7 @@ int main(int argc, char** argv) {
             // restores the normal terminal so the final messages stay visible.
             ui::TerminalDisplay display(!debug);
             try {
-                controlLoop(js, mc, display, lcd, status, debug);
+                controlLoop(js, mc, display, debug);
             } catch (const std::exception& e) {
                 endReason = std::string("Stopping: ") + e.what();   // e.g. joystick unplugged
                 exitCode = 1;
@@ -648,15 +785,7 @@ int main(int argc, char** argv) {
             std::fprintf(stderr, "!!! could not send final stop: %s\n", stopError.c_str());
         }
         pause(200ms);
-        const auto finalAngles = mc.getAngles();
-        std::printf("Arm stopped. Final angles: %s\n", fmtAngles(finalAngles).c_str());
-
-        // Leave the final angles on the LCD (backlight keeps the mode colour)
-        status.moving = {};
-        status.homing = false;
-        status.feedbackOk = finalAngles.has_value();
-        if (finalAngles) status.angles = *finalAngles;
-        lcd.show(status, true);
+        std::printf("Arm stopped. Final angles: %s\n", fmtAngles(mc.getAngles()).c_str());
         return exitCode;
 
     } catch (const std::exception& e) {
