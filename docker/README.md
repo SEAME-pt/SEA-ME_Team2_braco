@@ -35,6 +35,8 @@ seame-arm-docker/
 │   └── dri.yml
 ├── tests/
 │   └── talker-listener.sh   ROS 2 talker/listener test; mounted read-only into the containers
+├── systemd/
+│   └── seame-arm.service    boot unit for the arm services (make install-service)
 └── docker/
     ├── Dockerfile           stages: base, jetson-driver, pc-dev
     ├── config/              colcon-defaults.yaml
@@ -152,6 +154,42 @@ Notes:
   `make shell ROLE=jetson`, then `sudo apt-get update && sudo apt-get install -y ros-lyrical-demo-nodes-cpp ros-lyrical-demo-nodes-py`.
 - Started in a normal terminal, Ctrl-C stops the nodes and leaves nothing running. A talker started *without* a terminal
   (CI, `make talker CI=true`, a closed window) survives the end of `docker exec`: use `make talker-stop`.
+
+## Arm services (Jetson): driver, temperature, joystick
+
+Three ROS 2 nodes from `ws/src/seame_arm` run all the time on the Nano, **one container each** (compose profile
+`arm`, same `jetson-driver` image, no rebuild), so each can be stopped, restarted and logged on its own:
+
+```
+arm-driver       arm_driver           the ONLY process that opens /dev/ttyTHS1 (libs/cpp MyCobot280)
+                                      pub /joint_states (~20 Hz), /arm/servo_temperatures (every 2 s)
+                                      sub /arm/command (STOP | JOINTS | ALL_ANGLES, latest wins), /arm/led
+                                      srv /arm/power_on, /arm/release_servos, /arm/set_gripper
+arm-temperature  temperature_monitor  temperatures -> /diagnostics + LCD1602 (port of libs/cpp temps_lcd)
+arm-teleop       joystick_teleop      joystick -> /arm/command (port of libs/cpp joystick_all_joints)
+```
+
+- The temperature monitor depends only on the driver: it keeps updating whether the joystick is in use or not.
+- The driver never moves or powers the arm by itself. If no new motion command arrives for 300 ms after a move,
+  it sends `stop` (so a crashed or killed client cannot leave the arm running). Together with the step-ahead
+  targets of the teleop, the arm coasts at most a few degrees.
+- The teleop waits for the joystick and survives unplugging it (it stops the arm and opens the device again).
+- The C++ library in `../libs/cpp` is mounted read-only at `/opt/seame/libs` and built by colcon as `mycobot_cpp`;
+  its own `Makefile` still builds the stand-alone programs.
+
+```bash
+make up ROLE=jetson && make ws-build     # build the workspace (includes ../libs) in the dev container
+make arm-up                              # start the three services; make arm-ps / make arm-logs S=teleop
+make arm-stop S=teleop                   # switch the joystick off; temperatures keep coming
+make arm-start S=teleop
+make arm-restart                         # after every make ws-build
+make install-service                     # start them at boot (systemd unit seame-arm), needs sudo
+make exec CMD='ros2 topic echo /arm/servo_temperatures'
+```
+
+`make env` fills in `I2C_GID` and `INPUT_GID`; `LCD_I2C_BUS` and `JOYSTICK_DEVICE` in `.env` change the devices.
+**Only one program can use the serial port:** run `make arm-down` (or `make arm-stop S=driver`) before starting
+`temps_lcd`, `joystick_all_joints` or any pymycobot script by hand.
 
 ## The compatibility contract
 
