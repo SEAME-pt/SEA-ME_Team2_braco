@@ -39,7 +39,8 @@ colcon build                                         # build all (from /ws, neve
 colcon build --packages-select <pkg>                 # only this package
 colcon build --packages-up-to <pkg>                  # this package and its dependencies
 colcon build --parallel-workers 2                    # on the Jetson
-colcon test && colcon test-result --verbose          # tests + linters
+colcon test && colcon test-result --verbose          # tests + linters (failures only)
+colcon test-result --all                             # one line per test file
 rm -rf build install log                             # clean
 
 ros2 pkg list | grep <name>

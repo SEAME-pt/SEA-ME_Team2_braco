@@ -115,6 +115,7 @@ Rules worth remembering:
 - Nodes from different distros can *sometimes* talk over the network, but message definitions and middleware defaults change between releases, so it is not guaranteed. In this project both machines use the same image base so this never comes up.
 - The active distro is in the environment variable `ROS_DISTRO` (`echo $ROS_DISTRO` prints `lyrical` in our containers).
 - Tutorials written for Humble or Jazzy mostly work on Lyrical, but check the docs for the distro you run: some APIs change (for example `ament_target_dependencies` is deprecated in favour of `target_link_libraries`).
+- Differences we hit on Lyrical while testing the Sprint 0 examples: Python loggers have `warning()` but no `warn()`; there is no bare `rqt_graph` command (use `ros2 run rqt_graph rqt_graph`); CMake warns below `cmake_minimum_required(VERSION 3.10)`; `ros2 pkg create` also generates `py.typed` and a `test_mypy.py` linter. Details and fixes in [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
 
 ---
 
