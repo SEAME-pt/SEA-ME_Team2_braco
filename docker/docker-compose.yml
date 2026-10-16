@@ -43,6 +43,21 @@ x-ros-common: &ros-common
     memlock: -1
   command: ["sleep", "infinity"]
 
+# Shared by the always-on arm services below (profile "arm", Jetson only).
+x-arm-common: &arm-common
+  <<: *ros-common
+  profiles: [arm]
+  image: ${IMAGE_PREFIX:-seame}/jetson-driver:${IMAGE_TAG:-lyrical}
+  environment:
+    <<: *ros-env
+  stdin_open: false
+  tty: false
+  restart: unless-stopped   # services: come back after a crash or a reboot (see make install-service)
+  volumes:
+    - ./ws:/ws
+    - ../libs:/opt/seame/libs:ro
+    - ros-logs-arm:/home/dev/.ros
+
 services:
   # ---------------------------------------------------------------------------------------
   # PC: RViz2, MoveIt 2, Gazebo + ros2_control in simulation, CI-grade QA tooling
@@ -65,6 +80,7 @@ services:
       - gz-cache:/home/dev/.gz
       - ros-logs-pc:/home/dev/.ros
       - ./tests:/opt/seame/tests:ro        # `make talker-listener` etc.; edit on the host, no rebuild
+      - ../libs:/opt/seame/libs:ro         # libs/cpp (mycobot_cpp); colcon finds it via make ws-build
 
   # ---------------------------------------------------------------------------------------
   # Jetson Nano: arm driver (pymycobot lifecycle node), ros2_control, controllers
@@ -93,6 +109,52 @@ services:
       - ccache-jetson:/home/dev/.ccache
       - ros-logs-jetson:/home/dev/.ros
       - ./tests:/opt/seame/tests:ro        # `make talker-listener` etc.; edit on the host, no rebuild
+      - ../libs:/opt/seame/libs:ro         # libs/cpp (mycobot_cpp); colcon finds it via make ws-build
+
+  # ---------------------------------------------------------------------------------------
+  # Jetson Nano: always-on arm services (profile "arm") - one container per ROS 2 node, so each
+  # can be stopped, restarted and logged on its own. Same image as jetson-driver, no build:
+  # build the workspace first (make ws-build ROLE=jetson), then make arm-up.
+  #   arm-driver       the ONLY process that opens the serial port; never moves the arm by
+  #                    itself, so restarting it is safe
+  #   arm-temperature  servo temperatures -> /diagnostics + LCD1602 (independent of the joystick)
+  #   arm-teleop       joystick control; waits for the joystick and survives unplugging
+  # ---------------------------------------------------------------------------------------
+  arm-driver:
+    <<: *arm-common
+    command: ["ros2", "run", "seame_arm", "arm_driver", "--ros-args",
+              "-p", "port:=${MYCOBOT_PORT:-/dev/ttyTHS1}", "-p", "baud:=${MYCOBOT_BAUD:-1000000}"]
+    group_add:
+      - "${DIALOUT_GID:-20}"
+    devices:
+      - ${MYCOBOT_PORT:-/dev/ttyTHS1}:${MYCOBOT_PORT:-/dev/ttyTHS1}:rwm
+
+  arm-temperature:
+    <<: *arm-common
+    command: ["ros2", "run", "seame_arm", "temperature_monitor", "--ros-args",
+              "-p", "lcd_bus:=${LCD_I2C_BUS:-/dev/i2c-0}"]
+    group_add:
+      - "${I2C_GID:-${USER_GID:-1000}}"   # set by make env; fallback: your own group (harmless)
+    devices:
+      - ${LCD_I2C_BUS:-/dev/i2c-0}:${LCD_I2C_BUS:-/dev/i2c-0}:rw
+    depends_on: [arm-driver]
+
+  arm-teleop:
+    <<: *arm-common
+    command: ["ros2", "run", "seame_arm", "joystick_teleop", "--ros-args",
+              "-p", "device:=${JOYSTICK_DEVICE:-/dev/input/js0}"]
+    group_add:
+      - "${INPUT_GID:-${USER_GID:-1000}}"   # set by make env; fallback: your own group (harmless)
+    # The whole /dev/input plus a cgroup rule for joystick/event devices (major 13), so the
+    # controller can be plugged in after the container started, or unplugged and replugged.
+    volumes:
+      - ./ws:/ws
+      - ../libs:/opt/seame/libs:ro
+      - ros-logs-arm:/home/dev/.ros
+      - /dev/input:/dev/input
+    device_cgroup_rules:
+      - "c 13:* rmw"
+    depends_on: [arm-driver]
 
 volumes:
   ccache-pc:
@@ -100,3 +162,4 @@ volumes:
   gz-cache:
   ros-logs-pc:
   ros-logs-jetson:
+  ros-logs-arm:
