@@ -1,6 +1,9 @@
 import time
 from pymycobot import MyCobot280
 
+# WARNING: opens the serial port directly. With the arm services up (arm-driver owns
+# /dev/ttyTHS1) this corrupts both sides. Use `make arm-park` (in docker/) instead.
+
 mc = MyCobot280("/dev/ttyTHS1", 1000000)
 time.sleep(1)
 

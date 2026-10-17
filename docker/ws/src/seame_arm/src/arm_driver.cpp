@@ -25,6 +25,12 @@
 //   srv  /arm/power_on               std_srvs/Trigger
 //   srv  /arm/release_servos         std_srvs/Trigger
 //   srv  /arm/set_gripper            std_srvs/SetBool (true = close)
+//   srv  /arm/set_read_only          std_srvs/SetBool (true = rest mode)
+//   pub  /arm/read_only              std_msgs/Bool (latched)
+//
+// Rest mode (read_only): motion, gripper and power_on are refused, but the
+// serial loop keeps publishing angles and temperatures, so the arm can cool
+// down under watch. park.py enters it; set_read_only false (or make arm-resume) leaves it.
 //
 // One serial thread does all the work, in this order on every pass:
 //   1. a requested stop (drops everything pending)
@@ -54,6 +60,7 @@
 #include "seame_interfaces/msg/arm_command.hpp"
 #include "seame_interfaces/msg/servo_temperatures.hpp"
 #include "sensor_msgs/msg/joint_state.hpp"
+#include "std_msgs/msg/bool.hpp"
 #include "std_msgs/msg/color_rgba.hpp"
 #include "std_srvs/srv/set_bool.hpp"
 #include "std_srvs/srv/trigger.hpp"
@@ -108,6 +115,19 @@ public:
     joint_pub_ = create_publisher<sensor_msgs::msg::JointState>("joint_states", 10);
     temp_pub_ = create_publisher<ServoTemperatures>("arm/servo_temperatures", 10);
 
+    read_only_pub_ = create_publisher<std_msgs::msg::Bool>(
+      "arm/read_only", rclcpp::QoS(1).transient_local());
+    setReadOnly(declare_parameter<bool>("read_only", false));
+
+    read_only_srv_ = create_service<std_srvs::srv::SetBool>(
+      "arm/set_read_only",
+      [this](std_srvs::srv::SetBool::Request::ConstSharedPtr req,
+      std_srvs::srv::SetBool::Response::SharedPtr res) {
+        setReadOnly(req->data);
+        res->success = true;
+        res->message = req->data ? "rest mode on" : "rest mode off";
+      });
+
     command_sub_ = create_subscription<ArmCommand>(
       "arm/command", 10, [this](ArmCommand::ConstSharedPtr msg) {onCommand(*msg);});
     led_sub_ = create_subscription<std_msgs::msg::ColorRGBA>(
@@ -117,6 +137,7 @@ public:
       "arm/power_on",
       [this](std_srvs::srv::Trigger::Request::ConstSharedPtr,
       std_srvs::srv::Trigger::Response::SharedPtr res) {
+        if (refuseInRest(res->success, res->message, "power on")) {return;}
         runSerial(res->success, res->message, "power on", [this]() {mc_->powerOn();});
       });
     release_srv_ = create_service<std_srvs::srv::Trigger>(
@@ -132,6 +153,7 @@ public:
       "arm/set_gripper",
       [this](std_srvs::srv::SetBool::Request::ConstSharedPtr req,
       std_srvs::srv::SetBool::Response::SharedPtr res) {
+        if (refuseInRest(res->success, res->message, "set gripper")) {return;}
         const int state = req->data ? 1 : 0;
         runSerial(
           res->success, res->message, req->data ? "close gripper" : "open gripper",
@@ -158,8 +180,39 @@ public:
 private:
   // ---- Callbacks (executor thread): only record what was asked -------------
 
+  // Rest mode: only monitoring. Entering it drops whatever motion was pending.
+  void setReadOnly(bool on)
+  {
+    const bool changed = read_only_.exchange(on) != on;
+    if (on) {clearPending();}
+    std_msgs::msg::Bool msg;
+    msg.data = on;
+    read_only_pub_->publish(msg);
+    if (changed || on) {
+      RCLCPP_INFO(
+        get_logger(), on ? "rest mode ON: monitoring only, motion refused" :
+        "rest mode OFF: motion accepted");
+    }
+  }
+
+  // True (and the response filled in) when rest mode refuses `what`.
+  bool refuseInRest(bool & success, std::string & message, const char * what)
+  {
+    if (!read_only_) {return false;}
+    success = false;
+    message = std::string(what) + " refused: rest mode (call arm/set_read_only false)";
+    RCLCPP_WARN(get_logger(), "%s", message.c_str());
+    return true;
+  }
+
   void onCommand(const ArmCommand & msg)
   {
+    if (read_only_ && msg.type != ArmCommand::STOP) {
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 5000,
+        "rest mode: motion ignored (make arm-resume or call arm/set_read_only false)");
+      return;
+    }
     std::lock_guard<std::mutex> lock(state_mutex_);
     switch (msg.type) {
       case ArmCommand::STOP:
@@ -376,6 +429,7 @@ private:
   std::mutex state_mutex_;    // everything below that callbacks write
   std::thread serial_thread_;
   std::atomic<bool> running_{true};
+  std::atomic<bool> read_only_{false};
 
   bool stop_requested_ = false;
   std::map<int, Target> pending_joints_;
@@ -397,6 +451,8 @@ private:
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr power_srv_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr release_srv_;
   rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr gripper_srv_;
+  rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr read_only_srv_;
+  rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr read_only_pub_;
 };
 
 int main(int argc, char ** argv)

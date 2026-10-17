@@ -32,7 +32,7 @@ from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from seame_interfaces.msg import ArmCommand
 from sensor_msgs.msg import JointState
-from std_srvs.srv import Trigger
+from std_srvs.srv import SetBool, Trigger
 
 STEP_DEG = 15.0         # max lead of a target over the real angles
 RESEND_S = 0.1          # well below the driver's 300 ms watchdog
@@ -50,6 +50,7 @@ class ArmMoves(Node):
         self._cmd = self.create_publisher(ArmCommand, 'arm/command', 10)
         self._power = self.create_client(Trigger, 'arm/power_on')
         self._release = self.create_client(Trigger, 'arm/release_servos')
+        self._rest = self.create_client(SetBool, 'arm/set_read_only')
 
     def _on_joints(self, msg):
         if len(msg.position) < 6:
@@ -89,6 +90,22 @@ class ArmMoves(Node):
 
     def release_servos(self):
         return self._call(self._release, 'release servos')
+
+    def set_rest(self, on):
+        """Rest mode: the driver keeps publishing temperatures but refuses motion.
+
+        Best effort (an older driver has no such service): a failure only logs.
+        """
+        if not self._rest.wait_for_service(timeout_sec=2.0):
+            self.get_logger().warning('arm/set_read_only not available - rest mode not set')
+            return False
+        future = self._rest.call_async(SetBool.Request(data=on))
+        rclpy.spin_until_future_complete(self, future, timeout_sec=5.0)
+        result = future.result()
+        if result is None or not result.success:
+            self.get_logger().warning('rest mode not set: %s' % (result.message if result else 'timeout'))
+            return False
+        return True
 
     def stop(self):
         self._cmd.publish(ArmCommand(type=ArmCommand.STOP))
