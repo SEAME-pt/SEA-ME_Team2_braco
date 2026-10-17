@@ -165,6 +165,7 @@ arm-driver       arm_driver           the ONLY process that opens /dev/ttyTHS1 (
                                       pub /joint_states (~20 Hz), /arm/servo_temperatures (every 2 s)
                                       sub /arm/command (STOP | JOINTS | ALL_ANGLES, latest wins), /arm/led
                                       srv /arm/power_on, /arm/release_servos, /arm/set_gripper
+                                      srv /arm/set_read_only, pub /arm/read_only (rest mode, see below)
 arm-temperature  temperature_monitor  temperatures -> /diagnostics + LCD1602 (port of libs/cpp temps_lcd)
 arm-teleop       joystick_teleop      joystick -> /arm/command (port of libs/cpp joystick_all_joints)
 arm-routine      arm_routine.sh       start: zero.py (all joints to 0) / stop: park.py (fold, release joints)
@@ -180,7 +181,11 @@ arm-routine      arm_routine.sh       start: zero.py (all joints to 0) / stop: p
   the container is stopped (`make arm-down`, `systemctl stop seame-arm`, a normal Jetson shutdown). Compose stops
   it before `arm-driver`, so park can still reach the arm. Nothing runs on a power cut or `kill -9`, and
   `systemctl restart docker` stops every container at once, so park may fail then: use `make arm-down` first.
-  Run them by hand with `make exec CMD='ros2 run seame_arm park.py'` (or `zero.py`).
+  Run them by hand with `make arm-park` / `make arm-zero` (no container has to be stopped).
+- **Rest mode.** `park.py` ends by putting the driver in rest mode: motion, gripper and `power_on` are refused, but
+  angles and temperatures keep being published, so a hot arm can cool down under watch (LCD and `/diagnostics` keep
+  updating). Leave it with `make arm-resume` or `make arm-zero`. Details: [../docs/arm-rest-mode.md](../docs/arm-rest-mode.md).
+- The driver opens the port with `TIOCEXCL`: a second program (non-root) gets `Device or resource busy` immediately.
 - The C++ library in `../libs/cpp` is mounted read-only at `/opt/seame/libs` and built by colcon as `mycobot_cpp`;
   its own `Makefile` still builds the stand-alone programs.
 
@@ -190,13 +195,17 @@ make arm-up                              # start the three services; make arm-ps
 make arm-stop S=teleop                   # switch the joystick off; temperatures keep coming
 make arm-start S=teleop
 make arm-restart                         # after every make ws-build
+make arm-park                            # fold, release joints, rest mode (driver keeps reading temperatures)
+make arm-temps                           # print the servo temperatures once
+make arm-resume                          # leave rest mode; make arm-zero also moves to zero; make arm-rest enters it
 make install-service                     # start them at boot (systemd unit seame-arm), needs sudo
 make exec CMD='ros2 topic echo /arm/servo_temperatures'
 ```
 
 `make env` fills in `I2C_GID` and `INPUT_GID`; `LCD_I2C_BUS` and `JOYSTICK_DEVICE` in `.env` change the devices.
 **Only one program can use the serial port:** run `make arm-down` (or `make arm-stop S=driver`) before starting
-`temps_lcd`, `joystick_all_joints` or any pymycobot script by hand.
+`temps_lcd`, `joystick_all_joints` or any pymycobot script by hand. But prefer not to: `make arm-park`, `arm-zero` and
+`arm-temps` go through the driver, and stopping it also stops the temperature readings.
 
 ## The compatibility contract
 
