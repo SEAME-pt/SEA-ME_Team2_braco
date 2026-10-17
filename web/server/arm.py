@@ -23,6 +23,17 @@ TEMP_HOT_C = 65
 # DEFAULT_SOFT_LIMITS from mycobot.hpp, used by the mock
 SOFT_LIMITS = [(-160, 160), (-130, 130), (-140, 140), (-120, 120), (-135, 135), (-170, 170)]
 
+# myCobot 280 standard DH: theta offset (rad), d (mm), a (mm), alpha (rad).
+# Same table as web/static/js/arm3d.js.
+DH = [
+    (0, 131.22, 0, math.pi / 2),
+    (-math.pi / 2, 0, -110.4, 0),
+    (0, 0, -96, 0),
+    (-math.pi / 2, 63.4, 0, math.pi / 2),
+    (math.pi / 2, 75.05, 0, -math.pi / 2),
+    (0, 45.6, 0, 0),
+]
+
 ANGLE_PERIOD = 0.2   # 5 Hz
 STATE_PERIOD = 1.0   # power / moving
 TEMP_PERIOD = 2.0    # same as temps_lcd.cpp: temperatures change slowly
@@ -235,14 +246,16 @@ class MockArm(_Base):
 
     @staticmethod
     def _fake_coords(angles):
-        j1, j2, j3 = (math.radians(a) for a in angles[:3])
-        reach = 110 * math.cos(j2) + 96 * math.cos(j2 + j3)
-        return [
-            round(reach * math.cos(j1), 1),
-            round(reach * math.sin(j1), 1),
-            round(131 + 110 * math.sin(j2) + 96 * math.sin(j2 + j3), 1),
-            round(angles[3], 2), round(angles[4], 2), round(angles[5], 2),
-        ]
+        """Flange position from the arm's DH parameters (same as the 3D view)."""
+        m = [[1.0, 0, 0, 0], [0, 1.0, 0, 0], [0, 0, 1.0, 0], [0, 0, 0, 1.0]]
+        for (offset, d, a, alpha), q in zip(DH, angles):
+            th = math.radians(q) + offset
+            c, s, ca, sa = math.cos(th), math.sin(th), math.cos(alpha), math.sin(alpha)
+            t = [[c, -s * ca, s * sa, a * c], [s, c * ca, -c * sa, a * s],
+                 [0, sa, ca, d], [0, 0, 0, 1]]
+            m = [[sum(m[i][k] * t[k][j] for k in range(4)) for j in range(4)] for i in range(4)]
+        return [round(m[0][3], 1), round(m[1][3], 1), round(m[2][3], 1),
+                round(angles[3], 2), round(angles[4], 2), round(angles[5], 2)]
 
     def stop_motion(self):
         self._stopped_until = time.time() + 5
