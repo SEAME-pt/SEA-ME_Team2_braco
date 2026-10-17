@@ -1,0 +1,5 @@
+# Web dashboard. Versions chosen to run on the Jetson's Python 3.8.
+# pymycobot comes from the top-level requirements.txt.
+fastapi==0.115.6
+uvicorn==0.32.1
+websockets==13.1
