@@ -8,6 +8,7 @@ import {
 
 const JC = ["--j1", "--j2", "--j3", "--j4", "--j5", "--j6"];
 const HISTORY_S = 60;
+let movementConfirmed = false;   // asked once per page load, kept while switching views
 const LEVEL_TEXT = { normal: "ok", warm: "morno", hot: "QUENTE" };
 
 function pct(v, i) {
@@ -65,6 +66,49 @@ function referenceHTML() {
     </div>`;
 }
 
+function controlRow(i) {
+  const [lo, hi] = SOFT_LIMITS[i];
+  return `
+    <div class="ctl-row" style="--jc:var(${JC[i]})" data-j="${i}">
+      <div class="ctl-name"><b>${JOINTS[i]}</b><span class="muted small">${JOINT_NAMES[i]}</span></div>
+      <button class="step" data-d="-1" title="diminuir">−</button>
+      <input type="range" min="${lo}" max="${hi}" step="0.5" value="0">
+      <button class="step" data-d="1" title="aumentar">+</button>
+      <input type="number" class="num" min="${lo}" max="${hi}" step="0.5" value="0">
+      <button class="go" title="enviar este ângulo">Ir</button>
+      <span class="ctl-now mono muted small">—</span>
+    </div>`;
+}
+
+function controlHTML() {
+  return `
+    <section class="card ctl" style="margin-bottom:16px">
+      <h2>Controle
+        <label class="arm-switch"><input type="checkbox" id="c-arm"> <span>liberar movimento</span></label>
+      </h2>
+      <div class="rest-banner" id="c-rest" hidden>
+        <div><b>☾ Braço em repouso</b><span class="muted small">Servos soltos. Os controles ficam bloqueados até o wake up, que religa os servos e leva o braço ao zero.</span></div>
+        <button id="c-wake">☀ Wake up</button>
+      </div>
+      <div class="ctl-top">
+        <button class="stop-btn" id="a-stop">■ STOP</button>
+        <div class="ctl-poses">
+          <button data-pose="park" title="vai para [0, 131, -150, 146, 4.5, 0] e solta os servos">⌂ Repouso</button>
+          <button data-pose="zero" title="send_angles([0, 0, 0, 0, 0, 0])">◎ Zerar</button>
+        </div>
+        <label class="ctl-speed">velocidade <b id="c-speed-v">30</b>
+          <input type="range" id="c-speed" min="1" max="100" value="30">
+        </label>
+        <label class="ctl-speed">passo ±
+          <select id="c-step"><option>0.5</option><option>1</option><option selected>5</option><option>10</option></select> °
+        </label>
+      </div>
+      <div class="ctl-rows">${JOINTS.map((_, i) => controlRow(i)).join("")}</div>
+      <p class="muted small" id="a-stop-msg">Cada junta é enviada ao soltar o controle (ou com Enter / Ir) e respeita o soft limit. Repouso vai para a pose de descanso e solta os servos ao chegar; Zerar leva todas as juntas a 0°. Em repouso os controles somem e só o Wake up acorda o braço. Marque “liberar movimento” para habilitar.</p>
+      <div id="a-error"></div>
+    </section>`;
+}
+
 function drawChart(canvas, history, key, range) {
   const dpr = window.devicePixelRatio || 1;
   const w = canvas.clientWidth, h = canvas.clientHeight;
@@ -107,7 +151,7 @@ export function render(root) {
     <div class="page-head">
       <div>
         <h1>Braço</h1>
-        <p>Telemetria ao vivo (somente leitura) · myCobot 280 em <span class="mono" id="a-port">/dev/ttyTHS1</span></p>
+        <p>Telemetria ao vivo · myCobot 280 em <span class="mono" id="a-port">/dev/ttyTHS1</span></p>
       </div>
       <div class="filters" id="a-badges"></div>
     </div>
@@ -129,7 +173,8 @@ export function render(root) {
         <div class="joints">${JOINTS.map((_, i) => jointCard(i)).join("")}</div>
       </section>
     </div>
-    <div class="grid cols-3">
+    ${controlHTML()}
+    <div class="grid cols-2">
       <section class="card">
         <h2>Pose cartesiana</h2>
         <div class="kv" id="a-coords">
@@ -142,12 +187,6 @@ export function render(root) {
         </h2>
         <canvas class="chart" id="a-chart"></canvas>
         <div class="legend">${JOINTS.map((j, i) => `<span><i style="background:var(${JC[i]})"></i>${j}</span>`).join("")}</div>
-      </section>
-      <section class="card">
-        <h2>Parada</h2>
-        <button class="stop-btn" id="a-stop">■ STOP</button>
-        <p class="muted small" id="a-stop-msg">Envia <code>mc.stop()</code>: interrompe o movimento atual. É o único comando que esta página envia ao braço.</p>
-        <div id="a-error"></div>
       </section>
     </div>
     ${referenceHTML()}
@@ -193,30 +232,125 @@ export function render(root) {
     drawChart($("#a-chart"), history, chartKey, chartKey === "temps" ? [25, 75] : [-180, 180]);
   }
 
-  $("#a-stop").addEventListener("click", async () => {
-    if (!confirm("Enviar STOP ao braço?")) return;
-    const msg = $("#a-stop-msg");
+  const armBox = $("#c-arm");
+  const speedEl = $("#c-speed");
+  const rows = [...root.querySelectorAll(".ctl-row")];
+  const lastSent = rows.map(() => 0);
+  const dragging = rows.map(() => false);
+  let connected = false;
+
+  const msg = (html) => { $("#a-stop-msg").innerHTML = html; };
+  const stamp = () => new Date().toLocaleTimeString("pt-BR");
+  const speed = () => Number(speedEl.value);
+
+  async function post(url, body, label) {
     try {
-      const res = await fetch("/api/stop", { method: "POST" });
-      const body = await res.json();
-      msg.innerHTML = res.ok
-        ? `<span class="pill ok">STOP enviado ${new Date().toLocaleTimeString("pt-BR")}</span>`
-        : `<span class="pill hot">Falhou: ${esc(body.detail)}</span>`;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      const data = await res.json();
+      msg(res.ok ? `<span class="pill ok">${label} ${stamp()}</span>`
+        : `<span class="pill hot">Falhou: ${esc(typeof data.detail === "string" ? data.detail : "valor inválido")}</span>`);
+      return res.ok;
     } catch (e) {
-      msg.innerHTML = `<span class="pill hot">Falhou: ${esc(e.message)}</span>`;
+      msg(`<span class="pill hot">Falhou: ${esc(e.message)}</span>`);
+      return false;
+    }
+  }
+
+  let resting = false;
+
+  function updateEnabled() {
+    const on = armBox.checked && connected && !resting;
+    root.querySelectorAll(".ctl-rows button, .ctl-rows input, [data-pose]").forEach((el) => { el.disabled = !on; });
+    $("#a-stop").disabled = !connected;
+    $("#c-rest").hidden = !resting;
+    $("#c-wake").disabled = !connected;
+    $(".ctl").classList.toggle("is-resting", resting);
+  }
+
+  // The one-time question; true when movement may be released.
+  function confirmRelease() {
+    if (movementConfirmed) return true;
+    movementConfirmed = confirm("Liberar os movimentos do braço?\n\nOs controles de junta, Repouso e Zerar passam a mover o braço sem pedir nova confirmação. Mantenha a área ao redor livre.");
+    return movementConfirmed;
+  }
+
+  armBox.addEventListener("change", () => {
+    if (armBox.checked && !confirmRelease()) armBox.checked = false;
+    updateEnabled();
+  });
+
+  $("#c-wake").addEventListener("click", async () => {
+    if (!confirmRelease()) return;
+    armBox.checked = true;
+    if (await post(`/api/wake?speed=${speed()}`, null, "wake up enviado")) {
+      resting = false;   // the next telemetry confirms it
+      updateEnabled();
     }
   });
+  speedEl.addEventListener("input", () => { $("#c-speed-v").textContent = speedEl.value; });
+
+  $("#a-stop").addEventListener("click", () => {
+    if (confirm("Enviar STOP ao braço?")) post("/api/stop", null, "STOP enviado");
+  });
+
+  root.querySelectorAll("[data-pose]").forEach((btn) => btn.addEventListener("click", () => {
+    const name = btn.dataset.pose;
+    post(`/api/pose/${name}?speed=${speed()}`, null, `${name} enviado`);
+    rows.forEach((_, i) => { lastSent[i] = Date.now(); });
+  }));
+
+  rows.forEach((row, i) => {
+    const [lo, hi] = SOFT_LIMITS[i];
+    const slider = row.querySelector('input[type="range"]');
+    const num = row.querySelector(".num");
+    const clamp = (v) => Math.max(lo, Math.min(hi, v));
+    const send = (v) => {
+      v = clamp(Number.isFinite(v) ? v : 0);
+      slider.value = num.value = v;
+      lastSent[i] = Date.now();
+      post(`/api/joint/${i + 1}`, { angle: v, speed: speed() }, `${JOINTS[i]} → ${fmt(v)}°`);
+    };
+    slider.addEventListener("pointerdown", () => { dragging[i] = true; });
+    slider.addEventListener("input", () => { num.value = slider.value; });
+    slider.addEventListener("change", () => { dragging[i] = false; send(Number(slider.value)); });
+    num.addEventListener("keydown", (e) => { if (e.key === "Enter") send(Number(num.value)); });
+    row.querySelector(".go").addEventListener("click", () => send(Number(num.value)));
+    row.querySelectorAll(".step").forEach((b) => b.addEventListener("click", () => {
+      send(clamp(Number(num.value) + Number(b.dataset.d) * Number($("#c-step").value)));
+    }));
+  });
+
+  updateEnabled();
 
   const off = onTelemetry((s) => {
     $("#a-badges").innerHTML = [
       !s.connected ? '<span class="pill hot">desconectado</span>'
         : s.mock ? '<span class="pill info">modo simulado</span>' : '<span class="pill ok">conectado</span>',
-      s.power_on == null ? "" : s.power_on ? '<span class="pill">servos ligados</span>' : '<span class="pill warn">servos soltos</span>',
+      s.power_on == null ? "" : s.resting ? '<span class="pill warn">em repouso</span>' : s.power_on ? '<span class="pill">servos ligados</span>' : '<span class="pill warn">em repouso</span>',
       s.moving == null ? "" : s.moving ? '<span class="pill accent">em movimento</span>' : '<span class="pill">parado</span>',
     ].join("");
     $("#a-overlay").innerHTML = s.angles ? "" : '<span class="pill">sem leitura de ângulos</span>';
     $("#a-error").innerHTML = s.error ? `<div class="error-box">${esc(s.error)}</div>` : "";
-    $("#a-stop").disabled = !s.connected;
+    const nowResting = !!s.resting;
+    if (connected !== !!s.connected || resting !== nowResting) {
+      connected = !!s.connected;
+      resting = nowResting;
+      updateEnabled();
+    }
+    rows.forEach((row, i) => {
+      const a = s.angles?.[i];
+      row.querySelector(".ctl-now").textContent = a == null ? "—" : `agora ${fmt(a)}°`;
+      // follow the real angle until the user moves a control, then wait for the arm to arrive
+      if (a != null && !dragging[i] && Date.now() - lastSent[i] > 4000
+          && document.activeElement !== row.querySelector(".num")) {
+        row.querySelector('input[type="range"]').value = a;
+        row.querySelector(".num").value = Math.round(a * 10) / 10;
+      }
+    });
 
     cards.forEach((card, i) => {
       const a = s.angles?.[i];

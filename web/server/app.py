@@ -15,12 +15,14 @@ import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.responses import PlainTextResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
 
 from . import docs, github
-from .arm import DEFAULT_BAUD, DEFAULT_PORT, ArmSource, MockArm
+from .arm import (DEFAULT_BAUD, DEFAULT_PORT, POSE_SPEED, POSES, SOFT_LIMITS,
+                  ArmSource, MockArm, RestingError)
 
 STATIC = Path(__file__).resolve().parents[1] / "static"
 PUSH_PERIOD = 0.2
@@ -54,6 +56,52 @@ def stop():
     except Exception as e:
         raise HTTPException(status_code=503, detail=str(e))
     return {"ok": True}
+
+
+@app.post("/api/pose/{name}")
+def pose(name: str, speed: int = Query(POSE_SPEED, ge=1, le=100)):
+    if name not in POSES:
+        raise HTTPException(status_code=404, detail="unknown pose")
+    try:
+        arm.go_to_pose(name, speed)
+    except RestingError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    return {"ok": True, "pose": name, "angles": POSES[name], "speed": speed}
+
+
+@app.post("/api/wake")
+def wake(speed: int = Query(POSE_SPEED, ge=1, le=100)):
+    """Leave rest: power the servos on and move to the zero pose."""
+    try:
+        arm.wake_up(speed)
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    return {"ok": True}
+
+
+class JointMove(BaseModel):
+    angle: float
+    speed: int = Field(POSE_SPEED, ge=1, le=100)
+
+
+@app.post("/api/joint/{index}")
+def joint(index: int, move: JointMove):
+    """Move one joint (1-6) inside its soft limits."""
+    if not 1 <= index <= 6:
+        raise HTTPException(status_code=404, detail="joint must be 1-6")
+    lo, hi = SOFT_LIMITS[index - 1]
+    if not lo <= move.angle <= hi:
+        raise HTTPException(status_code=422,
+                            detail="J{} must be between {} and {} degrees".format(index, lo, hi))
+    try:
+        arm.move_joint(index - 1, move.angle, move.speed)
+    except RestingError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    return {"ok": True, "joint": index, "angle": move.angle, "speed": move.speed}
 
 
 @app.websocket("/ws/telemetry")
