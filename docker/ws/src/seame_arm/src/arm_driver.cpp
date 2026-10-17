@@ -73,6 +73,14 @@ struct Target
 {
   double angle;
   int speed;
+  bool firmware_limits;
+};
+
+struct AllTarget
+{
+  mycobot::Angles angles;
+  int speed;
+  bool firmware_limits;
 };
 
 }  // namespace
@@ -166,14 +174,14 @@ private:
               get_logger(), *get_clock(), 2000, "ignoring target for joint %u", t.joint);
             continue;
           }
-          pending_joints_[t.joint] = Target{t.angle_deg, t.speed};
+          pending_joints_[t.joint] = Target{t.angle_deg, t.speed, msg.use_firmware_limits};
         }
         pending_all_.reset();
         break;
       case ArmCommand::ALL_ANGLES: {
           mycobot::Angles angles{};
           std::copy(msg.angles_deg.begin(), msg.angles_deg.end(), angles.begin());
-          pending_all_ = std::make_pair(angles, static_cast<int>(msg.speed));
+          pending_all_ = AllTarget{angles, msg.speed, msg.use_firmware_limits};
           pending_joints_.clear();
           break;
         }
@@ -257,7 +265,7 @@ private:
   {
     bool stop = false;
     std::optional<std::array<uint8_t, 3>> led;
-    std::optional<std::pair<mycobot::Angles, int>> all;
+    std::optional<AllTarget> all;
     std::optional<std::pair<int, Target>> joint;
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
@@ -285,13 +293,21 @@ private:
       mc_->setColor((*led)[0], (*led)[1], (*led)[2]);
       std::this_thread::sleep_for(COMMAND_GAP);
     }
-    if (all) {
-      mc_->sendAngles(all->first, all->second);
-    } else if (joint) {
-      mc_->sendAngle(joint->first, joint->second.angle, joint->second.speed);
-    } else {
-      return false;
+    if (!all && !joint) {return false;}
+    // Firmware limits only for this one command, then back to the soft limits
+    const bool wide = all ? all->firmware_limits : joint->second.firmware_limits;
+    if (wide) {mc_->setSoftLimits(mycobot::FIRMWARE_LIMITS);}
+    try {
+      if (all) {
+        mc_->sendAngles(all->angles, all->speed);
+      } else {
+        mc_->sendAngle(joint->first, joint->second.angle, joint->second.speed);
+      }
+    } catch (...) {
+      if (wide) {mc_->setSoftLimits(mycobot::DEFAULT_SOFT_LIMITS);}
+      throw;
     }
+    if (wide) {mc_->setSoftLimits(mycobot::DEFAULT_SOFT_LIMITS);}
     moving_ = true;
     std::this_thread::sleep_for(COMMAND_GAP);
     return true;
@@ -363,7 +379,7 @@ private:
 
   bool stop_requested_ = false;
   std::map<int, Target> pending_joints_;
-  std::optional<std::pair<mycobot::Angles, int>> pending_all_;
+  std::optional<AllTarget> pending_all_;
   std::optional<std::array<uint8_t, 3>> pending_led_;
   int last_joint_ = 0;
   std::chrono::steady_clock::time_point last_motion_command_{};

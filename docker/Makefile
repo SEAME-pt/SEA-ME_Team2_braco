@@ -77,8 +77,8 @@ SERVICE_pc     := pc-dev
 SERVICE_jetson := jetson-driver
 SERVICE        := $(SERVICE_$(ROLE))
 
-# Always-on arm services (profile "arm", Jetson only). S=driver|temperature|teleop picks one; empty = all.
-ARM_SERVICES := arm-driver arm-temperature arm-teleop
+# Always-on arm services (profile "arm", Jetson only). S=driver|temperature|teleop|routine picks one; empty = all.
+ARM_SERVICES := arm-driver arm-temperature arm-teleop arm-routine
 ARM          := docker compose --profile arm
 S            ?=
 ARM_TARGET    = $(if $(S),arm-$(patsubst arm-%,%,$(S)))
@@ -313,14 +313,15 @@ ws-test: _role up ## colcon test, then print the results (includes ament lint ch
 ws-clean: ## Delete ws/build, ws/install and ws/log
 	rm -rf $(WS_DIR)/build $(WS_DIR)/install $(WS_DIR)/log
 
-##@ Arm services on the Jetson (driver, temperature, teleop - one container each)
+##@ Arm services on the Jetson (driver, temperature, teleop, routine - one container each)
 
 arm-up: _jetson | $(WS_DIRS) ## Start the arm services (build the workspace first: make ws-build). S=teleop starts one
 	@test -f $(WS_DIR)/install/seame_arm/share/seame_arm/package.xml || { echo "seame_arm is not built yet: make ws-build ROLE=jetson" >&2; exit 1; }
 	$(ARM) up -d $(ARM_TARGET)
 
-arm-down: _jetson ## Stop and remove the arm services (the dev container is not touched)
-	$(ARM) rm --stop --force $(ARM_SERVICES)
+arm-down: _jetson ## Stop the arm services (parks the arm first) and remove them; the dev container is not touched
+	$(ARM) stop $(ARM_SERVICES)
+	$(ARM) rm --force $(ARM_SERVICES)
 
 arm-ps: _jetson ## Status of the arm services
 	$(ARM) ps $(ARM_SERVICES)

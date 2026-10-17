@@ -35,6 +35,10 @@ target_link_libraries(joystick_teleop
 install(TARGETS arm_driver temperature_monitor joystick_teleop
   DESTINATION lib/${PROJECT_NAME})
 install(DIRECTORY launch DESTINATION share/${PROJECT_NAME})
+# Boot/shutdown routine (container arm-routine): zero.py at start, park.py before stopping
+install(PROGRAMS scripts/zero.py scripts/park.py scripts/arm_routine.sh
+  DESTINATION lib/${PROJECT_NAME})
+install(FILES scripts/arm_moves.py DESTINATION lib/${PROJECT_NAME})
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
