@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Braço Team2</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%23f59e0b'/><path d='M9 25h14M12 25l3-9 6-6' stroke='%23111' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/><circle cx='21' cy='10' r='2.5' fill='%23111'/></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+  <link rel="stylesheet" href="css/style.css">
+  <script type="importmap">
+    { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+  </script>
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <a class="brand" href="#/">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 32 32"><path d="M9 25h14M12 25l3-9 6-6" stroke="currentColor" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle cx="21" cy="10" r="2.5" fill="currentColor"/></svg>
+        </span>
+        <span>
+          <strong>Braço</strong>
+          <small>SEA:ME Team 2</small>
+        </span>
+      </a>
+      <nav class="nav">
+        <a href="#/" data-route="home"><span>◆</span>Início</a>
+        <a href="#/arm" data-route="arm"><span>⟁</span>Braço</a>
+        <a href="#/docs" data-route="docs"><span>☰</span>Documentação</a>
+        <a href="#/sprints" data-route="sprints"><span>▤</span>Sprints</a>
+      </nav>
+      <div class="sidebar-foot">
+        <div class="conn" id="conn">
+          <span class="dot"></span><span class="conn-text">conectando…</span>
+        </div>
+        <button class="ghost theme-toggle" id="theme-toggle" type="button" title="Alternar tema">◐ Tema</button>
+      </div>
+    </aside>
+    <main class="main" id="view" tabindex="-1"></main>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

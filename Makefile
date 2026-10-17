@@ -27,4 +27,24 @@ $(VENV)/.installed: requirements.txt
 
 venv: $(VENV)/.installed
 
-.PHONY: all python cpp clean init venv
+# ---- Web dashboard (web/README.md) --------------------------------------------
+$(VENV)/.web-installed: $(VENV)/.installed web/requirements.txt
+	$(PIP) install -r web/requirements.txt
+	touch $@
+
+web-deps: $(VENV)/.web-installed
+
+web: web-deps
+	$(VENV)/bin/uvicorn web.server.app:app --host 0.0.0.0 --port 8000
+
+web-mock: web-deps
+	ARM_MOCK=1 $(VENV)/bin/uvicorn web.server.app:app --host 127.0.0.1 --port 8000 --reload
+
+$(VENV)/.web-test-installed: $(VENV)/.web-installed web/requirements-test.txt
+	$(PIP) install -r web/requirements-test.txt
+	touch $@
+
+web-test: $(VENV)/.web-test-installed
+	$(VENV)/bin/python -m pytest web/tests -q
+
+.PHONY: all python cpp clean init venv web-deps web web-mock web-test
