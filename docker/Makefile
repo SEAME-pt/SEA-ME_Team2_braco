@@ -79,6 +79,9 @@ SERVICE        := $(SERVICE_$(ROLE))
 
 # Always-on arm services (profile "arm", Jetson only). S=driver|temperature|teleop|routine picks one; empty = all.
 ARM_SERVICES := arm-driver arm-temperature arm-teleop arm-routine
+# colcon --symlink-install makes this file a symlink to /ws/src/... (a container path), so on the host `test -f`
+# follows it into nothing and fails: also accept the link itself.
+ARM_BUILT    := $(WS_DIR)/install/seame_arm/share/seame_arm/package.xml
 ARM          := docker compose --profile arm
 S            ?=
 ARM_TARGET    = $(if $(S),arm-$(patsubst arm-%,%,$(S)))
@@ -316,7 +319,7 @@ ws-clean: ## Delete ws/build, ws/install and ws/log
 ##@ Arm services on the Jetson (driver, temperature, teleop, routine - one container each)
 
 arm-up: _jetson | $(WS_DIRS) ## Start the arm services (build the workspace first: make ws-build). S=teleop starts one
-	@test -f $(WS_DIR)/install/seame_arm/share/seame_arm/package.xml || { echo "seame_arm is not built yet: make ws-build ROLE=jetson" >&2; exit 1; }
+	@test -e $(ARM_BUILT) || test -L $(ARM_BUILT) || { echo "seame_arm is not built yet: make ws-build ROLE=jetson" >&2; exit 1; }
 	$(ARM) up -d $(ARM_TARGET)
 
 arm-down: _jetson ## Stop the arm services (parks the arm first) and remove them; the dev container is not touched
@@ -360,7 +363,7 @@ arm-temps: _jetson ## Print the servo temperatures once (works in rest mode)
 	$(ARM_EXEC) ros2 topic echo --once /arm/servo_temperatures
 
 install-service: _jetson ## Start the arm services at boot (systemd unit seame-arm, needs sudo)
-	@test -f $(WS_DIR)/install/seame_arm/share/seame_arm/package.xml || { echo "seame_arm is not built yet: make ws-build ROLE=jetson" >&2; exit 1; }
+	@test -e $(ARM_BUILT) || test -L $(ARM_BUILT) || { echo "seame_arm is not built yet: make ws-build ROLE=jetson" >&2; exit 1; }
 	sed -e "s|@WORKDIR@|$(CURDIR)|g" -e "s|@DOCKER@|$$(command -v docker)|g" $(SYSTEMD_UNIT) | sudo tee $(SYSTEMD_DEST) >/dev/null
 	sudo systemctl daemon-reload
 	sudo systemctl enable --now seame-arm.service
