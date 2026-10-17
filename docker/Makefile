@@ -117,7 +117,7 @@ define confirm
 endef
 
 .PHONY: _jetson help info doctor env dirs lint tar xhost build rebuild pull push up down restart ps logs config \
-        arm-up arm-down arm-ps arm-logs arm-start arm-stop arm-restart install-service uninstall-service service-status \
+        arm-up arm-down arm-ps arm-logs arm-start arm-stop arm-restart arm-park arm-zero arm-rest arm-resume arm-temps install-service uninstall-service service-status \
         shell exec run smoke talker-listener talker talker-stop listener ping-pub ping-echo ws-deps ws-build ws-test ws-clean \
         clean distclean binfmt jetson-cross jetson-ship _role _xhost
 
@@ -339,6 +339,25 @@ arm-stop: _jetson ## Stop one service, the others keep running: make arm-stop S=
 
 arm-restart: _jetson ## Restart the arm services after make ws-build (S=... for one)
 	$(ARM) restart $(or $(ARM_TARGET),$(ARM_SERVICES))
+
+# These run inside the already-running arm-driver container (ROS sourced, workspace mounted),
+# so nothing has to be stopped and the serial port keeps a single owner.
+ARM_EXEC := $(ARM) exec $(NOTTY) arm-driver ros_entrypoint.sh
+
+arm-park: _jetson ## Fold the arm into the park pose, release the joints and enter rest mode (driver keeps reading temperatures)
+	$(ARM_EXEC) ros2 run seame_arm park.py
+
+arm-zero: _jetson ## Leave rest mode and move the arm to the zero pose
+	$(ARM_EXEC) ros2 run seame_arm zero.py
+
+arm-rest: _jetson ## Rest mode on: motion refused, temperatures keep being published
+	$(ARM_EXEC) ros2 service call /arm/set_read_only std_srvs/srv/SetBool "{data: true}"
+
+arm-resume: _jetson ## Rest mode off: motion accepted again (joints stay free until zero or power_on)
+	$(ARM_EXEC) ros2 service call /arm/set_read_only std_srvs/srv/SetBool "{data: false}"
+
+arm-temps: _jetson ## Print the servo temperatures once (works in rest mode)
+	$(ARM_EXEC) ros2 topic echo --once /arm/servo_temperatures
 
 install-service: _jetson ## Start the arm services at boot (systemd unit seame-arm, needs sudo)
 	@test -f $(WS_DIR)/install/seame_arm/share/seame_arm/package.xml || { echo "seame_arm is not built yet: make ws-build ROLE=jetson" >&2; exit 1; }

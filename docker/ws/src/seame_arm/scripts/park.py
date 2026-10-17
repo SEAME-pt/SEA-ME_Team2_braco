@@ -34,6 +34,7 @@ DRIVER_TIMEOUT_S = 10
 def park(arm):
     if not arm.wait_for_driver(DRIVER_TIMEOUT_S):
         return False
+    arm.set_rest(False)   # rest mode refuses the park move itself
     # The park pose is outside the driver's soft limits (J2, J3, J4): use the firmware ones
     if not arm.move_to(PARK_ANGLES, SPEED, TOLERANCE_DEG, TIMEOUT_S, firmware_limits=True):
         arm.get_logger().error('Park position not reached - joints left locked')
@@ -41,7 +42,9 @@ def park(arm):
     arm.wait(0.5)   # let the arm settle
     if not arm.release_servos():
         return False
-    arm.get_logger().info('Parked - joints released')
+    # The driver stays up, only watching temperatures, until `make arm-resume`
+    arm.set_rest(True)
+    arm.get_logger().info('Parked - joints released, rest mode on')
     return True
 
 
