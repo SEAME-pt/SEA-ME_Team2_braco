@@ -3,6 +3,7 @@
 #include "mycobot.hpp"
 
 #include <fcntl.h>
+#include <sys/ioctl.h>
 #include <termios.h>
 #include <unistd.h>
 
@@ -46,6 +47,11 @@ MyCobot280::MyCobot280(const std::string& port, int baud) {
     if (fd_ < 0) {
         throw systemError("could not open " + port);
     }
+
+    // Exclusive access: a second (non-root) opener, e.g. an old script run on the host while
+    // arm_driver is up, now gets EBUSY at once instead of interleaving bytes with the driver.
+    // Not fatal if the ioctl is unsupported.
+    ioctl(fd_, TIOCEXCL);
 
     termios tty{};
     if (tcgetattr(fd_, &tty) != 0) {
