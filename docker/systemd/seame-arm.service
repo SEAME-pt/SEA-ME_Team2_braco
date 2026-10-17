@@ -1,10 +1,12 @@
-# seame-arm.service - start the always-on arm services (driver, temperature, teleop) at boot.
+# seame-arm.service - start the always-on arm services (driver, temperature, teleop, routine) at boot.
 # Installed by `make install-service`, which fills in @WORKDIR@ (this docker/ folder) and @DOCKER@.
 # Each container restarts on its own after a crash (restart: unless-stopped in docker-compose.yml);
-# this unit only brings them up after boot and takes them down on `systemctl stop seame-arm`.
+# this unit only brings them up after boot and takes them down on `systemctl stop seame-arm`
+# or at shutdown. It is ordered after docker.service, so at shutdown it stops BEFORE Docker:
+# arm-routine parks the arm while arm-driver is still running (compose stops it last).
 
 [Unit]
-Description=SEA:ME arm services (ROS 2 driver, temperature monitor, joystick teleop)
+Description=SEA:ME arm services (ROS 2 driver, temperature monitor, joystick teleop, zero/park routine)
 Requires=docker.service
 After=docker.service network-online.target
 Wants=network-online.target
@@ -13,9 +15,11 @@ Wants=network-online.target
 Type=oneshot
 RemainAfterExit=yes
 WorkingDirectory=@WORKDIR@
-ExecStart=@DOCKER@ compose --profile arm up -d arm-driver arm-temperature arm-teleop
-ExecStop=@DOCKER@ compose --profile arm rm --stop --force arm-driver arm-temperature arm-teleop
+ExecStart=@DOCKER@ compose --profile arm up -d arm-driver arm-temperature arm-teleop arm-routine
+ExecStop=@DOCKER@ compose --profile arm stop arm-driver arm-temperature arm-teleop arm-routine
+ExecStop=@DOCKER@ compose --profile arm rm --force arm-driver arm-temperature arm-teleop arm-routine
 TimeoutStartSec=120
+TimeoutStopSec=120
 
 [Install]
 WantedBy=multi-user.target

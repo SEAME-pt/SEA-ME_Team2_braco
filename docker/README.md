@@ -155,9 +155,9 @@ Notes:
 - Started in a normal terminal, Ctrl-C stops the nodes and leaves nothing running. A talker started *without* a terminal
   (CI, `make talker CI=true`, a closed window) survives the end of `docker exec`: use `make talker-stop`.
 
-## Arm services (Jetson): driver, temperature, joystick
+## Arm services (Jetson): driver, temperature, joystick, boot/shutdown routine
 
-Three ROS 2 nodes from `ws/src/seame_arm` run all the time on the Nano, **one container each** (compose profile
+Four services from `ws/src/seame_arm` run all the time on the Nano, **one container each** (compose profile
 `arm`, same `jetson-driver` image, no rebuild), so each can be stopped, restarted and logged on its own:
 
 ```
@@ -167,6 +167,7 @@ arm-driver       arm_driver           the ONLY process that opens /dev/ttyTHS1 (
                                       srv /arm/power_on, /arm/release_servos, /arm/set_gripper
 arm-temperature  temperature_monitor  temperatures -> /diagnostics + LCD1602 (port of libs/cpp temps_lcd)
 arm-teleop       joystick_teleop      joystick -> /arm/command (port of libs/cpp joystick_all_joints)
+arm-routine      arm_routine.sh       start: zero.py (all joints to 0) / stop: park.py (fold, release joints)
 ```
 
 - The temperature monitor depends only on the driver: it keeps updating whether the joystick is in use or not.
@@ -174,6 +175,12 @@ arm-teleop       joystick_teleop      joystick -> /arm/command (port of libs/cpp
   it sends `stop` (so a crashed or killed client cannot leave the arm running). Together with the step-ahead
   targets of the teleop, the arm coasts at most a few degrees.
 - The teleop waits for the joystick and survives unplugging it (it stops the arm and opens the device again).
+- `arm-routine` replaces the old `~/scripts/zero.py` and `park.py`, which opened the serial port with pymycobot.
+  It has no restart policy: zero runs only when `make arm-up` or the boot unit starts it, and park runs whenever
+  the container is stopped (`make arm-down`, `systemctl stop seame-arm`, a normal Jetson shutdown). Compose stops
+  it before `arm-driver`, so park can still reach the arm. Nothing runs on a power cut or `kill -9`, and
+  `systemctl restart docker` stops every container at once, so park may fail then: use `make arm-down` first.
+  Run them by hand with `make exec CMD='ros2 run seame_arm park.py'` (or `zero.py`).
 - The C++ library in `../libs/cpp` is mounted read-only at `/opt/seame/libs` and built by colcon as `mycobot_cpp`;
   its own `Makefile` still builds the stand-alone programs.
 

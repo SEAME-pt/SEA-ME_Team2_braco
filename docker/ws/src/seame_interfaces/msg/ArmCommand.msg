@@ -8,3 +8,6 @@ uint8 type
 JointTarget[] targets
 float64[6] angles_deg
 uint8 speed
+# Clamp to the firmware limits instead of the driver's soft limits, for poses outside
+# them on purpose (the park pose). Applies to this command only.
+bool use_firmware_limits

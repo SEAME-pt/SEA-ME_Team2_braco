@@ -119,6 +119,7 @@ services:
   #                    itself, so restarting it is safe
   #   arm-temperature  servo temperatures -> /diagnostics + LCD1602 (independent of the joystick)
   #   arm-teleop       joystick control; waits for the joystick and survives unplugging
+  #   arm-routine      zero pose at start, park + release the joints before stopping
   # ---------------------------------------------------------------------------------------
   arm-driver:
     <<: *arm-common
@@ -154,6 +155,17 @@ services:
       - /dev/input:/dev/input
     device_cgroup_rules:
       - "c 13:* rmw"
+    depends_on: [arm-driver]
+
+  # Boot/shutdown routine: zero.py when the container starts, park.py (fold + release the joints)
+  # when it stops. No restart policy: it starts only with make arm-up / the seame-arm boot unit,
+  # so the arm never re-zeroes by itself. Compose stops it BEFORE arm-driver (depends_on), so
+  # park.py can still reach the arm.
+  arm-routine:
+    <<: *arm-common
+    command: ["/ws/install/seame_arm/lib/seame_arm/arm_routine.sh"]
+    restart: "no"
+    stop_grace_period: 60s   # room for park.py (up to 20 s of motion) before Docker kills it
     depends_on: [arm-driver]
 
 volumes:
