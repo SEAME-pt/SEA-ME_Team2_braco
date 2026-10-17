@@ -25,7 +25,7 @@ No Jetson, com o braço:
 make web               # http://<ip-do-jetson>:8000 de qualquer PC na rede do laboratório
 ```
 
-Os dois alvos instalam `web/requirements.txt` no `.venv` do repositório na primeira vez.
+Os dois alvos instalam `web/requirements.txt` no `.venv` do repositório na primeira vez. O `make web` também instala o `requirements.txt` raiz (pymycobot); o `make web-mock` não precisa dele, então funciona em qualquer Python 3.8+ (o `numpy==1.24.4` do `requirements.txt` raiz não instala no Python 3.12).
 
 **A porta serial só aceita um programa por vez.** Pare `joystick_display`, `temps_lcd`, scripts do `playground/` ou o driver ROS antes de `make web`. Se a porta estiver ocupada, o servidor continua no ar e a página mostra "braço desconectado" com o erro; ele tenta reconectar a cada 3 s.
 

@@ -28,13 +28,20 @@ $(VENV)/.installed: requirements.txt
 venv: $(VENV)/.installed
 
 # ---- Web dashboard (web/README.md) --------------------------------------------
-$(VENV)/.web-installed: $(VENV)/.installed web/requirements.txt
+# web-mock and web-test only need the web packages, so they also work on a PC
+# where requirements.txt (pymycobot, numpy) cannot be installed. web, which
+# talks to the real arm, also installs requirements.txt.
+$(VENV)/bin/python:
+	python3 -m venv $(VENV)
+	$(PIP) install --upgrade pip
+
+$(VENV)/.web-installed: $(VENV)/bin/python web/requirements.txt
 	$(PIP) install -r web/requirements.txt
 	touch $@
 
 web-deps: $(VENV)/.web-installed
 
-web: web-deps
+web: venv web-deps
 	$(VENV)/bin/uvicorn web.server.app:app --host 0.0.0.0 --port 8000
 
 web-mock: web-deps
