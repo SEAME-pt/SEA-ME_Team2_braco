@@ -3,7 +3,6 @@
 import { esc, getJSON } from "../util.js";
 
 const DEFAULT_DOC = "docs/dev-setup.md";
-const GROUP_NAMES = { docs: "Geral", inventory: "Inventário", outros: "Outros" };
 
 let state = null;   // { root, list, current }
 
@@ -23,7 +22,7 @@ function renderList(filter = "") {
     .filter((d) => !q || d.title.toLowerCase().includes(q) || d.path.toLowerCase().includes(q))
     .forEach((d) => { (groups[d.group] ||= []).push(d); });
   root.querySelector("#d-items").innerHTML = Object.entries(groups).map(([g, docs]) => `
-    <h3>${esc(GROUP_NAMES[g] || g)}</h3>
+    <h3>${esc(g)}</h3>
     ${docs.map((d) => `
       <a href="#/docs/${esc(d.path)}" class="${d.path === current ? "active" : ""}">
         ${esc(d.title)}<small>${esc(d.path)}</small>
@@ -65,7 +64,7 @@ async function show(path) {
 export function render(root, path) {
   root.innerHTML = `
     <div class="page-head">
-      <div><h1>Documentação</h1><p>Arquivos Markdown do repositório (docs/), sempre na versão do branch atual</p></div>
+      <div><h1>Documentação</h1><p>Todos os arquivos Markdown do repositório, organizados por tema, sempre na versão do branch atual</p></div>
     </div>
     <div class="docs">
       <nav class="card doc-list">

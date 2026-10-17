@@ -3,6 +3,7 @@
     make web-test
 """
 
+import math
 import os
 import sys
 import time
@@ -15,12 +16,12 @@ os.environ["ARM_MOCK"] = "1"   # before importing the app: never open a serial p
 from fastapi.testclient import TestClient  # noqa: E402
 
 from web.server import app as app_module  # noqa: E402
-from web.server import arm, docs, github  # noqa: E402
+from web.server import arm, docs, github, role  # noqa: E402
 from web.server.app import app  # noqa: E402
 
 STATIC_FILES = [
     "index.html", "css/style.css", "js/app.js", "js/util.js", "js/specs.js", "js/arm3d.js",
-    "js/views/home.js", "js/views/arm.js", "js/views/docs.js", "js/views/sprints.js",
+    "js/views/home.js", "js/views/arm.js", "js/views/docs.js", "js/views/sprints.js", "js/views/sprint-detail.js",
 ]
 
 
@@ -28,7 +29,7 @@ STATIC_FILES = [
 def close_sources(monkeypatch):
     """Stop the polling thread of every source a test starts (not the app's own)."""
     created = []
-    for cls in (arm.ArmSource, arm.MockArm):
+    for cls in (arm.ArmSource, arm.MockArm, arm.GazeboArm):
         def start(self, _original=cls.start):
             if self is not app_module.arm:
                 created.append(self)
@@ -225,6 +226,15 @@ def test_list_docs_includes_repo_docs():
     assert "docker/README.md" in paths and "web/README.md" in paths
     safety = next(d for d in docs.list_docs() if d["path"] == "docs/safety.md")
     assert safety["title"].startswith("Lab Safety")
+    assert safety["group"] == "Segurança"
+    assert ".github/PULL_REQUEST_TEMPLATE.md" in paths
+
+
+def test_list_docs_skips_caches_and_groups_in_order():
+    listed = docs.list_docs()
+    assert not any(".pytest_cache" in d["path"] or ".venv" in d["path"] for d in listed)
+    groups = list(dict.fromkeys(d["group"] for d in listed))
+    assert groups == sorted(groups, key=docs.ORDER.index)
 
 
 @pytest.mark.parametrize("path", [
@@ -274,6 +284,13 @@ def fake_github(monkeypatch):
             gh_issue(3, "Repository, Git flow and PR rules", "open", 1),
         ],
         "/issues/1/sub_issues": [],
+        "/pulls?": [
+            {"number": 7, "title": "feat: kinematics", "html_url": "https://github.com/x/y/pull/7",
+             "user": {"login": "larocqueg"}, "labels": [], "milestone": None,
+             "merged_at": "2026-10-05T10:00:00Z"},
+            {"number": 8, "title": "closed without merge", "html_url": "u",
+             "user": {"login": "a"}, "labels": [], "milestone": None, "merged_at": None},
+        ],
     }
     calls = []
 
@@ -301,6 +318,9 @@ def test_sprints_groups_sprint_issues_and_sub_issues(fake_github):
     assert 24 in {i["number"] for i in data["issues"]}
     assert 50 not in {i["number"] for i in data["issues"]}
     assert data["milestones"][0]["title"] == "Milestone 0"
+    # only merged pull requests are kept
+    assert [p["number"] for p in data["pulls"]] == [7]
+    assert data["pulls"][0]["author"] == "larocqueg"
 
 
 def test_sprints_are_cached(fake_github):
@@ -330,6 +350,149 @@ def test_sprints_error_without_cache(monkeypatch):
     data = github.sprints(force=True)
     assert data["error"] == "rate limited"
     assert data["sprints"] == [] and data["milestones"] == []
+
+
+# ---- GazeboArm (no ROS needed: messages and publisher are faked) -------------------
+
+class FakeJointState:
+    def __init__(self, names, degrees):
+        self.name = list(names)
+        self.position = [math.radians(d) for d in degrees]
+
+
+class FakePublisher:
+    def __init__(self):
+        self.sent = []
+
+    def publish(self, msg):
+        self.sent.append(msg)
+
+
+class FakeMsg:
+    def __init__(self, **kw):
+        self.__dict__.update(kw)
+
+
+@pytest.fixture
+def gz():
+    source = arm.GazeboArm()
+    source._publisher = FakePublisher()
+    source._msgs = (lambda sec, nanosec: (sec, nanosec), FakeMsg, FakeMsg)
+    return source
+
+
+def test_gazebo_joint_state_becomes_snapshot(gz):
+    gz._on_joint_state(FakeJointState(arm.GZ_JOINT_NAMES, [10, -20, 30, 0, 5, 0]))
+    s = gz.snapshot()
+    assert s["source"] == "gazebo" and s["mock"] is False and s["connected"] is True
+    assert s["angles"] == [10, -20, 30, 0, 5, 0]
+    assert len(s["coords"]) == 6 and s["temps"] is None and s["power_on"] is True
+
+
+def test_gazebo_joint_state_order_follows_names(gz):
+    names = list(reversed(arm.GZ_JOINT_NAMES))
+    gz._on_joint_state(FakeJointState(names, [6, 5, 4, 3, 2, 1]))
+    assert gz.snapshot()["angles"] == [1, 2, 3, 4, 5, 6]
+
+
+def test_gazebo_missing_joint_is_an_error(gz):
+    gz._on_joint_state(FakeJointState(["other"], [0]))
+    s = gz.snapshot()
+    assert s["connected"] is False and "joint2_to_joint1" in s["error"]
+
+
+def test_gazebo_moving_flag(gz):
+    gz._on_joint_state(FakeJointState(arm.GZ_JOINT_NAMES, [0] * 6))
+    gz._last_move -= 10
+    gz._on_joint_state(FakeJointState(arm.GZ_JOINT_NAMES, [0] * 6))
+    assert gz.snapshot()["moving"] is False
+    gz._on_joint_state(FakeJointState(arm.GZ_JOINT_NAMES, [5, 0, 0, 0, 0, 0]))
+    assert gz.snapshot()["moving"] is True
+
+
+def test_gazebo_stale_states_disconnect(gz):
+    gz._on_joint_state(FakeJointState(arm.GZ_JOINT_NAMES, [0] * 6))
+    gz._last_msg -= arm.GZ_STALE_AFTER + 1
+    gz._check_stale()
+    assert gz.snapshot()["connected"] is False
+
+
+def test_gazebo_move_joint_publishes_trajectory(gz):
+    gz._on_joint_state(FakeJointState(arm.GZ_JOINT_NAMES, [0, 10, 0, 0, 0, 0]))
+    gz.move_joint(2, 60, speed=30)
+    traj = gz._publisher.sent[-1]
+    assert traj.joint_names == arm.GZ_JOINT_NAMES
+    point = traj.points[0]
+    assert [round(math.degrees(p)) for p in point.positions] == [0, 10, 60, 0, 0, 0]
+    assert point.time_from_start == (2, 0)   # 60 deg at 30 deg/s
+
+
+def test_gazebo_pose_stop_and_wake(gz):
+    gz._on_joint_state(FakeJointState(arm.GZ_JOINT_NAMES, [1, 2, 3, 4, 5, 6]))
+    gz.go_to_pose("park")
+    assert [round(math.degrees(p), 1) for p in gz._publisher.sent[-1].points[0].positions] == arm.POSES["park"]
+    gz.stop_motion()
+    assert [round(math.degrees(p)) for p in gz._publisher.sent[-1].points[0].positions] == [1, 2, 3, 4, 5, 6]
+    gz.wake_up()
+    assert [round(math.degrees(p)) for p in gz._publisher.sent[-1].points[0].positions] == [0] * 6
+    with pytest.raises(ValueError):
+        gz.go_to_pose("nope")
+
+
+def test_gazebo_commands_need_joint_states(gz):
+    with pytest.raises(RuntimeError):
+        gz.move_joint(0, 10)
+
+
+def test_gazebo_without_rclpy_reports_error(monkeypatch):
+    monkeypatch.setitem(sys.modules, "rclpy", None)   # makes `import rclpy` fail
+    source = arm.GazeboArm()
+    source.start()
+    assert wait_for(lambda: "rclpy" in (source.snapshot()["error"] or ""))
+    assert source.snapshot()["connected"] is False
+
+
+# ---- role.py and the choice of source ----------------------------------------------
+
+@pytest.mark.parametrize("seame_role, profiles, expected", [
+    ("pc-dev", None, "pc"),
+    ("jetson-driver", "pc", "jetson"),
+    (None, "jetson", "jetson"),
+    (None, "pc", "pc"),
+])
+def test_machine_role_from_environment(monkeypatch, seame_role, profiles, expected):
+    for name, value in (("SEAME_ROLE", seame_role), ("COMPOSE_PROFILES", profiles)):
+        if value is None:
+            monkeypatch.delenv(name, raising=False)
+        else:
+            monkeypatch.setenv(name, value)
+    assert role.machine_role() == expected
+
+
+def test_machine_role_reads_docker_env_then_cpu(monkeypatch, tmp_path):
+    monkeypatch.delenv("SEAME_ROLE", raising=False)
+    monkeypatch.delenv("COMPOSE_PROFILES", raising=False)
+    env = tmp_path / ".env"
+    env.write_text("# comment\nCOMPOSE_PROFILES=jetson   # the Nano\n")
+    monkeypatch.setattr(role, "DOCKER_ENV", env)
+    assert role.machine_role() == "jetson"
+    monkeypatch.setattr(role, "DOCKER_ENV", tmp_path / "missing")
+    monkeypatch.setattr(role.platform, "machine", lambda: "aarch64")
+    assert role.machine_role() == "jetson"
+    monkeypatch.setattr(role.platform, "machine", lambda: "x86_64")
+    assert role.machine_role() == "pc"
+
+
+def test_gazebo_source_is_pc_only(monkeypatch):
+    monkeypatch.delenv("ARM_MOCK", raising=False)
+    monkeypatch.setenv("ARM_SOURCE", "gazebo")
+    monkeypatch.setattr(app_module, "machine_role", lambda: "jetson")
+    with pytest.raises(RuntimeError, match="only runs on the PC"):
+        app_module.build_arm()
+    monkeypatch.setattr(app_module, "machine_role", lambda: "pc")
+    monkeypatch.setenv("GZ_JOINT_NAMES", "a, b,c,d,e,f")
+    source = app_module.build_arm()
+    assert isinstance(source, arm.GazeboArm) and source.joint_names == list("abcdef")
 
 
 # ---- app.py (HTTP + WebSocket) ----------------------------------------------------

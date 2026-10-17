@@ -1,4 +1,4 @@
-"""Sprint data from the GitHub project: milestones, SPRINT issues, sub-issues.
+"""Sprint data from the GitHub project: milestones, SPRINT issues, sub-issues, merged PRs.
 
 Uses only the standard library. Results are cached for CACHE_SECONDS so the
 page stays well under the unauthenticated limit of 60 requests per hour.
@@ -53,7 +53,20 @@ def _issue(raw):
         "assignees": [a["login"] for a in raw.get("assignees") or []],
         "labels": [l["name"] for l in raw.get("labels") or []],
         "milestone": (raw.get("milestone") or {}).get("number"),
+        "created_at": raw.get("created_at"),
         "closed_at": raw.get("closed_at"),
+    }
+
+
+def _pull(raw):
+    return {
+        "number": raw["number"],
+        "title": raw["title"],
+        "url": raw["html_url"],
+        "author": (raw.get("user") or {}).get("login"),
+        "labels": [l["name"] for l in raw.get("labels") or []],
+        "milestone": (raw.get("milestone") or {}).get("number"),
+        "merged_at": raw["merged_at"],
     }
 
 
@@ -75,6 +88,10 @@ def _fetch():
 
     issues = [i for i in _get_all(API + "/issues?state=all") if "pull_request" not in i]
 
+    # Merged pull requests are the "evolutions" shown on each sprint page
+    pulls = [_pull(p) for p in _get_all(API + "/pulls?state=closed") if p.get("merged_at")]
+    pulls.sort(key=lambda p: p["merged_at"])
+
     sprints = []
     for raw in issues:
         match = SPRINT_RE.match(raw["title"])
@@ -84,6 +101,7 @@ def _fetch():
         sprint["sprint"] = int(match.group(1))
         sprint["name"] = match.group(2).strip()
         sprint["body"] = raw.get("body") or ""
+        sprint["milestone_title"] = (raw.get("milestone") or {}).get("title")
         try:
             subs = _get_all("{}/issues/{}/sub_issues".format(API, raw["number"]))
             sprint["sub_issues"] = [_issue(s) for s in subs]
@@ -98,6 +116,7 @@ def _fetch():
         "milestones": milestones,
         "sprints": sprints,
         "issues": [_issue(i) for i in issues],
+        "pulls": pulls,
     }
 
 
@@ -114,4 +133,4 @@ def sprints(force=False):
         except Exception as e:
             if _cache["data"] is not None:
                 return dict(_cache["data"], error=str(e))
-            return {"repo": REPO, "error": str(e), "milestones": [], "sprints": [], "issues": []}
+            return {"repo": REPO, "error": str(e), "milestones": [], "sprints": [], "issues": [], "pulls": []}

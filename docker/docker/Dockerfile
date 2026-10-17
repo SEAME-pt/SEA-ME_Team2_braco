@@ -209,6 +209,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         python3-venv \
  && rm -rf /var/lib/apt/lists/*
 
+# Web dashboard (web/), run on top of Gazebo with `make web-sim`.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        python3-fastapi python3-uvicorn python3-websockets \
+ && rm -rf /var/lib/apt/lists/*
+
 # ruff and pre-commit are standalone tools, so they get their own virtualenv. Installing them next to the
 # apt-managed Python packages fails: pre-commit -> virtualenv wants packaging>=26.3, Ubuntu ships 26.0
 # without a pip RECORD file, and pip refuses to uninstall it ("installed by debian").

@@ -329,6 +329,7 @@ export function render(root) {
   const off = onTelemetry((s) => {
     $("#a-badges").innerHTML = [
       !s.connected ? '<span class="pill hot">desconectado</span>'
+        : s.source === "gazebo" ? '<span class="pill info">simulação Gazebo</span>'
         : s.mock ? '<span class="pill info">modo simulado</span>' : '<span class="pill ok">conectado</span>',
       s.power_on == null ? "" : s.resting ? '<span class="pill warn">em repouso</span>' : s.power_on ? '<span class="pill">servos ligados</span>' : '<span class="pill warn">em repouso</span>',
       s.moving == null ? "" : s.moving ? '<span class="pill accent">em movimento</span>' : '<span class="pill">parado</span>',

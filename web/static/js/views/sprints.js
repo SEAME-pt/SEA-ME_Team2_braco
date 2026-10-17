@@ -1,6 +1,7 @@
 // Sprint tracker: milestone timeline and one card per "SPRINT N" issue.
 
 import { esc, fmtDate, getJSON } from "../util.js";
+import * as detail from "./sprint-detail.js";
 
 export function sprintProgress(sprint) {
   const total = sprint.sub_issues.length;
@@ -52,7 +53,7 @@ function sprintCard(sprint, milestones, isCurrent, filter) {
       <div class="sprint-head">
         <div>
           <span class="num">SPRINT ${sprint.sprint}${isCurrent ? " · ATUAL" : ""}</span>
-          <h3>${esc(sprint.name || sprint.title)}</h3>
+          <h3><a href="#/sprints/${sprint.sprint}">${esc(sprint.name || sprint.title)}</a></h3>
         </div>
         <span class="pill ${sprint.state === "closed" ? "ok" : ""}">${sprint.state === "closed" ? "concluído" : "aberto"}</span>
       </div>
@@ -62,7 +63,7 @@ function sprintCard(sprint, milestones, isCurrent, filter) {
       </div>
       <div class="filters small muted">
         ${ms ? `<span>${esc(ms.title)} · entrega ${fmtDate(ms.due_on)}</span>` : ""}
-        <a href="${esc(sprint.url)}" target="_blank" rel="noopener">#${sprint.number} ↗</a>
+        <span><a href="#/sprints/${sprint.sprint}">ver detalhes →</a> · <a href="${esc(sprint.url)}" target="_blank" rel="noopener">#${sprint.number} ↗</a></span>
       </div>
       ${issues.length ? `<ul class="issues">
         ${issues.map((i) => `
@@ -75,7 +76,8 @@ function sprintCard(sprint, milestones, isCurrent, filter) {
     </section>`;
 }
 
-export function render(root) {
+export function render(root, param) {
+  if (param) return detail.render(root, param);
   root.innerHTML = `
     <div class="page-head">
       <div><h1>Sprints</h1><p>Direto do GitHub: milestones, issues SPRINT e suas sub-issues</p></div>
