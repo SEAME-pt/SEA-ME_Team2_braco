@@ -198,6 +198,11 @@ def test_mock_arm_stays_inside_soft_limits(monkeypatch):
         time.sleep(0.01)
 
 
+def test_mock_coords_use_dh_home_pose():
+    # all joints at 0: upright, flange at the 280's known home position
+    assert arm.MockArm._fake_coords([0] * 6)[:3] == [45.6, -63.4, 412.7]
+
+
 def test_mock_arm_stop_freezes_angles(monkeypatch):
     monkeypatch.setattr(arm, "ANGLE_PERIOD", 0.01)
     mock = arm.MockArm()

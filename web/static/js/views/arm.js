@@ -114,7 +114,15 @@ export function render(root) {
     <div class="arm-top">
       <section class="card viewer" id="a-viewer">
         <div class="overlay" id="a-overlay"></div>
-        <div class="hint">arraste para girar · role para zoom</div>
+        <div class="viewer-tools">
+          <div class="tabs" id="a-views">
+            <button data-v="iso" class="active">3D</button><button data-v="front">Frente</button><button data-v="side">Lado</button><button data-v="top">Topo</button>
+          </div>
+          <div class="tabs" id="a-toggles">
+            <button data-t="labels" class="active" title="Nomes das juntas">Juntas</button><button data-t="trail" class="active" title="Caminho percorrido pela ponta">Rastro</button>
+          </div>
+        </div>
+        <div class="hint">arraste para girar · role para zoom · duplo clique volta ao 3D · anel laranja = alcance de 280 mm</div>
       </section>
       <section class="card">
         <h2>Juntas</h2>
@@ -156,6 +164,22 @@ export function render(root) {
   import("../arm3d.js")
     .then(({ createArm3D }) => { if (alive) arm3d = createArm3D($("#a-viewer")); })
     .catch(() => { $("#a-viewer").insertAdjacentHTML("beforeend", '<div class="empty">Modelo 3D indisponível (sem acesso ao CDN?)</div>'); });
+
+  $("#a-views").addEventListener("click", (e) => {
+    const v = e.target.dataset.v;
+    if (!v) return;
+    arm3d?.setView(v);
+    root.querySelectorAll("#a-views button").forEach((b) => b.classList.toggle("active", b.dataset.v === v));
+  });
+
+  $("#a-toggles").addEventListener("click", (e) => {
+    const t = e.target.dataset.t;
+    if (!t) return;
+    const on = !e.target.classList.contains("active");
+    e.target.classList.toggle("active", on);
+    if (t === "labels") arm3d?.setLabels(on);
+    if (t === "trail") arm3d?.setTrail(on);
+  });
 
   $("#a-tabs").addEventListener("click", (e) => {
     const k = e.target.dataset.k;
