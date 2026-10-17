@@ -2,9 +2,9 @@
 
 ## Por que mudou
 
-Rodar `park.py` direto no host (versão antiga, serial direta) enquanto o `arm-driver` estava ativo dava
+Rodar `park.py` direto no host (versão antiga, serial direta) enquanto o `arm_driver` estava ativo dava
 `SerialException: ... multiple access on port?`. Para contornar, os containers eram derrubados, e sem o
-`arm-driver` ninguém lia a temperatura: o braço esfriava sem monitoramento.
+`arm_driver` ninguém lia a temperatura: o braço esfriava sem monitoramento.
 
 ## O que mudou
 
@@ -15,7 +15,7 @@ Rodar `park.py` direto no host (versão antiga, serial direta) enquanto o `arm-d
 | `park.py` | Sai do rest, vai para a pose de park, solta os servos e **entra em rest**. O driver segue vivo medindo temperatura. |
 | `zero.py` | Sai do rest antes de ligar os servos e mover. |
 | `arm_moves.py` | Novo `set_rest(on)` (cliente do serviço acima). |
-| `docker/Makefile` | Novos targets `arm-park`, `arm-zero`, `arm-rest`, `arm-resume`, `arm-temps` (rodam dentro do container `arm-driver`). |
+| `docker/Makefile` | Novos targets `arm-park`, `arm-zero`, `arm-rest`, `arm-resume`, `arm-temps` (rodam dentro do container `arm`). |
 | `playground/park.py` | Aviso no topo: não usar com o driver ligado. |
 
 ## Como usar (na Jetson, em `docker/`)
@@ -23,7 +23,7 @@ Rodar `park.py` direto no host (versão antiga, serial direta) enquanto o `arm-d
 ```bash
 make arm-park      # estaciona, solta os servos e entra em rest (nada precisa ser parado)
 make arm-temps     # imprime as temperaturas uma vez (funciona em rest)
-make arm-logs S=temperature   # acompanha o monitor; o LCD continua atualizando
+make arm-logs     # acompanha os nós (monitor, driver, teleop); o LCD continua atualizando
 make arm-resume    # sai do rest (movimento aceito de novo)
 make arm-zero      # sai do rest, liga os servos e vai para a pose zero
 make arm-rest      # entra em rest sem estacionar (ex.: só travar movimento)
@@ -35,9 +35,9 @@ até `arm-zero` ou `power_on`).
 
 ## Regras
 
-- **Nunca abra a serial fora do `arm-driver`** (scripts de `playground/`, pymycobot no host). Use os targets acima.
+- **Nunca abra a serial fora do `arm_driver`** (scripts de `playground/`, pymycobot no host). Use os targets acima.
 - Em rest, o joystick e o `ArmCommand` são ignorados (aviso no log do driver a cada 5 s).
-- O `arm-routine` (parada dos containers) já chama `park.py`, então um `make arm-down` também deixa o braço em rest antes de desligar.
+- O `arm_routine.sh` (entrypoint do container `arm`, roda ao parar) já chama `park.py`, então um `make arm-down` também deixa o braço em rest antes de desligar.
 - `ros2 topic echo /arm/read_only` mostra o estado atual.
 
 ## Ainda não existe
