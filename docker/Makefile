@@ -77,14 +77,12 @@ SERVICE_pc     := pc-dev
 SERVICE_jetson := jetson-driver
 SERVICE        := $(SERVICE_$(ROLE))
 
-# Always-on arm services (profile "arm", Jetson only). S=driver|temperature|teleop|routine picks one; empty = all.
-ARM_SERVICES := arm-driver arm-temperature arm-teleop arm-routine
+# Always-on arm (profile "arm", Jetson only): one container running the seame_arm ROS 2 launch.
+ARM_SERVICES := arm
 # colcon --symlink-install makes this file a symlink to /ws/src/... (a container path), so on the host `test -f`
 # follows it into nothing and fails: also accept the link itself.
 ARM_BUILT    := $(WS_DIR)/install/seame_arm/share/seame_arm/package.xml
 ARM          := docker compose --profile arm
-S            ?=
-ARM_TARGET    = $(if $(S),arm-$(patsubst arm-%,%,$(S)))
 
 # GPU=nvidia|dri adds the matching override file (PC only). Without it, compose uses COMPOSE_FILE from .env.
 COMPOSE_FILES := $(if $(GPU),-f $(COMPOSE_BASE) -f $(COMPOSE_DIR)/$(GPU).yml)
@@ -120,7 +118,7 @@ define confirm
 endef
 
 .PHONY: _jetson help info doctor env dirs lint tar xhost build rebuild pull push up down restart ps logs config \
-        arm-up arm-down arm-ps arm-logs arm-start arm-stop arm-restart arm-park arm-zero arm-rest arm-resume arm-temps install-service uninstall-service service-status \
+        arm-up arm-down arm-ps arm-logs arm-restart arm-park arm-zero arm-rest arm-resume arm-temps install-service uninstall-service service-status \
         shell exec run smoke talker-listener talker talker-stop listener ping-pub ping-echo ws-deps ws-build ws-test ws-clean \
         clean distclean binfmt jetson-cross jetson-ship _role _xhost
 
@@ -195,8 +193,8 @@ case "$$ROLE" in
     if [ "$$MYCOBOT_PORT" = /dev/ttyTHS1 ] && command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet nvgetty 2>/dev/null; then
       warn "nvgetty is active and holds /dev/ttyTHS1: sudo systemctl disable --now nvgetty"
     fi
-    if [ -e /dev/i2c-0 ]; then ok "/dev/i2c-0 present (LCD for arm-temperature)"; else warn "/dev/i2c-0 not found: arm-temperature will not start (set LCD_I2C_BUS in .env)"; fi
-    if [ -e /dev/input/js0 ]; then ok "joystick /dev/input/js0 present"; else warn "no joystick at /dev/input/js0 (arm-teleop waits for it)"; fi
+    if [ -e /dev/i2c-0 ]; then ok "/dev/i2c-0 present (LCD for temperature_monitor)"; else warn "/dev/i2c-0 not found: temperature_monitor will not start (set LCD_I2C_BUS in .env)"; fi
+    if [ -e /dev/input/js0 ]; then ok "joystick /dev/input/js0 present"; else warn "no joystick at /dev/input/js0 (joystick_teleop waits for it)"; fi
     ;;
 esac
 exit $$fail
@@ -316,36 +314,28 @@ ws-test: _role up ## colcon test, then print the results (includes ament lint ch
 ws-clean: ## Delete ws/build, ws/install and ws/log
 	rm -rf $(WS_DIR)/build $(WS_DIR)/install $(WS_DIR)/log
 
-##@ Arm services on the Jetson (driver, temperature, teleop, routine - one container each)
+##@ Arm on the Jetson (one container: driver, temperature, teleop + zero/park routine, all under ROS 2)
 
-arm-up: _jetson | $(WS_DIRS) ## Start the arm services (build the workspace first: make ws-build). S=teleop starts one
+arm-up: _jetson | $(WS_DIRS) ## Start the arm (build the workspace first: make ws-build ROLE=jetson)
 	@test -e $(ARM_BUILT) || test -L $(ARM_BUILT) || { echo "seame_arm is not built yet: make ws-build ROLE=jetson" >&2; exit 1; }
-	$(ARM) up -d $(ARM_TARGET)
+	$(ARM) up -d $(ARM_SERVICES)
 
-arm-down: _jetson ## Stop the arm services (parks the arm first) and remove them; the dev container is not touched
+arm-down: _jetson ## Stop the arm (parks it first) and remove the container; the dev container is not touched
 	$(ARM) stop $(ARM_SERVICES)
 	$(ARM) rm --force $(ARM_SERVICES)
 
-arm-ps: _jetson ## Status of the arm services
+arm-ps: _jetson ## Status of the arm container
 	$(ARM) ps $(ARM_SERVICES)
 
-arm-logs: _jetson ## Follow the arm services' logs (S=driver|temperature|teleop for one)
-	$(ARM) logs -f --tail=100 $(or $(ARM_TARGET),$(ARM_SERVICES))
+arm-logs: _jetson ## Follow the arm logs (driver, temperature and teleop nodes, zero/park)
+	$(ARM) logs -f --tail=100 $(ARM_SERVICES)
 
-arm-start: _jetson ## Start one stopped service: make arm-start S=teleop
-	@test -n "$(S)" || { echo "usage: make arm-start S=driver|temperature|teleop" >&2; exit 2; }
-	$(ARM) start $(ARM_TARGET)
+arm-restart: _jetson ## Restart the arm after make ws-build (zeroes the arm again, parks it first)
+	$(ARM) restart $(ARM_SERVICES)
 
-arm-stop: _jetson ## Stop one service, the others keep running: make arm-stop S=teleop
-	@test -n "$(S)" || { echo "usage: make arm-stop S=driver|temperature|teleop" >&2; exit 2; }
-	$(ARM) stop $(ARM_TARGET)
-
-arm-restart: _jetson ## Restart the arm services after make ws-build (S=... for one)
-	$(ARM) restart $(or $(ARM_TARGET),$(ARM_SERVICES))
-
-# These run inside the already-running arm-driver container (ROS sourced, workspace mounted),
+# These run inside the already-running arm container (ROS sourced, workspace mounted),
 # so nothing has to be stopped and the serial port keeps a single owner.
-ARM_EXEC := $(ARM) exec $(NOTTY) arm-driver ros_entrypoint.sh
+ARM_EXEC := $(ARM) exec $(NOTTY) arm ros_entrypoint.sh
 
 arm-park: _jetson ## Fold the arm into the park pose, release the joints and enter rest mode (driver keeps reading temperatures)
 	$(ARM_EXEC) ros2 run seame_arm park.py

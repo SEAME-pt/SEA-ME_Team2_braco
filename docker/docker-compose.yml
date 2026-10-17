@@ -43,21 +43,6 @@ x-ros-common: &ros-common
     memlock: -1
   command: ["sleep", "infinity"]
 
-# Shared by the always-on arm services below (profile "arm", Jetson only).
-x-arm-common: &arm-common
-  <<: *ros-common
-  profiles: [arm]
-  image: ${IMAGE_PREFIX:-seame}/jetson-driver:${IMAGE_TAG:-lyrical}
-  environment:
-    <<: *ros-env
-  stdin_open: false
-  tty: false
-  restart: unless-stopped   # services: come back after a crash or a reboot (see make install-service)
-  volumes:
-    - ./ws:/ws
-    - ../libs:/opt/seame/libs:ro
-    - ros-logs-arm:/home/dev/.ros
-
 services:
   # ---------------------------------------------------------------------------------------
   # PC: RViz2, MoveIt 2, Gazebo + ros2_control in simulation, CI-grade QA tooling
@@ -112,61 +97,46 @@ services:
       - ../libs:/opt/seame/libs:ro         # libs/cpp (mycobot_cpp); colcon finds it via make ws-build
 
   # ---------------------------------------------------------------------------------------
-  # Jetson Nano: always-on arm services (profile "arm") - one container per ROS 2 node, so each
-  # can be stopped, restarted and logged on its own. Same image as jetson-driver, no build:
-  # build the workspace first (make ws-build ROLE=jetson), then make arm-up.
-  #   arm-driver       the ONLY process that opens the serial port; never moves the arm by
-  #                    itself, so restarting it is safe
-  #   arm-temperature  servo temperatures -> /diagnostics + LCD1602 (independent of the joystick)
-  #   arm-teleop       joystick control; waits for the joystick and survives unplugging
-  #   arm-routine      zero pose at start, park + release the joints before stopping
+  # Jetson Nano: the always-on arm (profile "arm"): ONE container, everything runs under ROS 2.
+  # Same image as jetson-driver, no build: build the workspace first (make ws-build ROLE=jetson),
+  # then make arm-up. arm_routine.sh starts `ros2 launch seame_arm arm.launch.py`:
+  #   arm_driver           the ONLY process that opens the serial port; never moves the arm by
+  #                        itself, so restarting it is safe
+  #   temperature_monitor  servo temperatures -> /diagnostics + LCD1602
+  #   joystick_teleop      joystick control; waits for the joystick and survives unplugging
+  # and around it: zero.py at start, park.py (fold + release the joints) when the container stops.
+  # No restart policy: zero runs only on make arm-up / the seame-arm boot unit, so the arm
+  # never re-zeroes by itself after a crash.
   # ---------------------------------------------------------------------------------------
-  arm-driver:
-    <<: *arm-common
-    command: ["ros2", "run", "seame_arm", "arm_driver", "--ros-args",
-              "-p", "port:=${MYCOBOT_PORT:-/dev/ttyTHS1}", "-p", "baud:=${MYCOBOT_BAUD:-1000000}"]
+  arm:
+    <<: *ros-common
+    profiles: [arm]
+    image: ${IMAGE_PREFIX:-seame}/jetson-driver:${IMAGE_TAG:-lyrical}
+    environment:
+      <<: *ros-env
+    stdin_open: false
+    tty: false
+    restart: "no"
+    stop_grace_period: 60s   # room for park.py (up to 20 s of motion) before Docker kills it
+    command: ["/ws/install/seame_arm/lib/seame_arm/arm_routine.sh",
+              "port:=${MYCOBOT_PORT:-/dev/ttyTHS1}", "baud:=${MYCOBOT_BAUD:-1000000}",
+              "lcd_bus:=${LCD_I2C_BUS:-/dev/i2c-0}", "device:=${JOYSTICK_DEVICE:-/dev/input/js0}"]
     group_add:
       - "${DIALOUT_GID:-20}"
+      - "${I2C_GID:-${USER_GID:-1000}}"     # set by make env; fallback: your own group (harmless)
+      - "${INPUT_GID:-${USER_GID:-1000}}"   # set by make env; fallback: your own group (harmless)
     devices:
       - ${MYCOBOT_PORT:-/dev/ttyTHS1}:${MYCOBOT_PORT:-/dev/ttyTHS1}:rwm
-
-  arm-temperature:
-    <<: *arm-common
-    command: ["ros2", "run", "seame_arm", "temperature_monitor", "--ros-args",
-              "-p", "lcd_bus:=${LCD_I2C_BUS:-/dev/i2c-0}"]
-    group_add:
-      - "${I2C_GID:-${USER_GID:-1000}}"   # set by make env; fallback: your own group (harmless)
-    devices:
       - ${LCD_I2C_BUS:-/dev/i2c-0}:${LCD_I2C_BUS:-/dev/i2c-0}:rw
-    depends_on: [arm-driver]
-
-  arm-teleop:
-    <<: *arm-common
-    command: ["ros2", "run", "seame_arm", "joystick_teleop", "--ros-args",
-              "-p", "device:=${JOYSTICK_DEVICE:-/dev/input/js0}"]
-    group_add:
-      - "${INPUT_GID:-${USER_GID:-1000}}"   # set by make env; fallback: your own group (harmless)
     # The whole /dev/input plus a cgroup rule for joystick/event devices (major 13), so the
     # controller can be plugged in after the container started, or unplugged and replugged.
+    device_cgroup_rules:
+      - "c 13:* rmw"
     volumes:
       - ./ws:/ws
       - ../libs:/opt/seame/libs:ro
       - ros-logs-arm:/home/dev/.ros
       - /dev/input:/dev/input
-    device_cgroup_rules:
-      - "c 13:* rmw"
-    depends_on: [arm-driver]
-
-  # Boot/shutdown routine: zero.py when the container starts, park.py (fold + release the joints)
-  # when it stops. No restart policy: it starts only with make arm-up / the seame-arm boot unit,
-  # so the arm never re-zeroes by itself. Compose stops it BEFORE arm-driver (depends_on), so
-  # park.py can still reach the arm.
-  arm-routine:
-    <<: *arm-common
-    command: ["/ws/install/seame_arm/lib/seame_arm/arm_routine.sh"]
-    restart: "no"
-    stop_grace_period: 60s   # room for park.py (up to 20 s of motion) before Docker kills it
-    depends_on: [arm-driver]
 
 volumes:
   ccache-pc:

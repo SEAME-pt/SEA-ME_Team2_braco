@@ -83,7 +83,7 @@ The following team members have attended all mandatory laboratory training modul
   # Release all joint servo torques
   mc.release_all_servos()
 
-* **With the ROS 2 arm services (Jetson):** do not open the serial port yourself while `arm-driver` runs. Run `make arm-park` (in `docker/`): it folds the arm, releases the joints and puts the driver in **rest mode**, which refuses motion but keeps publishing servo temperatures. Overheated servos (warm 55 °C, hot 65 °C, see the LCD or `make arm-temps`) should rest in this mode until back to normal; leave it with `make arm-zero` or `make arm-resume`. See [arm-rest-mode.md](arm-rest-mode.md).
+* **With the ROS 2 arm services (Jetson):** do not open the serial port yourself while the `arm` container (`arm_driver` node) runs. Run `make arm-park` (in `docker/`): it folds the arm, releases the joints and puts the driver in **rest mode**, which refuses motion but keeps publishing servo temperatures. Overheated servos (warm 55 °C, hot 65 °C, see the LCD or `make arm-temps`) should rest in this mode until back to normal; leave it with `make arm-zero` or `make arm-resume`. See [arm-rest-mode.md](arm-rest-mode.md).
 
 ### 5.3 Post-Shutdown Recovery Routine
 1. Disconnect or terminate the faulty control script.

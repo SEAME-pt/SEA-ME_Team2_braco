@@ -157,29 +157,34 @@ Notes:
 
 ## Arm services (Jetson): driver, temperature, joystick, boot/shutdown routine
 
-Four services from `ws/src/seame_arm` run all the time on the Nano, **one container each** (compose profile
-`arm`, same `jetson-driver` image, no rebuild), so each can be stopped, restarted and logged on its own:
+Everything from `ws/src/seame_arm` runs all the time on the Nano **inside ROS 2, in one container** (compose profile
+`arm`, same `jetson-driver` image, no rebuild). `arm_routine.sh` is its entrypoint: it starts
+`ros2 launch seame_arm arm.launch.py` and adds the zero/park routine around it:
 
 ```
-arm-driver       arm_driver           the ONLY process that opens /dev/ttyTHS1 (libs/cpp MyCobot280)
-                                      pub /joint_states (~20 Hz), /arm/servo_temperatures (every 2 s)
-                                      sub /arm/command (STOP | JOINTS | ALL_ANGLES, latest wins), /arm/led
-                                      srv /arm/power_on, /arm/release_servos, /arm/set_gripper
-                                      srv /arm/set_read_only, pub /arm/read_only (rest mode, see below)
-arm-temperature  temperature_monitor  temperatures -> /diagnostics + LCD1602 (port of libs/cpp temps_lcd)
-arm-teleop       joystick_teleop      joystick -> /arm/command (port of libs/cpp joystick_all_joints)
-arm-routine      arm_routine.sh       start: zero.py (all joints to 0) / stop: park.py (fold, release joints)
+arm_driver           ROS 2 node   the ONLY process that opens /dev/ttyTHS1 (libs/cpp MyCobot280)
+                                  pub /joint_states (~20 Hz), /arm/servo_temperatures (every 2 s)
+                                  sub /arm/command (STOP | JOINTS | ALL_ANGLES, latest wins), /arm/led
+                                  srv /arm/power_on, /arm/release_servos, /arm/set_gripper
+                                  srv /arm/set_read_only, pub /arm/read_only (rest mode, see below)
+temperature_monitor  ROS 2 node   temperatures -> /diagnostics + LCD1602 (port of libs/cpp temps_lcd); respawned
+joystick_teleop      ROS 2 node   joystick -> /arm/command (port of libs/cpp joystick_all_joints); respawned
+arm_routine.sh       entrypoint   start: zero.py (all joints to 0) / stop: park.py (fold, release joints), then the launch ends
 ```
+
+Launch arguments: `port`, `baud`, `lcd_bus`, `device` (filled from `.env`). Single nodes are no longer separate
+containers; use ROS 2 tools on the running graph (`make exec CMD='ros2 node list'`, `ros2 param`, `ros2 service call`).
+Logs of all nodes: `make arm-logs`.
 
 - The temperature monitor depends only on the driver: it keeps updating whether the joystick is in use or not.
 - The driver never moves or powers the arm by itself. If no new motion command arrives for 300 ms after a move,
   it sends `stop` (so a crashed or killed client cannot leave the arm running). Together with the step-ahead
   targets of the teleop, the arm coasts at most a few degrees.
 - The teleop waits for the joystick and survives unplugging it (it stops the arm and opens the device again).
-- `arm-routine` replaces the old `~/scripts/zero.py` and `park.py`, which opened the serial port with pymycobot.
-  It has no restart policy: zero runs only when `make arm-up` or the boot unit starts it, and park runs whenever
-  the container is stopped (`make arm-down`, `systemctl stop seame-arm`, a normal Jetson shutdown). Compose stops
-  it before `arm-driver`, so park can still reach the arm. Nothing runs on a power cut or `kill -9`, and
+- `arm_routine.sh` replaces the old `~/scripts/zero.py` and `park.py`, which opened the serial port with pymycobot.
+  The container has no restart policy: zero runs only when `make arm-up` or the boot unit starts it, and park runs
+  whenever the container is stopped (`make arm-down`, `systemctl stop seame-arm`, a normal Jetson shutdown), before the
+  launch stops the driver, so park can still reach the arm. Nothing runs on a power cut or `kill -9`, and
   `systemctl restart docker` stops every container at once, so park may fail then: use `make arm-down` first.
   Run them by hand with `make arm-park` / `make arm-zero` (no container has to be stopped).
 - **Rest mode.** `park.py` ends by putting the driver in rest mode: motion, gripper and `power_on` are refused, but
@@ -191,21 +196,19 @@ arm-routine      arm_routine.sh       start: zero.py (all joints to 0) / stop: p
 
 ```bash
 make up ROLE=jetson && make ws-build     # build the workspace (includes ../libs) in the dev container
-make arm-up                              # start the three services; make arm-ps / make arm-logs S=teleop
-make arm-stop S=teleop                   # switch the joystick off; temperatures keep coming
-make arm-start S=teleop
+make arm-up                              # start the arm container; make arm-ps / make arm-logs
 make arm-restart                         # after every make ws-build
 make arm-park                            # fold, release joints, rest mode (driver keeps reading temperatures)
 make arm-temps                           # print the servo temperatures once
 make arm-resume                          # leave rest mode; make arm-zero also moves to zero; make arm-rest enters it
-make install-service                     # start them at boot (systemd unit seame-arm), needs sudo
+make install-service                     # start it at boot (systemd unit seame-arm), needs sudo
 make exec CMD='ros2 topic echo /arm/servo_temperatures'
 ```
 
 `make env` fills in `I2C_GID` and `INPUT_GID`; `LCD_I2C_BUS` and `JOYSTICK_DEVICE` in `.env` change the devices.
-**Only one program can use the serial port:** run `make arm-down` (or `make arm-stop S=driver`) before starting
+**Only one program can use the serial port:** run `make arm-down` before starting
 `temps_lcd`, `joystick_all_joints` or any pymycobot script by hand. But prefer not to: `make arm-park`, `arm-zero` and
-`arm-temps` go through the driver, and stopping it also stops the temperature readings.
+`arm-temps` go through the driver, and stopping the container also stops the temperature readings.
 
 ## The compatibility contract
 
