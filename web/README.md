@@ -5,11 +5,11 @@ Página interna do time: telemetria ao vivo do myCobot 280, documentação do re
 | Página | O que mostra | De onde vem |
 |---|---|---|
 | **Início** | resumo do braço, sprint atual, atalhos | as outras páginas |
-| **Braço** | modelo 3D, ângulos com limites soft/firmware, temperaturas, pose cartesiana, histórico de 60 s, botão STOP, tabela de comandos, limites e PID de fábrica | WebSocket `/ws/telemetry` (pymycobot) + `js/specs.js` |
+| **Braço** | modelo 3D, ângulos com limites soft/firmware, temperaturas, pose cartesiana, histórico de 60 s, controle (STOP, Park, Zero e slider por junta), tabela de comandos, limites e PID de fábrica | WebSocket `/ws/telemetry` (pymycobot) + `js/specs.js` |
 | **Documentação** | todos os `.md` de `docs/` (e `docker/README.md`), renderizados | `GET /api/docs` |
 | **Sprints** | linha do tempo dos milestones, contagem regressiva, um card por issue `SPRINT N` com as sub-issues | API do GitHub, cache de 5 min |
 
-> **Somente leitura.** O painel nunca liga os servos, move juntas ou grava configurações. O único comando enviado ao braço é `mc.stop()`, pelo botão STOP.
+> **Quase somente leitura.** O painel nunca liga os servos nem grava configurações. Os únicos comandos enviados ao braço são `mc.stop()` (botão STOP) `send_angles()` para as poses Park e Zero (com confirmação) e `send_angle()` por junta, dentro do soft limit e só com “liberar movimento” marcado.
 
 ## Rodar
 
@@ -80,6 +80,9 @@ web/
 | `GET /api/status` | último snapshot do braço |
 | `WS /ws/telemetry` | snapshot a cada 200 ms |
 | `POST /api/stop` | `mc.stop()` |
+| `POST /api/pose/{park\|zero}?speed=` | `mc.send_angles(pose, speed)`; park depois chama `release_all_servos()` ao chegar (braço em repouso); 409 se já estiver em repouso |
+| `POST /api/wake` | `mc.power_on()` + `send_angles(zero, speed)`: sai do repouso indo para o zero |
+| `POST /api/joint/{1-6}` `{angle, speed}` | `mc.send_angle(n, angle, speed)`, dentro do soft limit |
 | `GET /api/docs` | lista de documentos |
 | `GET /api/docs/{path}` | Markdown de um documento |
 | `GET /api/sprints?refresh=1` | dados dos sprints (`refresh` ignora o cache) |

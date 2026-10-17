@@ -316,3 +316,35 @@ tr:last-child td { border-bottom: none; }
   .viewer .overlay { top: 48px; }
   .sprints { grid-template-columns: 1fr; }
 }
+
+/* Controle do braço */
+.arm-switch { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; text-transform: none; letter-spacing: 0; font-weight: 500; cursor: pointer; padding: 4px 10px; border-radius: 999px; background: var(--surface-2); }
+.arm-switch:has(input:checked) { background: var(--accent-soft); color: var(--accent); }
+.ctl-top { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; margin-bottom: 16px; }
+.ctl-top .stop-btn { width: auto; min-width: 140px; padding: 12px 24px; }
+.ctl-poses { display: flex; gap: 8px; }
+.ctl-poses button { padding: 10px 18px; font-weight: 600; }
+.ctl-speed { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+.ctl-speed input[type="range"] { width: 130px; }
+.ctl-speed select { padding: 3px 6px; }
+.ctl-rows { display: grid; gap: 8px; }
+.ctl-row { display: grid; grid-template-columns: 130px 34px minmax(120px, 1fr) 34px 78px 44px 92px; align-items: center; gap: 8px; padding: 6px 10px; background: var(--surface-2); border-radius: 8px; border-left: 4px solid var(--jc); }
+.ctl-name { display: flex; flex-direction: column; line-height: 1.2; }
+.ctl-row input[type="range"] { width: 100%; accent-color: var(--jc); }
+.ctl-row .num { width: 100%; font-family: var(--mono); padding: 4px 6px; }
+.ctl-row button { padding: 4px 0; }
+.ctl-row .go { font-weight: 600; }
+.ctl-row .ctl-now { text-align: right; }
+.ctl-rows button:disabled, .ctl-poses button:disabled, .ctl-row input:disabled { opacity: .45; cursor: not-allowed; }
+@media (max-width: 760px) {
+  .ctl-row { grid-template-columns: 34px 1fr 34px 70px 40px; }
+  .ctl-name { grid-column: 1 / -1; flex-direction: row; gap: 8px; align-items: baseline; }
+  .ctl-now { display: none; }
+}
+.rest-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; padding: 12px 16px; border-radius: 10px; background: var(--accent-soft); border: 1px solid var(--accent); }
+.rest-banner[hidden] { display: none; }
+.rest-banner div { display: flex; flex-direction: column; gap: 2px; }
+.rest-banner button { background: var(--accent); color: #111; border-color: var(--accent); font-weight: 700; padding: 10px 22px; }
+.ctl.is-resting > :not(h2):not(.rest-banner) { display: none; }
+.ctl.is-resting .arm-switch { display: none; }
+.ctl.is-resting .rest-banner { margin-bottom: 0; }
