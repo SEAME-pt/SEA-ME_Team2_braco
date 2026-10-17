@@ -65,6 +65,7 @@ services:
       - gz-cache:/home/dev/.gz
       - ros-logs-pc:/home/dev/.ros
       - ./tests:/opt/seame/tests:ro        # `make talker-listener` etc.; edit on the host, no rebuild
+      - ../web:/opt/seame/web:ro           # `make web-sim`: the web dashboard on top of Gazebo
 
   # ---------------------------------------------------------------------------------------
   # Jetson Nano: arm driver (pymycobot lifecycle node), ros2_control, controllers

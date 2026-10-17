@@ -1,15 +1,30 @@
-"""List and read the Markdown files under docs/ (and the top-level READMEs)."""
+"""Discover and read every Markdown file in the repository, grouped by topic."""
 
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
-DOCS = REPO / "docs"
 
-# Extra Markdown files outside docs/ worth showing, as (published path, file)
-EXTRA = {
-    "docker/README.md": REPO / "docker" / "README.md",
-    "web/README.md": REPO / "web" / "README.md",
-}
+# Directories never searched (dependencies, caches, VCS data)
+SKIP_DIRS = {".git", ".venv", "venv", "node_modules", "__pycache__", ".pytest_cache", ".mypy_cache", "build", "install", "log"}
+
+# (group label, matcher) in display order; the first matching rule wins
+GROUPS = [
+    ("Primeiros passos", lambda p: p in ("README.md", "docs/dev-setup.md")),
+    ("Segurança", lambda p: p == "docs/safety.md"),
+    ("Referência técnica", lambda p: p == "docs/protocol_commands.md"),
+    ("Arquitetura e decisões", lambda p: p.startswith("docs/ADR-")),
+    ("Inventário", lambda p: p.startswith("docs/inventory/")),
+    ("Portal web", lambda p: p.startswith("web/")),
+    ("Docker e ROS 2", lambda p: p.startswith("docker/")),
+    ("Contribuição", lambda p: p.startswith(".github/")),
+    ("Código", lambda p: p.startswith(("libs/", "playground/", "tests/"))),
+]
+OTHER = "Outros"
+ORDER = [g for g, _ in GROUPS] + [OTHER]
+
+
+def _group(rel):
+    return next((name for name, match in GROUPS if match(rel)), OTHER)
 
 
 def _title(path):
@@ -23,28 +38,26 @@ def _title(path):
     return path.stem.replace("-", " ").replace("_", " ")
 
 
-def list_docs():
-    items = []
-    for path in sorted(DOCS.rglob("*.md")):
-        rel = path.relative_to(DOCS).as_posix()
-        items.append({"path": "docs/" + rel, "title": _title(path),
-                      "group": rel.split("/")[0] if "/" in rel else "docs"})
-    for rel, path in EXTRA.items():
+def _files():
+    """Markdown files in the repo as {repo-relative posix path: Path}."""
+    found = {}
+    for path in sorted(REPO.rglob("*.md")):
+        parts = path.relative_to(REPO).parts
+        # skip dependency/cache dirs and hidden dirs other than .github
+        if any(p in SKIP_DIRS or (p.startswith(".") and p != ".github") for p in parts[:-1]):
+            continue
         if path.is_file():
-            items.append({"path": rel, "title": _title(path), "group": "outros"})
+            found["/".join(parts)] = path
+    return found
+
+
+def list_docs():
+    items = [{"path": rel, "title": _title(path), "group": _group(rel)} for rel, path in _files().items()]
+    items.sort(key=lambda d: (ORDER.index(d["group"]), d["path"] != "README.md", d["path"]))
     return items
 
 
 def read_doc(rel):
     """Return the Markdown of `rel`, or None if it is not a listed document."""
-    if rel in EXTRA:
-        path = EXTRA[rel]
-    elif rel.startswith("docs/") and rel.endswith(".md"):
-        path = (REPO / rel).resolve()
-        if DOCS.resolve() not in path.parents:
-            return None
-    else:
-        return None
-    if not path.is_file():
-        return None
-    return path.read_text(encoding="utf-8")
+    path = _files().get(rel)
+    return path.read_text(encoding="utf-8") if path else None

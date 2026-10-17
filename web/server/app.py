@@ -5,6 +5,9 @@
 
 Environment:
     ARM_MOCK=1       synthetic data instead of the serial port
+    ARM_SOURCE=gazebo  arm simulated in Gazebo over ROS 2 (PC only: make web-sim
+                       in docker/ runs it inside the pc-dev container)
+    GZ_JOINT_NAMES   joint names in /joint_states, comma separated
     ARM_PORT         serial port (default /dev/ttyTHS1)
     ARM_BAUD         baud rate (default 1000000)
     GITHUB_TOKEN     optional, raises the GitHub API rate limit
@@ -22,16 +25,27 @@ from pydantic import BaseModel, Field
 
 from . import docs, github
 from .arm import (DEFAULT_BAUD, DEFAULT_PORT, POSE_SPEED, POSES, SOFT_LIMITS,
-                  ArmSource, MockArm, RestingError)
+                  ArmSource, GazeboArm, MockArm, RestingError)
+from .role import machine_role
 
 STATIC = Path(__file__).resolve().parents[1] / "static"
 PUSH_PERIOD = 0.2
 
-if os.environ.get("ARM_MOCK") == "1":
-    arm = MockArm()
-else:
-    arm = ArmSource(os.environ.get("ARM_PORT", DEFAULT_PORT),
-                    int(os.environ.get("ARM_BAUD", DEFAULT_BAUD)))
+
+def build_arm():
+    if os.environ.get("ARM_MOCK") == "1":
+        return MockArm()
+    if os.environ.get("ARM_SOURCE") == "gazebo":
+        role = machine_role()
+        if role != "pc":
+            raise RuntimeError("ARM_SOURCE=gazebo only runs on the PC (this machine is the {})".format(role))
+        names = os.environ.get("GZ_JOINT_NAMES")
+        return GazeboArm([n.strip() for n in names.split(",")] if names else None)
+    return ArmSource(os.environ.get("ARM_PORT", DEFAULT_PORT),
+                     int(os.environ.get("ARM_BAUD", DEFAULT_BAUD)))
+
+
+arm = build_arm()
 
 
 @asynccontextmanager

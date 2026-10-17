@@ -52,7 +52,7 @@ export function render(root) {
   const cells = [...root.querySelectorAll("#h-joints b")];
 
   const off = onTelemetry((s) => {
-    $("#h-conn").textContent = !s.connected ? "off" : s.mock ? "mock" : "on";
+    $("#h-conn").textContent = !s.connected ? "off" : s.source === "gazebo" ? "gazebo" : s.mock ? "mock" : "on";
     $("#h-power").textContent = s.power_on == null ? "—" : s.power_on ? "ligados" : "soltos";
     $("#h-moving").textContent = s.moving == null ? "—" : s.moving ? "sim" : "parado";
     if (s.temps) {

@@ -57,6 +57,9 @@ function updateConn(s) {
   } else if (!s.connected) {
     dot.classList.add("bad");
     text.textContent = "braço desconectado";
+  } else if (s.source === "gazebo") {
+    dot.classList.add("mock");
+    text.textContent = "simulação Gazebo";
   } else if (s.mock) {
     dot.classList.add("mock");
     text.textContent = "modo simulado";

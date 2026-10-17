@@ -86,6 +86,7 @@ RUN1 := $(COMPOSE) run --rm $(NOTTY) $(SERVICE)
 XHOST       ?= 1
 FORCE       ?= 0
 PING_TOPIC  ?= /seame_ping
+WEB_PORT    ?= 8000
 COLCON_ARGS ?= $(if $(filter jetson,$(ROLE)),--parallel-workers 2)
 JETSON_TAG  := $(IMAGE_TAG)-arm64
 NANO        ?=
@@ -104,7 +105,7 @@ define confirm
 endef
 
 .PHONY: help info doctor env dirs lint tar xhost build rebuild pull push up down restart ps logs config \
-        shell exec run smoke talker-listener talker talker-stop listener ping-pub ping-echo ws-deps ws-build ws-test ws-clean \
+        shell exec run smoke talker-listener talker talker-stop listener ping-pub ping-echo ws-deps ws-build ws-test ws-clean web-sim _pc_only \
         clean distclean binfmt jetson-cross jetson-ship _role _xhost
 
 ##@ Setup
@@ -296,6 +297,14 @@ ws-test: _role up ## colcon test, then print the results (includes ament lint ch
 
 ws-clean: ## Delete ws/build, ws/install and ws/log
 	rm -rf $(WS_DIR)/build $(WS_DIR)/install $(WS_DIR)/log
+
+##@ Web dashboard on Gazebo (PC only)
+
+_pc_only: _role
+	@test "$(ROLE)" = pc || { echo "this target is PC only (ROLE=$(ROLE)); on the Jetson use 'make web-start' at the repo root" >&2; exit 1; }
+
+web-sim: _role _pc_only up ## Serve the web dashboard from pc-dev, showing and commanding Gazebo (WEB_PORT=8000)
+	$(EXEC) bash -c 'cd /opt/seame && ARM_SOURCE=gazebo exec python3 -m uvicorn web.server.app:app --host 0.0.0.0 --port $(WEB_PORT)'
 
 ##@ Jetson image from a PC (no Docker build on the Nano)
 
