@@ -1,0 +1,25 @@
+# seame-arm.service - start the always-on arm (one container: ROS 2 launch of driver, temperature, teleop + routine) at boot.
+# Installed by `make install-service`, which fills in @WORKDIR@ (this docker/ folder) and @DOCKER@.
+# The container has no restart policy (the arm must not re-zero by itself after a crash); this unit
+# brings it up after boot and takes it down on `systemctl stop seame-arm` or at shutdown. It is
+# ordered after docker.service, so at shutdown it stops BEFORE Docker: arm_routine.sh parks the
+# arm while the driver is still running, then stops the launch.
+
+[Unit]
+Description=SEA:ME arm services (ROS 2 driver, temperature monitor, joystick teleop, zero/park routine)
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=@WORKDIR@
+ExecStart=@DOCKER@ compose --profile arm up -d arm
+ExecStop=@DOCKER@ compose --profile arm stop arm
+ExecStop=@DOCKER@ compose --profile arm rm --force arm
+TimeoutStartSec=120
+TimeoutStopSec=120
+
+[Install]
+WantedBy=multi-user.target
