@@ -65,7 +65,7 @@ services:
       - gz-cache:/home/dev/.gz
       - ros-logs-pc:/home/dev/.ros
       - ./tests:/opt/seame/tests:ro        # `make talker-listener` etc.; edit on the host, no rebuild
-      - ../web:/opt/seame/web:ro           # `make web-sim`: the web dashboard on top of Gazebo
+      - ..:/opt/braco:ro                   # `make web-sim`: the braco web page (and its docs) on top of Gazebo
       - ../libs:/opt/seame/libs:ro         # libs/cpp (mycobot_cpp); colcon finds it via make ws-build
 
   # ---------------------------------------------------------------------------------------
@@ -105,6 +105,7 @@ services:
   #                        itself, so restarting it is safe
   #   temperature_monitor  servo temperatures -> /diagnostics + LCD1602
   #   joystick_teleop      joystick control; waits for the joystick and survives unplugging
+  #   braco web page       uvicorn on WEB_PORT (default 8000), talks to the arm only through ROS 2
   # and around it: zero.py at start, park.py (fold + release the joints) when the container stops.
   # No restart policy: zero runs only on make arm-up / the seame-arm boot unit, so the arm
   # never re-zeroes by itself after a crash.
@@ -115,6 +116,9 @@ services:
     image: ${IMAGE_PREFIX:-seame}/jetson-driver:${IMAGE_TAG:-lyrical}
     environment:
       <<: *ros-env
+      WEB_PORT: ${WEB_PORT:-8000}             # the braco page: http://<jetson>:8000
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}         # optional, for the Sprints page
+      GITHUB_REPO: ${GITHUB_REPO:-SEAME-pt/SEA-ME_Team2_braco}
     stdin_open: false
     tty: false
     restart: "no"
@@ -136,6 +140,7 @@ services:
     volumes:
       - ./ws:/ws
       - ../libs:/opt/seame/libs:ro
+      - ..:/opt/braco:ro                   # the braco web page (web/) and the docs it shows
       - ros-logs-arm:/home/dev/.ros
       - /dev/input:/dev/input
 

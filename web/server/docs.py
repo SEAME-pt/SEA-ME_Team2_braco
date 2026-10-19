@@ -9,17 +9,17 @@ SKIP_DIRS = {".git", ".venv", "venv", "node_modules", "__pycache__", ".pytest_ca
 
 # (group label, matcher) in display order; the first matching rule wins
 GROUPS = [
-    ("Primeiros passos", lambda p: p in ("README.md", "docs/dev-setup.md")),
-    ("Segurança", lambda p: p == "docs/safety.md"),
-    ("Referência técnica", lambda p: p == "docs/protocol_commands.md"),
-    ("Arquitetura e decisões", lambda p: p.startswith("docs/ADR-")),
-    ("Inventário", lambda p: p.startswith("docs/inventory/")),
-    ("Portal web", lambda p: p.startswith("web/")),
-    ("Docker e ROS 2", lambda p: p.startswith("docker/")),
-    ("Contribuição", lambda p: p.startswith(".github/")),
-    ("Código", lambda p: p.startswith(("libs/", "playground/", "tests/"))),
+    ("Getting started", lambda p: p in ("README.md", "docs/dev-setup.md")),
+    ("Safety", lambda p: p == "docs/safety.md"),
+    ("Technical reference", lambda p: p == "docs/protocol_commands.md"),
+    ("Architecture and decisions", lambda p: p.startswith("docs/ADR-")),
+    ("Inventory", lambda p: p.startswith("docs/inventory/")),
+    ("Web page (braco)", lambda p: p.startswith("web/")),
+    ("Docker and ROS 2", lambda p: p.startswith("docker/")),
+    ("Contributing", lambda p: p.startswith(".github/")),
+    ("Code", lambda p: p.startswith(("libs/", "playground/", "tests/"))),
 ]
-OTHER = "Outros"
+OTHER = "Other"
 ORDER = [g for g, _ in GROUPS] + [OTHER]
 
 

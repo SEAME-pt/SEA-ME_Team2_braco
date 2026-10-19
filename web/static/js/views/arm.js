@@ -1,6 +1,13 @@
-// Live arm panel: 3D model, joints, temperatures, history, STOP, reference.
+// Live arm panel: 3D model, joints, temperatures, history, control, reference.
+//
+// Only the operator (the tab holding the control lease) can move the arm; STOP
+// works for everybody. The operator's control panel (speed, step, the slider
+// being dragged) is mirrored live to every other page.
 
-import { esc, fmt, onTelemetry } from "../util.js";
+import { mountActivity } from "../activity.js";
+import {
+  esc, fmt, holderName, isOperator, live, on, post, shareUi, takeControl,
+} from "../util.js";
 import {
   COMMANDS, CONNECTION, FACTORY_PID, FIRMWARE_LIMITS, JOINTS, JOINT_NAMES,
   SOFT_LIMITS, TEMP_HOT_C, TEMP_WARM_C,
@@ -9,7 +16,8 @@ import {
 const JC = ["--j1", "--j2", "--j3", "--j4", "--j5", "--j6"];
 const HISTORY_S = 60;
 let movementConfirmed = false;   // asked once per page load, kept while switching views
-const LEVEL_TEXT = { normal: "ok", warm: "morno", hot: "QUENTE" };
+const LEVEL_TEXT = { normal: "ok", warm: "warm", hot: "HOT" };
+const SOURCE_PORT = { ros: "through arm_driver (ROS 2)", gazebo: "in Gazebo", mock: "mock data" };
 
 function pct(v, i) {
   const [lo, hi] = FIRMWARE_LIMITS[i];
@@ -22,13 +30,13 @@ function jointCard(i) {
   return `
     <div class="joint" style="--jc:var(${JC[i]})" data-j="${i}">
       <div class="joint-head"><div><b class="ang">—</b></div><span>${JOINTS[i]} · ${JOINT_NAMES[i]}</span></div>
-      <div class="range" title="faixa amarela = soft limit; barra inteira = limite de firmware">
+      <div class="range" title="yellow band = soft limit; whole bar = firmware limit">
         <div class="soft" style="left:${pct(slo, i)}%;right:${100 - pct(shi, i)}%"></div>
         <div class="zero" style="left:${pct(0, i)}%"></div>
         <div class="needle" style="left:${pct(0, i)}%"></div>
       </div>
       <div class="range-labels"><span>${flo}°</span><span>${slo}° … ${shi}°</span><span>${fhi}°</span></div>
-      <div class="temp"><span class="muted">temperatura</span><span class="temp-cell tval">—</span></div>
+      <div class="temp"><span class="muted">temperature</span><span class="temp-cell tval">—</span></div>
     </div>`;
 }
 
@@ -36,32 +44,32 @@ function referenceHTML() {
   return `
     <div class="grid cols-2" style="margin-top:16px">
       <section class="card span-2">
-        <h2>Comandos do protocolo <span class="muted small" style="text-transform:none;letter-spacing:0">libs/cpp/includes/mycobot.hpp · pymycobot</span></h2>
+        <h2>Protocol commands <span class="muted small" style="text-transform:none;letter-spacing:0">libs/cpp/includes/mycobot.hpp · pymycobot</span></h2>
         <div class="table-wrap"><table>
-          <thead><tr><th>Código</th><th>Nome</th><th>Python</th><th>C++</th><th>Descrição</th><th></th></tr></thead>
+          <thead><tr><th>Code</th><th>Name</th><th>Python</th><th>C++</th><th>Description</th><th></th></tr></thead>
           <tbody>${COMMANDS.map((c) => `
             <tr><td class="mono">${c.code}</td><td class="mono">${c.name}</td>
             <td><code>${esc(c.py)}</code></td><td><code>${esc(c.cpp)}</code></td>
             <td>${esc(c.desc)}</td>
-            <td>${c.write ? '<span class="pill warn rw">escreve</span>' : '<span class="pill ok rw">leitura</span>'}</td></tr>`).join("")}
+            <td>${c.write ? '<span class="pill warn rw">writes</span>' : '<span class="pill ok rw">read</span>'}</td></tr>`).join("")}
           </tbody></table></div>
       </section>
       <section class="card">
-        <h2>Limites e PID de fábrica</h2>
+        <h2>Limits and factory PID</h2>
         <div class="table-wrap"><table>
-          <thead><tr><th>Junta</th><th>Firmware</th><th>Soft</th><th>P</th><th>I</th><th>D</th></tr></thead>
+          <thead><tr><th>Joint</th><th>Firmware</th><th>Soft</th><th>P</th><th>I</th><th>D</th></tr></thead>
           <tbody>${JOINTS.map((j, i) => `
             <tr><td><b>${j}</b> <span class="muted small">${JOINT_NAMES[i]}</span></td>
             <td class="mono">${FIRMWARE_LIMITS[i].join(" … ")}</td>
             <td class="mono">${SOFT_LIMITS[i].join(" … ")}</td>
             ${FACTORY_PID[i].map((v) => `<td class="mono">${v}</td>`).join("")}</tr>`).join("")}
           </tbody></table></div>
-        <p class="muted small">setPid() aceita P e D até 1,5× o valor de fábrica e I até 8.</p>
+        <p class="muted small">setPid() accepts P and D up to 1.5× the factory value and I up to 8.</p>
       </section>
       <section class="card">
-        <h2>Conexão e unidades</h2>
+        <h2>Connection and units</h2>
         <table><tbody>${CONNECTION.map(([k, v]) => `<tr><th>${k}</th><td class="mono">${esc(v)}</td></tr>`).join("")}</tbody></table>
-        <p class="muted small">Temperatura: normal &lt; ${TEMP_WARM_C}°C · morno ≥ ${TEMP_WARM_C}°C · quente ≥ ${TEMP_HOT_C}°C (servos se protegem ~70°C).</p>
+        <p class="muted small">Temperature: normal &lt; ${TEMP_WARM_C}°C · warm ≥ ${TEMP_WARM_C}°C · hot ≥ ${TEMP_HOT_C}°C (servos protect themselves at ~70°C).</p>
       </section>
     </div>`;
 }
@@ -71,11 +79,11 @@ function controlRow(i) {
   return `
     <div class="ctl-row" style="--jc:var(${JC[i]})" data-j="${i}">
       <div class="ctl-name"><b>${JOINTS[i]}</b><span class="muted small">${JOINT_NAMES[i]}</span></div>
-      <button class="step" data-d="-1" title="diminuir">−</button>
+      <button class="step" data-d="-1" title="decrease">−</button>
       <input type="range" min="${lo}" max="${hi}" step="0.5" value="0">
-      <button class="step" data-d="1" title="aumentar">+</button>
+      <button class="step" data-d="1" title="increase">+</button>
       <input type="number" class="num" min="${lo}" max="${hi}" step="0.5" value="0">
-      <button class="go" title="enviar este ângulo">Ir</button>
+      <button class="go" title="send this angle">Go</button>
       <span class="ctl-now mono muted small">—</span>
     </div>`;
 }
@@ -83,28 +91,43 @@ function controlRow(i) {
 function controlHTML() {
   return `
     <section class="card ctl" style="margin-bottom:16px">
-      <h2>Controle
-        <label class="arm-switch"><input type="checkbox" id="c-arm"> <span>liberar movimento</span></label>
+      <h2>Control
+        <label class="arm-switch"><input type="checkbox" id="c-arm"> <span>enable motion</span></label>
       </h2>
+      <div class="lease-banner" id="c-lease"></div>
       <div class="rest-banner" id="c-rest" hidden>
-        <div><b>☾ Braço em repouso</b><span class="muted small">Servos soltos. Os controles ficam bloqueados até o wake up, que religa os servos e leva o braço ao zero.</span></div>
+        <div><b>☾ Arm resting</b><span class="muted small">Motion is refused (rest mode). Wake up leaves rest mode, powers the servos and moves the arm to zero.</span></div>
         <button id="c-wake">☀ Wake up</button>
       </div>
       <div class="ctl-top">
-        <button class="stop-btn" id="a-stop">■ STOP</button>
+        <button class="stop-btn" id="a-stop" title="Anyone can stop the arm, operator or not">■ STOP</button>
         <div class="ctl-poses">
-          <button data-pose="park" title="vai para [0, 131, -150, 146, 4.5, 0] e solta os servos">⌂ Repouso</button>
-          <button data-pose="zero" title="send_angles([0, 0, 0, 0, 0, 0])">◎ Zerar</button>
+          <button data-pose="park" title="goes to [0, 131, -148, 146, 4.5, 0], then releases the servos and enters rest mode">⌂ Park</button>
+          <button data-pose="zero" title="all joints to 0°">◎ Zero</button>
         </div>
-        <label class="ctl-speed">velocidade <b id="c-speed-v">30</b>
+        <label class="ctl-speed">speed <b id="c-speed-v">30</b>
           <input type="range" id="c-speed" min="1" max="100" value="30">
         </label>
-        <label class="ctl-speed">passo ±
+        <label class="ctl-speed">step ±
           <select id="c-step"><option>0.5</option><option>1</option><option selected>5</option><option>10</option></select> °
         </label>
       </div>
       <div class="ctl-rows">${JOINTS.map((_, i) => controlRow(i)).join("")}</div>
-      <p class="muted small" id="a-stop-msg">Cada junta é enviada ao soltar o controle (ou com Enter / Ir) e respeita o soft limit. Repouso vai para a pose de descanso e solta os servos ao chegar; Zerar leva todas as juntas a 0°. Em repouso os controles somem e só o Wake up acorda o braço. Marque “liberar movimento” para habilitar.</p>
+      <div class="ctl-extra" id="c-extra">
+        <div class="extra" data-cap="gripper">
+          <span class="muted small">Gripper <b id="c-grip-state">—</b></span>
+          <div class="btns"><button data-grip="0">Open</button><button data-grip="1">Close</button></div>
+        </div>
+        <div class="extra" data-cap="led">
+          <span class="muted small">Atom LED</span>
+          <div class="btns"><input type="color" id="c-led" value="#f59e0b"><button id="c-led-set">Set</button></div>
+        </div>
+        <div class="extra" data-cap="rest">
+          <span class="muted small">Rest mode <b id="c-rest-state">—</b></span>
+          <div class="btns"><button id="c-rest-on" title="refuse motion, keep reading temperatures">Rest on</button></div>
+        </div>
+      </div>
+      <p class="muted small" id="a-stop-msg">Each joint is sent when you release its control (or with Enter / Go) and stays inside the soft limit. Park goes to the rest pose, releases the servos once there and enters rest mode; Zero moves every joint to 0°. Tick “enable motion” to unlock the controls.</p>
       <div id="a-error"></div>
     </section>`;
 }
@@ -146,12 +169,14 @@ function drawChart(canvas, history, key, range) {
   }
 }
 
+const hex = (rgb) => "#" + rgb.map((v) => v.toString(16).padStart(2, "0")).join("");
+
 export function render(root) {
   root.innerHTML = `
     <div class="page-head">
       <div>
-        <h1>Braço</h1>
-        <p>Telemetria ao vivo · myCobot 280 em <span class="mono" id="a-port">/dev/ttyTHS1</span></p>
+        <h1>Arm</h1>
+        <p>Live telemetry · myCobot 280 <span class="mono" id="a-port">—</span></p>
       </div>
       <div class="filters" id="a-badges"></div>
     </div>
@@ -160,33 +185,37 @@ export function render(root) {
         <div class="overlay" id="a-overlay"></div>
         <div class="viewer-tools">
           <div class="tabs" id="a-views">
-            <button data-v="iso" class="active">3D</button><button data-v="front">Frente</button><button data-v="side">Lado</button><button data-v="top">Topo</button>
+            <button data-v="iso" class="active">3D</button><button data-v="front">Front</button><button data-v="side">Side</button><button data-v="top">Top</button>
           </div>
           <div class="tabs" id="a-toggles">
-            <button data-t="labels" class="active" title="Nomes das juntas">Juntas</button><button data-t="trail" class="active" title="Caminho percorrido pela ponta">Rastro</button>
+            <button data-t="labels" class="active" title="Joint names">Joints</button><button data-t="trail" class="active" title="Path of the tool tip">Trail</button>
           </div>
         </div>
-        <div class="hint">arraste para girar · role para zoom · duplo clique volta ao 3D · anel laranja = alcance de 280 mm</div>
+        <div class="hint">drag to rotate · scroll to zoom · double click back to 3D · orange ring = 280 mm reach</div>
       </section>
       <section class="card">
-        <h2>Juntas</h2>
+        <h2>Joints</h2>
         <div class="joints">${JOINTS.map((_, i) => jointCard(i)).join("")}</div>
       </section>
     </div>
     ${controlHTML()}
     <div class="grid cols-2">
       <section class="card">
-        <h2>Pose cartesiana</h2>
+        <h2>Cartesian pose</h2>
         <div class="kv" id="a-coords">
           ${["X", "Y", "Z", "RX", "RY", "RZ"].map((k) => `<div><span>${k} ${k.length === 1 ? "mm" : "°"}</span><b>—</b></div>`).join("")}
         </div>
       </section>
       <section class="card">
-        <h2>Histórico (${HISTORY_S}s)
-          <div class="tabs" id="a-tabs"><button class="active" data-k="angles">ângulos</button><button data-k="temps">temperaturas</button></div>
+        <h2>History (${HISTORY_S}s)
+          <div class="tabs" id="a-tabs"><button class="active" data-k="angles">angles</button><button data-k="temps">temperatures</button></div>
         </h2>
         <canvas class="chart" id="a-chart"></canvas>
         <div class="legend">${JOINTS.map((j, i) => `<span><i style="background:var(${JC[i]})"></i>${j}</span>`).join("")}</div>
+      </section>
+      <section class="card span-2">
+        <h2>Activity <span class="muted small" style="text-transform:none;letter-spacing:0">everybody's commands, live</span></h2>
+        <div id="a-activity" class="activity-box"></div>
       </section>
     </div>
     ${referenceHTML()}
@@ -202,7 +231,7 @@ export function render(root) {
 
   import("../arm3d.js")
     .then(({ createArm3D }) => { if (alive) arm3d = createArm3D($("#a-viewer")); })
-    .catch(() => { $("#a-viewer").insertAdjacentHTML("beforeend", '<div class="empty">Modelo 3D indisponível (sem acesso ao CDN?)</div>'); });
+    .catch(() => { $("#a-viewer").insertAdjacentHTML("beforeend", '<div class="empty">3D model unavailable (no access to the CDN?)</div>'); });
 
   $("#a-views").addEventListener("click", (e) => {
     const v = e.target.dataset.v;
@@ -214,10 +243,10 @@ export function render(root) {
   $("#a-toggles").addEventListener("click", (e) => {
     const t = e.target.dataset.t;
     if (!t) return;
-    const on = !e.target.classList.contains("active");
-    e.target.classList.toggle("active", on);
-    if (t === "labels") arm3d?.setLabels(on);
-    if (t === "trail") arm3d?.setTrail(on);
+    const isOn = !e.target.classList.contains("active");
+    e.target.classList.toggle("active", isOn);
+    if (t === "labels") arm3d?.setLabels(isOn);
+    if (t === "trail") arm3d?.setTrail(isOn);
   });
 
   $("#a-tabs").addEventListener("click", (e) => {
@@ -234,108 +263,196 @@ export function render(root) {
 
   const armBox = $("#c-arm");
   const speedEl = $("#c-speed");
+  const stepEl = $("#c-step");
   const rows = [...root.querySelectorAll(".ctl-row")];
   const lastSent = rows.map(() => 0);
   const dragging = rows.map(() => false);
   let connected = false;
+  let resting = false;
+  let operator = isOperator();
+  let remote = null;   // the operator's mirrored panel, when someone else is in control
 
   const msg = (html) => { $("#a-stop-msg").innerHTML = html; };
-  const stamp = () => new Date().toLocaleTimeString("pt-BR");
+  const stamp = () => new Date().toLocaleTimeString("en-GB");
   const speed = () => Number(speedEl.value);
 
-  async function post(url, body, label) {
-    try {
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: body ? JSON.stringify(body) : undefined,
-      });
-      const data = await res.json();
-      msg(res.ok ? `<span class="pill ok">${label} ${stamp()}</span>`
-        : `<span class="pill hot">Falhou: ${esc(typeof data.detail === "string" ? data.detail : "valor inválido")}</span>`);
-      return res.ok;
-    } catch (e) {
-      msg(`<span class="pill hot">Falhou: ${esc(e.message)}</span>`);
-      return false;
+  async function send(url, body, label) {
+    const r = await post(url, body);
+    msg(r.ok ? `<span class="pill ok">${esc(label)} · ${stamp()}</span>`
+      : `<span class="pill hot">Failed: ${esc(r.error)}</span>`);
+    return r.ok;
+  }
+
+  // What the operator's panel looks like right now, for the other pages
+  function panelState(drag = null) {
+    return { speed: speed(), step: stepEl.value, enabled: armBox.checked, drag };
+  }
+  const share = (drag) => shareUi(panelState(drag));
+
+  function updateEnabled() {
+    const canMove = operator && armBox.checked && connected && !resting;
+    root.querySelectorAll(".ctl-rows button, .ctl-rows input, [data-pose], .ctl-extra button, .ctl-extra input")
+      .forEach((el) => { el.disabled = !canMove; });
+    // rest mode on/off and LED do not move the arm: operator + connected is enough
+    root.querySelectorAll("#c-rest-on, #c-led, #c-led-set").forEach((el) => { el.disabled = !(operator && connected); });
+    armBox.disabled = !operator;
+    speedEl.disabled = stepEl.disabled = !operator;
+    $("#a-stop").disabled = !connected;
+    $("#c-rest").hidden = !resting;
+    $("#c-wake").disabled = !(operator && connected);
+    $(".ctl").classList.toggle("is-resting", resting);
+    $(".ctl").classList.toggle("view-only", !operator);
+    drawLease();
+  }
+
+  function drawLease() {
+    const box = $("#c-lease");
+    const holder = holderName();
+    if (operator) {
+      box.className = "lease-banner mine";
+      box.innerHTML = "<span><b>You are in control.</b> The others see your panel move live. Release it in the sidebar when you are done.</span>";
+    } else if (holder) {
+      box.className = "lease-banner taken";
+      box.innerHTML = `<span>👁 <b>View only:</b> ${esc(holder)} is in control. Their panel is mirrored here. STOP still works for you.</span>`;
+    } else {
+      box.className = "lease-banner";
+      box.innerHTML = '<span>Nobody is in control. Take control to move the arm.</span><button id="c-take">Take control</button>';
+      box.querySelector("#c-take").addEventListener("click", takeControl);
     }
   }
 
-  let resting = false;
-
-  function updateEnabled() {
-    const on = armBox.checked && connected && !resting;
-    root.querySelectorAll(".ctl-rows button, .ctl-rows input, [data-pose]").forEach((el) => { el.disabled = !on; });
-    $("#a-stop").disabled = !connected;
-    $("#c-rest").hidden = !resting;
-    $("#c-wake").disabled = !connected;
-    $(".ctl").classList.toggle("is-resting", resting);
-  }
-
-  // The one-time question; true when movement may be released.
+  // The one-time question; true when movement may be enabled.
   function confirmRelease() {
     if (movementConfirmed) return true;
-    movementConfirmed = confirm("Liberar os movimentos do braço?\n\nOs controles de junta, Repouso e Zerar passam a mover o braço sem pedir nova confirmação. Mantenha a área ao redor livre.");
+    movementConfirmed = confirm("Enable arm motion?\n\nThe joint controls, Park and Zero will move the arm without asking again. Keep the area around it clear.");
     return movementConfirmed;
   }
 
   armBox.addEventListener("change", () => {
     if (armBox.checked && !confirmRelease()) armBox.checked = false;
     updateEnabled();
+    share();
   });
 
   $("#c-wake").addEventListener("click", async () => {
     if (!confirmRelease()) return;
     armBox.checked = true;
-    if (await post(`/api/wake?speed=${speed()}`, null, "wake up enviado")) {
+    share();
+    if (await send(`/api/wake?speed=${speed()}`, null, "wake up sent")) {
       resting = false;   // the next telemetry confirms it
       updateEnabled();
     }
   });
-  speedEl.addEventListener("input", () => { $("#c-speed-v").textContent = speedEl.value; });
+  speedEl.addEventListener("input", () => { $("#c-speed-v").textContent = speedEl.value; share(); });
+  stepEl.addEventListener("change", () => share());
 
   $("#a-stop").addEventListener("click", () => {
-    if (confirm("Enviar STOP ao braço?")) post("/api/stop", null, "STOP enviado");
+    if (confirm("Send STOP to the arm?")) send("/api/stop", null, "STOP sent");
   });
 
   root.querySelectorAll("[data-pose]").forEach((btn) => btn.addEventListener("click", () => {
     const name = btn.dataset.pose;
-    post(`/api/pose/${name}?speed=${speed()}`, null, `${name} enviado`);
+    send(`/api/pose/${name}?speed=${speed()}`, null, `${name} sent`);
     rows.forEach((_, i) => { lastSent[i] = Date.now(); });
   }));
+
+  root.querySelectorAll("[data-grip]").forEach((btn) => btn.addEventListener("click", () => {
+    const closed = btn.dataset.grip === "1";
+    send("/api/gripper", { closed }, `gripper ${closed ? "closed" : "opened"}`);
+  }));
+  $("#c-led-set").addEventListener("click", () => {
+    const v = $("#c-led").value;
+    const rgb = [1, 3, 5].map((k) => parseInt(v.slice(k, k + 2), 16));
+    send("/api/led", { r: rgb[0], g: rgb[1], b: rgb[2] }, `LED ${v}`);
+  });
+  $("#c-rest-on").addEventListener("click", () => {
+    const turnOn = !resting;
+    if (turnOn && !confirm("Enter rest mode? Motion is refused until Wake up.")) return;
+    send("/api/rest", { on: turnOn }, `rest mode ${turnOn ? "on" : "off"}`);
+  });
 
   rows.forEach((row, i) => {
     const [lo, hi] = SOFT_LIMITS[i];
     const slider = row.querySelector('input[type="range"]');
     const num = row.querySelector(".num");
     const clamp = (v) => Math.max(lo, Math.min(hi, v));
-    const send = (v) => {
+    const go = (v) => {
       v = clamp(Number.isFinite(v) ? v : 0);
       slider.value = num.value = v;
       lastSent[i] = Date.now();
-      post(`/api/joint/${i + 1}`, { angle: v, speed: speed() }, `${JOINTS[i]} → ${fmt(v)}°`);
+      share();
+      send(`/api/joint/${i + 1}`, { angle: v, speed: speed() }, `${JOINTS[i]} → ${fmt(v)}°`);
     };
     slider.addEventListener("pointerdown", () => { dragging[i] = true; });
-    slider.addEventListener("input", () => { num.value = slider.value; });
-    slider.addEventListener("change", () => { dragging[i] = false; send(Number(slider.value)); });
-    num.addEventListener("keydown", (e) => { if (e.key === "Enter") send(Number(num.value)); });
-    row.querySelector(".go").addEventListener("click", () => send(Number(num.value)));
+    slider.addEventListener("input", () => {
+      num.value = slider.value;
+      share({ j: i, value: Number(slider.value) });
+    });
+    slider.addEventListener("change", () => { dragging[i] = false; go(Number(slider.value)); });
+    num.addEventListener("keydown", (e) => { if (e.key === "Enter") go(Number(num.value)); });
+    row.querySelector(".go").addEventListener("click", () => go(Number(num.value)));
     row.querySelectorAll(".step").forEach((b) => b.addEventListener("click", () => {
-      send(clamp(Number(num.value) + Number(b.dataset.d) * Number($("#c-step").value)));
+      go(clamp(Number(num.value) + Number(b.dataset.d) * Number(stepEl.value)));
     }));
   });
 
+  // ---- the operator's panel, mirrored -----------------------------------------
+  function applyRemote(ui) {
+    remote = !operator && ui?.state ? ui : null;
+    rows.forEach((row) => row.classList.remove("remote"));
+    if (!remote) return;
+    const st = remote.state;
+    speedEl.value = st.speed;
+    $("#c-speed-v").textContent = st.speed;
+    stepEl.value = st.step;
+    armBox.checked = !!st.enabled;
+    if (st.drag) {
+      const row = rows[st.drag.j];
+      if (row) {
+        row.classList.add("remote");
+        row.querySelector('input[type="range"]').value = st.drag.value;
+        row.querySelector(".num").value = st.drag.value;
+        row.querySelector(".ctl-now").textContent = `${remote.name} → ${fmt(st.drag.value)}°`;
+      }
+    }
+  }
+
+  const offs = [];
+  offs.push(on("lease", () => {
+    const now = isOperator();
+    if (now !== operator) {
+      operator = now;
+      if (!operator) armBox.checked = false;
+      else share();
+    }
+    updateEnabled();
+    applyRemote(live.ui);
+  }));
+  offs.push(on("ui", applyRemote));
+  offs.push(mountActivity($("#a-activity"), 40));
+
   updateEnabled();
 
-  const off = onTelemetry((s) => {
+  offs.push(on("telemetry", (s) => {
+    $("#a-port").textContent = SOURCE_PORT[s.source] || "on /dev/ttyTHS1";
     $("#a-badges").innerHTML = [
-      !s.connected ? '<span class="pill hot">desconectado</span>'
-        : s.source === "gazebo" ? '<span class="pill info">simulação Gazebo</span>'
-        : s.mock ? '<span class="pill info">modo simulado</span>' : '<span class="pill ok">conectado</span>',
-      s.power_on == null ? "" : s.resting ? '<span class="pill warn">em repouso</span>' : s.power_on ? '<span class="pill">servos ligados</span>' : '<span class="pill warn">em repouso</span>',
-      s.moving == null ? "" : s.moving ? '<span class="pill accent">em movimento</span>' : '<span class="pill">parado</span>',
+      !s.connected ? '<span class="pill hot">disconnected</span>'
+        : s.source === "gazebo" ? '<span class="pill info">Gazebo simulation</span>'
+        : s.mock ? '<span class="pill info">mock arm</span>' : '<span class="pill ok">connected</span>',
+      s.resting ? '<span class="pill warn">resting</span>'
+        : s.power_on == null ? "" : s.power_on ? '<span class="pill">servos on</span>' : '<span class="pill warn">servos released</span>',
+      s.moving == null ? "" : s.moving ? '<span class="pill accent">moving</span>' : '<span class="pill">still</span>',
     ].join("");
-    $("#a-overlay").innerHTML = s.angles ? "" : '<span class="pill">sem leitura de ângulos</span>';
+    $("#a-overlay").innerHTML = s.angles ? "" : '<span class="pill">no angle reading</span>';
     $("#a-error").innerHTML = s.error ? `<div class="error-box">${esc(s.error)}</div>` : "";
+    const caps = s.capabilities || [];
+    root.querySelectorAll("[data-cap]").forEach((el) => { el.hidden = !caps.includes(el.dataset.cap); });
+    $("#c-extra").hidden = !["gripper", "led", "rest"].some((c) => caps.includes(c));
+    $("#c-grip-state").textContent = s.gripper || "—";
+    $("#c-rest-state").textContent = s.resting ? "on" : "off";
+    $("#c-rest-on").textContent = s.resting ? "Rest off" : "Rest on";
+    if (s.led && document.activeElement !== $("#c-led")) $("#c-led").value = hex(s.led);
+
     const nowResting = !!s.resting;
     if (connected !== !!s.connected || resting !== nowResting) {
       connected = !!s.connected;
@@ -344,9 +461,10 @@ export function render(root) {
     }
     rows.forEach((row, i) => {
       const a = s.angles?.[i];
-      row.querySelector(".ctl-now").textContent = a == null ? "—" : `agora ${fmt(a)}°`;
+      const mirrored = remote?.state?.drag?.j === i;
+      if (!mirrored) row.querySelector(".ctl-now").textContent = a == null ? "—" : `now ${fmt(a)}°`;
       // follow the real angle until the user moves a control, then wait for the arm to arrive
-      if (a != null && !dragging[i] && Date.now() - lastSent[i] > 4000
+      if (a != null && !mirrored && !dragging[i] && Date.now() - lastSent[i] > 4000
           && document.activeElement !== row.querySelector(".num")) {
         row.querySelector('input[type="range"]').value = a;
         row.querySelector(".num").value = Math.round(a * 10) / 10;
@@ -371,14 +489,14 @@ export function render(root) {
     history.push({ t: now, angles: s.angles, temps: s.temps });
     while (history.length && history[0].t < now - HISTORY_S) history.shift();
     redraw();
-  });
+  }));
 
   const onTheme = () => redraw();
   window.addEventListener("themechange", onTheme);
 
   return () => {
     alive = false;
-    off();
+    offs.forEach((off) => off());
     window.removeEventListener("themechange", onTheme);
     arm3d?.dispose();
   };
