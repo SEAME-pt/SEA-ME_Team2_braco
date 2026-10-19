@@ -5,3 +5,5 @@ ws/log/
 ws/bags/
 dist/
 .vscode
+__pycache__/
+*.pyc
