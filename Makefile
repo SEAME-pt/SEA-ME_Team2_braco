@@ -12,7 +12,9 @@
 #   host workflow     host-venv, host-python, host-cpp, host-clean, init   (venv + CMake hello-world on this machine)
 #
 # Which machine is this?  ROLE=pc (workstation) or ROLE=jetson (the Nano).
-# Resolved from, in order: ROLE=... on the command line, $COMPOSE_PROFILES, COMPOSE_PROFILES in docker/.env, "pc".
+# Resolved from, in order: ROLE=... on the command line, $COMPOSE_PROFILES, COMPOSE_PROFILES in docker/.env, then
+# detected from this machine (arm64 + Tegra marker = jetson, anything else = pc). Runtime targets refuse
+# ROLE=jetson on a non-arm64 host (FORCE=1 bypasses); see `make info`.
 #
 # Project layout - every path used below is defined in the next block, so moving a file means editing one line:
 #
@@ -76,9 +78,26 @@ PROJECT_FILES := $(COMPOSE_BASE) $(ENV_EXAMPLE) $(DOCKERFILE) $(CONFIG_DIR)/colc
 # Read KEY from .env. The shell environment wins over .env, exactly as it does for docker compose.
 dotenv = $(strip $(shell sed -n 's/^$(1)=//p' $(ENV_FILE) 2>/dev/null | tail -n 1))
 
+# What machine is this? Probed once. UNAME_M and IS_JETSON can be overridden to simulate another host, e.g.
+#   make info UNAME_M=aarch64 IS_JETSON=1
+# aarch64 alone does not mean "Jetson" (Raspberry Pi, ARM servers, Linux VMs on Apple Silicon report it too),
+# so a Jetson is arm64 AND carries a Tegra marker.
+UNAME_S ?= $(shell uname -s)
+UNAME_M ?= $(shell uname -m)
+ARCH    := $(if $(filter aarch64 arm64,$(UNAME_M)),arm64,amd64)
+ifndef IS_JETSON
+IS_JETSON := $(shell { grep -qsai jetson /proc/device-tree/model || test -f /etc/nv_tegra_release; } && echo 1)
+endif
+DETECTED_ROLE := $(if $(and $(filter arm64,$(ARCH)),$(IS_JETSON)),jetson,pc)
+# Informational only: GPU stays opt-in (an empty GPU defers to COMPOSE_FILE in .env).
+GPU_HINT := $(if $(shell command -v nvidia-smi 2>/dev/null),nvidia,$(if $(wildcard /dev/dri),dri))
+
 # ROLE and GPU are generic names, so only the command line may set them (never a stray env var).
 ifneq ($(origin ROLE),command line)
-ROLE := $(or $(COMPOSE_PROFILES),$(call dotenv,COMPOSE_PROFILES),pc)
+ROLE := $(or $(COMPOSE_PROFILES),$(call dotenv,COMPOSE_PROFILES),$(DETECTED_ROLE))
+ROLE_SRC := $(if $(COMPOSE_PROFILES),environment,$(if $(call dotenv,COMPOSE_PROFILES),$(ENV_FILE),detected))
+else
+ROLE_SRC := command line
 endif
 ifneq ($(origin GPU),command line)
 GPU :=
@@ -138,12 +157,12 @@ endef
 .PHONY: all ci init host-venv host-python host-cpp host-clean _jetson help info doctor env dirs lint tar xhost build rebuild pull push up down restart ps logs config \
         arm-up arm-down arm-ps arm-logs arm-restart arm-park arm-zero arm-rest arm-resume arm-temps install-service uninstall-service service-status \
         shell exec run smoke talker-listener talker talker-stop listener ping-pub ping-echo ws-deps ws-build ws-test ws-clean \
-        clean distclean binfmt jetson-cross jetson-ship _role _xhost
+        clean distclean binfmt jetson-cross jetson-ship _role _arch _xhost
 
 ##@ Setup
 
 help: ## Show this help
-	@printf 'SEA:ME arm class - docker compose helper\n  current: ROLE=%s  service=%s  GPU=%s\n' "$(ROLE)" "$(SERVICE)" "$(or $(GPU),none)"
+	@printf 'SEA:ME arm class - docker compose helper\n  current: ROLE=%s (%s)  service=%s  GPU=%s  host=%s\n' "$(ROLE)" "$(ROLE_SRC)" "$(SERVICE)" "$(or $(GPU),none)" "$(UNAME_S)/$(ARCH)"
 	@printf '  usage:   make <target> [ROLE=pc|jetson] [GPU=nvidia|dri] [CMD=...] [NANO=user@host]   (host targets: make host-*)\n'
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z0-9_-]+:.*## / {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2} /^##@/ {printf "\n\033[1m%s\033[0m\n", substr($$0, 5)}' $(MAKEFILE_LIST)
 
@@ -160,7 +179,9 @@ env: _role ## Create docker/.env from docker/.env.example (UID/GID, groups and p
 	  echo "created $(ENV_FILE) for ROLE=$(ROLE) (uid $$(id -u), gid $$(id -g)) - review it, then: make up"; fi
 
 info: _role ## Show what this Makefile resolved (role, service, images, compose command)
-	@echo "ROLE          $(ROLE)"
+	@echo "ROLE          $(ROLE)  (from $(ROLE_SRC))"
+	@echo "host          $(UNAME_S) $(UNAME_M) -> $(ARCH)  jetson marker: $(or $(IS_JETSON),no)  detected role: $(DETECTED_ROLE)"
+	@echo "GPU hint      $(or $(GPU_HINT),none)  (opt in with GPU=$(or $(GPU_HINT),nvidia|dri), PC only)"
 	@echo "service       $(SERVICE)"
 	@echo "image         $(IMAGE_PREFIX)/$(SERVICE):$(IMAGE_TAG)"
 	@echo "compose cmd   $(COMPOSE)"
@@ -202,11 +223,12 @@ for d in $$WS_DIRS; do
 done
 case "$$ROLE" in
   pc)
+    if [ -n "$$IS_JETSON" ]; then warn "this host looks like a Jetson but ROLE=pc: did you mean ROLE=jetson?"; fi
     if [ -n "$$DISPLAY" ] && [ -d /tmp/.X11-unix ]; then ok "DISPLAY=$$DISPLAY and X11 socket directory present"; else warn "no DISPLAY or X11 socket: RViz2 and Gazebo windows will not open"; fi
     if command -v xhost >/dev/null 2>&1; then ok "xhost available"; else warn "xhost not installed (apt install x11-xserver-utils)"; fi
     ;;
   jetson)
-    if [ "$$(uname -m)" = aarch64 ]; then ok "aarch64 host"; else warn "host is $$(uname -m), not aarch64: use make jetson-cross to build the Jetson image here"; fi
+    if [ "$$ARCH" = arm64 ]; then ok "arm64 host"; else bad "host is $$UNAME_M, not arm64: ROLE=jetson cannot run here (build the image with make jetson-cross)"; fi
     if [ -e "$$MYCOBOT_PORT" ]; then ok "serial device $$MYCOBOT_PORT present"; else warn "serial device $$MYCOBOT_PORT not found (the container will not start without it)"; fi
     if [ "$$MYCOBOT_PORT" = /dev/ttyTHS1 ] && command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet nvgetty 2>/dev/null; then
       warn "nvgetty is active and holds /dev/ttyTHS1: sudo systemctl disable --now nvgetty"
@@ -220,7 +242,7 @@ endef
 export DOCTOR_SH
 
 doctor: _role ## Check this host and project: docker, compose, project files, .env, folders, display/serial
-	@ROLE=$(ROLE) MYCOBOT_PORT=$(MYCOBOT_PORT) ENV_FILE=$(ENV_FILE) WS_DIRS="$(WS_DIRS)" PROJECT_FILES="$(PROJECT_FILES)" sh -c "$$DOCTOR_SH"
+	@ROLE=$(ROLE) ARCH=$(ARCH) UNAME_M=$(UNAME_M) IS_JETSON=$(IS_JETSON) MYCOBOT_PORT=$(MYCOBOT_PORT) ENV_FILE=$(ENV_FILE) WS_DIRS="$(WS_DIRS)" PROJECT_FILES="$(PROJECT_FILES)" sh -c "$$DOCTOR_SH"
 
 xhost: ## (pc) Let local containers draw on your X11/XWayland display (xhost +local:)
 	@if command -v xhost >/dev/null 2>&1; then xhost +local:; else echo "xhost not found: apt install x11-xserver-utils"; exit 1; fi
@@ -252,25 +274,25 @@ tar: ## Pack docker/ into docker/dist/seame-arm-docker.tar (leaves out .env, ws/
 
 ##@ Build and run (the service is chosen by ROLE)
 
-build: _role ## Build the image for this machine (BUILD_ARGS='--progress=plain' etc.)
+build: _role _arch ## Build the image for this machine (BUILD_ARGS='--progress=plain' etc.)
 	$(COMPOSE) build $(BUILD_ARGS) $(SERVICE)
 
 rebuild: BUILD_ARGS := --no-cache --pull
 rebuild: build ## Rebuild from scratch (no cache, fresh ubuntu:26.04) - slow
 
-pull: _role ## Pull this machine's prebuilt image from the registry in IMAGE_PREFIX (then: make up)
+pull: _role _arch ## Pull this machine's prebuilt image from the registry in IMAGE_PREFIX (then: make up)
 	docker pull $(IMAGE_PREFIX)/$(SERVICE):$(IMAGE_TAG)
 
-push: _role ## Push this machine's image (IMAGE_PREFIX must be a registry path)
+push: _role _arch ## Push this machine's image (IMAGE_PREFIX must be a registry path)
 	$(COMPOSE) push $(SERVICE)
 
-up: _role _xhost | $(WS_DIRS) ## Start this machine's container in the background (builds first if missing)
+up: _role _arch _xhost | $(WS_DIRS) ## Start this machine's container in the background (builds first if missing)
 	$(COMPOSE) up -d $(SERVICE)
 
 down: _role ## Stop and remove the containers (named volumes are kept)
 	$(COMPOSE) down --remove-orphans
 
-restart: _role ## Restart the container
+restart: _role _arch ## Restart the container
 	$(COMPOSE) restart $(SERVICE)
 
 ps: _role ## Show container status
@@ -291,7 +313,7 @@ exec: _role up ## Run CMD in the running container: make exec CMD='ros2 topic li
 	@test -n "$$SEAME_CMD" || { echo "usage: make exec CMD='ros2 topic list'" >&2; exit 2; }
 	$(EXEC) bash -c "$$SEAME_CMD"
 
-run: _role | $(WS_DIRS) ## Run CMD in a throw-away container (CI style): make run CMD='colcon build'
+run: _role _arch | $(WS_DIRS) ## Run CMD in a throw-away container (CI style): make run CMD='colcon build'
 	@test -n "$$SEAME_CMD" || { echo "usage: make run CMD='colcon build'" >&2; exit 2; }
 	$(RUN1) bash -c "$$SEAME_CMD"
 
@@ -389,9 +411,11 @@ service-status: ## Show the boot unit and the arm services
 ##@ Jetson image from a PC (no Docker build on the Nano)
 
 binfmt: ## One-time: register QEMU so this PC can build arm64 images
+	@[ "$(ARCH)" != arm64 ] || { echo "this host is already arm64: QEMU is not needed" >&2; exit 1; }
 	docker run --privileged --rm tonistiigi/binfmt --install arm64
 
 jetson-cross: ## Cross-build the Jetson image on this PC (arm64 via QEMU, slow); tag <IMAGE_TAG>-arm64
+	@[ "$(ARCH)" != arm64 ] || { echo "this host is already arm64: build natively with make build ROLE=jetson" >&2; exit 1; }
 	IMAGE_TAG=$(JETSON_TAG) DOCKER_DEFAULT_PLATFORM=linux/arm64 $(DC) --profile jetson build jetson-driver
 
 jetson-ship: ## Copy the cross-built image to the Nano: make jetson-ship NANO=user@nano.local
@@ -446,7 +470,12 @@ _role:
 	  [ "$(ROLE)" = pc ] || { echo "GPU only applies to ROLE=pc" >&2; exit 1; }; \
 	fi
 
-_jetson:
+# Runtime targets need an image that matches the host CPU: the jetson image is arm64-only.
+_arch:
+	@if [ "$(ROLE)" = jetson ] && [ "$(ARCH)" != arm64 ] && [ "$(FORCE)" != 1 ]; then \
+	  echo "ROLE=jetson needs an arm64 host, this one is $(UNAME_M). Use ROLE=pc, build with 'make jetson-cross' (then 'make jetson-ship NANO=...'), or FORCE=1 to run anyway." >&2; exit 1; fi
+
+_jetson: _arch
 	@[ "$(ROLE)" = jetson ] || { echo "arm services run on the Jetson only (ROLE=$(ROLE)); use ROLE=jetson" >&2; exit 1; }
 
 _xhost:
