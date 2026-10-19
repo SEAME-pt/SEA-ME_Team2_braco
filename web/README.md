@@ -39,6 +39,7 @@ make build ROLE=jetson   # once: the image now includes fastapi/uvicorn
 make ws-build ROLE=jetson
 make arm-up              # http://<jetson-ip>:8000 from any PC on the lab network
 make arm-basics          # optional: the ros2_basics demos for ROS 2 > Demos
+make arm-web-restart      # after editing web/: restarts only the page, the arm keeps running (control must be taken again)
 ```
 
 There the page uses `ARM_SOURCE=ros`: it never opens the serial port, it is a client of `arm_driver`
