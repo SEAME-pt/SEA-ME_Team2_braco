@@ -205,6 +205,7 @@ Logs of all nodes: `make arm-logs`.
 make up ROLE=jetson && make ws-build     # build the workspace (includes ../libs) in the dev container
 make arm-up                              # start the arm container; make arm-ps / make arm-logs
 make arm-restart                         # after every make ws-build
+make arm-web-restart                     # only the web page, after editing web/ (the arm is not zeroed or parked)
 make arm-park                            # fold, release joints, rest mode (driver keeps reading temperatures)
 make arm-temps                           # print the servo temperatures once
 make arm-web-logs                        # only the web page's log lines; the page is http://<jetson>:8000
