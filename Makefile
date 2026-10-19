@@ -82,8 +82,8 @@ web-stop:
 
 web-restart: web-stop web-start
 
-# Restarts the arm container (the braco page runs inside it on the Jetson). The arm is zeroed
-# and parked, like docker's `make arm-restart`; for only the page use: make -C docker arm-web-restart
+# Restarts the arm container (the braco page runs inside it on the Jetson). The arm is not
+# zeroed or parked; for only the page use: make -C docker arm-web-restart
 web-re:
 	$(MAKE) -C docker arm-restart
 

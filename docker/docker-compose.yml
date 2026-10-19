@@ -106,9 +106,7 @@ services:
   #   temperature_monitor  servo temperatures -> /diagnostics + LCD1602
   #   joystick_teleop      joystick control; waits for the joystick and survives unplugging
   #   braco web page       uvicorn on WEB_PORT (default 8000), talks to the arm only through ROS 2
-  # and around it: zero.py at start, park.py (fold + release the joints) when the container stops.
-  # No restart policy: zero runs only on make arm-up / the seame-arm boot unit, so the arm
-  # never re-zeroes by itself after a crash.
+  # The arm is not moved when the container starts or stops: zero/park are manual (make arm-zero / arm-park).
   # ---------------------------------------------------------------------------------------
   arm:
     <<: *ros-common
@@ -122,7 +120,7 @@ services:
     stdin_open: false
     tty: false
     restart: "no"
-    stop_grace_period: 60s   # room for park.py (up to 20 s of motion) before Docker kills it
+    stop_grace_period: 20s   # room for the page and the launch to shut down before Docker kills it
     command: ["/ws/install/seame_arm/lib/seame_arm/arm_routine.sh",
               "port:=${MYCOBOT_PORT:-/dev/ttyTHS1}", "baud:=${MYCOBOT_BAUD:-1000000}",
               "lcd_bus:=${LCD_I2C_BUS:-/dev/i2c-0}", "device:=${JOYSTICK_DEVICE:-/dev/input/js0}"]

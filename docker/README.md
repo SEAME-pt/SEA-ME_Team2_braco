@@ -155,11 +155,11 @@ Notes:
 - Started in a normal terminal, Ctrl-C stops the nodes and leaves nothing running. A talker started *without* a terminal
   (CI, `make talker CI=true`, a closed window) survives the end of `docker exec`: use `make talker-stop`.
 
-## Arm services (Jetson): driver, temperature, joystick, boot/shutdown routine
+## Arm services (Jetson): driver, temperature, joystick, web page
 
 Everything from `ws/src/seame_arm` runs all the time on the Nano **inside ROS 2, in one container** (compose profile
 `arm`, same `jetson-driver` image, no rebuild). `arm_routine.sh` is its entrypoint: it starts
-`ros2 launch seame_arm arm.launch.py` and adds the zero/park routine around it:
+`ros2 launch seame_arm arm.launch.py` and the web page. It does **not** move the arm at start or stop:
 
 ```
 arm_driver           ROS 2 node   the ONLY process that opens /dev/ttyTHS1 (libs/cpp MyCobot280)
@@ -170,7 +170,7 @@ arm_driver           ROS 2 node   the ONLY process that opens /dev/ttyTHS1 (libs
 temperature_monitor  ROS 2 node   temperatures -> /diagnostics + LCD1602 (port of libs/cpp temps_lcd); respawned
 joystick_teleop      ROS 2 node   joystick -> /arm/command (port of libs/cpp joystick_all_joints); respawned
 braco web page       uvicorn      http://<jetson>:8000 (WEB_PORT), ARM_SOURCE=ros: a plain client of the topics/services above
-arm_routine.sh       entrypoint   start: zero.py (all joints to 0) / stop: park.py (fold, release joints), then the page and the launch end
+arm_routine.sh       entrypoint   start: the launch + the page / stop: the page, then the launch (no zero, no park)
 ```
 
 Launch arguments: `port`, `baud`, `lcd_bus`, `device` (filled from `.env`). Single nodes are no longer separate
@@ -182,13 +182,11 @@ Logs of all nodes: `make arm-logs`.
   it sends `stop` (so a crashed or killed client cannot leave the arm running). Together with the step-ahead
   targets of the teleop, the arm coasts at most a few degrees.
 - The teleop waits for the joystick and survives unplugging it (it stops the arm and opens the device again).
-- `arm_routine.sh` replaces the old `~/scripts/zero.py` and `park.py`, which opened the serial port with pymycobot.
-  The container has no restart policy: zero runs only when `make arm-up` or the boot unit starts it, and park runs
-  whenever the container is stopped (`make arm-down`, `systemctl stop seame-arm`, a normal Jetson shutdown), before the
-  launch stops the driver, so park can still reach the arm. Nothing runs on a power cut or `kill -9`, and
-  `systemctl restart docker` stops every container at once, so park may fail then: use `make arm-down` first.
-  Run them by hand with `make arm-park` / `make arm-zero` (no container has to be stopped).
-- **Rest mode.** `park.py` ends by putting the driver in rest mode: motion, gripper and `power_on` are refused, but
+- Zero and park are **manual**: nothing moves the arm when the container starts or stops (`make arm-up`, `make arm-down`,
+  `make arm-restart`, `systemctl stop seame-arm`, a Jetson shutdown). Run them with `make arm-zero` / `make arm-park`
+  (no container has to be stopped). They replace the old `~/scripts/zero.py` and `park.py`, which opened the serial port
+  with pymycobot. Park the arm before shutting down, or it will drop when the servos lose power.
+- **Rest mode.** `make arm-park` (`park.py`) ends by putting the driver in rest mode: motion, gripper and `power_on` are refused, but
   angles and temperatures keep being published, so a hot arm can cool down under watch (LCD and `/diagnostics` keep
   updating). Leave it with `make arm-resume` or `make arm-zero`. Details: [../docs/arm-rest-mode.md](../docs/arm-rest-mode.md).
 - The driver opens the port with `TIOCEXCL`: a second program (non-root) gets `Device or resource busy` immediately.
