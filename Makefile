@@ -9,7 +9,7 @@
 #
 # Run everything from the repo root. Two groups of targets:
 #   docker workflow   up, shell, build, ws-build, arm-*, lint, clean ...   (docker compose, project dir docker/)
-#   host workflow     host-venv, host-python, host-cpp, host-clean, init   (venv + CMake hello-world on this machine)
+#   host workflow     host-venv, host-python, host-cpp, host-check, host-clean, init   (venv + CMake hello-world on this machine)
 #
 # Which machine is this?  ROLE=pc (workstation) or ROLE=jetson (the Nano).
 # Resolved from, in order: ROLE=... on the command line, $COMPOSE_PROFILES, COMPOSE_PROFILES in docker/.env, then
@@ -58,7 +58,10 @@ DIST_DIR     := $(DOCKER_DIR)/dist
 ARCHIVE      := $(DIST_DIR)/$(PROJECT).tar
 
 # Host workflow (no docker): Python venv and the CMake hello-world.
-PYTHON       ?= python3
+# The interpreter version lives in .python-version (read by CI and uv/pyenv too);
+# numpy==1.24.4 in requirements.txt has no wheels past 3.11.
+PY_VERSION   := $(shell cat .python-version)
+PYTHON       ?= python$(PY_VERSION)
 VENV         := .venv
 PIP          := $(VENV)/bin/pip
 CPP_DIR      := tests
@@ -154,7 +157,7 @@ define confirm
 @if [ "$(FORCE)" != 1 ]; then printf '%s [y/N] ' "$(1)"; read -r ans; [ "$$ans" = y ] || { echo "aborted"; exit 1; }; fi
 endef
 
-.PHONY: all ci init host-venv host-python host-cpp host-clean _jetson help info doctor env dirs lint tar xhost build rebuild pull push up down restart ps logs config \
+.PHONY: all ci init host-venv host-python host-cpp host-check host-clean _jetson help info doctor env dirs lint tar xhost build rebuild pull push up down restart ps logs config \
         arm-up arm-down arm-ps arm-logs arm-restart arm-park arm-zero arm-rest arm-resume arm-temps install-service uninstall-service service-status \
         shell exec run smoke talker-listener talker talker-stop listener ping-pub ping-echo ws-deps ws-build ws-test ws-clean \
         clean distclean binfmt jetson-cross jetson-ship _role _arch _xhost
@@ -435,13 +438,21 @@ host-cpp: ## Configure, build and run the C++ hello-world
 	cmake --build $(CPP_BUILD)
 	$(CPP_BUILD)/hello_world
 
+host-check: host-venv ## Hardware-free checks: Python imports and compile, C++ build without running
+	$(VENV)/bin/python -c 'import ast; ast.parse(open("tests/hello_world.py").read())'
+	$(VENV)/bin/python -c 'import numpy, pymycobot, serial'
+	cmake -S $(CPP_DIR) -B $(CPP_BUILD)
+	cmake --build $(CPP_BUILD)
+
 host-clean: ## Remove the venv and the C++ build (host only; containers: make clean)
 	rm -rf $(VENV) $(CPP_BUILD)
 
 init: host-venv ## Create the venv and enable the git hooks
 	git config core.hooksPath .githooks
 
-$(VENV)/.installed: requirements.txt
+$(VENV)/.installed: requirements.txt .python-version
+	@$(PYTHON) -c 'import sys; v="%d.%d" % sys.version_info[:2]; sys.exit(0 if v == "$(PY_VERSION)" else "need Python $(PY_VERSION), $(PYTHON) is " + v + " (install it, e.g. uv python install $(PY_VERSION), or set PYTHON=/path/to/python$(PY_VERSION))")'
+	rm -rf $(VENV)
 	$(PYTHON) -m venv $(VENV)
 	$(PIP) install --upgrade pip
 	$(PIP) install -r requirements.txt
@@ -449,7 +460,7 @@ $(VENV)/.installed: requirements.txt
 
 host-venv: $(VENV)/.installed ## Create the venv and install requirements.txt
 
-ci: all lint ## Everything the GitHub Action runs: host checks, then lint
+ci: host-check lint ## Everything the GitHub Action runs (no robot needed): host checks, then lint
 
 ##@ Cleanup
 
