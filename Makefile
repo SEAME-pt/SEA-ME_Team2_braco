@@ -27,10 +27,12 @@ $(VENV)/.installed: requirements.txt
 
 venv: $(VENV)/.installed
 
-# ---- Web dashboard (web/README.md) --------------------------------------------
+# ---- braco web page (web/README.md) ---------------------------------------------
+# On the Jetson the page normally runs INSIDE the arm container (cd docker && make arm-up)
+# and talks to the arm through ROS 2. `make web` / web-start below are the fallback that opens
+# the serial port directly with pymycobot: only use them while the arm container is down.
 # web-mock and web-test only need the web packages, so they also work on a PC
-# where requirements.txt (pymycobot, numpy) cannot be installed. web, which
-# talks to the real arm, also installs requirements.txt.
+# where requirements.txt (pymycobot, numpy) cannot be installed.
 $(VENV)/bin/python:
 	python3 -m venv $(VENV)
 	$(PIP) install --upgrade pip

@@ -12,16 +12,18 @@ import types
 import pytest
 
 os.environ["ARM_MOCK"] = "1"   # before importing the app: never open a serial port
+os.environ["BRACO_ROS"] = "0"  # and never start ROS 2, even where it is installed
 
 from fastapi.testclient import TestClient  # noqa: E402
 
 from web.server import app as app_module  # noqa: E402
-from web.server import arm, docs, github, role  # noqa: E402
+from web.server import arm, docs, github, role, ros  # noqa: E402
 from web.server.app import app  # noqa: E402
 
 STATIC_FILES = [
     "index.html", "css/style.css", "js/app.js", "js/util.js", "js/specs.js", "js/arm3d.js",
-    "js/views/home.js", "js/views/arm.js", "js/views/docs.js", "js/views/sprints.js", "js/views/sprint-detail.js",
+    "js/activity.js", "js/views/home.js", "js/views/arm.js", "js/views/ros.js", "js/views/docs.js",
+    "js/views/sprints.js", "js/views/sprint-detail.js",
 ]
 
 
@@ -29,7 +31,7 @@ STATIC_FILES = [
 def close_sources(monkeypatch):
     """Stop the polling thread of every source a test starts (not the app's own)."""
     created = []
-    for cls in (arm.ArmSource, arm.MockArm, arm.GazeboArm):
+    for cls in (arm.ArmSource, arm.MockArm, arm.GazeboArm, arm.RosArm):
         def start(self, _original=cls.start):
             if self is not app_module.arm:
                 created.append(self)
@@ -226,7 +228,7 @@ def test_list_docs_includes_repo_docs():
     assert "docker/README.md" in paths and "web/README.md" in paths
     safety = next(d for d in docs.list_docs() if d["path"] == "docs/safety.md")
     assert safety["title"].startswith("Lab Safety")
-    assert safety["group"] == "Segurança"
+    assert safety["group"] == "Safety"
     assert ".github/PULL_REQUEST_TEMPLATE.md" in paths
 
 
@@ -446,7 +448,7 @@ def test_gazebo_commands_need_joint_states(gz):
 
 def test_gazebo_without_rclpy_reports_error(monkeypatch):
     monkeypatch.setitem(sys.modules, "rclpy", None)   # makes `import rclpy` fail
-    source = arm.GazeboArm()
+    source = arm.GazeboArm(bridge=ros.RosBridge())
     source.start()
     assert wait_for(lambda: "rclpy" in (source.snapshot()["error"] or ""))
     assert source.snapshot()["connected"] is False
@@ -555,3 +557,115 @@ def test_static_files_served(client, path):
 def test_index_is_root(client):
     r = client.get("/")
     assert r.status_code == 200 and "js/app.js" in r.text
+    assert "<title>braco</title>" in r.text and 'lang="en"' in r.text
+
+
+def test_ros_source_is_chosen(monkeypatch):
+    monkeypatch.delenv("ARM_MOCK", raising=False)
+    monkeypatch.setenv("ARM_SOURCE", "ros")
+    assert isinstance(app_module.build_arm(), arm.RosArm)
+
+
+def test_ros_panels_without_ros(client):
+    for path in ("/api/ros/health", "/api/ros/graph", "/api/ros/demos"):
+        data = client.get(path).json()
+        assert data["available"] is False and "BRACO_ROS=0" in data["error"]
+
+
+# ---- shared session over /ws -----------------------------------------------------------
+
+def next_of(ws, kind, predicate=lambda m: True, limit=60):
+    """Read messages until one of `kind` matches (telemetry keeps the stream moving)."""
+    for _ in range(limit):
+        message = ws.receive_json()
+        if message.get("type") == kind and predicate(message):
+            return message
+    raise AssertionError("no {} message".format(kind))
+
+
+def hello(ws, cid, name, page="arm"):
+    ws.send_json({"type": "hello", "id": cid, "name": name, "page": page})
+    return next_of(ws, "welcome")
+
+
+def test_ws_needs_hello(client):
+    with client.websocket_connect("/ws") as ws:
+        ws.send_json({"type": "nope"})
+        with pytest.raises(Exception):
+            ws.receive_json()
+
+
+def test_ws_welcome_presence_and_telemetry(client):
+    with client.websocket_connect("/ws") as ws:
+        welcome = hello(ws, "t-presence", "Carla")
+        assert welcome["you"] == "t-presence" and welcome["name"] == "Carla"
+        assert "entries" in next_of(ws, "activity")
+        presence = next_of(ws, "presence", lambda m: any(c["id"] == "t-presence" for c in m["clients"]))
+        me = next(c for c in presence["clients"] if c["id"] == "t-presence")
+        assert me["name"] == "Carla" and me["online"] and me["page"] in ("arm", "")
+        assert len(next_of(ws, "telemetry")["data"]["angles"]) == 6
+
+
+def test_lease_and_live_sync_between_two_pages(client):
+    A, B = {"X-Client-Id": "t-ana"}, {"X-Client-Id": "t-bruno"}
+    with client.websocket_connect("/ws") as wa, client.websocket_connect("/ws") as wb:
+        hello(wa, "t-ana", "Ana")
+        hello(wb, "t-bruno", "Bruno")
+        try:
+            # nobody in control: commands are locked
+            assert client.post("/api/pose/zero", headers=A).status_code == 423
+            lease = client.post("/api/control/take", headers=A).json()
+            assert lease["holder"]["name"] == "Ana"
+            next_of(wb, "lease", lambda m: (m["holder"] or {}).get("id") == "t-ana")
+
+            # Bruno is a viewer: locked out, and cannot take over
+            r = client.post("/api/pose/park", headers=B)
+            assert r.status_code == 423 and "Ana" in r.json()["detail"]
+            assert client.post("/api/control/take", headers=B).status_code == 423
+            assert client.post("/api/joint/1", json={"angle": 10}).status_code == 423   # no id at all
+
+            # Ana commands, Bruno sees it happen
+            assert client.post("/api/joint/1", json={"angle": 10, "speed": 20}, headers=A).status_code == 200
+            entry = next_of(wb, "activity", lambda m: "entry" in m and m["entry"]["action"].startswith("J1"))["entry"]
+            assert entry["who"] == "Ana" and entry["ok"] and entry["by"] == "t-ana"
+
+            # Ana's control panel is mirrored live to Bruno, not echoed back to her
+            wa.send_json({"type": "ui", "state": {"speed": 55, "drag": {"j": 2, "value": 42}}})
+            ui = next_of(wb, "ui")
+            assert ui["name"] == "Ana" and ui["state"]["drag"] == {"j": 2, "value": 42}
+            # a viewer's ui is ignored
+            wb.send_json({"type": "ui", "state": {"speed": 1}})
+
+            # STOP works for the viewer, and Ana is told who did it
+            assert client.post("/api/stop", headers=B).json() == {"ok": True}
+            stop = next_of(wa, "activity", lambda m: "entry" in m and m["entry"]["action"] == "STOP")["entry"]
+            assert stop["who"] == "Bruno"
+
+            assert client.get("/api/session").json()["lease"]["holder"]["id"] == "t-ana"
+        finally:
+            client.post("/api/control/release", headers=A)
+        assert client.get("/api/session").json()["lease"]["holder"] is None
+        next_of(wb, "lease", lambda m: m["holder"] is None)
+
+
+def test_operator_only_extras(client):
+    A = {"X-Client-Id": "t-dani"}
+    with client.websocket_connect("/ws") as ws:
+        hello(ws, "t-dani", "Dani")
+        client.post("/api/control/take", headers=A)
+        try:
+            assert client.post("/api/led", json={"r": 255, "g": 0, "b": 0}, headers=A).status_code == 200
+            assert client.post("/api/led", json={"r": 300, "g": 0, "b": 0}, headers=A).status_code == 422
+            assert client.post("/api/gripper", json={"closed": True}, headers=A).status_code == 200
+            assert client.get("/api/status").json()["gripper"] == "closed"
+            assert client.post("/api/rest", json={"on": True}, headers=A).status_code == 200
+            r = client.post("/api/pose/zero", headers=A)
+            assert r.status_code == 409   # resting: wake up first
+            assert client.post("/api/wake", headers=A).status_code == 200
+            assert client.get("/api/status").json()["resting"] is False
+            # demos need ROS: a clear error, not a crash
+            r = client.post("/api/ros/demos/add_two_ints", json={"a": 1, "b": 2}, headers=A)
+            assert r.status_code == 503 and "BRACO_ROS=0" in r.json()["detail"]
+            assert client.post("/api/ros/demos/fibonacci", json={"order": 99}, headers=A).status_code == 422
+        finally:
+            client.post("/api/control/release", headers=A)

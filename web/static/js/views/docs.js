@@ -27,17 +27,17 @@ function renderList(filter = "") {
       <a href="#/docs/${esc(d.path)}" class="${d.path === current ? "active" : ""}">
         ${esc(d.title)}<small>${esc(d.path)}</small>
       </a>`).join("")}
-  `).join("") || '<div class="empty small">Nada encontrado.</div>';
+  `).join("") || '<div class="empty small">Nothing found.</div>';
 }
 
 async function show(path) {
   state.current = path || DEFAULT_DOC;
   renderList(state.root.querySelector("#d-search").value);
   const box = state.root.querySelector("#d-content");
-  box.innerHTML = '<div class="empty">Carregando…</div>';
+  box.innerHTML = '<div class="empty">Loading…</div>';
   try {
     const res = await fetch(`/api/docs/${state.current}`);
-    if (!res.ok) throw new Error(res.status === 404 ? "Documento não encontrado." : res.statusText);
+    if (!res.ok) throw new Error(res.status === 404 ? "Document not found." : res.statusText);
     // Inline LaTeX like $0^\circ$ has no renderer here: show plain text
     const md = (await res.text()).replace(/\$([^$\n]*[\\^][^$\n]*)\$/g, (_, m) =>
       m.replace(/\^\\circ/g, "°").replace(/\\(times|cdot)/g, "×").replace(/\\([a-zA-Z]+)/g, "$1"));
@@ -46,7 +46,7 @@ async function show(path) {
     box.innerHTML = `
       <div class="doc-meta">
         <span class="mono">${esc(state.current)}</span>
-        <a href="${github}" target="_blank" rel="noopener">ver no GitHub ↗</a>
+        <a href="${github}" target="_blank" rel="noopener">view on GitHub ↗</a>
       </div>
       <article>${html}</article>`;
     box.querySelectorAll("a[href]").forEach((a) => {
@@ -64,12 +64,12 @@ async function show(path) {
 export function render(root, path) {
   root.innerHTML = `
     <div class="page-head">
-      <div><h1>Documentação</h1><p>Todos os arquivos Markdown do repositório, organizados por tema, sempre na versão do branch atual</p></div>
+      <div><h1>Docs</h1><p>Every Markdown file in the repository, grouped by topic, always as in the current branch</p></div>
     </div>
     <div class="docs">
       <nav class="card doc-list">
-        <input id="d-search" type="search" placeholder="Buscar documento…" autocomplete="off">
-        <div id="d-items"><div class="empty small">Carregando…</div></div>
+        <input id="d-search" type="search" placeholder="Search docs…" autocomplete="off">
+        <div id="d-items"><div class="empty small">Loading…</div></div>
       </nav>
       <section class="card markdown" id="d-content"></section>
     </div>`;
