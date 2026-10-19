@@ -39,7 +39,8 @@ def generate_launch_description():
         DeclareLaunchArgument('device', default_value='/dev/input/js0'),
         # The only process that opens the serial port. Not respawned: a fault must be seen.
         Node(package='seame_arm', executable='arm_driver', name='arm_driver',
-             output='screen', parameters=[{'port': port, 'baud': ParameterValue(baud, value_type=int)}]),
+             output='screen',
+             parameters=[{'port': port, 'baud': ParameterValue(baud, value_type=int)}]),
         Node(package='seame_arm', executable='temperature_monitor',
              name='temperature_monitor', output='screen', respawn=True,
              parameters=[{'lcd_bus': lcd_bus}]),
