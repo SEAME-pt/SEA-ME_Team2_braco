@@ -207,3 +207,34 @@ def test_activity_is_bounded(hub):
         hub.log("arm", "event {}".format(i))
     entries = hub.activity()
     assert len(entries) == 200 and entries[-1]["action"] == "event 299"
+
+
+def test_speed_needs_the_lease_and_the_fast_range_is_unlocked_on_purpose(hub):
+    join(hub, "a", "Ana")
+    join(hub, "b", "Bruno")
+    with pytest.raises(LockedError):
+        hub.set_speed("a", 40)
+    hub.take("a")
+    with pytest.raises(LockedError):
+        hub.set_speed("b", 40)
+    assert hub.set_speed("a", 80)["value"] == 80
+    for bad in (0, 101, 50.5, True, "50"):
+        with pytest.raises(ValueError):
+            hub.set_speed("a", bad, fast=True)
+    with pytest.raises(ValueError):
+        hub.set_speed("a", 81)   # above the limit without the warning accepted
+    assert hub.speed == 80
+    assert hub.set_speed("a", 100, fast=True) == {"type": "speed", "value": 100, "fast": True, "limit": 80, "max": 100}
+    assert hub.activity()[-1]["action"] == "speed 100"
+
+
+def test_released_lease_caps_the_speed(hub):
+    join(hub, "a", "Ana")
+    hub.take("a")
+    hub.set_speed("a", 95, fast=True)
+    hub.release("a")
+    assert hub.speed == 80
+    hub.take("a")
+    hub.set_speed("a", 20)
+    hub.release("a")
+    assert hub.speed == 20   # a safe speed is kept for the next operator

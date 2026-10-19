@@ -6,7 +6,7 @@
     MockArm    synthetic data, for developing the page without the arm
 
 All of them expose start(), snapshot(), stop_motion(), go_to_pose(), move_joint()
-and wake_up(); RosArm and MockArm also set_rest(), set_gripper() and set_led().
+and wake_up() (leave rest, servos on, no movement); RosArm and MockArm also set_rest(), set_gripper() and set_led().
 snapshot()["capabilities"] tells the page which of these a source supports.
 Commands only come from explicit actions on the page; nothing here powers the
 servos or moves the arm by itself, and no setting is written.
@@ -47,8 +47,6 @@ POSES = {
     "zero": [0, 0, 0, 0, 0, 0],
 }
 POSE_SPEED = 30
-RELEASE_POSES = {"park"}   # servos are released (arm goes limp) once the pose is reached
-RELEASE_TIMEOUT = 20       # give up waiting for the arm to arrive after this many seconds
 POSE_HOLD = 10   # mock only: seconds to stay in the pose before wandering again
 
 # Gazebo (ros2_control) source. Joint names follow the myCobot 280 URDF; override
@@ -71,7 +69,6 @@ ROS_TOLERANCE_DEG = 2.0
 ROS_MOVE_TIMEOUT = 20.0
 ROS_STATE_TIMEOUT = 0.5   # older /joint_states = no feedback for a move
 ROS_STALE_AFTER = 2.0     # seconds without /joint_states before the page shows "disconnected"
-ROS_PARK_SETTLE = 0.5     # wait after reaching the park pose before releasing the servos
 
 ANGLE_PERIOD = 0.2   # 5 Hz
 STATE_PERIOD = 1.0   # power / moving
@@ -147,7 +144,7 @@ class _Base:
             "temps": None,
             "temp_levels": None,
             "power_on": None,
-            "resting": False,   # sticky: set when a park finishes, cleared by wake_up()
+            "resting": False,   # rest mode (motion refused): set by set_rest(), cleared by wake_up()
             "moving": None,
             "gripper": None,    # "open" | "closed" | None (unknown), last commanded
             "led": None,        # [r, g, b] 0-255, last commanded
@@ -180,7 +177,6 @@ class ArmSource(_Base):
         self.port = port
         self.baud = baud
         self._mc = None
-        self._motion = 0   # bumped by every move command
         self._serial = threading.Lock()   # pymycobot is not thread-safe
 
     def start(self):
@@ -270,7 +266,6 @@ class ArmSource(_Base):
     def stop_motion(self):
         if self._mc is None:
             raise RuntimeError("arm not connected")
-        self._motion += 1   # a STOP also cancels a pending release
         with self._serial:
             self._mc.stop()
 
@@ -280,52 +275,25 @@ class ArmSource(_Base):
         if self._mc is None:
             raise RuntimeError("arm not connected")
         check_awake(self.snapshot()["resting"])
-        self._motion += 1   # cancels a release still waiting from an earlier park
         with self._serial:
             self._mc.send_angles(POSES[name], speed)
-        if name in RELEASE_POSES:
-            threading.Thread(target=self._release_when_arrived,
-                             args=(self._motion,), daemon=True).start()
 
     def move_joint(self, index, angle, speed=POSE_SPEED):
         """Move one joint (0-based index); the others are not commanded."""
         if self._mc is None:
             raise RuntimeError("arm not connected")
         check_awake(self.snapshot()["resting"])
-        self._motion += 1
         with self._serial:
             self._mc.send_angle(index + 1, angle, speed)
 
-    def wake_up(self, speed=POSE_SPEED):
-        """Power the servos back on after a rest and move to the zero pose."""
+    def wake_up(self):
+        """Power the servos on. The arm stays where it is: nothing moves."""
         if self._mc is None:
             raise RuntimeError("arm not connected")
-        self._motion += 1
         with self._serial:
             self._mc.power_on()
         time.sleep(0.3)
         self._update(power_on=True, resting=False)
-        with self._serial:
-            self._mc.send_angles(POSES["zero"], speed)
-
-    def _release_when_arrived(self, motion):
-        """Wait for the arm to stop moving, then release the servos."""
-        deadline = time.time() + RELEASE_TIMEOUT
-        time.sleep(1.0)   # is_moving only turns true a moment after the command
-        while time.time() < deadline and motion == self._motion and not self._closed.is_set():
-            try:
-                if self._call(self._mc.is_moving) == 0:
-                    break
-            except Exception:
-                return
-            time.sleep(0.3)
-        if motion != self._motion or self._closed.is_set():
-            return   # another command or STOP took over
-        try:
-            self._call(self._mc.release_all_servos)
-            self._update(power_on=False, resting=True)
-        except Exception:
-            pass
 
 
 class MockArm(_Base):
@@ -339,7 +307,6 @@ class MockArm(_Base):
         self._temps = [32.0, 35.0, 36.0, 38.0, 34.0, 31.0]
         self._stopped_until = 0.0
         self._frozen = None
-        self._release_at = None
         self._pose = None   # (angles, started_at, from_angles) while holding a pose
         self._update(mock=True, source="mock", connected=True, power_on=True)
 
@@ -350,9 +317,6 @@ class MockArm(_Base):
         last_temp = 0.0
         while not self._closed.is_set():
             now = time.time()
-            if self._release_at and now >= self._release_at:
-                self._release_at = None
-                self._update(power_on=False, resting=True)
             if self.snapshot()["resting"]:
                 angles, moving = self._frozen, False   # resting: servos released
             elif now < self._stopped_until:
@@ -387,7 +351,6 @@ class MockArm(_Base):
         return dh_coords(angles)
 
     def stop_motion(self):
-        self._release_at = None
         self._pose = None
         self._stopped_until = time.time() + 5
 
@@ -395,7 +358,7 @@ class MockArm(_Base):
         if name not in POSES:
             raise ValueError("unknown pose: " + name)
         check_awake(self.snapshot()["resting"])
-        self._start_move(POSES[name], release=name in RELEASE_POSES)
+        self._start_move(POSES[name])
 
     def move_joint(self, index, angle, speed=POSE_SPEED):
         check_awake(self.snapshot()["resting"])
@@ -403,8 +366,8 @@ class MockArm(_Base):
         target[index] = angle
         self._start_move(target)
 
-    def wake_up(self, speed=POSE_SPEED):
-        self._start_move(POSES["zero"])   # powers on, then goes to zero
+    def wake_up(self):
+        self._update(power_on=True, resting=False)   # stays where it is
 
     def set_rest(self, on):
         self.stop_motion()
@@ -417,9 +380,8 @@ class MockArm(_Base):
     def set_led(self, r, g, b):
         self._update(led=[int(r), int(g), int(b)])
 
-    def _start_move(self, target, release=False):
+    def _start_move(self, target):
         self._update(power_on=True, resting=False)
-        self._release_at = time.time() + 3 if release else None
         origin = list(self._frozen or [0.0] * 6)
         self._stopped_until = 0.0
         self._pose = (target, time.time(), origin)
@@ -535,8 +497,8 @@ class GazeboArm(_Base):
         target[index] = angle
         self._move_to(target, speed)
 
-    def wake_up(self, speed=POSE_SPEED):
-        self.go_to_pose("zero", speed)   # simulated servos never rest
+    def wake_up(self):
+        pass   # simulated servos are always on and never rest
 
 
 class RosArm(_Base):
@@ -687,22 +649,20 @@ class RosArm(_Base):
             self._motion += 1
             return self._motion
 
-    def _start_move(self, target, speed, firmware_limits=False, then=None):
-        """Stream `target` in a worker thread; then(token) runs once it is reached."""
+    def _start_move(self, target, speed, firmware_limits=False):
+        """Stream `target` in a worker thread."""
         token = self._cancel()
-        threading.Thread(target=self._stream, args=(token, list(target), speed, firmware_limits, then),
+        threading.Thread(target=self._stream, args=(token, list(target), speed, firmware_limits),
                          daemon=True).start()
         return token
 
-    def _stream(self, token, target, speed, firmware_limits, then):
+    def _stream(self, token, target, speed, firmware_limits):
         end = time.monotonic() + ROS_MOVE_TIMEOUT
         while token == self._motion and not self._closed.is_set():
             angles = self._fresh_angles()
             if angles is not None:
                 deviation = max(abs(a - p) for a, p in zip(angles, target))
                 if deviation <= ROS_TOLERANCE_DEG:
-                    if then is not None:
-                        then(token)
                     return
                 # Same fraction for every joint, so they all arrive together
                 scale = min(1.0, ROS_STEP_DEG / deviation)
@@ -714,18 +674,6 @@ class RosArm(_Base):
         if token == self._motion and not self._closed.is_set():
             self._publish_stop()
             self._notice("target not reached in {:.0f} s (or no feedback): arm stopped".format(ROS_MOVE_TIMEOUT))
-
-    def _release_after_park(self, token):
-        self._closed.wait(ROS_PARK_SETTLE)
-        if token != self._motion:
-            return   # another command or STOP took over
-        try:
-            self._service("release_servos")
-            self._update(power_on=False)
-            self._service("set_read_only", True)
-            self._update(resting=True)
-        except Exception as e:
-            self._notice("park reached but rest failed: {}".format(e))
 
     # ---- commands -------------------------------------------------------------------
 
@@ -744,11 +692,8 @@ class RosArm(_Base):
         if name not in POSES:
             raise ValueError("unknown pose: " + name)
         self._check_can_move()
-        if name in RELEASE_POSES:
-            # Outside the driver's soft limits (J2, J3, J4): the firmware limits, as park.py does
-            self._start_move(POSES[name], speed, firmware_limits=True, then=self._release_after_park)
-        else:
-            self._start_move(POSES[name], speed)
+        # Park is outside the driver's soft limits (J2, J3, J4): the firmware limits, as park.py does
+        self._start_move(POSES[name], speed, firmware_limits=name == "park")
 
     def move_joint(self, index, angle, speed=POSE_SPEED):
         self._check_can_move()
@@ -756,16 +701,13 @@ class RosArm(_Base):
         target[index] = float(angle)
         self._start_move(target, speed)
 
-    def wake_up(self, speed=POSE_SPEED):
-        """Leave rest mode, power the servos on and go to zero (same as zero.py)."""
+    def wake_up(self):
+        """Leave rest mode and power the servos on. The arm stays where it is."""
         self._ready()
         self._cancel()
         self._service("set_read_only", False)
         self._service("power_on")
         self._update(power_on=True, resting=False)
-        if self._fresh_angles() is None:
-            raise RuntimeError("servos on, but no fresh /joint_states to move to zero")
-        self._start_move(POSES["zero"], speed)
 
     def set_rest(self, on):
         """Rest mode on/off without moving: motion is refused, temperatures keep coming."""

@@ -29,13 +29,13 @@ import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from . import docs, github, ros
-from .arm import (DEFAULT_BAUD, DEFAULT_PORT, POSE_SPEED, POSES, SOFT_LIMITS,
+from .arm import (DEFAULT_BAUD, DEFAULT_PORT, POSES, SOFT_LIMITS,
                   ArmSource, GazeboArm, MockArm, RestingError, RosArm)
 from .role import machine_role
 from .ros_demos import FIB_MAX_ORDER, Demos
@@ -173,23 +173,24 @@ def stop(request: Request):
 
 
 @app.post("/api/pose/{name}")
-def pose(name: str, request: Request, speed: int = Query(POSE_SPEED, ge=1, le=100)):
+def pose(name: str, request: Request):
+    """Move to a fixed pose at the shared speed."""
     if name not in POSES:
         raise HTTPException(status_code=404, detail="unknown pose")
+    speed = hub.speed
     command(request, "pose {} (speed {})".format(name, speed), lambda: arm.go_to_pose(name, speed))
     return {"ok": True, "pose": name, "angles": POSES[name], "speed": speed}
 
 
 @app.post("/api/wake")
-def wake(request: Request, speed: int = Query(POSE_SPEED, ge=1, le=100)):
-    """Leave rest: power the servos on and move to the zero pose."""
-    command(request, "wake up (speed {})".format(speed), lambda: arm.wake_up(speed))
+def wake(request: Request):
+    """Leave rest mode and power the servos on. The arm does not move."""
+    command(request, "wake up", arm.wake_up)
     return {"ok": True}
 
 
 class JointMove(BaseModel):
     angle: float
-    speed: int = Field(POSE_SPEED, ge=1, le=100)
 
 
 @app.post("/api/joint/{index}")
@@ -201,9 +202,27 @@ def joint(index: int, move: JointMove, request: Request):
     if not lo <= move.angle <= hi:
         raise HTTPException(status_code=422,
                             detail="J{} must be between {} and {} degrees".format(index, lo, hi))
-    command(request, "J{} -> {:g} deg (speed {})".format(index, move.angle, move.speed),
-            lambda: arm.move_joint(index - 1, move.angle, move.speed))
-    return {"ok": True, "joint": index, "angle": move.angle, "speed": move.speed}
+    speed = hub.speed
+    command(request, "J{} -> {:g} deg (speed {})".format(index, move.angle, speed),
+            lambda: arm.move_joint(index - 1, move.angle, speed))
+    return {"ok": True, "joint": index, "angle": move.angle, "speed": speed}
+
+
+class Speed(BaseModel):
+    value: int
+    unlocked: bool = False   # the operator accepted the warning for speeds above the limit
+
+
+@app.post("/api/speed")
+def set_speed(body: Speed, request: Request):
+    """The one speed everybody shares. Operator only; above 80 needs unlocked=true."""
+    cid, _ip = _client(request)
+    try:
+        return hub.set_speed(cid, body.value, body.unlocked)
+    except LockedError as e:
+        raise HTTPException(status_code=423, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
 
 
 class Switch(BaseModel):

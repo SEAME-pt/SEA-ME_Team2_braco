@@ -28,7 +28,7 @@ export const CONNECTION = [
   ["Frame", "0xFE 0xFE <len> <cmd> <data…> 0xFA"],
   ["Angles", "degrees, int16 × 100"],
   ["Coordinates", "XYZ mm (int16 × 10), RX/RY/RZ degrees (int16 × 100)"],
-  ["Speed", "1 … 100 (%)"],
+  ["Speed", "1 … 100 (%); the page caps it at 80 unless the operator accepts a warning"],
   ["Display", "LCD1602 RGB, I2C bus 0 (0x3E LCD, 0x60 RGB)"],
 ];
 
