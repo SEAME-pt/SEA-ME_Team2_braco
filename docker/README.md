@@ -25,8 +25,7 @@ pymycobot are the same on both machines.
 
 ```
 seame-arm-docker/
-├── Makefile                 single entry point: run `make` to list everything
-├── README.md
+├── README.md                (the Makefile is the single one at the repo root: run `make` there to list everything)
 ├── .env.example             copied to .env by `make env`
 ├── .gitignore
 ├── docker-compose.yml       at the root so plain `docker compose` finds it without -f
@@ -48,6 +47,8 @@ Created by `make` when needed, never shipped: `.env`, **`ws/src`** (your code, m
 `make dirs`, and automatically by `make up` / `make run`, **as your user**. If Docker creates a missing bind-mount
 folder itself it can end up owned by root, and then `colcon build` cannot write to it.
 
+There is a single `Makefile`, at the **repo root** (one level above this folder): run every `make` command from there. It passes `--project-directory docker` to `docker compose`, so `.env`, `ws/` and `../libs` resolve exactly as below. Its host targets (`make host-python`, `host-cpp`, `host-clean`, `init`) are the repo's non-docker workflow; the plain `docker compose` commands in this README still work when run from inside `docker/`.
+
 Every path the Makefile uses is defined in one block at its top (`project layout`), so moving a file means editing
 one line there. `make doctor` checks that all project files are present, and `make lint` validates the compose files,
 runs shellcheck on `docker/scripts/` and `tests/` and hadolint on the Dockerfile (each only if installed).
@@ -62,7 +63,7 @@ make smoke               # checks every piece below, including an RMW loopback
 make shell
 ```
 
-Without `make`:
+Without `make` (run these from inside `docker/`):
 
 ```bash
 cp .env.example .env                 # set COMPOSE_PROFILES=pc|jetson and USER_UID/USER_GID
