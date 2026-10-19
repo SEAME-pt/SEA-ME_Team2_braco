@@ -56,6 +56,7 @@ DIST_DIR     := $(DOCKER_DIR)/dist
 ARCHIVE      := $(DIST_DIR)/$(PROJECT).tar
 
 # Host workflow (no docker): Python venv and the CMake hello-world.
+PYTHON       ?= python3
 VENV         := .venv
 PIP          := $(VENV)/bin/pip
 CPP_DIR      := tests
@@ -417,7 +418,7 @@ init: host-venv ## Create the venv and enable the git hooks
 	git config core.hooksPath .githooks
 
 $(VENV)/.installed: requirements.txt
-	python3 -m venv $(VENV)
+	$(PYTHON) -m venv $(VENV)
 	$(PIP) install --upgrade pip
 	$(PIP) install -r requirements.txt
 	touch $@
