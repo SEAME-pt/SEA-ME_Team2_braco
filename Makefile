@@ -82,6 +82,11 @@ web-stop:
 
 web-restart: web-stop web-start
 
+# Restarts the arm container (the braco page runs inside it on the Jetson). The arm is zeroed
+# and parked, like docker's `make arm-restart`; for only the page use: make -C docker arm-web-restart
+web-re:
+	$(MAKE) -C docker arm-restart
+
 # Wipes the whole venv (fixes corrupted/partial installs) and reinstalls, then starts.
 web-reinstall: web-stop
 	rm -rf $(VENV)
@@ -107,4 +112,4 @@ web-test: $(VENV)/.web-test-installed
 	$(VENV)/bin/python -m pytest web/tests -q
 
 .PHONY: all python cpp clean init venv web-deps web web-mock web-test \
-	web-start web-stop web-restart web-reinstall web-status web-logs
+	web-start web-stop web-restart web-re web-reinstall web-status web-logs
