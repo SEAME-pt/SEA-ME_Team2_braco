@@ -92,7 +92,8 @@ class ArmMoves(Node):
         return self._call(self._release, 'release servos')
 
     def set_rest(self, on):
-        """Rest mode: the driver keeps publishing temperatures but refuses motion.
+        """
+        Rest mode: the driver keeps publishing temperatures but refuses motion.
 
         Best effort (an older driver has no such service): a failure only logs.
         """
@@ -103,7 +104,8 @@ class ArmMoves(Node):
         rclpy.spin_until_future_complete(self, future, timeout_sec=5.0)
         result = future.result()
         if result is None or not result.success:
-            self.get_logger().warning('rest mode not set: %s' % (result.message if result else 'timeout'))
+            reason = result.message if result else 'timeout'
+            self.get_logger().warning('rest mode not set: %s' % reason)
             return False
         return True
 
