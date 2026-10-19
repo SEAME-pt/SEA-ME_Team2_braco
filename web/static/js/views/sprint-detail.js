@@ -107,6 +107,8 @@ function draw(body, data, n) {
       <div class="sprint-progress"><div class="progress"><span style="width:${pct}%"></span></div><span>${pct}%</span></div>
     </section>
 
+    ${sprint.body.trim() ? `<section class="card markdown" style="margin-bottom:16px"><h2 style="display:flex">Description</h2>${markdown(sprint.body)}</section>` : ""}
+
     <div class="stats">
       <div class="stat"><b>${done}/${total}</b><span>tasks done</span></div>
       <div class="stat"><b>${pulls.length}</b><span>PRs merged</span></div>
@@ -134,8 +136,6 @@ function draw(body, data, n) {
         </section>
       </div>
     </div>
-
-    ${sprint.body.trim() ? `<section class="card markdown" style="margin-top:16px"><h2 style="display:flex">Description</h2>${markdown(sprint.body)}</section>` : ""}
 
     <nav class="sprint-nav">
       ${prev ? `<a href="#/sprints/${prev.sprint}">← Sprint ${prev.sprint} · ${esc(prev.name)}</a>` : "<span></span>"}
