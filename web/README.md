@@ -19,6 +19,9 @@ is in sync**: who is online, who controls the arm, what each person did, and the
   control", with your panel mirrored live (speed, step, the slider you are dragging). Every command except STOP
   needs control, and runs one at a time (a second one while the first is running is refused as *busy*).
 - **STOP works for everybody**, operator or not.
+- **Speed is shared**: one value held by the server, shown to everybody, changed only by the operator (viewers see
+  it locked). It is capped at **80**; going above asks the operator to accept a warning, and the fast range is
+  dropped again when control is released.
 - Control is released by the operator, when the operator's page is closed (5 s later, so a reload keeps it), or
   after **60 s** without a command or a touch of the control panel. The sidebar shows the countdown.
 - **Activity log**: commands, STOPs, failures, control changes, joins and leaves, for everybody (Home and Arm pages).
@@ -41,8 +44,8 @@ make arm-basics          # optional: the ros2_basics demos for ROS 2 > Demos
 There the page uses `ARM_SOURCE=ros`: it never opens the serial port, it is a client of `arm_driver`
 ([docker/README.md](../docker/README.md)). A move is a stream of targets at most 15° ahead of the real angles, resent
 every 100 ms, exactly like `seame_arm/scripts/arm_moves.py`; if the page dies, the driver's 300 ms watchdog stops the
-arm. Park uses the firmware limits, then releases the servos and puts the driver in rest mode; wake up leaves rest
-mode, powers the servos and goes to zero.
+arm. Park uses the firmware limits and leaves the servos on; it does not enter rest mode. Wake up leaves rest mode
+and powers the servos without moving the arm (rest mode is only entered with the *Rest on* button).
 
 **On a PC, without the arm** (mock data, no ROS):
 
@@ -80,7 +83,7 @@ No arm, no ROS and no network needed:
 - `tests/test_session.py`: the hub with a fake clock: one operator, commands locked for the others, STOP for
   everybody, one command at a time, idle expiry, reload vs closing the page, activity log.
 - `tests/test_ros_arm.py`: `RosArm` with a fake bridge: joint states, bounded steps resent inside the 300 ms watchdog,
-  STOP and newer commands cancel a move, timeout, park → release → rest, wake, gripper/LED; the ROS panels without ROS.
+  STOP and newer commands cancel a move, timeout, park (no release, no rest), wake (no movement), gripper/LED; the ROS panels without ROS.
 - `tests/test_emulated_arm.py`: the **real pymycobot** against an emulated arm on a pseudo-terminal (the fallback
   source). Skipped if pymycobot is not installed.
 
@@ -126,15 +129,16 @@ runs **409**.
 
 | Route | Description |
 |---|---|
-| `WS /ws` | the page's connection. First message `{"type": "hello", "id", "name", "page"}`; then the server sends `telemetry` (200 ms), `presence`, `lease`, `activity`, `ui`, `health`, `demos`, `graph` (ROS page), `echo` (watched topic); the page sends `ui`, `page`, `rename`, `watch` / `unwatch` |
+| `WS /ws` | the page's connection. First message `{"type": "hello", "id", "name", "page"}`; then the server sends `telemetry` (200 ms), `presence`, `lease`, `activity`, `ui`, `speed`, `health`, `demos`, `graph` (ROS page), `echo` (watched topic); the page sends `ui`, `page`, `rename`, `watch` / `unwatch` |
 | `WS /ws/telemetry` | bare snapshot stream every 200 ms (scripts, old pages) |
 | `GET /api/status` | latest arm snapshot (`capabilities` lists what the source supports) |
 | `POST /api/control/take` · `/release` | take / release control |
 | `GET /api/session` | clients, lease and activity log |
 | `POST /api/stop` | STOP, **anyone** |
-| `POST /api/pose/{park\|zero}?speed=` | move to a fixed pose; park then releases the servos and enters rest mode; 409 while resting |
-| `POST /api/wake?speed=` | leave rest mode, power on, go to zero |
-| `POST /api/joint/{1-6}` `{angle, speed}` | move one joint, inside its soft limit |
+| `POST /api/pose/{park\|zero}` | move to a fixed pose at the shared speed; 409 while resting |
+| `POST /api/wake` | leave rest mode and power on; the arm does not move |
+| `POST /api/joint/{1-6}` `{angle}` | move one joint, inside its soft limit, at the shared speed |
+| `POST /api/speed` `{value, unlocked}` | the one speed everybody shares (1-100), **operator only**. Above 80 it needs `unlocked: true` (the page asks the operator to accept a warning); releasing control puts a speed above 80 back to 80 |
 | `POST /api/rest` `{on}` · `/api/gripper` `{closed}` · `/api/led` `{r, g, b}` | rest mode, gripper, Atom LED (ROS and mock sources) |
 | `GET /api/ros/health` · `/graph` · `/demos` | the ROS 2 panels |
 | `POST /api/ros/demos/add_two_ints` `{a, b}` | call the service |
