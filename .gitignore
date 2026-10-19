@@ -5,3 +5,7 @@
 /libs/cpp/zero
 /libs/cpp/joystick_all_joynts
 /libs/cpp/pid_tool
+
+# host workflow output
+.venv/
+/tests/build/
