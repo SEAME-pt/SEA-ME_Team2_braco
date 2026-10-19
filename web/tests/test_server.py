@@ -435,8 +435,9 @@ def test_gazebo_pose_stop_and_wake(gz):
     assert [round(math.degrees(p), 1) for p in gz._publisher.sent[-1].points[0].positions] == arm.POSES["park"]
     gz.stop_motion()
     assert [round(math.degrees(p)) for p in gz._publisher.sent[-1].points[0].positions] == [1, 2, 3, 4, 5, 6]
+    sent = len(gz._publisher.sent)
     gz.wake_up()
-    assert [round(math.degrees(p)) for p in gz._publisher.sent[-1].points[0].positions] == [0] * 6
+    assert len(gz._publisher.sent) == sent   # wake up does not move the arm
     with pytest.raises(ValueError):
         gz.go_to_pose("nope")
 
@@ -646,6 +647,42 @@ def test_lease_and_live_sync_between_two_pages(client):
             client.post("/api/control/release", headers=A)
         assert client.get("/api/session").json()["lease"]["holder"] is None
         next_of(wb, "lease", lambda m: m["holder"] is None)
+
+
+def test_speed_is_shared_capped_and_operator_only(client):
+    A, B = {"X-Client-Id": "t-eva"}, {"X-Client-Id": "t-fabio"}
+    with client.websocket_connect("/ws") as wa, client.websocket_connect("/ws") as wb:
+        hello(wa, "t-eva", "Eva")
+        welcome_b = hello(wb, "t-fabio", "Fabio")
+        assert next_of(wb, "speed")["limit"] == 80
+        try:
+            # nobody in control, or a viewer: locked
+            assert client.post("/api/speed", json={"value": 40}, headers=A).status_code == 423
+            client.post("/api/control/take", headers=A)
+            assert client.post("/api/speed", json={"value": 40}, headers=B).status_code == 423
+
+            # the operator sets it and everybody sees it
+            assert client.post("/api/speed", json={"value": 55}, headers=A).json()["value"] == 55
+            assert next_of(wb, "speed", lambda m: m["value"] == 55)["fast"] is False
+
+            # above 80 needs the warning accepted
+            r = client.post("/api/speed", json={"value": 90}, headers=A)
+            assert r.status_code == 422 and "80" in r.json()["detail"]
+            assert client.post("/api/speed", json={"value": 101, "unlocked": True}, headers=A).status_code == 422
+            assert client.post("/api/speed", json={"value": 0}, headers=A).status_code == 422
+            assert client.post("/api/speed", json={"value": 90, "unlocked": True}, headers=A).json()["fast"] is True
+            next_of(wb, "speed", lambda m: m["value"] == 90 and m["fast"])
+
+            # commands use the shared speed
+            assert client.post("/api/joint/1", json={"angle": 5}, headers=A).json()["speed"] == 90
+            assert client.post("/api/pose/zero", headers=A).json()["speed"] == 90
+        finally:
+            client.post("/api/control/release", headers=A)
+        # the fast range does not survive the lease
+        assert next_of(wb, "speed", lambda m: m["value"] == 80)["fast"] is False
+        with client.websocket_connect("/ws") as wc:
+            hello(wc, "t-gil", "Gil")
+            assert next_of(wc, "speed")["value"] == 80
 
 
 def test_operator_only_extras(client):

@@ -1,7 +1,7 @@
 """RosArm and the ROS panels without ROS: the bridge, messages and services are faked.
 
 What matters most: a move is a stream of bounded steps resent faster than
-arm_driver's 300 ms watchdog, STOP cancels it, and park ends in rest mode.
+arm_driver's 300 ms watchdog, STOP cancels it, and park / wake never power or rest the arm by themselves.
 """
 
 import math
@@ -223,27 +223,22 @@ def test_move_timeout_stops_and_notifies(ros_arm, monkeypatch):
 
 # ---- poses, rest, wake ------------------------------------------------------------------
 
-def test_park_uses_firmware_limits_then_rests(ros_arm, monkeypatch):
-    monkeypatch.setattr(arm, "ROS_PARK_SETTLE", 0.05)
+def test_park_uses_firmware_limits_and_keeps_the_servos_on(ros_arm):
     feeder = ros_arm.feed([0] * 6)
     ros_arm.go_to_pose("park")
     assert wait_for(lambda: moves(ros_arm))
     assert moves(ros_arm)[0].use_firmware_limits is True
-    assert ros_arm.bridge.calls == []   # nothing released before arriving
     feeder.angles = list(arm.POSES["park"])
-    assert wait_for(lambda: ros_arm.snapshot()["resting"])
-    assert ros_arm.bridge.calls == [("release_servos", None), ("set_read_only", True)]
-    assert ros_arm.snapshot()["power_on"] is False
-
-
-def test_stop_during_park_keeps_the_servos(ros_arm, monkeypatch):
-    monkeypatch.setattr(arm, "ROS_PARK_SETTLE", 0.3)
-    ros_arm.feed(list(arm.POSES["park"]))   # already there: release after the settle time
-    ros_arm.go_to_pose("park")
-    time.sleep(0.1)
-    ros_arm.stop_motion()
     time.sleep(0.4)
-    assert ros_arm.bridge.calls == []
+    assert ros_arm.bridge.calls == []   # no release, no rest mode
+    assert ros_arm.snapshot()["resting"] is False
+
+
+def test_zero_does_not_use_firmware_limits(ros_arm):
+    ros_arm.feed([10] * 6)
+    ros_arm.go_to_pose("zero")
+    assert wait_for(lambda: moves(ros_arm))
+    assert moves(ros_arm)[0].use_firmware_limits is False
 
 
 def test_resting_arm_refuses_motion(ros_arm):
@@ -258,15 +253,15 @@ def test_resting_arm_refuses_motion(ros_arm):
     ros_arm.stop_motion()   # STOP always goes out
 
 
-def test_wake_leaves_rest_powers_on_and_goes_to_zero(ros_arm):
+def test_wake_leaves_rest_and_powers_on_without_moving(ros_arm):
     ros_arm.feed([0, 131, -148, 146, 4.5, 0])
     ros_arm._on_read_only(FakeMsg(data=True))
-    ros_arm.wake_up(speed=20)
+    ros_arm.wake_up()
     assert ros_arm.bridge.calls == [("set_read_only", False), ("power_on", None)]
     s = ros_arm.snapshot()
     assert s["resting"] is False and s["power_on"] is True
-    assert wait_for(lambda: moves(ros_arm))
-    assert moves(ros_arm)[0].speed == 20 and moves(ros_arm)[0].use_firmware_limits is False
+    time.sleep(0.3)
+    assert moves(ros_arm) == []   # it stays in the park pose
 
 
 def test_service_refusal_is_an_error(ros_arm):
@@ -306,7 +301,16 @@ def test_mock_rest_gripper_led():
     with pytest.raises(arm.RestingError):
         mock.set_gripper(True)
     mock.wake_up()
-    assert mock.snapshot()["resting"] is False
+    s = mock.snapshot()
+    assert s["resting"] is False and s["power_on"] is True
+
+
+def test_mock_park_does_not_rest():
+    mock = arm.MockArm()
+    mock.go_to_pose("park")
+    time.sleep(0.1)
+    s = mock.snapshot()
+    assert s["resting"] is False and s["power_on"] is True
 
 
 # ---- ROS panels without ROS ----------------------------------------------------------------

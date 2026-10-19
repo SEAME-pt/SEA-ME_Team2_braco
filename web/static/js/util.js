@@ -1,7 +1,7 @@
 // Helpers and the one live connection shared by every view.
 //
 // The server pushes typed messages over /ws (see web/server/app.py):
-//   telemetry, presence, lease, activity, ui, health, demos, graph, echo, welcome
+//   telemetry, presence, lease, activity, ui, speed, health, demos, graph, echo, welcome
 // Views subscribe with on(type, fn); the last value of each type is kept in
 // `live` and replayed to new subscribers, so a view opened later is up to date.
 
@@ -60,9 +60,9 @@ export function setName(name) {
 const handlers = new Map();
 export const live = {
   online: false, telemetry: null, lease: null, presence: [], activity: [],
-  ui: null, health: null, demos: null, graph: null,
+  ui: null, speed: null, health: null, demos: null, graph: null,
 };
-const REPLAY = ["telemetry", "lease", "presence", "health", "demos", "graph", "ui"];
+const REPLAY = ["telemetry", "lease", "presence", "health", "demos", "graph", "ui", "speed"];
 
 export function on(type, fn) {
   if (!handlers.has(type)) handlers.set(type, new Set());
@@ -133,6 +133,10 @@ export function connect() {
       case "ui":
         live.ui = msg.state ? msg : null;
         emit("ui", live.ui);
+        break;
+      case "speed":
+        live.speed = msg;
+        emit("speed", msg);
         break;
       default:
         emit(msg.type, msg);

@@ -10,6 +10,11 @@ running is refused as busy). The lease ends when the operator releases it,
 closes the page (after RECONNECT_GRACE, so a reload keeps it) or does nothing
 for IDLE_TIMEOUT seconds.
 
+Speed is shared too: one value for everybody, changed only by the operator and
+capped at SPEED_LIMIT unless the operator explicitly unlocks the higher range.
+It stays when the lease changes hands, but the unlock does not: a released lease
+puts a speed above the limit back to the limit.
+
 The hub is thread-safe: HTTP routes run in a thread pool and ROS callbacks in
 the executor's threads; messages reach the websockets through the event loop.
 """
@@ -24,6 +29,9 @@ RECONNECT_GRACE = 5.0     # a reload within this time keeps the lease and the pr
 ACTIVITY_LENGTH = 200
 QUEUE_SIZE = 300          # messages waiting for one slow browser before it is skipped
 NAME_MAX = 32
+SPEED_DEFAULT = 30
+SPEED_LIMIT = 80          # above this the operator has to unlock the fast range
+SPEED_MAX = 100
 
 
 class LockedError(RuntimeError):
@@ -69,6 +77,8 @@ class Hub:
         self._last_activity = None
         self._activity = collections.deque(maxlen=ACTIVITY_LENGTH)
         self._ui = None   # last control-panel state sent by the operator
+        self._speed = SPEED_DEFAULT
+        self._fast = False   # the operator accepted the warning for speeds above SPEED_LIMIT
 
     def bind(self, loop):
         self._loop = loop
@@ -113,6 +123,7 @@ class Hub:
             welcome = [
                 {"type": "welcome", "you": cid, "name": name, "idle_timeout": self.idle_timeout},
                 {"type": "activity", "entries": list(self._activity)},
+                self._speed_message(),
             ]
             if self._ui is not None:
                 welcome.append(dict(self._ui, type="ui"))
@@ -211,11 +222,49 @@ class Hub:
                 return False
             self._holder = self._since = self._last_activity = None
             self._ui = None
+            capped = self._speed > SPEED_LIMIT
+            if capped:
+                self._speed = SPEED_LIMIT
+            self._fast = False
+            speed = self._speed_message()
+        if capped:
+            self.broadcast(speed)
         self.log(self.name_of(cid), "released control" + (" ({})".format(reason) if reason else ""),
                  ok=True, by=None if reason else cid)
         self._send_lease()
         self.broadcast({"type": "ui", "from": None, "state": None})
         return True
+
+    # ---- speed, shared by everybody -----------------------------------------------
+
+    @property
+    def speed(self):
+        with self._lock:
+            return self._speed
+
+    def _speed_message(self):
+        return {"type": "speed", "value": self._speed, "fast": self._fast,
+                "limit": SPEED_LIMIT, "max": SPEED_MAX}
+
+    def set_speed(self, cid, value, fast=False):
+        """Operator only. Above SPEED_LIMIT it needs fast=True (the page's warning, accepted)."""
+        if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= SPEED_MAX:
+            raise ValueError("speed must be a whole number from 1 to {}".format(SPEED_MAX))
+        if value > SPEED_LIMIT and not fast:
+            raise ValueError("speed above {} needs the fast range unlocked".format(SPEED_LIMIT))
+        with self._lock:
+            if self._holder is None:
+                raise LockedError("take control first")
+            if self._holder != cid:
+                raise LockedError("the arm is controlled by {}".format(self.name_of(self._holder)))
+            changed = value != self._speed
+            self._speed, self._fast = value, bool(fast) and value > SPEED_LIMIT
+            self._last_activity = self.clock()
+            message = self._speed_message()
+        self.broadcast(message)
+        if changed:
+            self.log(self.name_of(cid), "speed {}".format(value), ok=True, by=cid)
+        return message
 
     def touch(self, cid):
         with self._lock:

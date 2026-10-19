@@ -2,7 +2,9 @@
 //
 // Only the operator (the tab holding the control lease) can move the arm; STOP
 // works for everybody. The operator's control panel (speed, step, the slider
-// being dragged) is mirrored live to every other page.
+// being dragged) is mirrored live to every other page. The speed is one shared value
+// held by the server: only the operator changes it, everybody sees it, and above the
+// limit (80) the operator has to accept a warning.
 
 import { mountActivity } from "../activity.js";
 import {
@@ -96,17 +98,19 @@ function controlHTML() {
       </h2>
       <div class="lease-banner" id="c-lease"></div>
       <div class="rest-banner" id="c-rest" hidden>
-        <div><b>☾ Arm resting</b><span class="muted small">Motion is refused (rest mode). Wake up leaves rest mode, powers the servos and moves the arm to zero.</span></div>
+        <div><b>☾ Arm resting</b><span class="muted small">Motion is refused (rest mode). Wake up leaves rest mode and powers the servos; the arm stays where it is.</span></div>
         <button id="c-wake">☀ Wake up</button>
       </div>
       <div class="ctl-top">
         <button class="stop-btn" id="a-stop" title="Anyone can stop the arm, operator or not">■ STOP</button>
         <div class="ctl-poses">
-          <button data-pose="park" title="goes to [0, 131, -148, 146, 4.5, 0], then releases the servos and enters rest mode">⌂ Park</button>
+          <button data-pose="park" title="goes to [0, 131, -148, 146, 4.5, 0] and stays powered">⌂ Park</button>
           <button data-pose="zero" title="all joints to 0°">◎ Zero</button>
         </div>
         <label class="ctl-speed">speed <b id="c-speed-v">30</b>
           <input type="range" id="c-speed" min="1" max="100" value="30">
+          <span class="pill warn" id="c-speed-warn" hidden>⚠ fast</span>
+          <span class="muted small" id="c-speed-lock" hidden>🔒 set by the operator</span>
         </label>
         <label class="ctl-speed">step ±
           <select id="c-step"><option>0.5</option><option>1</option><option selected>5</option><option>10</option></select> °
@@ -127,7 +131,7 @@ function controlHTML() {
           <div class="btns"><button id="c-rest-on" title="refuse motion, keep reading temperatures">Rest on</button></div>
         </div>
       </div>
-      <p class="muted small" id="a-stop-msg">Each joint is sent when you release its control (or with Enter / Go) and stays inside the soft limit. Park goes to the rest pose, releases the servos once there and enters rest mode; Zero moves every joint to 0°. Tick “enable motion” to unlock the controls.</p>
+      <p class="muted small" id="a-stop-msg">Each joint is sent when you release its control (or with Enter / Go) and stays inside the soft limit. Park goes to the rest pose; Zero moves every joint to 0°. Speed is shared by everybody and capped at 80 unless the operator accepts the warning. Tick “enable motion” to unlock the controls.</p>
       <div id="a-error"></div>
     </section>`;
 }
@@ -274,7 +278,6 @@ export function render(root) {
 
   const msg = (html) => { $("#a-stop-msg").innerHTML = html; };
   const stamp = () => new Date().toLocaleTimeString("en-GB");
-  const speed = () => Number(speedEl.value);
 
   async function send(url, body, label) {
     const r = await post(url, body);
@@ -285,7 +288,7 @@ export function render(root) {
 
   // What the operator's panel looks like right now, for the other pages
   function panelState(drag = null) {
-    return { speed: speed(), step: stepEl.value, enabled: armBox.checked, drag };
+    return { step: stepEl.value, enabled: armBox.checked, drag };
   }
   const share = (drag) => shareUi(panelState(drag));
 
@@ -297,6 +300,7 @@ export function render(root) {
     root.querySelectorAll("#c-rest-on, #c-led, #c-led-set").forEach((el) => { el.disabled = !(operator && connected); });
     armBox.disabled = !operator;
     speedEl.disabled = stepEl.disabled = !operator;
+    $("#c-speed-lock").hidden = operator;
     $("#a-stop").disabled = !connected;
     $("#c-rest").hidden = !resting;
     $("#c-wake").disabled = !(operator && connected);
@@ -338,12 +342,43 @@ export function render(root) {
     if (!confirmRelease()) return;
     armBox.checked = true;
     share();
-    if (await send(`/api/wake?speed=${speed()}`, null, "wake up sent")) {
+    if (await send("/api/wake", null, "wake up sent")) {
       resting = false;   // the next telemetry confirms it
       updateEnabled();
     }
   });
-  speedEl.addEventListener("input", () => { $("#c-speed-v").textContent = speedEl.value; share(); });
+  // The shared speed, as the server holds it
+  let limit = 80;
+  let fast = false;
+  function showSpeed(value) {
+    $("#c-speed-v").textContent = value;
+    $("#c-speed-warn").hidden = !(value > limit);
+  }
+  function applySpeed(s) {
+    limit = s.limit;
+    speedEl.max = s.max;
+    fast = s.fast;
+    if (!speedDragging) speedEl.value = s.value;
+    showSpeed(Number(speedEl.value));
+  }
+  let speedDragging = false;
+  speedEl.addEventListener("pointerdown", () => { speedDragging = true; });
+  speedEl.addEventListener("input", () => showSpeed(Number(speedEl.value)));
+  speedEl.addEventListener("change", async () => {
+    speedDragging = false;
+    let value = Number(speedEl.value);
+    let unlocked = fast;
+    if (value > limit && !unlocked) {
+      unlocked = confirm(`Speed ${value} is above the safe limit of ${limit}.\n\nThe arm will move fast for everybody using it. Keep clear of it and keep STOP at hand.\n\nUse this speed?`);
+      if (!unlocked) value = limit;
+    }
+    const r = await post("/api/speed", { value, unlocked });
+    if (!r.ok) {
+      msg(`<span class="pill hot">Failed: ${esc(r.error)}</span>`);
+      applySpeed(live.speed || { value: 30, fast: false, limit, max: 100 });
+    }
+  });
+  speedEl.addEventListener("pointerup", () => { speedDragging = false; });
   stepEl.addEventListener("change", () => share());
 
   $("#a-stop").addEventListener("click", () => {
@@ -352,7 +387,7 @@ export function render(root) {
 
   root.querySelectorAll("[data-pose]").forEach((btn) => btn.addEventListener("click", () => {
     const name = btn.dataset.pose;
-    send(`/api/pose/${name}?speed=${speed()}`, null, `${name} sent`);
+    send(`/api/pose/${name}`, null, `${name} sent`);
     rows.forEach((_, i) => { lastSent[i] = Date.now(); });
   }));
 
@@ -381,7 +416,7 @@ export function render(root) {
       slider.value = num.value = v;
       lastSent[i] = Date.now();
       share();
-      send(`/api/joint/${i + 1}`, { angle: v, speed: speed() }, `${JOINTS[i]} → ${fmt(v)}°`);
+      send(`/api/joint/${i + 1}`, { angle: v }, `${JOINTS[i]} → ${fmt(v)}°`);
     };
     slider.addEventListener("pointerdown", () => { dragging[i] = true; });
     slider.addEventListener("input", () => {
@@ -402,8 +437,6 @@ export function render(root) {
     rows.forEach((row) => row.classList.remove("remote"));
     if (!remote) return;
     const st = remote.state;
-    speedEl.value = st.speed;
-    $("#c-speed-v").textContent = st.speed;
     stepEl.value = st.step;
     armBox.checked = !!st.enabled;
     if (st.drag) {
@@ -429,6 +462,7 @@ export function render(root) {
     applyRemote(live.ui);
   }));
   offs.push(on("ui", applyRemote));
+  offs.push(on("speed", applySpeed));
   offs.push(mountActivity($("#a-activity"), 40));
 
   updateEnabled();
