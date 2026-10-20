@@ -183,7 +183,9 @@ env: _role ## Create docker/.env from docker/.env.example (UID/GID, groups and p
 	      -e "s/^COMPOSE_PROFILES=.*/COMPOSE_PROFILES=$(ROLE)/" $(ENV_FILE) > $(ENV_FILE).tmp && mv $(ENV_FILE).tmp $(ENV_FILE) && \
 	  for pair in DIALOUT_GID:dialout VIDEO_GID:video RENDER_GID:render I2C_GID:i2c INPUT_GID:input; do \
 	    var=$${pair%%:*}; grp=$${pair##*:}; gid=$$(getent group $$grp 2>/dev/null | cut -d: -f3); \
-	    if [ -n "$$gid" ]; then sed "s/^$$var=.*/$$var=$$gid/" $(ENV_FILE) > $(ENV_FILE).tmp && mv $(ENV_FILE).tmp $(ENV_FILE); fi; \
+	    if [ -n "$$gid" ]; then sed "s/^$$var=.*/$$var=$$gid/" $(ENV_FILE) > $(ENV_FILE).tmp && mv $(ENV_FILE).tmp $(ENV_FILE); \
+	    elif [ "$(ROLE)" = jetson ] && { [ $$grp = i2c ] || [ $$grp = input ]; }; then \
+	      echo "warning: no '$$grp' group on this host - $$var left empty, the arm container cannot use the device (see make doctor)" >&2; fi; \
 	  done; \
 	  echo "created $(ENV_FILE) for ROLE=$(ROLE) (uid $$(id -u), gid $$(id -g)) - review it, then: make up"; fi
 
@@ -244,6 +246,15 @@ case "$$ROLE" in
     fi
     if [ -e /dev/i2c-0 ]; then ok "/dev/i2c-0 present (LCD for temperature_monitor)"; else warn "/dev/i2c-0 not found: temperature_monitor will not start (set LCD_I2C_BUS in .env)"; fi
     if [ -e /dev/input/js0 ]; then ok "joystick /dev/input/js0 present"; else warn "no joystick at /dev/input/js0 (joystick_teleop waits for it)"; fi
+    # The arm container reaches the LCD and joystick through these groups; unset, compose gives it a placeholder.
+    for pair in I2C_GID:i2c INPUT_GID:input; do
+      var=$${pair%%:*}; grp=$${pair##*:}
+      gid=$$(getent group "$$grp" 2>/dev/null | cut -d: -f3)
+      envgid=$$(sed -n "s/^$$var=//p" "$$ENV_FILE" 2>/dev/null | tail -n 1)
+      if [ -z "$$gid" ]; then warn "no '$$grp' group on this host: the arm container gets a placeholder group and cannot open the device (create the group and a udev rule, then set $$var in $$ENV_FILE)"
+      elif [ "$$envgid" != "$$gid" ]; then warn "$$var=$${envgid:-<empty>} in $$ENV_FILE but the host's '$$grp' gid is $$gid: set $$var=$$gid (make env never overwrites .env)"
+      else ok "group $$grp ($$gid) matches $$var in $$ENV_FILE"; fi
+    done
     ;;
 esac
 exit $$fail
@@ -276,6 +287,7 @@ HADOLINT_FLAGS := --ignore DL3008 --ignore DL3013 --ignore DL3059 --ignore DL300
 lint: _role ## Check the project: compose files, scripts and tests (shellcheck), Dockerfile (hadolint); binaries or their docker images
 	@echo "== compose =="
 	@$(DC) --profile pc --profile jetson --profile arm config -q && echo "  $(COMPOSE_BASE): ok (all profiles)"
+	@I2C_GID= INPUT_GID= $(DC) --profile pc --profile jetson --profile arm config -q && echo "  $(COMPOSE_BASE): ok without i2c/input groups"
 	@for g in nvidia dri; do $(DC) -f $(COMPOSE_BASE) -f $(COMPOSE_DIR)/$$g.yml --profile pc config -q && echo "  $(COMPOSE_DIR)/$$g.yml: ok"; done
 	@echo "== shell scripts =="
 	@if command -v shellcheck >/dev/null 2>&1; then shellcheck $(SHELLCHECK_FLAGS) $(SCRIPTS_DIR)/*.sh $(TL_TESTS_DIR)/*.sh && echo "  shellcheck: clean"; \
