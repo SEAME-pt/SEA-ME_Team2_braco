@@ -160,9 +160,9 @@ Notes:
 
 ## Arm services (Jetson): driver, temperature, joystick, web page
 
-Everything from `ros2_ws/src/seame_arm` runs all the time on the Nano **inside ROS 2, in one container** (compose profile
+Everything from `ros2_ws/src/braco_driver`, `braco_teleop` and `braco_bringup` runs all the time on the Nano **inside ROS 2, in one container** (compose profile
 `arm`, same `jetson-driver` image, no rebuild). `arm_routine.sh` is its entrypoint: it starts
-`ros2 launch seame_arm arm.launch.py` and the web page. It does **not** move the arm at start or stop:
+`ros2 launch braco_bringup braco.launch.py sim:=false` and the web page. It does **not** move the arm at start or stop:
 
 ```
 arm_driver           ROS 2 node   the ONLY process that opens /dev/ttyTHS1 (libs/cpp MyCobot280)

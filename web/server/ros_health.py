@@ -1,6 +1,6 @@
 """Health of the arm's ROS 2 graph: are the arm nodes up, what does /diagnostics say.
 
-Expected nodes and services come from ros2_ws/src/seame_arm/launch/arm.launch.py
+Expected nodes and services come from ros2_ws/src/braco_bringup/launch/braco.launch.py
 and arm_driver.cpp; /diagnostics is published by temperature_monitor.
 """
 

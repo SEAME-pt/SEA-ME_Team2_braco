@@ -356,26 +356,30 @@ We create three packages in `ros2_ws/src` (`/ws/src` in the container):
 
 ```
 ros2_ws/src/
-├── seame_interfaces/   ament_cmake   custom service and action definitions
+├── ros2_basics_interfaces/   ament_cmake   custom service and action definitions
 ├── ros2_basics_cpp/    ament_cmake   C++ nodes: talker, listener, service server/client, lifecycle node
 └── ros2_basics_py/     ament_python  Python nodes: the same, plus action server/client and a launch file
 ```
+
+> The finished copies of these three packages live in `examples/` at the repo root and are built together with
+> `ros2_ws/src` (`make ws-build`). colcon refuses two packages with the same name, so to redo the tutorial from
+> scratch either pick other package names or put an empty `COLCON_IGNORE` file in `examples/` while you work.
 
 Run in the container:
 
 ```bash
 container$ cd /ws/src
 
-container$ ros2 pkg create seame_interfaces \
+container$ ros2 pkg create ros2_basics_interfaces \
     --build-type ament_cmake --license Apache-2.0
 
 container$ ros2 pkg create ros2_basics_cpp \
     --build-type ament_cmake --license Apache-2.0 \
-    --dependencies rclcpp rclcpp_lifecycle std_msgs seame_interfaces
+    --dependencies rclcpp rclcpp_lifecycle std_msgs ros2_basics_interfaces
 
 container$ ros2 pkg create ros2_basics_py \
     --build-type ament_python --license Apache-2.0 \
-    --dependencies rclpy std_msgs action_msgs seame_interfaces
+    --dependencies rclpy std_msgs action_msgs ros2_basics_interfaces
 ```
 
 `ros2 pkg create` generates the skeleton: `package.xml`, `CMakeLists.txt` or `setup.py`, and empty folders. Open `package.xml` in each package and fill in `<description>` and `<maintainer>` (or pass `--maintainer-name "Your Name" --maintainer-email you@example.com` to `ros2 pkg create`: without `--maintainer-email` it derives an address from the name, and a name with characters like `:` gives an invalid e-mail that makes the build fail with `Invalid email`).
@@ -383,7 +387,7 @@ container$ ros2 pkg create ros2_basics_py \
 The interfaces package does not need `include/` or `src/`:
 
 ```bash
-container$ rm -rf /ws/src/seame_interfaces/include /ws/src/seame_interfaces/src
+container$ rm -rf /ws/src/ros2_basics_interfaces/include /ws/src/ros2_basics_interfaces/src
 ```
 
 > Edit the files from the host with your usual editor (VS Code etc.): `ros2_ws/src` on the host is `/ws/src` in the container. Build and run inside the container.
@@ -397,10 +401,10 @@ Interface packages must be `ament_cmake`, even if only Python uses them.
 **Step 1. Create the definition files:**
 
 ```bash
-container$ mkdir -p /ws/src/seame_interfaces/srv /ws/src/seame_interfaces/action
+container$ mkdir -p /ws/src/ros2_basics_interfaces/srv /ws/src/ros2_basics_interfaces/action
 ```
 
-`seame_interfaces/srv/AddTwoInts.srv`:
+`ros2_basics_interfaces/srv/AddTwoInts.srv`:
 
 ```text
 # Request
@@ -411,7 +415,7 @@ int64 b
 int64 sum
 ```
 
-`seame_interfaces/action/Fibonacci.action`:
+`ros2_basics_interfaces/action/Fibonacci.action`:
 
 ```text
 # Goal: how many numbers of the sequence to compute
@@ -424,11 +428,11 @@ int32[] sequence
 int32[] partial_sequence
 ```
 
-**Step 2. `seame_interfaces/CMakeLists.txt`** (replace the generated one):
+**Step 2. `ros2_basics_interfaces/CMakeLists.txt`** (replace the generated one):
 
 ```cmake
 cmake_minimum_required(VERSION 3.10)
-project(seame_interfaces)
+project(ros2_basics_interfaces)
 
 find_package(ament_cmake REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
@@ -442,7 +446,7 @@ ament_export_dependencies(rosidl_default_runtime)
 ament_package()
 ```
 
-**Step 3. `seame_interfaces/package.xml`**: add these lines inside `<package>`, after `<buildtool_depend>ament_cmake</buildtool_depend>`:
+**Step 3. `ros2_basics_interfaces/package.xml`**: add these lines inside `<package>`, after `<buildtool_depend>ament_cmake</buildtool_depend>`:
 
 ```xml
   <buildtool_depend>rosidl_default_generators</buildtool_depend>
@@ -455,10 +459,10 @@ ament_package()
 
 ```bash
 container$ cd /ws
-container$ colcon build --packages-select seame_interfaces
+container$ colcon build --packages-select ros2_basics_interfaces
 container$ source install/setup.bash
-container$ ros2 interface show seame_interfaces/srv/AddTwoInts
-container$ ros2 interface show seame_interfaces/action/Fibonacci
+container$ ros2 interface show ros2_basics_interfaces/srv/AddTwoInts
+container$ ros2 interface show ros2_basics_interfaces/action/Fibonacci
 ```
 
 ---
@@ -686,7 +690,7 @@ container$ ros2 topic info -v /chatter
 
 ## 8. Service server and client
 
-Service `add_two_ints` of type `seame_interfaces/srv/AddTwoInts`.
+Service `add_two_ints` of type `ros2_basics_interfaces/srv/AddTwoInts`.
 
 ### 8.1 Python
 
@@ -698,7 +702,7 @@ import rclpy
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 
-from seame_interfaces.srv import AddTwoInts
+from ros2_basics_interfaces.srv import AddTwoInts
 
 
 class AddTwoIntsServer(Node):
@@ -739,7 +743,7 @@ import rclpy
 from rclpy.node import Node
 from rclpy.utilities import remove_ros_args
 
-from seame_interfaces.srv import AddTwoInts
+from ros2_basics_interfaces.srv import AddTwoInts
 
 
 class AddTwoIntsClient(Node):
@@ -788,9 +792,9 @@ Note `call_async` + `spin_until_future_complete`: the client never blocks inside
 #include <memory>
 
 #include "rclcpp/rclcpp.hpp"
-#include "seame_interfaces/srv/add_two_ints.hpp"
+#include "ros2_basics_interfaces/srv/add_two_ints.hpp"
 
-using AddTwoInts = seame_interfaces::srv::AddTwoInts;
+using AddTwoInts = ros2_basics_interfaces::srv::AddTwoInts;
 
 class AddTwoIntsServer : public rclcpp::Node
 {
@@ -834,9 +838,9 @@ int main(int argc, char ** argv)
 #include <vector>
 
 #include "rclcpp/rclcpp.hpp"
-#include "seame_interfaces/srv/add_two_ints.hpp"
+#include "ros2_basics_interfaces/srv/add_two_ints.hpp"
 
-using AddTwoInts = seame_interfaces::srv::AddTwoInts;
+using AddTwoInts = ros2_basics_interfaces::srv::AddTwoInts;
 using namespace std::chrono_literals;
 
 int main(int argc, char ** argv)
@@ -879,9 +883,9 @@ int main(int argc, char ** argv)
 
 ## 9. Action server and client
 
-Action `fibonacci` of type `seame_interfaces/action/Fibonacci`: computes the sequence one number per second, publishes feedback, can be canceled, rejects goals that are too large.
+Action `fibonacci` of type `ros2_basics_interfaces/action/Fibonacci`: computes the sequence one number per second, publishes feedback, can be canceled, rejects goals that are too large.
 
-The examples are in Python. For C++ (`rclcpp_action`), follow the official tutorial "Writing an action server and client (C++)" at <https://docs.ros.org/en/lyrical/Tutorials/Intermediate/Writing-an-Action-Server-Client/Cpp.html> using the same `seame_interfaces/action/Fibonacci` type; it is good practice for whoever implements the arm's motion action later.
+The examples are in Python. For C++ (`rclcpp_action`), follow the official tutorial "Writing an action server and client (C++)" at <https://docs.ros.org/en/lyrical/Tutorials/Intermediate/Writing-an-Action-Server-Client/Cpp.html> using the same `ros2_basics_interfaces/action/Fibonacci` type; it is good practice for whoever implements the arm's motion action later.
 
 > Use `get_logger().warning(...)`, not `.warn(...)`: older tutorials use `.warn`, which no longer exists in Lyrical (`AttributeError: 'RcutilsLogger' object has no attribute 'warn'`) and crashes the node the first time that line runs.
 
@@ -897,7 +901,7 @@ from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import ExternalShutdownException, MultiThreadedExecutor
 from rclpy.node import Node
 
-from seame_interfaces.action import Fibonacci
+from ros2_basics_interfaces.action import Fibonacci
 
 MAX_ORDER = 50
 
@@ -974,7 +978,7 @@ from rclpy.action import ActionClient
 from rclpy.node import Node
 from rclpy.utilities import remove_ros_args
 
-from seame_interfaces.action import Fibonacci
+from ros2_basics_interfaces.action import Fibonacci
 
 
 class FibonacciClient(Node):
@@ -1233,7 +1237,7 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
 find_package(std_msgs REQUIRED)
-find_package(seame_interfaces REQUIRED)
+find_package(ros2_basics_interfaces REQUIRED)
 
 add_executable(talker src/talker.cpp)
 target_link_libraries(talker rclcpp::rclcpp ${std_msgs_TARGETS})
@@ -1242,10 +1246,10 @@ add_executable(listener src/listener.cpp)
 target_link_libraries(listener rclcpp::rclcpp ${std_msgs_TARGETS})
 
 add_executable(add_two_ints_server src/add_two_ints_server.cpp)
-target_link_libraries(add_two_ints_server rclcpp::rclcpp ${seame_interfaces_TARGETS})
+target_link_libraries(add_two_ints_server rclcpp::rclcpp ${ros2_basics_interfaces_TARGETS})
 
 add_executable(add_two_ints_client src/add_two_ints_client.cpp)
-target_link_libraries(add_two_ints_client rclcpp::rclcpp ${seame_interfaces_TARGETS})
+target_link_libraries(add_two_ints_client rclcpp::rclcpp ${ros2_basics_interfaces_TARGETS})
 
 add_executable(managed_talker src/managed_talker.cpp)
 target_link_libraries(managed_talker
@@ -1263,7 +1267,7 @@ endif()
 ament_package()
 ```
 
-Every `.cpp` file must start with a license header, or `colcon test` fails the `copyright` and `cpplint` linters. The examples above leave it out to stay short; the files in `ros2_ws/src` have it:
+Every `.cpp` file must start with a license header, or `colcon test` fails the `copyright` and `cpplint` linters. The examples above leave it out to stay short; the finished copies in `examples/` have it:
 
 ```cpp
 // Copyright 2026 SEA:ME Team 2
@@ -1284,7 +1288,7 @@ Executables must be installed to `lib/<package>` or `ros2 run` will not find the
   <depend>rclcpp</depend>
   <depend>rclcpp_lifecycle</depend>
   <depend>std_msgs</depend>
-  <depend>seame_interfaces</depend>
+  <depend>ros2_basics_interfaces</depend>
 ```
 
 ### 11.3 `ros2_basics_py/setup.py`
@@ -1350,7 +1354,7 @@ In addition to the generated `<depend>` lines, add the runtime dependencies of t
 
 ```
 ros2_ws/src/
-├── seame_interfaces/
+├── ros2_basics_interfaces/
 │   ├── CMakeLists.txt
 │   ├── LICENSE                    (generated by ros2 pkg create --license)
 │   ├── package.xml
@@ -1386,7 +1390,7 @@ ros2_ws/src/
         └── managed_talker.py
 ```
 
-The `include/ros2_basics_cpp/` folder that `ros2 pkg create` generates can be deleted: these nodes have no headers. A finished, tested copy of this layout is committed in `ros2_ws/src`; compare yours with it.
+The `include/ros2_basics_cpp/` folder that `ros2 pkg create` generates can be deleted: these nodes have no headers. A finished, tested copy of this layout is committed in `examples/` (built by `make ws-build` together with `ros2_ws/src`); compare yours with it.
 
 ---
 
@@ -1436,7 +1440,7 @@ container$ ros2 run ros2_basics_cpp talker --ros-args -p publish_rate_hz:=5.0
 container$ ros2 run ros2_basics_cpp add_two_ints_server
 container$ ros2 run ros2_basics_py add_two_ints_client 2 3        # Result: 5
 container$ ros2 run ros2_basics_cpp add_two_ints_client 40 2      # Result: 42
-container$ ros2 service call /add_two_ints seame_interfaces/srv/AddTwoInts "{a: 7, b: 8}"
+container$ ros2 service call /add_two_ints ros2_basics_interfaces/srv/AddTwoInts "{a: 7, b: 8}"
 ```
 
 ### 12.4 Run the action examples
@@ -1445,7 +1449,7 @@ container$ ros2 service call /add_two_ints seame_interfaces/srv/AddTwoInts "{a: 
 container$ ros2 run ros2_basics_py fibonacci_server
 container$ ros2 run ros2_basics_py fibonacci_client 8             # feedback every second, then the result
 container$ ros2 run ros2_basics_py fibonacci_client 100           # rejected (order > 50)
-container$ ros2 action send_goal --feedback /fibonacci seame_interfaces/action/Fibonacci "{order: 5}"
+container$ ros2 action send_goal --feedback /fibonacci ros2_basics_interfaces/action/Fibonacci "{order: 5}"
 ```
 
 To test **cancellation**, start a long goal with the CLI (`{order: 30}`) and press `Ctrl+C` in that terminal: `ros2 action send_goal` cancels the goal, and the server logs `Goal canceled`.
@@ -1611,7 +1615,7 @@ container$ ros2 action info /fibonacci           # its clients and servers
 
 ```bash
 container$ ros2 interface show std_msgs/msg/String
-container$ ros2 interface package seame_interfaces
+container$ ros2 interface package ros2_basics_interfaces
 ```
 
 ### rqt_graph (PC only)
@@ -1694,7 +1698,7 @@ container$ ros2 bag record -s mcap -a -o /ws/bags/everything            # all to
 
 ## 18. Push the examples to the repo
 
-The packages live in `ros2_ws/src/`, which **is** tracked by git. Generated folders (`ros2_ws/build`, `install`, `log`, `bags`) are ignored by the root `.gitignore`.
+The finished packages live in `examples/` and the arm packages in `ros2_ws/src/`; both **are** tracked by git. Generated folders (`ros2_ws/build`, `install`, `log`, `bags`) are ignored by the root `.gitignore`.
 
 **Step 1. Check that everything builds and the linters pass:**
 
