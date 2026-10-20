@@ -21,9 +21,6 @@ concurrency:
 permissions:
   contents: read
 
-env:
-  HADOLINT_VERSION: v2.12.0
-
 jobs:
   host:
     runs-on: ubuntu-24.04
@@ -40,15 +37,12 @@ jobs:
             requirements.txt
             web/requirements*.txt
 
-      # make lint skips shellcheck and hadolint when they are missing, so install both to make the job mean something.
-      - name: Install shellcheck and hadolint
+      # make lint skips shellcheck when it is missing, so make sure it is there. hadolint needs nothing: without a
+      # local binary make lint runs the image pinned in HADOLINT_IMAGE (Makefile) through docker.
+      - name: Install shellcheck
         run: |
           command -v shellcheck >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck; }
-          sudo curl -fsSL -o /usr/local/bin/hadolint \
-            "https://github.com/hadolint/hadolint/releases/download/${HADOLINT_VERSION}/hadolint-Linux-x86_64"
-          sudo chmod +x /usr/local/bin/hadolint
           shellcheck --version | head -n 2
-          hadolint --version
 
       # docker/.env as every user creates it: lint validates the compose files against it.
       - name: make env

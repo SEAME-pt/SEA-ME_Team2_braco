@@ -29,7 +29,11 @@ Delivered on the branch:
 2. ~~**The branch is 17 commits behind `main`.**~~ Merged in 95cdb5f. Conflicts in `.gitignore`, `Makefile` and
    `docker/Makefile` (modify/delete) resolved; all web targets kept with `##` help strings. Stale `cd docker` /
    "docker/Makefile" references in `web/` updated.
-3. ~~`make lint` skips shellcheck and hadolint silently.~~ The `host` job installs both (hadolint pinned to v2.12.0).
+3. ~~`make lint` skips shellcheck and hadolint silently.~~ The `host` job installs shellcheck. hadolint can no longer be
+   skipped (from `temp_notes.md`: it was skipped on dev machines without the binary): `make lint` falls back to the
+   `HADOLINT_IMAGE` (`hadolint/hadolint:v2.12.0`) through docker, which lint already needs for the compose files. CI
+   uses the same image, so the version lives only in the Makefile. Verified: binary, image, first pull, and a bad
+   Dockerfile failing lint.
 4. ~~`requirements.txt` pins on Python 3.11.~~ `numpy==1.24.4` and `pyserial==3.4` install on the runner's 3.11.
 
 Found while implementing:
@@ -50,7 +54,7 @@ Found while implementing:
 3. [x] **Create `.github/workflows/ci.yml`**, triggered on `pull_request`, `push` to `main` and `workflow_dispatch`, with
        `concurrency` (cancels superseded PR runs only) and `permissions: contents: read`:
    - [x] Job `host`: checkout, `setup-python` (`python-version-file: .python-version`, `cache: pip`), shellcheck +
-         hadolint, `make env`, `make host-check`, `make lint`, `make web-test`. Locally: `make env && make ci`.
+         `make env`, `make host-check`, `make lint`, `make web-test`. Locally: `make env && make ci`.
    - [x] Job `ros`: the Dockerfile's `base` stage (Ubuntu 26.04 + ROS 2 Lyrical, no GUI/Gazebo/MoveIt), then
          `rosdep install`, `colcon build`, `colcon test` of `docker/ws/src` + `libs`. Locally: `make ci-image ci-ros`
          (5 packages, 83 tests, 0 failures, 11 skipped).
@@ -69,12 +73,14 @@ Found while implementing:
    - [x] Red run on purpose (`pc-dev` without its `:` in `docker/compose/dri.yml`, 65f7784): `host` failed at
          `make lint` in 19 s, [39426768638](https://github.com/SEAME-pt/SEA-ME_Team2_braco/actions/runs/39426768638).
    - [x] Reverted (e5ae956), green again: [39427082498](https://github.com/SEAME-pt/SEA-ME_Team2_braco/actions/runs/39427082498).
-   - [ ] Push the flaky-test fix (blocker 6) and get a green run.
+   - [ ] Push the flaky-test fix (blocker 6, e3b169d) and the hadolint fallback, and get a green run. e3b169d's subject
+         starts with a space (`" test: …"`), which `.githooks/commit-msg` rejects; hooks are not enabled in this clone
+         (`make init`). Reword it before pushing.
 6. [x] **Docs**: "Continuous Integration (CI)" section and status badge in `docs/dev-setup.md`; `make ci-image ci-ros`
        in `docker/README.md`.
-7. [ ] **Finish the PR**: #51 is open as a placeholder ("16 ci gh action", body "Test PR"). Set the title to
-       `ci: GitHub Action build` and the body from `.github/PULL_REQUEST_TEMPLATE.md` with `Closes #16`, the run links
-       and the times from step 4. Commit messages must pass `.githooks/commit-msg`.
+7. [x] **Finish the PR**: #51 retitled `ci: GitHub Action build`; body follows `.github/PULL_REQUEST_TEMPLATE.md` with
+       `Closes #16`, the run links and the times from step 4. Its "green run including the flaky-test fix" box is
+       ticked once that run exists.
 8. [ ] **After merge**: an admin enables branch protection on `main` and marks the `host` and `ros` jobs as required
        status checks (third checklist item of the issue).
 

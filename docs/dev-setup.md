@@ -235,7 +235,8 @@ the same commands:
 | `host` | `make env`, then `make host-check` (venv with Python 3.11 from `.python-version`, imports, C++ hello-world build), `make lint` (compose files, shellcheck, hadolint) and `make web-test` (pytest `web/tests`) | `make env` (once), then `make ci` |
 | `ros` | Builds the Dockerfile's `base` stage (Ubuntu 26.04 + ROS 2 Lyrical), then `rosdep install`, `colcon build` and `colcon test` of `docker/ws/src` and `libs` in a throw-away container | `make ci-image ci-ros` |
 
-* Install `shellcheck` and `hadolint` locally: without them `make lint` skips those checks, while CI always runs them.
+* Install `shellcheck` locally: without it `make lint` skips that check, while CI always runs it. hadolint needs no
+  install: without a local binary, `make lint` runs the image pinned in `HADOLINT_IMAGE` (also what CI uses).
 * Caches: pip (`actions/setup-python`), the image layers (BuildKit `type=gha`), and ccache + colcon `build/`
   (`actions/cache`, reset whenever `docker/docker/` changes). A warm run only recompiles what changed.
 * The arm64 Jetson image is not built in CI (QEMU is too slow); build it by hand with `make jetson-cross`.
