@@ -263,14 +263,23 @@ dirs: $(WS_DIRS) ## Create the folders the project needs (docker/ws/src, docker/
 $(WS_DIRS):
 	@mkdir -p $@ && echo "created $@"
 
-lint: _role ## Check the project: compose files, scripts and tests (shellcheck), Dockerfile (hadolint) if installed
+# hadolint: a local binary if installed, else this image through docker (CI uses the image too), so the
+# Dockerfile check is never skipped (lint needs docker anyway, for the compose files).
+HADOLINT_IMAGE := hadolint/hadolint:v2.12.0
+HADOLINT_FLAGS := --ignore DL3008 --ignore DL3013 --ignore DL3059 --ignore DL3006 --ignore DL3042 --ignore DL3045 \
+                  --ignore SC1091 --ignore SC2086 --ignore SC2016
+
+lint: _role ## Check the project: compose files, scripts and tests (shellcheck), Dockerfile (hadolint, or its docker image)
 	@echo "== compose =="
 	@$(DC) --profile pc --profile jetson --profile arm config -q && echo "  $(COMPOSE_BASE): ok (all profiles)"
 	@for g in nvidia dri; do $(DC) -f $(COMPOSE_BASE) -f $(COMPOSE_DIR)/$$g.yml --profile pc config -q && echo "  $(COMPOSE_DIR)/$$g.yml: ok"; done
 	@echo "== shell scripts =="
 	@if command -v shellcheck >/dev/null 2>&1; then shellcheck -x $(SCRIPTS_DIR)/*.sh $(TL_TESTS_DIR)/*.sh && echo "  shellcheck: clean"; else echo "  shellcheck not installed - skipped"; fi
 	@echo "== Dockerfile =="
-	@if command -v hadolint >/dev/null 2>&1; then hadolint --ignore DL3008 --ignore DL3013 --ignore DL3059 --ignore DL3006 --ignore DL3042 --ignore DL3045 --ignore SC1091 --ignore SC2086 --ignore SC2016 $(DOCKERFILE) && echo "  hadolint: clean"; else echo "  hadolint not installed - skipped"; fi
+	@if command -v hadolint >/dev/null 2>&1; then hadolint $(HADOLINT_FLAGS) $(DOCKERFILE) && echo "  hadolint: clean"; \
+	else \
+	  { docker image inspect $(HADOLINT_IMAGE) >/dev/null 2>&1 || docker pull -q $(HADOLINT_IMAGE) >/dev/null; } && \
+	  docker run --rm -i $(HADOLINT_IMAGE) hadolint $(HADOLINT_FLAGS) - < $(DOCKERFILE) && echo "  hadolint ($(HADOLINT_IMAGE)): clean"; fi
 
 TAR ?= tar
 tar: ## Pack docker/ into docker/dist/seame-arm-docker.tar (leaves out .env, ws/ and dist/; needs GNU tar)
