@@ -219,6 +219,7 @@ elif [ "$$(printf '%s\n2.20.0\n' "$$v" | sort -V | head -n 1)" = "2.20.0" ]; the
 else
   bad "docker compose $$v is too old (this project needs Compose 2.20+)"
 fi
+if docker buildx version >/dev/null 2>&1; then ok "docker buildx $$(docker buildx version | cut -d' ' -f2) (BuildKit)"; else bad "docker buildx not found: the Dockerfile needs BuildKit (apt install docker-buildx, or docker-buildx-plugin from Docker's repo)"; fi
 missing=""
 for f in $$PROJECT_FILES; do [ -e "$$f" ] || missing="$$missing $$f"; done
 if [ -z "$$missing" ]; then ok "all project files present"; else bad "missing project files:$$missing"; fi
@@ -520,7 +521,8 @@ CI_ROS_SH := set -e; rosdep update --rosdistro "$$ROS_DISTRO" >/dev/null 2>&1 ||
              colcon test --base-paths $(WS_BASE_PATHS); colcon test-result --verbose
 
 ci-image: ## Build the `ros` CI job's image (Dockerfile stage CI_TARGET=base) as CI_IMAGE, for your UID/GID
-	docker build --target $(CI_TARGET) --build-arg USER_UID=$$(id -u) --build-arg USER_GID=$$(id -g) -t $(CI_IMAGE) $(IMAGE_DIR)
+	@docker buildx version >/dev/null 2>&1 || { echo "docker buildx not found: the Dockerfile needs BuildKit (apt install docker-buildx, or docker-buildx-plugin from Docker's repo)" >&2; exit 1; }
+	docker buildx build --load --target $(CI_TARGET) --build-arg USER_UID=$$(id -u) --build-arg USER_GID=$$(id -g) -t $(CI_IMAGE) $(IMAGE_DIR)
 
 ci-ros: ## The `ros` CI job: rosdep, colcon build and colcon test of docker/ws/src + libs in a throw-away CI_IMAGE container
 	@docker image inspect $(CI_IMAGE) >/dev/null 2>&1 || { echo "image $(CI_IMAGE) not found: make ci-image" >&2; exit 1; }
