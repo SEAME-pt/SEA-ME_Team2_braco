@@ -263,18 +263,26 @@ dirs: $(WS_DIRS) ## Create the folders the project needs (docker/ws/src, docker/
 $(WS_DIRS):
 	@mkdir -p $@ && echo "created $@"
 
-# hadolint: a local binary if installed, else this image through docker (CI uses the image too), so the
-# Dockerfile check is never skipped (lint needs docker anyway, for the compose files).
+# shellcheck and hadolint: a local binary if installed, else the pinned image through docker, so no check is ever
+# skipped (lint needs docker anyway, for the compose files).
+SHELLCHECK_IMAGE := koalaman/shellcheck:v0.10.0
+# SC1091: scripts source /etc/os-release and ROS setup files that exist only in the image (and not at all in the
+# scratch-based shellcheck image), so following them would make the result depend on where lint runs.
+SHELLCHECK_FLAGS := -x -e SC1091
 HADOLINT_IMAGE := hadolint/hadolint:v2.12.0
 HADOLINT_FLAGS := --ignore DL3008 --ignore DL3013 --ignore DL3059 --ignore DL3006 --ignore DL3042 --ignore DL3045 \
                   --ignore SC1091 --ignore SC2086 --ignore SC2016
 
-lint: _role ## Check the project: compose files, scripts and tests (shellcheck), Dockerfile (hadolint, or its docker image)
+lint: _role ## Check the project: compose files, scripts and tests (shellcheck), Dockerfile (hadolint); binaries or their docker images
 	@echo "== compose =="
 	@$(DC) --profile pc --profile jetson --profile arm config -q && echo "  $(COMPOSE_BASE): ok (all profiles)"
 	@for g in nvidia dri; do $(DC) -f $(COMPOSE_BASE) -f $(COMPOSE_DIR)/$$g.yml --profile pc config -q && echo "  $(COMPOSE_DIR)/$$g.yml: ok"; done
 	@echo "== shell scripts =="
-	@if command -v shellcheck >/dev/null 2>&1; then shellcheck -x $(SCRIPTS_DIR)/*.sh $(TL_TESTS_DIR)/*.sh && echo "  shellcheck: clean"; else echo "  shellcheck not installed - skipped"; fi
+	@if command -v shellcheck >/dev/null 2>&1; then shellcheck $(SHELLCHECK_FLAGS) $(SCRIPTS_DIR)/*.sh $(TL_TESTS_DIR)/*.sh && echo "  shellcheck: clean"; \
+	else \
+	  { docker image inspect $(SHELLCHECK_IMAGE) >/dev/null 2>&1 || docker pull -q $(SHELLCHECK_IMAGE) >/dev/null; } && \
+	  docker run --rm -v "$(CURDIR)":/mnt:ro -w /mnt $(SHELLCHECK_IMAGE) $(SHELLCHECK_FLAGS) $(SCRIPTS_DIR)/*.sh $(TL_TESTS_DIR)/*.sh && \
+	  echo "  shellcheck ($(SHELLCHECK_IMAGE)): clean"; fi
 	@echo "== Dockerfile =="
 	@if command -v hadolint >/dev/null 2>&1; then hadolint $(HADOLINT_FLAGS) $(DOCKERFILE) && echo "  hadolint: clean"; \
 	else \
@@ -500,11 +508,15 @@ ci: host-check lint web-test ## The `host` CI job: host checks, lint, web page t
 # The `ros` CI job builds the workspace in a throw-away container from the Dockerfile's `base` stage: it has
 # everything the packages in docker/ws/src and libs depend on, without the GUI/Gazebo/MoveIt layers of pc-dev.
 # The image's user gets your UID/GID so the bind-mounted docker/ws stays writable (GitHub runners are UID 1001).
+# ci.yml builds the same image with docker/build-push-action (layer cache): keep its target and build-args in step.
+# CI caches docker/ws/build, where test results live: delete the old ones first, or a removed test would still count.
+# colcon test exits 0 even when tests fail; colcon test-result is what fails the job.
 CI_TARGET ?= base
 CI_IMAGE  ?= $(IMAGE_PREFIX)/ci:$(IMAGE_TAG)
-CI_ROS_SH := set -e; rosdep update --rosdistro "$$ROS_DISTRO" >/dev/null 2>&1 || true; \
+CI_ROS_SH := set -e; rosdep update --rosdistro "$$ROS_DISTRO" >/dev/null 2>&1 || echo "rosdep update failed - using the rosdep cache from the image"; \
              sudo apt-get update -qq; rosdep install --from-paths $(WS_BASE_PATHS) --ignore-src -y; \
              colcon build --base-paths $(WS_BASE_PATHS) $(COLCON_ARGS); \
+             colcon test-result --delete-yes >/dev/null 2>&1 || true; \
              colcon test --base-paths $(WS_BASE_PATHS); colcon test-result --verbose
 
 ci-image: ## Build the `ros` CI job's image (Dockerfile stage CI_TARGET=base) as CI_IMAGE, for your UID/GID

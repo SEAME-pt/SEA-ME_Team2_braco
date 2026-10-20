@@ -51,8 +51,8 @@ There is a single `Makefile`, at the **repo root** (one level above this folder)
 
 Every path the Makefile uses is defined in one block at its top (`project layout`), so moving a file means editing
 one line there. `make doctor` checks that all project files are present, and `make lint` validates the compose files,
-runs shellcheck on `docker/scripts/` and `tests/` (only if installed) and hadolint on the Dockerfile (a local binary,
-or else the pinned `hadolint/hadolint` image through docker).
+runs shellcheck on `docker/scripts/` and `tests/` and hadolint on the Dockerfile (each a local binary, or else its
+pinned image through docker).
 
 ## Quick start
 
@@ -94,7 +94,7 @@ in `.env`, or given on the command line). Run `make` for the full list.
 ```bash
 make env / doctor / info    # setup, host and project checks, what the Makefile resolved
 make dirs                   # create ws/src and ws/bags as your user (up and run do this automatically)
-make lint                   # compose files + shellcheck (if installed) + hadolint (binary or docker image)
+make lint                   # compose files + shellcheck + hadolint (binaries or their docker images)
 make tar                    # pack the project into dist/seame-arm-docker.tar (no .env, ws/ or dist/)
 make build / rebuild        # rebuild = --no-cache --pull, slow
 make up / down / restart / ps / logs / shell

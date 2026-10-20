@@ -37,12 +37,8 @@ jobs:
             requirements.txt
             web/requirements*.txt
 
-      # make lint skips shellcheck when it is missing, so make sure it is there. hadolint needs nothing: without a
-      # local binary make lint runs the image pinned in HADOLINT_IMAGE (Makefile) through docker.
-      - name: Install shellcheck
-        run: |
-          command -v shellcheck >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck; }
-          shellcheck --version | head -n 2
+      # shellcheck and hadolint need no install step: without a local binary, make lint runs the images pinned in
+      # SHELLCHECK_IMAGE and HADOLINT_IMAGE (Makefile) through docker.
 
       # docker/.env as every user creates it: lint validates the compose files against it.
       - name: make env
@@ -73,7 +69,8 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
-      # Same image as `make ci-image`, but with the BuildKit layers cached in GitHub's cache between runs.
+      # Same image as `make ci-image` (keep target and build-args in step with CI_TARGET there), but with the
+      # BuildKit layers cached in GitHub's cache between runs.
       - name: Build the CI image (Dockerfile stage base)
         uses: docker/build-push-action@v6
         with:
