@@ -17,8 +17,8 @@
 # locale, Universe, ros2-apt-source, `apt upgrade`, then the ROS packages.
 #
 # No `# syntax=` directive on purpose: it makes BuildKit pull a frontend image from Docker Hub on every
-# build (one more network dependency and rate-limit exposure). `COPY --chmod` is built into Docker
-# Engine 24+, which docker-compose.yml requires anyway.
+# build (one more network dependency and rate-limit exposure). `COPY --chmod` is built into BuildKit's
+# default frontend, but the legacy builder rejects it: the host needs the buildx plugin (make doctor checks).
 
 ARG UBUNTU_VERSION=26.04
 
