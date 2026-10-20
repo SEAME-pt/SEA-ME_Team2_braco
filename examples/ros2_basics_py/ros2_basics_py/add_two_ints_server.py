@@ -3,7 +3,7 @@ import rclpy
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 
-from seame_interfaces.srv import AddTwoInts
+from ros2_basics_interfaces.srv import AddTwoInts
 
 
 class AddTwoIntsServer(Node):

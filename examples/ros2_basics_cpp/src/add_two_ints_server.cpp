@@ -17,9 +17,9 @@
 #include <memory>
 
 #include "rclcpp/rclcpp.hpp"
-#include "seame_interfaces/srv/add_two_ints.hpp"
+#include "ros2_basics_interfaces/srv/add_two_ints.hpp"
 
-using AddTwoInts = seame_interfaces::srv::AddTwoInts;
+using AddTwoInts = ros2_basics_interfaces::srv::AddTwoInts;
 
 class AddTwoIntsServer : public rclcpp::Node
 {

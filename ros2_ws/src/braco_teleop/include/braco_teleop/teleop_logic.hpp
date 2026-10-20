@@ -16,8 +16,8 @@
 // functions (no I/O), so joystick_teleop can use it and tests can check it.
 // Values and mapping are the same as in the stand-alone program.
 
-#ifndef SEAME_ARM__TELEOP_LOGIC_HPP_
-#define SEAME_ARM__TELEOP_LOGIC_HPP_
+#ifndef BRACO_TELEOP__TELEOP_LOGIC_HPP_
+#define BRACO_TELEOP__TELEOP_LOGIC_HPP_
 
 #include <algorithm>
 #include <array>
@@ -30,7 +30,7 @@
 
 #include "mycobot.hpp"
 
-namespace seame_arm
+namespace braco_teleop
 {
 namespace teleop
 {
@@ -238,6 +238,6 @@ inline std::optional<mycobot::Angles> homeStep(const mycobot::Angles & angles)
 }
 
 }  // namespace teleop
-}  // namespace seame_arm
+}  // namespace braco_teleop
 
-#endif  // SEAME_ARM__TELEOP_LOGIC_HPP_
+#endif  // BRACO_TELEOP__TELEOP_LOGIC_HPP_

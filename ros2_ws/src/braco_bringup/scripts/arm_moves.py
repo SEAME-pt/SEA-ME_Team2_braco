@@ -27,10 +27,10 @@ arm_driver owns the port. Instead they:
 import math
 import time
 
+from braco_interfaces.msg import ArmCommand
 import rclpy
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
-from seame_interfaces.msg import ArmCommand
 from sensor_msgs.msg import JointState
 from std_srvs.srv import SetBool, Trigger
 

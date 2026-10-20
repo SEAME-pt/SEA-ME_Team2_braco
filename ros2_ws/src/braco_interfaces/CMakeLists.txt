@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(seame_interfaces)
+project(braco_interfaces)
 
 find_package(ament_cmake REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
@@ -9,8 +9,6 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/JointTarget.msg"
   "msg/ArmCommand.msg"
   "msg/ServoTemperatures.msg"
-  "srv/AddTwoInts.srv"
-  "action/Fibonacci.action"
   DEPENDENCIES std_msgs
 )
 

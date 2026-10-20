@@ -1,9 +1,9 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>seame_arm</name>
+  <name>braco_driver</name>
   <version>0.0.0</version>
-  <description>Always-on arm services: serial driver, servo temperature monitor and joystick teleop</description>
+  <description>arm_driver (the only owner of the myCobot 280 serial port) and the servo temperature monitor</description>
   <maintainer email="danielximenes164@gmail.com">Daniel Ximenes</maintainer>
   <license>Apache-2.0</license>
 
@@ -15,13 +15,8 @@
   <depend>std_msgs</depend>
   <depend>std_srvs</depend>
   <depend>diagnostic_msgs</depend>
-  <depend>seame_interfaces</depend>
+  <depend>braco_interfaces</depend>
 
-  <exec_depend>rclpy</exec_depend>
-  <exec_depend>launch</exec_depend>
-  <exec_depend>launch_ros</exec_depend>
-
-  <test_depend>ament_cmake_gtest</test_depend>
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
 

@@ -19,8 +19,8 @@
 // crash independently while the port has a single owner.
 //
 //   pub  /joint_states               sensor_msgs/JointState (radians)
-//   pub  /arm/servo_temperatures     seame_interfaces/ServoTemperatures
-//   sub  /arm/command                seame_interfaces/ArmCommand (latest wins)
+//   pub  /arm/servo_temperatures     braco_interfaces/ServoTemperatures
+//   sub  /arm/command                braco_interfaces/ArmCommand (latest wins)
 //   sub  /arm/led                    std_msgs/ColorRGBA (0..1 per channel)
 //   srv  /arm/power_on               std_srvs/Trigger
 //   srv  /arm/release_servos         std_srvs/Trigger
@@ -57,8 +57,8 @@
 
 #include "mycobot.hpp"
 #include "rclcpp/rclcpp.hpp"
-#include "seame_interfaces/msg/arm_command.hpp"
-#include "seame_interfaces/msg/servo_temperatures.hpp"
+#include "braco_interfaces/msg/arm_command.hpp"
+#include "braco_interfaces/msg/servo_temperatures.hpp"
 #include "sensor_msgs/msg/joint_state.hpp"
 #include "std_msgs/msg/bool.hpp"
 #include "std_msgs/msg/color_rgba.hpp"
@@ -66,8 +66,8 @@
 #include "std_srvs/srv/trigger.hpp"
 
 using namespace std::chrono_literals;
-using seame_interfaces::msg::ArmCommand;
-using seame_interfaces::msg::ServoTemperatures;
+using braco_interfaces::msg::ArmCommand;
+using braco_interfaces::msg::ServoTemperatures;
 
 namespace
 {

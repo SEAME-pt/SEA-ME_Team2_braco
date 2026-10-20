@@ -5,7 +5,7 @@ import rclpy
 from rclpy.node import Node
 from rclpy.utilities import remove_ros_args
 
-from seame_interfaces.srv import AddTwoInts
+from ros2_basics_interfaces.srv import AddTwoInts
 
 
 class AddTwoIntsClient(Node):
