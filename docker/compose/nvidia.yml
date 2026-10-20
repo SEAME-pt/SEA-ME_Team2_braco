@@ -1,6 +1,6 @@
 # Optional override: NVIDIA GPU (OpenGL/Vulkan for Gazebo and RViz2) on the PC.
 # Needs the NVIDIA driver and nvidia-container-toolkit on the host.
-# Enable in .env:  COMPOSE_FILE=docker-compose.yml:compose/nvidia.yml  (or: make up GPU=nvidia)
+# Enable in .env:  COMPOSE_FILE=compose.yml:compose/nvidia.yml  (or: make up GPU=nvidia)
 services:
   pc-dev:
     environment:

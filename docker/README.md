@@ -24,30 +24,31 @@ pymycobot are the same on both machines.
 ## Project layout
 
 ```
-seame-arm-docker/
+docker/
 ├── README.md                (the Makefile is the single one at the repo root: run `make` there to list everything)
 ├── .env.example             copied to .env by `make env`
 ├── .gitignore
-├── docker-compose.yml       at the root so plain `docker compose` finds it without -f
+├── .dockerignore            keeps .env, compose files and tests out of the image build context
+├── compose.yml              found by plain `docker compose` without -f
 ├── compose/
 │   ├── nvidia.yml           optional GPU overrides (make up GPU=nvidia | dri)
 │   └── dri.yml
+├── Dockerfile               stages: base, jetson-driver, pc-dev
+├── config/                  colcon-defaults.yaml
+├── scripts/                 entrypoint, env sourcing, smoke test, installers, apt helper
 ├── tests/
 │   └── talker-listener.sh   ROS 2 talker/listener test; mounted read-only into the containers
-├── systemd/
-│   └── seame-arm.service    boot unit for the arm services (make install-service)
-└── docker/
-    ├── Dockerfile           stages: base, jetson-driver, pc-dev
-    ├── config/              colcon-defaults.yaml
-    └── scripts/             entrypoint, env sourcing, smoke test, installers, apt helper
+└── systemd/
+    └── braco.service        boot unit for the arm services (make install-service)
 ```
 
-Created by `make` when needed, never shipped: `.env`, **`ws/src`** (your code, mounted at `/ws` on both machines),
-`ws/bags` (rosbag recordings) and `dist/` (the archive from `make tar`). The workspace folders are created by
-`make dirs`, and automatically by `make up` / `make run`, **as your user**. If Docker creates a missing bind-mount
-folder itself it can end up owned by root, and then `colcon build` cannot write to it.
+The ROS 2 workspace is **`../ros2_ws`** (at the repo root), mounted at `/ws` on both machines: `ros2_ws/src` holds
+the packages, `ros2_ws/bags` the rosbag recordings. Created by `make` when needed, never shipped: `.env`,
+`ros2_ws/bags` and `dist/` (the archive from `make tar`). The workspace folders are created by `make dirs`, and
+automatically by `make up` / `make run`, **as your user**. If Docker creates a missing bind-mount folder itself it
+can end up owned by root, and then `colcon build` cannot write to it.
 
-There is a single `Makefile`, at the **repo root** (one level above this folder): run every `make` command from there. It passes `--project-directory docker` to `docker compose`, so `.env`, `ws/` and `../libs` resolve exactly as below. Its host targets (`make host-python`, `host-cpp`, `host-clean`, `init`) are the repo's non-docker workflow; the plain `docker compose` commands in this README still work when run from inside `docker/`.
+There is a single `Makefile`, at the **repo root** (one level above this folder): run every `make` command from there. It passes `--project-directory docker` to `docker compose`, so `.env`, `../ros2_ws` and `../libs` resolve exactly as below. Its host targets (`make host-python`, `host-cpp`, `host-clean`, `init`) are the repo's non-docker workflow; the plain `docker compose` commands in this README still work when run from inside `docker/`.
 
 Every path the Makefile uses is defined in one block at its top (`project layout`), so moving a file means editing
 one line there. `make doctor` checks that all project files are present, and `make lint` validates the compose files,
@@ -58,7 +59,7 @@ runs shellcheck on `docker/scripts/` and `tests/` and hadolint on the Dockerfile
 ```bash
 make env                 # creates .env with your UID/GID and group ids (ROLE=jetson on the Nano)
 make doctor              # docker, compose >= 2.20, project files, .env, folders, display or serial port
-make up                  # creates ws/src and ws/bags, builds the first time, then just starts
+make up                  # creates ../ros2_ws/src and bags, builds the first time, then just starts
 make smoke               # checks every piece below, including an RMW loopback
 make shell
 ```
@@ -67,7 +68,7 @@ Without `make` (run these from inside `docker/`):
 
 ```bash
 cp .env.example .env                 # set COMPOSE_PROFILES=pc|jetson and USER_UID/USER_GID
-mkdir -p ws/src ws/bags              # as YOUR user (or: make dirs), so Docker does not create them as root
+mkdir -p ../ros2_ws/src ../ros2_ws/bags # as YOUR user (or: make dirs), so Docker does not create them as root
 xhost +local:                        # PC only: let containers draw on your display (Wayland desktops use XWayland)
 docker compose up -d                 # builds only if the image is missing
 docker compose exec pc-dev bash      # or jetson-driver
@@ -81,7 +82,7 @@ seame-smoke-test
 # PC:      docker compose exec pc-dev ros_entrypoint.sh ros2 topic pub -r 2 /seame_ping std_msgs/msg/String "{data: hello}"
 ```
 
-`docker compose exec <service> bash` gives you ROS and `./ws` sourced. A bare `docker compose exec <service> <command>`
+`docker compose exec <service> bash` gives you ROS and the workspace (`/ws`) sourced. A bare `docker compose exec <service> <command>`
 skips the entrypoint, so ROS is **not** sourced - prefix it with `ros_entrypoint.sh` (as above), or use
 `make exec CMD='...'` / `docker compose run --rm <service> <command>`.
 
@@ -92,16 +93,16 @@ in `.env`, or given on the command line). Run `make` for the full list.
 
 ```bash
 make env / doctor / info    # setup, host and project checks, what the Makefile resolved
-make dirs                   # create ws/src and ws/bags as your user (up and run do this automatically)
+make dirs                   # create ros2_ws/src and ros2_ws/bags as your user (up and run do this automatically)
 make lint                   # compose files + shellcheck + hadolint (the last two if installed)
-make tar                    # pack the project into dist/seame-arm-docker.tar (no .env, ws/ or dist/)
+make tar                    # pack the project into dist/seame-arm-docker.tar (no .env or dist/)
 make build / rebuild        # rebuild = --no-cache --pull, slow
 make up / down / restart / ps / logs / shell
 make talker-listener                                  # ROS 2 self-test: C++ talker + Python listener, PASS/FAIL
 make talker  /  make listener                         # the two-machine version (talker on one, listener on the other)
 make exec CMD='echo $ROS_DISTRO && ros2 topic list'   # in the running container; CMD reaches the shell exactly as typed
 make run  CMD='colcon build'                          # throw-away container (CI style)
-make ws-deps ws-build ws-test ws-clean                # rosdep / colcon on ws/ (--parallel-workers 2 on the Jetson)
+make ws-deps ws-build ws-test ws-clean                # rosdep / colcon on ros2_ws/ (--parallel-workers 2 on the Jetson)
 make ci-image ci-ros                                  # the GitHub Action's `ros` job: rosdep + build + test in the `base` image
 make up GPU=nvidia          # or GPU=dri: adds compose/nvidia.yml or compose/dri.yml (PC only)
 ```
@@ -159,7 +160,7 @@ Notes:
 
 ## Arm services (Jetson): driver, temperature, joystick, web page
 
-Everything from `ws/src/seame_arm` runs all the time on the Nano **inside ROS 2, in one container** (compose profile
+Everything from `ros2_ws/src/seame_arm` runs all the time on the Nano **inside ROS 2, in one container** (compose profile
 `arm`, same `jetson-driver` image, no rebuild). `arm_routine.sh` is its entrypoint: it starts
 `ros2 launch seame_arm arm.launch.py` and the web page. It does **not** move the arm at start or stop:
 
@@ -185,7 +186,7 @@ Logs of all nodes: `make arm-logs`.
   targets of the teleop, the arm coasts at most a few degrees.
 - The teleop waits for the joystick and survives unplugging it (it stops the arm and opens the device again).
 - Zero and park are **manual**: nothing moves the arm when the container starts or stops (`make arm-up`, `make arm-down`,
-  `make arm-restart`, `systemctl stop seame-arm`, a Jetson shutdown). Run them with `make arm-zero` / `make arm-park`
+  `make arm-restart`, `systemctl stop braco`, a Jetson shutdown). Run them with `make arm-zero` / `make arm-park`
   (no container has to be stopped). They replace the old `~/scripts/zero.py` and `park.py`, which opened the serial port
   with pymycobot. Park the arm before shutting down, or it will drop when the servos lose power.
 - **Rest mode.** `make arm-park` (`park.py`) ends by putting the driver in rest mode: motion, gripper and `power_on` are refused, but
@@ -211,7 +212,7 @@ make arm-temps                           # print the servo temperatures once
 make arm-web-logs                        # only the web page's log lines; the page is http://<jetson>:8000
 make arm-basics                          # ros2_basics demos (chatter, add_two_ints, fibonacci, lifecycle) for the page
 make arm-resume                          # leave rest mode; make arm-zero also moves to zero; make arm-rest enters it
-make install-service                     # start it at boot (systemd unit seame-arm), needs sudo
+make install-service                     # start it at boot (systemd unit braco), needs sudo
 make exec CMD='ros2 topic echo /arm/servo_temperatures'
 ```
 
@@ -231,10 +232,10 @@ make exec CMD='ros2 topic echo /arm/servo_temperatures'
 | Gazebo | Installed **only** via `ros-lyrical-ros-gz`: on Lyrical that is Gazebo **Jetty** from packages.ros.org (Harmonic and Ionic are source-only). Never `apt install gz-*` by hand. |
 | RMW / DDS | `ROS_DOMAIN_ID` and `RMW_IMPLEMENTATION` come from one `.env` field and must be copied to both machines. Default is Fast DDS; Cyclone DDS is installed too. Zenoh (`rmw_zenoh_cpp`) is installed if available but needs `ros2 run rmw_zenoh_cpp rmw_zenohd` - it is not a drop-in switch. |
 | Networking | `network_mode: host` + `ipc: host` (multicast discovery across machines; Fast DDS shared memory between containers on one host). Allow UDP between the machines if a firewall is active. |
-| Images | Built locally and tagged `seame/<service>:lyrical`. `pull_policy: never` stops Compose from looking those names up on Docker Hub; a missing image is built, an existing one is used as is. `make pull` fetches a prebuilt one from your own registry. |
+| Images | Built locally and tagged `braco/pc:lyrical` and `braco/jetson:lyrical`. `pull_policy: never` stops Compose from looking those names up on Docker Hub; a missing image is built, an existing one is used as is. `make pull` fetches a prebuilt one from your own registry. |
 | Build flags | `colcon-defaults.yaml` is identical in both images (symlink-install, RelWithDebInfo, ccache). On the Nano add `--parallel-workers 2`. |
-| User IDs | The image creates user `dev` with your `USER_UID/USER_GID` (and removes Ubuntu's default `ubuntu` user at UID 1000) so `./ws` stays writable. If you pull a prebuilt image whose UID differs from yours, rebuild with your IDs. |
-| Real-time | The unprivileged `dev` user gets SCHED_FIFO and locked memory from the `rtprio`/`memlock` ulimits in `docker-compose.yml` (the `cap_add` entries only help root/sudo). If rootless Docker refuses the ulimits, delete that block. |
+| User IDs | The image creates user `dev` with your `USER_UID/USER_GID` (and removes Ubuntu's default `ubuntu` user at UID 1000) so `ros2_ws` stays writable. If you pull a prebuilt image whose UID differs from yours, rebuild with your IDs. |
+| Real-time | The unprivileged `dev` user gets SCHED_FIFO and locked memory from the `rtprio`/`memlock` ulimits in `compose.yml` (the `cap_add` entries only help root/sudo). If rootless Docker refuses the ulimits, delete that block. |
 | Python | System Python of Ubuntu 26.04 (3.14). `pymycobot` is pip-installed into it with `PIP_BREAK_SYSTEM_PACKAGES=1` so ROS nodes can import it. `ruff`/`pre-commit` live in their own virtualenv (they conflict with apt-owned `packaging`). |
 
 ## What has been verified, and what has not
@@ -268,7 +269,7 @@ Found by that real `make smoke` run:
 1. The arm64 / Jetson build. `pymycobot` pulls `bleak` -> `dbus-fast`; if no aarch64 wheel exists for Python 3.14 pip
    compiles it (build-essential and python3-dev are in the image). Optional packages that fail to install on one
    architecture print a warning block and are listed by `seame-smoke-test` instead of failing the build. If
-   `gz_ros2_control` is missing, build it in `ws/src` from `ros-controls/gz_ros2_control` on the branch matching Lyrical.
+   `gz_ros2_control` is missing, build it in `ros2_ws/src` from `ros-controls/gz_ros2_control` on the branch matching Lyrical.
 2. **Live ROS 2 topics in PlotJuggler.** The plugin loads the Lyrical build and needs `librclcpp`, `librcl`,
    `librcutils` and `libtracetools`, which `ros-lyrical-ros-base` provides. I could not subscribe to real topics (no ROS
    repository where this was developed): `make smoke` checks that those libraries resolve and warns if not. Opening
@@ -282,7 +283,7 @@ Found by that real `make smoke` run:
    Elephant Robotics docs. On stock JetPack the UART is held by the serial console: on the host run
    `sudo systemctl disable --now nvgetty` and re-login before the container can open it.
 5. **E-stop.** The class README does not say how it reaches the Jetson. If it is a GPIO line, uncomment the
-   `/dev/gpiochip0` device in `docker-compose.yml` and have your lifecycle node read it.
+   `/dev/gpiochip0` device in `compose.yml` and have your lifecycle node read it.
 
 ## If the build fails
 
@@ -290,7 +291,7 @@ Found by that real `make smoke` run:
 |---|---|
 | `curl: (60) SSL certificate ... self-signed certificate in certificate chain` in step 2 | A network that re-signs HTTPS (some campus/corporate proxies). Add the proxy's CA certificate to the image (copy it to `/usr/local/share/ca-certificates/` and run `update-ca-certificates` before step 2). |
 | `could not determine the ros-apt-source version` / 403 | Only with `ROS_APT_SOURCE_VERSION=latest` and no way to reach github.com. Use the pinned default. |
-| `! Image seame/pc-dev:lyrical pull access denied ... repository does not exist` | Harmless and gone in this version. Compose used to try Docker Hub for `seame/pc-dev` (an image that only exists once you build it) before falling back to building. The compose file now has `pull_policy: never`, so it builds locally without asking a registry. If you still see it, your `docker-compose.yml` predates that line. |
+| `! Image braco/pc:lyrical pull access denied ... repository does not exist` | Harmless and gone in this version. Compose used to try Docker Hub for `braco/pc` (an image that only exists once you build it) before falling back to building. The compose file now has `pull_policy: never`, so it builds locally without asking a registry. If you still see it, your `compose.yml` predates that line. |
 | `toomanyrequests` pulling `ubuntu:26.04` | Docker Hub's anonymous pull limit; `docker login`, or wait. |
 | Warning block "optional packages that could NOT be installed" | Not an error: those packages are optional and the build continues. `make smoke` lists them with a hint. |
 | `PlotJuggler 4: not installed: ...` in the skipped list | The GitHub download failed or its checksum did not match; the image still works. Rebuild with network access, or on a non-amd64 host use Foxglove Studio via `foxglove_bridge` or `rqt_plot`. |
@@ -334,5 +335,5 @@ docker compose build --no-cache pc-dev                  # refresh the PC image (
 docker compose down                                     # stop containers (volumes with ccache/gz cache are kept)
 docker compose run --rm pc-dev bash -c 'colcon build && colcon test && colcon test-result --verbose'
 docker compose run --rm pc-dev ros2 launch urdf_tutorial display.launch.py model:=/ws/src/<pkg>/urdf/arm.urdf.xacro
-docker build --target pc-dev -t seame/pc-dev:lyrical docker     # without compose
+docker build --target pc-dev -t braco/pc:lyrical docker     # without compose
 ```

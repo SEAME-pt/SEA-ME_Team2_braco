@@ -6,7 +6,7 @@
 # Set the profile (and everything else) in .env - see .env.example.
 # Needs Docker Engine 24+ and Docker Compose v2.20+.
 
-name: seame-arm
+name: braco
 
 # ROS 2 networking. Both machines MUST use the same domain and the same RMW.
 x-ros-env: &ros-env
@@ -50,16 +50,16 @@ services:
   pc-dev:
     <<: *ros-common
     profiles: [pc]
-    image: ${IMAGE_PREFIX:-seame}/pc-dev:${IMAGE_TAG:-lyrical}
+    image: ${IMAGE_PREFIX:-braco}/pc:${IMAGE_TAG:-lyrical}
     build:
-      context: ./docker
+      context: .
       target: pc-dev
       args: *build-args
     environment:
       <<: *ros-env
       DISPLAY: ${DISPLAY:-:0}
     volumes:
-      - ./ws:/ws
+      - ../ros2_ws:/ws
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
       - ccache-pc:/home/dev/.ccache
       - gz-cache:/home/dev/.gz
@@ -74,9 +74,9 @@ services:
   jetson-driver:
     <<: *ros-common
     profiles: [jetson]
-    image: ${IMAGE_PREFIX:-seame}/jetson-driver:${IMAGE_TAG:-lyrical}
+    image: ${IMAGE_PREFIX:-braco}/jetson:${IMAGE_TAG:-lyrical}
     build:
-      context: ./docker
+      context: .
       target: jetson-driver
       args: *build-args
     environment:
@@ -91,7 +91,7 @@ services:
       # (the class README does not say how it is wired - confirm with the lab first):
       # - /dev/gpiochip0:/dev/gpiochip0
     volumes:
-      - ./ws:/ws
+      - ../ros2_ws:/ws
       - ccache-jetson:/home/dev/.ccache
       - ros-logs-jetson:/home/dev/.ros
       - ./tests:/opt/seame/tests:ro        # `make talker-listener` etc.; edit on the host, no rebuild
@@ -111,7 +111,7 @@ services:
   arm:
     <<: *ros-common
     profiles: [arm]
-    image: ${IMAGE_PREFIX:-seame}/jetson-driver:${IMAGE_TAG:-lyrical}
+    image: ${IMAGE_PREFIX:-braco}/jetson:${IMAGE_TAG:-lyrical}
     environment:
       <<: *ros-env
       WEB_PORT: ${WEB_PORT:-8000}             # the braco page: http://<jetson>:8000
@@ -136,7 +136,7 @@ services:
     device_cgroup_rules:
       - "c 13:* rmw"
     volumes:
-      - ./ws:/ws
+      - ../ros2_ws:/ws
       - ../libs:/opt/seame/libs:ro
       - ..:/opt/braco:ro                   # the braco web page (web/) and the docs it shows
       - ros-logs-arm:/home/dev/.ros

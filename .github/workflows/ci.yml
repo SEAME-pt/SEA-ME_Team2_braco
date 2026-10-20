@@ -2,7 +2,7 @@
 # reproduced locally with the same command:
 #
 #   host  make env, then make ci              (host checks, lint, web page tests; no robot, no docker image)
-#   ros   make ci-image, then make ci-ros     (rosdep, colcon build, colcon test of docker/ws/src + libs)
+#   ros   make ci-image, then make ci-ros     (rosdep, colcon build, colcon test of ros2_ws/src + libs)
 #
 # The Jetson (arm64) image is not built here: a QEMU build is too slow, use make jetson-cross by hand.
 name: CI
@@ -67,11 +67,11 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
-      CI_IMAGE: seame/ci:lyrical
+      CI_IMAGE: braco/ci:lyrical
     steps:
       - uses: actions/checkout@v5
 
-      # The image's `dev` user gets the runner's UID/GID (1001 on GitHub), so the bind-mounted docker/ws is writable.
+      # The image's `dev` user gets the runner's UID/GID (1001 on GitHub), so the bind-mounted ros2_ws is writable.
       - id: ids
         run: |
           echo "uid=$(id -u)" >> "$GITHUB_OUTPUT"
@@ -83,7 +83,7 @@ jobs:
       - name: Build the CI image (Dockerfile stage base)
         uses: docker/build-push-action@v6
         with:
-          context: docker/docker
+          context: docker
           target: base
           load: true
           tags: ${{ env.CI_IMAGE }}
@@ -98,10 +98,10 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: |
-            docker/ws/.ccache
-            docker/ws/build
-          key: colcon-${{ hashFiles('docker/docker/**') }}-${{ github.sha }}
-          restore-keys: colcon-${{ hashFiles('docker/docker/**') }}-
+            ros2_ws/.ccache
+            ros2_ws/build
+          key: colcon-${{ hashFiles('docker/Dockerfile', 'docker/config/**', 'docker/scripts/**') }}-${{ github.sha }}
+          restore-keys: colcon-${{ hashFiles('docker/Dockerfile', 'docker/config/**', 'docker/scripts/**') }}-
 
       - name: make ci-ros
         run: make ci-ros CI_IMAGE=${{ env.CI_IMAGE }}

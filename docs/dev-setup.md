@@ -233,13 +233,13 @@ the same commands:
 | Job | What it runs | Reproduce locally |
 |---|---|---|
 | `host` | `make env`, then `make host-check` (venv with Python 3.11 from `.python-version`, imports, C++ hello-world build), `make lint` (compose files, shellcheck, hadolint) and `make web-test` (pytest `web/tests`) | `make env` (once), then `make ci` |
-| `ros` | Builds the Dockerfile's `base` stage (Ubuntu 26.04 + ROS 2 Lyrical), then `rosdep install`, `colcon build` and `colcon test` of `docker/ws/src` and `libs` in a throw-away container | `make ci-image ci-ros` |
+| `ros` | Builds the Dockerfile's `base` stage (Ubuntu 26.04 + ROS 2 Lyrical), then `rosdep install`, `colcon build` and `colcon test` of `ros2_ws/src` and `libs` in a throw-away container | `make ci-image ci-ros` |
 
 * Install `shellcheck` and `hadolint` locally: without them `make lint` skips those checks, while CI always runs them.
 * Caches: pip (`actions/setup-python`), the image layers (BuildKit `type=gha`), and ccache + colcon `build/`
-  (`actions/cache`, reset whenever `docker/docker/` changes). A warm run only recompiles what changed.
+  (`actions/cache`, reset whenever `docker/` changes). A warm run only recompiles what changed.
 * The arm64 Jetson image is not built in CI (QEMU is too slow); build it by hand with `make jetson-cross`.
-* `ci-ros` writes to `docker/ws/build`, `install` and `log`, like `make ws-build`, plus its ccache in `docker/ws/.ccache`.
+* `ci-ros` writes to `ros2_ws/build`, `install` and `log`, like `make ws-build`, plus its ccache in `ros2_ws/.ccache`.
 
 ---
 

@@ -9,6 +9,13 @@
 # CMake build of tests/ (root Makefile: make host-cpp / host-check)
 /tests/build/
 
+# ---- ROS 2 workspace (colcon output, recordings, ccache) ------------------------
+/ros2_ws/build/
+/ros2_ws/install/
+/ros2_ws/log/
+/ros2_ws/bags/
+/ros2_ws/.ccache/
+
 # ---- Python -------------------------------------------------------------------
 # Virtual environment created by make init / make host-venv / make web
 /.venv/

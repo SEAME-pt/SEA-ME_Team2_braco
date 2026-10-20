@@ -32,7 +32,7 @@ function healthHTML(h) {
           <td class="muted small">${esc(n.role)}</td>
           <td>${n.present ? '<span class="pill ok">running</span>' : '<span class="pill hot">missing</span>'}</td></tr>`).join("")}
         </tbody></table>
-        <p class="muted small">From docker/ws/src/seame_arm/launch/arm.launch.py. A missing node: <code>make arm-logs</code> on the Jetson.</p>
+        <p class="muted small">From ros2_ws/src/seame_arm/launch/arm.launch.py. A missing node: <code>make arm-logs</code> on the Jetson.</p>
       </section>
       <section class="card">
         <h2>arm_driver services</h2>
