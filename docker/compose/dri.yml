@@ -3,7 +3,7 @@
 # Enable in .env:  COMPOSE_FILE=docker-compose.yml:compose/dri.yml  (or: make up GPU=dri)
 # Find the numeric group ids on the host with:  getent group video render
 services:
-  pc-dev
+  pc-dev:
     devices:
       - /dev/dri:/dev/dri
     group_add:
