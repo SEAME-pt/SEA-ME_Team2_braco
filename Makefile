@@ -5,7 +5,7 @@
 #   make up           build if needed and start this machine's container
 #   make shell        open a shell inside it
 #   make smoke        verify the install
-#   make ci           host checks + lint (what the GitHub Action runs)
+#   make ci           host checks, lint, web tests (the `host` CI job; `make ci-image ci-ros` is the `ros` job)
 #
 # Run everything from the repo root. Two groups of targets:
 #   docker workflow   up, shell, build, ws-build, arm-*, lint, clean ...   (docker compose, project dir docker/)
@@ -66,6 +66,10 @@ VENV         := .venv
 PIP          := $(VENV)/bin/pip
 CPP_DIR      := tests
 CPP_BUILD    := $(CPP_DIR)/build
+# The braco web page on the host (make web / web-start); WEB_PORT is set with the other options below.
+WEB_PID      := $(VENV)/web.pid
+WEB_LOG      := $(VENV)/web.log
+WEB_CMD       = $(VENV)/bin/uvicorn web.server.app:app --host 0.0.0.0 --port $(WEB_PORT)
 
 # Folders that must exist before a container bind-mounts ./ws. Created by `make dirs` (and automatically by
 # `make up` / `make run`) as YOUR user; if Docker creates them instead they end up root-owned.
@@ -140,6 +144,7 @@ RUN1 := $(COMPOSE) run --rm $(NOTTY) $(SERVICE)
 XHOST       ?= 1
 FORCE       ?= 0
 PING_TOPIC  ?= /seame_ping
+WEB_PORT    ?= 8000
 COLCON_ARGS ?= $(if $(filter jetson,$(ROLE)),--parallel-workers 2)
 JETSON_TAG  := $(IMAGE_TAG)-arm64
 NANO        ?=
@@ -157,9 +162,10 @@ define confirm
 @if [ "$(FORCE)" != 1 ]; then printf '%s [y/N] ' "$(1)"; read -r ans; [ "$$ans" = y ] || { echo "aborted"; exit 1; }; fi
 endef
 
-.PHONY: all ci init host-venv host-python host-cpp host-check host-clean _jetson help info doctor env dirs lint tar xhost build rebuild pull push up down restart ps logs config \
-        arm-up arm-down arm-ps arm-logs arm-restart arm-park arm-zero arm-rest arm-resume arm-temps install-service uninstall-service service-status \
-        shell exec run smoke talker-listener talker talker-stop listener ping-pub ping-echo ws-deps ws-build ws-test ws-clean \
+.PHONY: all ci ci-image ci-ros init host-venv host-python host-cpp host-check host-clean _jetson help info doctor env dirs lint tar xhost build rebuild pull push up down restart ps logs config \
+        arm-up arm-down arm-ps arm-logs arm-web-logs arm-basics arm-restart arm-web-restart arm-park arm-zero arm-rest arm-resume arm-temps install-service uninstall-service service-status \
+        shell exec run smoke talker-listener talker talker-stop listener ping-pub ping-echo ws-deps ws-build ws-test ws-clean web-sim _pc_only \
+        web-deps web web-start web-stop web-restart web-re web-reinstall web-status web-logs web-mock web-test \
         clean distclean binfmt jetson-cross jetson-ship _role _arch _xhost
 
 ##@ Setup
@@ -357,23 +363,23 @@ ws-test: _role up ## colcon test, then print the results (includes ament lint ch
 ws-clean: ## Delete docker/ws/build, docker/ws/install and docker/ws/log
 	rm -rf $(WS_DIR)/build $(WS_DIR)/install $(WS_DIR)/log
 
-##@ Arm on the Jetson (one container: driver, temperature, teleop + zero/park routine, all under ROS 2)
+##@ Arm on the Jetson (one container: driver, temperature, teleop + web page, all under ROS 2)
 
 arm-up: _jetson | $(WS_DIRS) ## Start the arm (build the workspace first: make ws-build ROLE=jetson)
 	@test -e $(ARM_BUILT) || test -L $(ARM_BUILT) || { echo "seame_arm is not built yet: make ws-build ROLE=jetson" >&2; exit 1; }
 	$(ARM) up -d $(ARM_SERVICES)
 
-arm-down: _jetson ## Stop the arm (parks it first) and remove the container; the dev container is not touched
+arm-down: _jetson ## Stop the arm and remove the container (does not park it: make arm-park first); the dev container is not touched
 	$(ARM) stop $(ARM_SERVICES)
 	$(ARM) rm --force $(ARM_SERVICES)
 
 arm-ps: _jetson ## Status of the arm container
 	$(ARM) ps $(ARM_SERVICES)
 
-arm-logs: _jetson ## Follow the arm logs (driver, temperature and teleop nodes, zero/park)
+arm-logs: _jetson ## Follow the arm logs (driver, temperature and teleop nodes, web page)
 	$(ARM) logs -f --tail=100 $(ARM_SERVICES)
 
-arm-restart: _jetson ## Restart the arm after make ws-build (zeroes the arm again, parks it first)
+arm-restart: _jetson ## Restart the arm container after make ws-build (the arm is not zeroed or parked)
 	$(ARM) restart $(ARM_SERVICES)
 
 # These run inside the already-running arm container (ROS sourced, workspace mounted),
@@ -395,6 +401,16 @@ arm-resume: _jetson ## Rest mode off: motion accepted again (joints stay free un
 arm-temps: _jetson ## Print the servo temperatures once (works in rest mode)
 	$(ARM_EXEC) ros2 topic echo --once /arm/servo_temperatures
 
+arm-web-logs: _jetson ## Follow only the braco web page lines of the arm logs (the page: http://<jetson>:$(WEB_PORT))
+	$(ARM) logs -f --tail=200 $(ARM_SERVICES) | grep --line-buffered -iE 'uvicorn|braco|web page|Application|HTTP'
+
+arm-web-restart: _jetson ## Restart only the braco web page inside the running arm (no zero, no park; everyone must take control again)
+	$(ARM_EXEC) env WEB_PORT=$(WEB_PORT) bash /opt/braco/web/restart.sh
+
+arm-basics: _jetson ## Run the ros2_basics demos in the arm container for the page's ROS 2 > Demos tab (Ctrl-C stops them)
+	$(ARM_EXEC) bash -c 'ros2 run ros2_basics_py managed_talker & ros2 run ros2_basics_cpp managed_talker & \
+	  trap "kill %1 %2 2>/dev/null" EXIT; ros2 launch ros2_basics_py basics.launch.py'
+
 install-service: _jetson ## Start the arm services at boot (systemd unit seame-arm, needs sudo)
 	@test -e $(ARM_BUILT) || test -L $(ARM_BUILT) || { echo "seame_arm is not built yet: make ws-build ROLE=jetson" >&2; exit 1; }
 	sed -e "s|@WORKDIR@|$(CURDIR)/$(DOCKER_DIR)|g" -e "s|@DOCKER@|$$(command -v docker)|g" $(SYSTEMD_UNIT) | sudo tee $(SYSTEMD_DEST) >/dev/null
@@ -410,6 +426,14 @@ uninstall-service: ## Remove the boot unit and stop the arm services
 service-status: ## Show the boot unit and the arm services
 	-systemctl status --no-pager seame-arm.service
 	$(ARM) ps $(ARM_SERVICES)
+
+##@ Web dashboard on Gazebo (PC only)
+
+_pc_only: _role
+	@test "$(ROLE)" = pc || { echo "this target is PC only (ROLE=$(ROLE)); on the Jetson the page comes with 'make arm-up' (port $(WEB_PORT))" >&2; exit 1; }
+
+web-sim: _role _pc_only up ## Serve the braco web page from pc-dev, showing and commanding Gazebo (WEB_PORT=8000)
+	$(EXEC) bash -c 'cd /opt/braco && ARM_SOURCE=gazebo exec python3 -m uvicorn web.server.app:app --host 0.0.0.0 --port $(WEB_PORT) --workers 1'
 
 ##@ Jetson image from a PC (no Docker build on the Nano)
 
@@ -460,7 +484,102 @@ $(VENV)/.installed: requirements.txt .python-version
 
 host-venv: $(VENV)/.installed ## Create the venv and install requirements.txt
 
-ci: host-check lint ## Everything the GitHub Action runs (no robot needed): host checks, then lint
+##@ Continuous integration (.github/workflows/ci.yml; no robot, no display needed)
+
+ci: host-check lint web-test ## The `host` CI job: host checks, lint, web page tests
+
+# The `ros` CI job builds the workspace in a throw-away container from the Dockerfile's `base` stage: it has
+# everything the packages in docker/ws/src and libs depend on, without the GUI/Gazebo/MoveIt layers of pc-dev.
+# The image's user gets your UID/GID so the bind-mounted docker/ws stays writable (GitHub runners are UID 1001).
+CI_TARGET ?= base
+CI_IMAGE  ?= $(IMAGE_PREFIX)/ci:$(IMAGE_TAG)
+CI_ROS_SH := set -e; rosdep update --rosdistro "$$ROS_DISTRO" >/dev/null 2>&1 || true; \
+             sudo apt-get update -qq; rosdep install --from-paths $(WS_BASE_PATHS) --ignore-src -y; \
+             colcon build --base-paths $(WS_BASE_PATHS) $(COLCON_ARGS); \
+             colcon test --base-paths $(WS_BASE_PATHS); colcon test-result --verbose
+
+ci-image: ## Build the `ros` CI job's image (Dockerfile stage CI_TARGET=base) as CI_IMAGE, for your UID/GID
+	docker build --target $(CI_TARGET) --build-arg USER_UID=$$(id -u) --build-arg USER_GID=$$(id -g) -t $(CI_IMAGE) $(IMAGE_DIR)
+
+ci-ros: ## The `ros` CI job: rosdep, colcon build and colcon test of docker/ws/src + libs in a throw-away CI_IMAGE container
+	@docker image inspect $(CI_IMAGE) >/dev/null 2>&1 || { echo "image $(CI_IMAGE) not found: make ci-image" >&2; exit 1; }
+	docker run --rm -e CCACHE_DIR=/ws/.ccache -e CCACHE_MAXSIZE=500M -v $(CURDIR)/$(WS_DIR):/ws -v $(CURDIR)/libs:$(CONTAINER_LIBS):ro \
+	    $(CI_IMAGE) bash -c '$(CI_ROS_SH)'
+
+##@ Braco web page (web/README.md; on the Jetson it runs inside the arm container: make arm-up)
+
+# `make web` / web-start are the fallback that opens the serial port directly with pymycobot: only use them while
+# the arm container is down. web-mock and web-test only need the web packages, so they also work on a PC where
+# requirements.txt (pymycobot, numpy) cannot be installed: the venv prefers $(PYTHON) and falls back to python3.
+$(VENV)/bin/python:
+	$(or $(shell command -v $(PYTHON) 2>/dev/null),python3) -m venv $(VENV)
+	$(PIP) install --upgrade pip
+
+$(VENV)/.web-installed: $(VENV)/bin/python web/requirements.txt
+	$(PIP) install -r web/requirements.txt
+	touch $@
+
+$(VENV)/.web-test-installed: $(VENV)/.web-installed web/requirements-test.txt
+	$(PIP) install -r web/requirements-test.txt
+	touch $@
+
+web-deps: $(VENV)/.web-installed ## Install the web page's packages (fastapi, uvicorn) into the venv
+
+web: host-venv web-deps ## Serve the page in the foreground on WEB_PORT, pymycobot straight to the serial port
+	$(WEB_CMD)
+
+# web-start runs the server detached, with its PID in $(WEB_PID) and output in $(WEB_LOG), so the terminal stays free.
+web-start: host-venv web-deps ## Same as web, in the background (web-stop, web-restart, web-status, web-logs)
+	@if [ -f $(WEB_PID) ] && kill -0 $$(cat $(WEB_PID)) 2>/dev/null; then \
+		echo "web already running (pid $$(cat $(WEB_PID))). Use: make web-restart"; \
+	else \
+		nohup setsid $(WEB_CMD) > $(WEB_LOG) 2>&1 & echo $$! > $(WEB_PID); \
+		sleep 2; \
+		if kill -0 $$(cat $(WEB_PID)) 2>/dev/null; then \
+			echo "web started (pid $$(cat $(WEB_PID))) on port $(WEB_PORT). Logs: make web-logs"; \
+		else \
+			echo "web failed to start. Last log lines:"; tail -n 20 $(WEB_LOG); rm -f $(WEB_PID); exit 1; \
+		fi; \
+	fi
+
+web-stop: ## Stop the background page (and any stray uvicorn holding the port)
+	@if [ -f $(WEB_PID) ] && kill -0 $$(cat $(WEB_PID)) 2>/dev/null; then \
+		kill $$(cat $(WEB_PID)); \
+		for i in 1 2 3 4 5; do kill -0 $$(cat $(WEB_PID)) 2>/dev/null || break; sleep 1; done; \
+		kill -9 $$(cat $(WEB_PID)) 2>/dev/null || true; \
+		echo "web stopped"; \
+	else \
+		echo "web not running (from web-start)"; \
+	fi
+	@rm -f $(WEB_PID)
+	@# Also free the port if a foreground `make web` / stray uvicorn still holds it.
+	@pkill -f "[u]vicorn web.server.app:app" 2>/dev/null || true
+
+web-restart: web-stop web-start ## Restart the background page
+
+# The braco page runs inside the arm container on the Jetson. The arm is not zeroed or parked.
+web-re: ## (jetson) Restart the arm container with its page; only the page: make arm-web-restart
+	$(MAKE) arm-restart
+
+web-reinstall: web-stop ## Wipe the venv (fixes corrupted/partial installs), reinstall, then web-start
+	rm -rf $(VENV)
+	$(MAKE) host-venv web-deps
+	$(MAKE) web-start
+
+web-status: ## Is the background page running?
+	@if [ -f $(WEB_PID) ] && kill -0 $$(cat $(WEB_PID)) 2>/dev/null; then \
+		echo "web running (pid $$(cat $(WEB_PID))) on port $(WEB_PORT)"; \
+	else echo "web stopped"; fi
+
+web-logs: ## Follow the background page's log
+	@tail -n 50 -f $(WEB_LOG)
+
+web-mock: web-deps ## Serve the page with mock arm data on localhost (no arm, no ROS)
+	ARM_MOCK=1 $(VENV)/bin/uvicorn web.server.app:app --host 127.0.0.1 --port $(WEB_PORT) --reload
+
+web-test: $(VENV)/.web-test-installed ## Run the web page's tests (pytest web/tests, no arm needed)
+	$(VENV)/bin/python -m pytest web/tests -q
+
 
 ##@ Cleanup
 
