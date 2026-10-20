@@ -1,7 +1,23 @@
-/libs/cpp/joystick_display
+# ---- C++ programs (libs/cpp/Makefile) -----------------------------------------
 /libs/cpp/obj
-/libs/cpppid_tool
-/libs/cpp/temps_lcd
 /libs/cpp/zero
-/libs/cpp/joystick_all_joynts
+/libs/cpp/joystick_all_joints
+/libs/cpp/joystick_display
 /libs/cpp/pid_tool
+/libs/cpp/temps_lcd
+
+# CMake build of tests/ (top-level Makefile: make cpp)
+/tests/build/
+
+# ---- Python -------------------------------------------------------------------
+# Virtual environment created by make init / make venv / make web
+/.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# ---- Secrets and local settings -------------------------------------------------
+# Local env files (e.g. GITHUB_TOKEN for the web dashboard)
+.env
+
+.vscode

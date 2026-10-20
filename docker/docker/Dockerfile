@@ -72,7 +72,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         wget sudo bash-completion less nano vim tmux htop \
         iproute2 iputils-ping net-tools openssh-client picocom \
         python3-pip python3-dev python3-numpy python3-yaml python3-serial \
+        python3-fastapi python3-uvicorn python3-websockets \
  && rm -rf /var/lib/apt/lists/*
+# (fastapi/uvicorn: the braco web page, served by the arm container on the Jetson and by
+#  `make web-sim` in pc-dev, so both images need them)
 
 # Same version on PC and Jetson because both inherit this layer. (pymycobot also pulls pyserial and
 # numpy - already provided by apt above - and bleak.) It must live in the system Python so that
