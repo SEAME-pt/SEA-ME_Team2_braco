@@ -11,7 +11,7 @@
 # The web page is a plain client of arm_driver: if it crashes only a line is logged, the arm
 # keeps running (and the driver's watchdog stops any move the page was streaming).
 #
-# "Stops" means docker stop / make arm-down / systemctl stop seame-arm / a normal shutdown of
+# "Stops" means docker stop / make arm-down / systemctl stop braco / a normal shutdown of
 # the Jetson: Docker sends SIGTERM and the trap below stops the page and the launch.
 # Arguments are passed on to the launch (port:=... lcd_bus:=...).
 set -u

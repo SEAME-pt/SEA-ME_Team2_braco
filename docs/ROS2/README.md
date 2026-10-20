@@ -668,7 +668,7 @@ Workspaces are **layered**:
 - The **underlay** is the ROS installation itself, activated with `source /opt/ros/lyrical/setup.bash`.
 - Your workspace is an **overlay**, activated with `source install/setup.bash` after building. Packages in the overlay take precedence over the underlay.
 
-Our containers source both automatically (`docker/docker/scripts/env.sh`). After a build, run `source /ws/install/setup.bash` again (or open a new shell) to see new packages and executables.
+Our containers source both automatically (`docker/scripts/env.sh`). After a build, run `source /ws/install/setup.bash` again (or open a new shell) to see new packages and executables.
 
 ### colcon, ament and rosdep
 
@@ -678,7 +678,7 @@ Our containers source both automatically (`docker/docker/scripts/env.sh`). After
 | `ament` | The build system *inside* each package: CMake macros (`ament_cmake`) or setuptools integration (`ament_python`), plus linters (`ament_lint`) |
 | `rosdep` | Reads `package.xml` dependencies and installs the matching apt/pip packages |
 
-Our images configure `colcon` with `symlink-install`, `RelWithDebInfo` and `ccache` (`docker/docker/config/colcon-defaults.yaml`). With `--symlink-install`, edits to Python files and launch/config files take effect without rebuilding.
+Our images configure `colcon` with `symlink-install`, `RelWithDebInfo` and `ccache` (`docker/config/colcon-defaults.yaml`). With `--symlink-install`, edits to Python files and launch/config files take effect without rebuilding.
 
 ---
 

@@ -36,7 +36,7 @@ ros2 node list; ros2 topic list     # what this machine can see
 | `CMake Deprecation Warning ... Compatibility with CMake < 3.10 will be removed` | `cmake_minimum_required(VERSION 3.8)` in old tutorials | `cmake_minimum_required(VERSION 3.10)` |
 | `ament_target_dependencies` deprecation warning | Old tutorial style | Use `target_link_libraries(target rclcpp::rclcpp ${std_msgs_TARGETS})` |
 | Jetson freezes or the compiler is killed (`c++: fatal error: Killed signal`) | Out of memory (4 GB) | `colcon build --parallel-workers 2` (`make ws-build` does it), or `MAKEFLAGS=-j1 colcon build --executor sequential` |
-| `Permission denied` writing `build/`, `install/`, `log/` | `docker/ws` created by Docker as root, or wrong `USER_UID` in `.env` | `sudo chown -R $(id -u):$(id -g) docker/ws` on the host; check `USER_UID`/`USER_GID` in `.env` and rebuild the image |
+| `Permission denied` writing `build/`, `install/`, `log/` | `ros2_ws` created by Docker as root, or wrong `USER_UID` in `.env` | `sudo chown -R $(id -u):$(id -g) ros2_ws` on the host; check `USER_UID`/`USER_GID` in `.env` and rebuild the image |
 | Weird stale build errors after moving/renaming packages | Old build cache | `rm -rf build install log` (or `make ws-clean`) and build again |
 
 ## Tests and linters (colcon test)
@@ -52,7 +52,7 @@ How to run them: [INSTRUCTIONS.md §12.6](INSTRUCTIONS.md#126-run-the-tests-lint
 | flake8 `I100 Import statements are in the wrong order` | Imports not alphabetical inside a group. `rclpy`, `std_msgs` and your own packages (`ros2_basics_py`) all count as third party | Sort them alphabetically in one group: `from action_msgs... / import rclpy / from rclpy... / from ros2_basics_py... / from std_msgs...`. Standard library first (`from glob import glob` before `import os`) |
 | pep257 `D400`/`D415`: first line should end with a period | One-line docstring without a final `.` | End it with a period |
 | pep257 `D213`: multi-line docstring summary should start at the second line | ROS 2 uses the D213 convention | Keep module docstrings on one line, or start the summary on the line after `"""` |
-| `git status` shows `__pycache__/*.pyc` under `ws/src` | `--symlink-install` runs the Python files straight from `src/` | Already ignored in `docker/.gitignore`; never `git add` them |
+| `git status` shows `__pycache__/*.pyc` under `ros2_ws/src` | `--symlink-install` runs the Python files straight from `src/` | Already ignored in the root `.gitignore`; never `git add` them |
 
 ## Communication: "my subscriber receives nothing"
 
@@ -71,7 +71,7 @@ Go through this list in order.
 | Symptom | Cause | Fix |
 |---|---|---|
 | Nodes on the other machine do not appear at all | Different `ROS_DOMAIN_ID` or `RMW_IMPLEMENTATION` | Compare `printenv | grep -E 'ROS_DOMAIN_ID|RMW'` on both. They come from `docker/.env`; make them identical and `make down && make up` |
-| Still nothing, IDs match | Multicast blocked (typical on Wi-Fi / campus networks) | Test with `ros2 multicast receive` (A) and `ros2 multicast send` (B). If it fails, set `ROS_STATIC_PEERS` to the other machine's IP in `docker/docker-compose.yml` (`x-ros-env`), or use a wired connection / own router |
+| Still nothing, IDs match | Multicast blocked (typical on Wi-Fi / campus networks) | Test with `ros2 multicast receive` (A) and `ros2 multicast send` (B). If it fails, set `ROS_STATIC_PEERS` to the other machine's IP in `docker/compose.yml` (`x-ros-env`), or use a wired connection / own router |
 | Still nothing | Firewall | `sudo ufw status`. Allow UDP from the other machine: `sudo ufw allow from <other-ip>` |
 | Still nothing | Discovery range | `ROS_AUTOMATIC_DISCOVERY_RANGE` must be `SUBNET` (our default), not `LOCALHOST`, and both machines in the same subnet |
 | Nodes appear but no data, or only small messages arrive | Network MTU / fragmentation, or very large messages over Wi-Fi | Test with small messages first; for images use `SensorDataQoS`, lower resolution or compressed images |

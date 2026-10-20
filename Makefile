@@ -19,39 +19,40 @@
 # Project layout - every path used below is defined in the next block, so moving a file means editing one line:
 #
 #   Makefile  requirements.txt  tests/                            the root: host venv and C++ hello-world
-#   docker/     docker-compose.yml  .env.example  README.md       the compose project (every docker compose call
+#   ros2_ws/src/      the ROS 2 packages (colcon workspace, mounted at /ws in the containers)
+#   docker/     compose.yml  .env.example  README.md              the compose project (every docker compose call
 #                                                                 below passes --project-directory docker)
 #   docker/compose/   nvidia.yml dri.yml                          GPU overrides
-#   docker/docker/    Dockerfile  config/  scripts/               image definition (stages: base, jetson-driver, pc-dev)
+#   docker/           Dockerfile  config/  scripts/               image definition (stages: base, jetson-driver, pc-dev)
 #   docker/tests/     talker-listener.sh                          ROS 2 checks; mounted into the containers (no rebuild)
-#   docker/systemd/   seame-arm.service                           boot unit for the arm services (make install-service)
+#   docker/systemd/   braco.service                               boot unit for the arm services (make install-service)
 #   libs/             the team's C++ library (mounted read-only at /opt/seame/libs; colcon builds it as mycobot_cpp)
-#   created by make when needed:  docker/.env   docker/ws/src   docker/ws/bags   docker/dist/
+#   created by make when needed:  docker/.env   ros2_ws/src   ros2_ws/bags   docker/dist/
 
 .DEFAULT_GOAL := help
 
 # ---- project layout (edit paths here, nowhere else) -------------------------------------------
 # (Only the `## ...` help strings repeat a few paths literally, because `make help` reads this file as text.)
-PROJECT      := seame-arm-docker
+PROJECT      := braco-docker
 DOCKER_DIR   := docker
-IMAGE_DIR    := $(DOCKER_DIR)/docker
+IMAGE_DIR    := $(DOCKER_DIR)
 ENV_FILE     := $(DOCKER_DIR)/.env
 ENV_EXAMPLE  := $(DOCKER_DIR)/.env.example
-COMPOSE_BASE := $(DOCKER_DIR)/docker-compose.yml
+COMPOSE_BASE := $(DOCKER_DIR)/compose.yml
 COMPOSE_DIR  := $(DOCKER_DIR)/compose
 DOCKERFILE   := $(IMAGE_DIR)/Dockerfile
 TL_TESTS_DIR := $(DOCKER_DIR)/tests
 TL_SCRIPT    := $(TL_TESTS_DIR)/talker-listener.sh
-# Where docker-compose.yml mounts docker/tests inside the containers (no trailing comment on the next line: it would leak spaces into the value).
+# Where compose.yml mounts docker/tests inside the containers (no trailing comment on the next line: it would leak spaces into the value).
 CONTAINER_TESTS := /opt/seame/tests
-# Where docker-compose.yml mounts ../libs; colcon also looks for packages there.
+# Where compose.yml mounts ../libs; colcon also looks for packages there.
 CONTAINER_LIBS := /opt/seame/libs
 WS_BASE_PATHS  := src $(CONTAINER_LIBS)
-SYSTEMD_UNIT := $(DOCKER_DIR)/systemd/seame-arm.service
-SYSTEMD_DEST := /etc/systemd/system/seame-arm.service
+SYSTEMD_UNIT := $(DOCKER_DIR)/systemd/braco.service
+SYSTEMD_DEST := /etc/systemd/system/braco.service
 CONFIG_DIR   := $(IMAGE_DIR)/config
 SCRIPTS_DIR  := $(IMAGE_DIR)/scripts
-WS_DIR       := $(DOCKER_DIR)/ws
+WS_DIR       := ros2_ws
 WS_SRC       := $(WS_DIR)/src
 WS_BAGS      := $(WS_DIR)/bags
 DIST_DIR     := $(DOCKER_DIR)/dist
@@ -71,7 +72,7 @@ WEB_PID      := $(VENV)/web.pid
 WEB_LOG      := $(VENV)/web.log
 WEB_CMD       = $(VENV)/bin/uvicorn web.server.app:app --host 0.0.0.0 --port $(WEB_PORT)
 
-# Folders that must exist before a container bind-mounts ./ws. Created by `make dirs` (and automatically by
+# Folders that must exist before a container bind-mounts ros2_ws. Created by `make dirs` (and automatically by
 # `make up` / `make run`) as YOUR user; if Docker creates them instead they end up root-owned.
 WS_DIRS := $(WS_SRC) $(WS_BAGS)
 
@@ -110,15 +111,17 @@ ifneq ($(origin GPU),command line)
 GPU :=
 endif
 
-IMAGE_PREFIX ?= $(or $(call dotenv,IMAGE_PREFIX),seame)
+IMAGE_PREFIX ?= $(or $(call dotenv,IMAGE_PREFIX),braco)
 IMAGE_TAG    ?= $(or $(call dotenv,IMAGE_TAG),lyrical)
 MYCOBOT_PORT ?= $(or $(call dotenv,MYCOBOT_PORT),/dev/ttyTHS1)
 
 SERVICE_pc     := pc-dev
 SERVICE_jetson := jetson-driver
 SERVICE        := $(SERVICE_$(ROLE))
+# Image name per role (compose.yml: braco/pc, braco/jetson)
+IMAGE_NAME     := $(IMAGE_PREFIX)/$(ROLE):$(IMAGE_TAG)
 
-# Every docker compose call goes through the project directory, so docker/.env, ./ws and ../libs resolve as before.
+# Every docker compose call goes through the project directory, so docker/.env, ../ros2_ws and ../libs resolve as before.
 DC := docker compose --project-directory $(DOCKER_DIR)
 
 # Always-on arm (profile "arm", Jetson only): one container running the seame_arm ROS 2 launch.
@@ -192,7 +195,7 @@ info: _role ## Show what this Makefile resolved (role, service, images, compose 
 	@echo "host          $(UNAME_S) $(UNAME_M) -> $(ARCH)  jetson marker: $(or $(IS_JETSON),no)  detected role: $(DETECTED_ROLE)"
 	@echo "GPU hint      $(or $(GPU_HINT),none)  (opt in with GPU=$(or $(GPU_HINT),nvidia|dri), PC only)"
 	@echo "service       $(SERVICE)"
-	@echo "image         $(IMAGE_PREFIX)/$(SERVICE):$(IMAGE_TAG)"
+	@echo "image         $(IMAGE_NAME)"
 	@echo "compose cmd   $(COMPOSE)"
 	@echo "serial port   $(MYCOBOT_PORT)  (jetson only)"
 	@echo "compose files $(COMPOSE_BASE) $(addprefix $(COMPOSE_DIR)/,nvidia.yml dri.yml)"
@@ -258,7 +261,7 @@ xhost: ## (pc) Let local containers draw on your X11/XWayland display (xhost +lo
 
 ##@ Project folders, checks, packaging
 
-dirs: $(WS_DIRS) ## Create the folders the project needs (docker/ws/src, docker/ws/bags) as your user
+dirs: $(WS_DIRS) ## Create the folders the project needs (ros2_ws/src, ros2_ws/bags) as your user
 
 $(WS_DIRS):
 	@mkdir -p $@ && echo "created $@"
@@ -273,11 +276,11 @@ lint: _role ## Check the project: compose files, scripts and tests (shellcheck),
 	@if command -v hadolint >/dev/null 2>&1; then hadolint --ignore DL3008 --ignore DL3013 --ignore DL3059 --ignore DL3006 --ignore DL3042 --ignore DL3045 --ignore SC1091 --ignore SC2086 --ignore SC2016 $(DOCKERFILE) && echo "  hadolint: clean"; else echo "  hadolint not installed - skipped"; fi
 
 TAR ?= tar
-tar: ## Pack docker/ into docker/dist/seame-arm-docker.tar (leaves out .env, ws/ and dist/; needs GNU tar)
+tar: ## Pack docker/ into docker/dist/braco-docker.tar (leaves out .env and dist/; needs GNU tar)
 	@$(TAR) --version 2>/dev/null | grep -q 'GNU tar' || { echo "make tar needs GNU tar (macOS: brew install gnu-tar, then make tar TAR=gtar)" >&2; exit 1; }
 	@mkdir -p $(DIST_DIR)
 	$(TAR) -C $(DOCKER_DIR) -cf $(CURDIR)/$(ARCHIVE) --sort=name --owner=0 --group=0 --numeric-owner \
-	    --exclude='./.env' --exclude='./.env.tmp' --exclude='./ws' --exclude='./dist' --exclude='./.git' \
+	    --exclude='./.env' --exclude='./.env.tmp' --exclude='./dist' --exclude='./.git' \
 	    --transform='s,^\.,$(PROJECT),' .
 	@echo "wrote $(ARCHIVE) ($$(du -h $(ARCHIVE) | cut -f1)); unpack with: tar -xf $(ARCHIVE)"
 
@@ -290,7 +293,7 @@ rebuild: BUILD_ARGS := --no-cache --pull
 rebuild: build ## Rebuild from scratch (no cache, fresh ubuntu:26.04) - slow
 
 pull: _role _arch ## Pull this machine's prebuilt image from the registry in IMAGE_PREFIX (then: make up)
-	docker pull $(IMAGE_PREFIX)/$(SERVICE):$(IMAGE_TAG)
+	docker pull $(IMAGE_NAME)
 
 push: _role _arch ## Push this machine's image (IMAGE_PREFIX must be a registry path)
 	$(COMPOSE) push $(SERVICE)
@@ -349,18 +352,18 @@ listener: _role up ## Two-machine test, step 2: on the OTHER machine, run the ch
 talker-stop: _role up ## Stop any talker left running in this container (e.g. one started without a terminal)
 	@$(EXEC) bash -c 'if pkill -INT -f "[d]emo_nodes_cpp[/ ]talker"; then echo "stopped the talker(s) in $(SERVICE)"; else echo "no talker running in $(SERVICE)"; fi'
 
-##@ Workspace (docker/ws/ is mounted at /ws in the container on both machines)
+##@ Workspace (ros2_ws/ is mounted at /ws in the container on both machines)
 
-ws-deps: _role up ## rosdep-install the dependencies of docker/ws/src (lives in the running container only)
+ws-deps: _role up ## rosdep-install the dependencies of ros2_ws/src (lives in the running container only)
 	$(EXEC) bash -c 'rosdep update >/dev/null 2>&1 || true; sudo apt-get update && rosdep install --from-paths $(WS_BASE_PATHS) --ignore-src -y'
 
-ws-build: _role up ## colcon build of docker/ws/src + libs (adds --parallel-workers 2 on the Jetson; COLCON_ARGS=...)
+ws-build: _role up ## colcon build of ros2_ws/src + libs (adds --parallel-workers 2 on the Jetson; COLCON_ARGS=...)
 	$(EXEC) colcon build --base-paths $(WS_BASE_PATHS) $(COLCON_ARGS)
 
 ws-test: _role up ## colcon test, then print the results (includes ament lint checks)
 	$(EXEC) bash -c 'colcon test --base-paths $(WS_BASE_PATHS) && colcon test-result --verbose'
 
-ws-clean: ## Delete docker/ws/build, docker/ws/install and docker/ws/log
+ws-clean: ## Delete ros2_ws/build, ros2_ws/install and ros2_ws/log
 	rm -rf $(WS_DIR)/build $(WS_DIR)/install $(WS_DIR)/log
 
 ##@ Arm on the Jetson (one container: driver, temperature, teleop + web page, all under ROS 2)
@@ -411,20 +414,20 @@ arm-basics: _jetson ## Run the ros2_basics demos in the arm container for the pa
 	$(ARM_EXEC) bash -c 'ros2 run ros2_basics_py managed_talker & ros2 run ros2_basics_cpp managed_talker & \
 	  trap "kill %1 %2 2>/dev/null" EXIT; ros2 launch ros2_basics_py basics.launch.py'
 
-install-service: _jetson ## Start the arm services at boot (systemd unit seame-arm, needs sudo)
+install-service: _jetson ## Start the arm services at boot (systemd unit braco, needs sudo)
 	@test -e $(ARM_BUILT) || test -L $(ARM_BUILT) || { echo "seame_arm is not built yet: make ws-build ROLE=jetson" >&2; exit 1; }
 	sed -e "s|@WORKDIR@|$(CURDIR)/$(DOCKER_DIR)|g" -e "s|@DOCKER@|$$(command -v docker)|g" $(SYSTEMD_UNIT) | sudo tee $(SYSTEMD_DEST) >/dev/null
 	sudo systemctl daemon-reload
-	sudo systemctl enable --now seame-arm.service
+	sudo systemctl enable --now braco.service
 	@echo "installed $(SYSTEMD_DEST): the arm services now start at boot (make service-status)"
 
 uninstall-service: ## Remove the boot unit and stop the arm services
-	-sudo systemctl disable --now seame-arm.service
+	-sudo systemctl disable --now braco.service
 	sudo rm -f $(SYSTEMD_DEST)
 	sudo systemctl daemon-reload
 
 service-status: ## Show the boot unit and the arm services
-	-systemctl status --no-pager seame-arm.service
+	-systemctl status --no-pager braco.service
 	$(ARM) ps $(ARM_SERVICES)
 
 ##@ Web dashboard on Gazebo (PC only)
@@ -447,7 +450,7 @@ jetson-cross: ## Cross-build the Jetson image on this PC (arm64 via QEMU, slow);
 
 jetson-ship: ## Copy the cross-built image to the Nano: make jetson-ship NANO=user@nano.local
 	@test -n "$(NANO)" || { echo "usage: make jetson-ship NANO=user@host" >&2; exit 2; }
-	docker save $(IMAGE_PREFIX)/jetson-driver:$(JETSON_TAG) | gzip | ssh $(NANO) 'gunzip | docker load'
+	docker save $(IMAGE_PREFIX)/jetson:$(JETSON_TAG) | gzip | ssh $(NANO) 'gunzip | docker load'
 	@echo "On the Nano set IMAGE_TAG=$(JETSON_TAG) in $(ENV_FILE), then: make up ROLE=jetson"
 
 ##@ Host (Python venv, C++ hello-world on this machine, no docker)
@@ -489,8 +492,8 @@ host-venv: $(VENV)/.installed ## Create the venv and install requirements.txt
 ci: host-check lint web-test ## The `host` CI job: host checks, lint, web page tests
 
 # The `ros` CI job builds the workspace in a throw-away container from the Dockerfile's `base` stage: it has
-# everything the packages in docker/ws/src and libs depend on, without the GUI/Gazebo/MoveIt layers of pc-dev.
-# The image's user gets your UID/GID so the bind-mounted docker/ws stays writable (GitHub runners are UID 1001).
+# everything the packages in ros2_ws/src and libs depend on, without the GUI/Gazebo/MoveIt layers of pc-dev.
+# The image's user gets your UID/GID so the bind-mounted ros2_ws stays writable (GitHub runners are UID 1001).
 CI_TARGET ?= base
 CI_IMAGE  ?= $(IMAGE_PREFIX)/ci:$(IMAGE_TAG)
 CI_ROS_SH := set -e; rosdep update --rosdistro "$$ROS_DISTRO" >/dev/null 2>&1 || true; \
@@ -501,7 +504,7 @@ CI_ROS_SH := set -e; rosdep update --rosdistro "$$ROS_DISTRO" >/dev/null 2>&1 ||
 ci-image: ## Build the `ros` CI job's image (Dockerfile stage CI_TARGET=base) as CI_IMAGE, for your UID/GID
 	docker build --target $(CI_TARGET) --build-arg USER_UID=$$(id -u) --build-arg USER_GID=$$(id -g) -t $(CI_IMAGE) $(IMAGE_DIR)
 
-ci-ros: ## The `ros` CI job: rosdep, colcon build and colcon test of docker/ws/src + libs in a throw-away CI_IMAGE container
+ci-ros: ## The `ros` CI job: rosdep, colcon build and colcon test of ros2_ws/src + libs in a throw-away CI_IMAGE container
 	@docker image inspect $(CI_IMAGE) >/dev/null 2>&1 || { echo "image $(CI_IMAGE) not found: make ci-image" >&2; exit 1; }
 	docker run --rm -e CCACHE_DIR=/ws/.ccache -e CCACHE_MAXSIZE=500M -v $(CURDIR)/$(WS_DIR):/ws -v $(CURDIR)/libs:$(CONTAINER_LIBS):ro \
 	    $(CI_IMAGE) bash -c '$(CI_ROS_SH)'

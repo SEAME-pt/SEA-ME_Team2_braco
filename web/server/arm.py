@@ -40,7 +40,7 @@ DH = [
     (0, 45.6, 0, 0),
 ]
 
-# Fixed poses, same as docker/ws/src/seame_arm/scripts/park.py and zero.py
+# Fixed poses, same as ros2_ws/src/seame_arm/scripts/park.py and zero.py
 # (J3 -148: just inside the -150 firmware limit)
 POSES = {
     "park": [0, 131, -148, 146, 4.5, 0],
@@ -60,7 +60,7 @@ GZ_MIN_MOVE_TIME = 0.5   # seconds, so a tiny move is not an instant jump
 GZ_MOVING_EPS = 0.05     # degrees: smaller changes between two states count as standing still
 GZ_STALE_AFTER = 2.0     # seconds without /joint_states before the page shows "disconnected"
 
-# arm_driver (ROS 2) source: same values as docker/ws/src/seame_arm/scripts/arm_moves.py.
+# arm_driver (ROS 2) source: same values as ros2_ws/src/seame_arm/scripts/arm_moves.py.
 # The driver stops the arm when no motion command arrives for 300 ms, so a move is a
 # stream of targets at most ROS_STEP_DEG ahead of the real angles, resent every ROS_RESEND_S.
 ROS_STEP_DEG = 15.0
@@ -502,7 +502,7 @@ class GazeboArm(_Base):
 
 
 class RosArm(_Base):
-    """The real arm through arm_driver (docker/ws/src/seame_arm/src/arm_driver.cpp).
+    """The real arm through arm_driver (ros2_ws/src/seame_arm/src/arm_driver.cpp).
 
     arm_driver owns the serial port; this source only uses its ROS interface:
 

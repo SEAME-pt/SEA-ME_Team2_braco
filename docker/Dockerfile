@@ -10,15 +10,15 @@
 # `docker compose up`, and prebuilt images cannot be pulled on the Jetson. With stages, `up` only builds
 # when an image is missing and BuildKit shares the base layers by itself.
 #
-#   docker build --target pc-dev        -t seame/pc-dev:lyrical        docker
-#   docker build --target jetson-driver -t seame/jetson-driver:lyrical docker
+#   docker build --target pc-dev        -t braco/pc:lyrical        docker
+#   docker build --target jetson-driver -t braco/jetson:lyrical docker
 #
 # The `base` steps follow "Installing on Ubuntu - how-to" from the ROS 2 Lyrical documentation:
 # locale, Universe, ros2-apt-source, `apt upgrade`, then the ROS packages.
 #
 # No `# syntax=` directive on purpose: it makes BuildKit pull a frontend image from Docker Hub on every
 # build (one more network dependency and rate-limit exposure). `COPY --chmod` is built into Docker
-# Engine 24+, which docker-compose.yml requires anyway.
+# Engine 24+, which compose.yml requires anyway.
 
 ARG UBUNTU_VERSION=26.04
 
@@ -116,7 +116,7 @@ RUN apt-get update \
         ros-${ROS_DISTRO}-tf-transformations \
  && rm -rf /var/lib/apt/lists/*
 
-# --- 6. Non-root user matching the host UID/GID, so bind-mounted ./ws stays writable -----------
+# --- 6. Non-root user matching the host UID/GID, so bind-mounted ros2_ws stays writable --------
 #     (Ubuntu 24.04+ images ship a default 'ubuntu' user at UID 1000; remove it first.)
 RUN set -eux; \
     if getent passwd "${USER_UID}" >/dev/null; then userdel -r "$(getent passwd "${USER_UID}" | cut -d: -f1)" || true; fi; \

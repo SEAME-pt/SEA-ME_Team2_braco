@@ -137,7 +137,7 @@ hints_no_messages() {
     echo "       Nothing was heard. Check, in this order:"
     echo "         1. is a talker running?  On the other machine:  make talker   (same TOPIC=${TOPIC})"
     echo "         2. both machines use the same ROS_DOMAIN_ID (here: ${ROS_DOMAIN_ID:-0}) and RMW_IMPLEMENTATION (here: ${RMW_IMPLEMENTATION:-default})"
-    echo "         3. network: same subnet, UDP not blocked by a firewall; if multicast is blocked set ROS_STATIC_PEERS in docker-compose.yml"
+    echo "         3. network: same subnet, UDP not blocked by a firewall; if multicast is blocked set ROS_STATIC_PEERS in compose.yml"
     echo "         4. what this container can see:  make exec CMD='ros2 node list; ros2 topic list'"
 }
 
