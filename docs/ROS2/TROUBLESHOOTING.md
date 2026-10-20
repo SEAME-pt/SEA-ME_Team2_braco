@@ -23,7 +23,7 @@ ros2 node list; ros2 topic list     # what this machine can see
 | Strange errors mixing ROS 1 and ROS 2, or two distros | Several `setup.bash` files sourced in one shell (the Nano host has Noetic and Galactic) | Open a new shell and source only one distro. Never source ROS from `~/.bashrc` on the Nano host |
 | `bash: /opt/seame/tests/talker-listener.sh: No such file or directory` (from `make talker-listener`) | `docker/tests` was deleted and recreated on the host (e.g. by a `git checkout`) after the container started; the bind mount still points to the old, deleted folder | Recreate the container: `docker compose --profile pc up -d --force-recreate` (`jetson` on the Nano). `ws/` and the named volumes are kept |
 | `AttributeError: 'RcutilsLogger' object has no attribute 'warn'` | Older tutorials use `get_logger().warn()`, which does not exist in Lyrical | Use `get_logger().warning()` |
-| `ModuleNotFoundError: No module named 'seame_interfaces'` | Interface package not built, or built after the shell was sourced | `colcon build --packages-select seame_interfaces && source install/setup.bash` |
+| `ModuleNotFoundError: No module named 'ros2_basics_interfaces'` | Interface package not built, or built after the shell was sourced | `colcon build --packages-select ros2_basics_interfaces && source install/setup.bash` |
 
 ## Building (colcon / CMake)
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # arm_routine.sh - entrypoint of the arm container: the ROS 2 launch plus the braco web page.
 #
-#   container starts  -> ros2 launch seame_arm arm.launch.py (driver, temperature, teleop)
+#   container starts  -> ros2 launch braco_bringup braco.launch.py (driver, temperature, teleop)
 #                        the braco web page (uvicorn on WEB_PORT, ARM_SOURCE=ros), if /opt/braco is mounted
 #   container stops   -> the web page, then the launch, are stopped
 #
@@ -36,7 +36,7 @@ on_stop() {
 trap on_stop TERM INT
 
 echo "arm_routine: starting the arm nodes"
-ros2 launch seame_arm arm.launch.py "$@" &
+ros2 launch braco_bringup braco.launch.py sim:=false "$@" &
 launch_pid=$!
 
 # One process (--workers 1): presence and the control lease live in its memory

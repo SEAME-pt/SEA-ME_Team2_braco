@@ -1,0 +1,20 @@
+# Tuning parameters of the braco nodes on the real arm (braco.launch.py sim:=false).
+# The values are the nodes' own defaults, written down in one place. The wiring (port, baud,
+# lcd_bus, device) is not set here: braco.launch.py takes it from its launch arguments.
+
+arm_driver:
+  ros__parameters:
+    state_rate_hz: 20.0       # /joint_states rate
+    temp_period_s: 2.0        # servo temperature read period
+    command_timeout_ms: 300   # watchdog: stop the arm when motion commands stop for this long
+    gripper_speed: 50         # 1..100
+    read_only: false          # start in rest mode
+
+temperature_monitor:
+  ros__parameters:
+    stale_timeout_s: 5.0      # no temperatures for this long: "no feedback" on the LCD
+
+joystick_teleop:
+  ros__parameters:
+    state_timeout_ms: 150     # older /joint_states: no jogging
+    debug: false              # log every joystick event

@@ -1,8 +1,8 @@
 """The ros2_basics demos of issue 18, usable from the page.
 
     topics      /chatter, /lifecycle_chatter      (talker_cpp / managed talkers)
-    service     /add_two_ints  seame_interfaces/srv/AddTwoInts
-    action      /fibonacci     seame_interfaces/action/Fibonacci (feedback, cancel)
+    service     /add_two_ints  ros2_basics_interfaces/srv/AddTwoInts
+    action      /fibonacci     ros2_basics_interfaces/action/Fibonacci (feedback, cancel)
     lifecycle   managed_talker_py, managed_talker_cpp (get_state / change_state)
 
 Start them in the arm container with `make arm-basics` (from the repo root).
@@ -45,8 +45,8 @@ class Demos:
         if node is None:
             return
         try:
-            from seame_interfaces.action import Fibonacci
-            from seame_interfaces.srv import AddTwoInts
+            from ros2_basics_interfaces.action import Fibonacci
+            from ros2_basics_interfaces.srv import AddTwoInts
         except ImportError:
             Fibonacci = AddTwoInts = None   # workspace not built: only the topic feeds work
         from lifecycle_msgs.srv import ChangeState, GetAvailableTransitions, GetState
@@ -79,7 +79,7 @@ class Demos:
         if self._types is None:
             raise RuntimeError(self._bridge.error or "ROS 2 not available")
         if what not in self._clients:
-            raise RuntimeError("seame_interfaces not found: build the workspace (make ws-build)")
+            raise RuntimeError("ros2_basics_interfaces not found: build the workspace (make ws-build)")
         return self._clients[what]
 
     # ---- service -----------------------------------------------------------------
@@ -199,7 +199,7 @@ class Demos:
             return {
                 "available": True,
                 "error": None if self._types and self._types["AddTwoInts"] else
-                "seame_interfaces not found: build the workspace (make ws-build)",
+                "ros2_basics_interfaces not found: build the workspace (make ws-build)",
                 "chatter": list(self._feeds["chatter"]),
                 "lifecycle_chatter": list(self._feeds["lifecycle_chatter"]),
                 "add_two_ints": {"present": "/add_two_ints" in services, "last": self._sum},

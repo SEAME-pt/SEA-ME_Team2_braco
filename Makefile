@@ -27,6 +27,7 @@
 #   docker/tests/     talker-listener.sh                          ROS 2 checks; mounted into the containers (no rebuild)
 #   docker/systemd/   braco.service                               boot unit for the arm services (make install-service)
 #   libs/             the team's C++ library (mounted read-only at /opt/seame/libs; colcon builds it as mycobot_cpp)
+#   examples/         ROS 2 basics tutorials, outside the product (mounted at /opt/seame/examples; colcon builds them too)
 #   created by make when needed:  docker/.env   ros2_ws/src   ros2_ws/bags   docker/dist/
 
 .DEFAULT_GOAL := help
@@ -47,7 +48,9 @@ TL_SCRIPT    := $(TL_TESTS_DIR)/talker-listener.sh
 CONTAINER_TESTS := /opt/seame/tests
 # Where compose.yml mounts ../libs; colcon also looks for packages there.
 CONTAINER_LIBS := /opt/seame/libs
-WS_BASE_PATHS  := src $(CONTAINER_LIBS)
+# Where compose.yml mounts ../examples (the ROS 2 basics tutorials and their interfaces).
+CONTAINER_EXAMPLES := /opt/seame/examples
+WS_BASE_PATHS  := src $(CONTAINER_LIBS) $(CONTAINER_EXAMPLES)
 SYSTEMD_UNIT := $(DOCKER_DIR)/systemd/braco.service
 SYSTEMD_DEST := /etc/systemd/system/braco.service
 CONFIG_DIR   := $(IMAGE_DIR)/config
@@ -124,11 +127,11 @@ IMAGE_NAME     := $(IMAGE_PREFIX)/$(ROLE):$(IMAGE_TAG)
 # Every docker compose call goes through the project directory, so docker/.env, ../ros2_ws and ../libs resolve as before.
 DC := docker compose --project-directory $(DOCKER_DIR)
 
-# Always-on arm (profile "arm", Jetson only): one container running the seame_arm ROS 2 launch.
+# Always-on arm (profile "arm", Jetson only): one container running the braco_bringup ROS 2 launch.
 ARM_SERVICES := arm
 # colcon --symlink-install makes this file a symlink to /ws/src/... (a container path), so on the host `test -f`
 # follows it into nothing and fails: also accept the link itself.
-ARM_BUILT    := $(WS_DIR)/install/seame_arm/share/seame_arm/package.xml
+ARM_BUILT    := $(WS_DIR)/install/braco_bringup/share/braco_bringup/package.xml
 ARM          := $(DC) --profile arm
 
 # GPU=nvidia|dri adds the matching override file (PC only). Without it, compose uses COMPOSE_FILE from .env.
@@ -369,7 +372,7 @@ ws-clean: ## Delete ros2_ws/build, ros2_ws/install and ros2_ws/log
 ##@ Arm on the Jetson (one container: driver, temperature, teleop + web page, all under ROS 2)
 
 arm-up: _jetson | $(WS_DIRS) ## Start the arm (build the workspace first: make ws-build ROLE=jetson)
-	@test -e $(ARM_BUILT) || test -L $(ARM_BUILT) || { echo "seame_arm is not built yet: make ws-build ROLE=jetson" >&2; exit 1; }
+	@test -e $(ARM_BUILT) || test -L $(ARM_BUILT) || { echo "braco_bringup is not built yet: make ws-build ROLE=jetson" >&2; exit 1; }
 	$(ARM) up -d $(ARM_SERVICES)
 
 arm-down: _jetson ## Stop the arm and remove the container (does not park it: make arm-park first); the dev container is not touched
@@ -390,10 +393,10 @@ arm-restart: _jetson ## Restart the arm container after make ws-build (the arm i
 ARM_EXEC := $(ARM) exec $(NOTTY) arm ros_entrypoint.sh
 
 arm-park: _jetson ## Fold the arm into the park pose, release the joints and enter rest mode (driver keeps reading temperatures)
-	$(ARM_EXEC) ros2 run seame_arm park.py
+	$(ARM_EXEC) ros2 run braco_bringup park.py
 
 arm-zero: _jetson ## Leave rest mode and move the arm to the zero pose
-	$(ARM_EXEC) ros2 run seame_arm zero.py
+	$(ARM_EXEC) ros2 run braco_bringup zero.py
 
 arm-rest: _jetson ## Rest mode on: motion refused, temperatures keep being published
 	$(ARM_EXEC) ros2 service call /arm/set_read_only std_srvs/srv/SetBool "{data: true}"
@@ -415,7 +418,7 @@ arm-basics: _jetson ## Run the ros2_basics demos in the arm container for the pa
 	  trap "kill %1 %2 2>/dev/null" EXIT; ros2 launch ros2_basics_py basics.launch.py'
 
 install-service: _jetson ## Start the arm services at boot (systemd unit braco, needs sudo)
-	@test -e $(ARM_BUILT) || test -L $(ARM_BUILT) || { echo "seame_arm is not built yet: make ws-build ROLE=jetson" >&2; exit 1; }
+	@test -e $(ARM_BUILT) || test -L $(ARM_BUILT) || { echo "braco_bringup is not built yet: make ws-build ROLE=jetson" >&2; exit 1; }
 	sed -e "s|@WORKDIR@|$(CURDIR)/$(DOCKER_DIR)|g" -e "s|@DOCKER@|$$(command -v docker)|g" $(SYSTEMD_UNIT) | sudo tee $(SYSTEMD_DEST) >/dev/null
 	sudo systemctl daemon-reload
 	sudo systemctl enable --now braco.service
@@ -506,7 +509,7 @@ ci-image: ## Build the `ros` CI job's image (Dockerfile stage CI_TARGET=base) as
 
 ci-ros: ## The `ros` CI job: rosdep, colcon build and colcon test of ros2_ws/src + libs in a throw-away CI_IMAGE container
 	@docker image inspect $(CI_IMAGE) >/dev/null 2>&1 || { echo "image $(CI_IMAGE) not found: make ci-image" >&2; exit 1; }
-	docker run --rm -e CCACHE_DIR=/ws/.ccache -e CCACHE_MAXSIZE=500M -v $(CURDIR)/$(WS_DIR):/ws -v $(CURDIR)/libs:$(CONTAINER_LIBS):ro \
+	docker run --rm -e CCACHE_DIR=/ws/.ccache -e CCACHE_MAXSIZE=500M -v $(CURDIR)/$(WS_DIR):/ws -v $(CURDIR)/libs:$(CONTAINER_LIBS):ro -v $(CURDIR)/examples:$(CONTAINER_EXAMPLES) \
 	    $(CI_IMAGE) bash -c '$(CI_ROS_SH)'
 
 ##@ Braco web page (web/README.md; on the Jetson it runs inside the arm container: make arm-up)

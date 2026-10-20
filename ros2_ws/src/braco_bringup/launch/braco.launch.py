@@ -13,37 +13,54 @@
 # limitations under the License.
 
 """
-All arm nodes in one ROS 2 launch: driver, temperature monitor and joystick teleop.
+The braco system in one ROS 2 launch, on the real arm or in simulation.
 
-This is what the `arm` container runs (make arm-up), started by arm_routine.sh, which also
-starts the web page (the arm is not zeroed or parked on start/stop). Also usable by hand in the dev
-container: ros2 launch seame_arm arm.launch.py
+    sim:=false  arm_driver, temperature_monitor and joystick_teleop (the default). This is
+                what the `arm` container runs (make arm-up), started by arm_routine.sh, which
+                also starts the web page. The arm is not zeroed or parked on start/stop.
+    sim:=true   the simulated arm. Reserved for the Gazebo bringup (#34) with the model from
+                braco_description (#25): until then it starts nothing and says so.
+
+Tuning parameters of the nodes live in config/braco.yaml. The wiring (port, baud, lcd_bus,
+device) comes from the launch arguments, which the compose file fills from docker/.env.
+Also usable by hand in the dev container: ros2 launch braco_bringup braco.launch.py
 """
 
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
-from launch.substitutions import LaunchConfiguration
+from launch.actions import DeclareLaunchArgument, LogInfo
+from launch.conditions import IfCondition, UnlessCondition
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
+from launch_ros.substitutions import FindPackageShare
 
 
 def generate_launch_description():
+    sim = LaunchConfiguration('sim')
     port = LaunchConfiguration('port')
     baud = LaunchConfiguration('baud')
     lcd_bus = LaunchConfiguration('lcd_bus')
     device = LaunchConfiguration('device')
+    config = PathJoinSubstitution([FindPackageShare('braco_bringup'), 'config', 'braco.yaml'])
+    real = UnlessCondition(sim)
     return LaunchDescription([
+        DeclareLaunchArgument('sim', default_value='false',
+                              description='true: simulated arm, false: real arm'),
         DeclareLaunchArgument('port', default_value='/dev/ttyTHS1'),
         DeclareLaunchArgument('baud', default_value='1000000'),
         DeclareLaunchArgument('lcd_bus', default_value='/dev/i2c-0'),
         DeclareLaunchArgument('device', default_value='/dev/input/js0'),
         # The only process that opens the serial port. Not respawned: a fault must be seen.
-        Node(package='seame_arm', executable='arm_driver', name='arm_driver',
-             output='screen',
-             parameters=[{'port': port, 'baud': ParameterValue(baud, value_type=int)}]),
-        Node(package='seame_arm', executable='temperature_monitor',
-             name='temperature_monitor', output='screen', respawn=True,
-             parameters=[{'lcd_bus': lcd_bus}]),
-        Node(package='seame_arm', executable='joystick_teleop', name='joystick_teleop',
-             output='screen', respawn=True, parameters=[{'device': device}]),
+        Node(package='braco_driver', executable='arm_driver', name='arm_driver',
+             output='screen', condition=real,
+             parameters=[config, {'port': port, 'baud': ParameterValue(baud, value_type=int)}]),
+        Node(package='braco_driver', executable='temperature_monitor',
+             name='temperature_monitor', output='screen', respawn=True, condition=real,
+             parameters=[config, {'lcd_bus': lcd_bus}]),
+        Node(package='braco_teleop', executable='joystick_teleop', name='joystick_teleop',
+             output='screen', respawn=True, condition=real,
+             parameters=[config, {'device': device}]),
+        LogInfo(condition=IfCondition(sim),
+                msg='sim:=true: the simulated arm is not available yet '
+                    '(Gazebo #34, model in braco_description #25), nothing started'),
     ])

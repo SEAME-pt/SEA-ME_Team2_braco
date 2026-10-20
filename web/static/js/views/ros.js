@@ -32,7 +32,7 @@ function healthHTML(h) {
           <td class="muted small">${esc(n.role)}</td>
           <td>${n.present ? '<span class="pill ok">running</span>' : '<span class="pill hot">missing</span>'}</td></tr>`).join("")}
         </tbody></table>
-        <p class="muted small">From ros2_ws/src/seame_arm/launch/arm.launch.py. A missing node: <code>make arm-logs</code> on the Jetson.</p>
+        <p class="muted small">From ros2_ws/src/braco_bringup/launch/braco.launch.py. A missing node: <code>make arm-logs</code> on the Jetson.</p>
       </section>
       <section class="card">
         <h2>arm_driver services</h2>
@@ -172,7 +172,7 @@ function demosHTML(d) {
         </form>
         ${d.add_two_ints.last ? `<p class="result"><b class="mono">${d.add_two_ints.last.a} + ${d.add_two_ints.last.b} = ${d.add_two_ints.last.sum}</b>
           <span class="muted small">by ${esc(d.add_two_ints.last.by)} · ${fmtTime(d.add_two_ints.last.t)}</span></p>` : ""}
-        <p class="muted small">seame_interfaces/srv/AddTwoInts · request/response: the call blocks until the server answers.</p>
+        <p class="muted small">ros2_basics_interfaces/srv/AddTwoInts · request/response: the call blocks until the server answers.</p>
       </section>
       <section class="card">
         <h2>Action · /fibonacci ${fib.present ? '<span class="pill ok">available</span>' : '<span class="pill hot">missing</span>'}</h2>
@@ -187,7 +187,7 @@ function demosHTML(d) {
         ${fib.state !== "idle" ? `
           <div class="sprint-progress" style="margin:10px 0"><div class="progress"><span style="width:${Math.min(100, Math.round((done / expected) * 100))}%"></span></div><span class="mono">${done}/${expected}</span></div>
           <div class="seq mono small">${esc((fib.result || fib.partial || []).join(", ")) || "…"}</div>
-          <p class="muted small">by ${esc(fib.by || "?")} · feedback every second, cancellable while running</p>` : '<p class="muted small">seame_interfaces/action/Fibonacci · goal → feedback (partial sequence) → result.</p>'}
+          <p class="muted small">by ${esc(fib.by || "?")} · feedback every second, cancellable while running</p>` : '<p class="muted small">ros2_basics_interfaces/action/Fibonacci · goal → feedback (partial sequence) → result.</p>'}
       </section>
       ${d.lifecycle.map((n) => lifecycleHTML(n, op)).join("")}
     </div>`;

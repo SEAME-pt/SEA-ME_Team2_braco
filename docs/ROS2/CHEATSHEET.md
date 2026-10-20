@@ -93,7 +93,7 @@ ros2 service find <type>
 ros2 service call /<service> <type> "<yaml>"
 ```
 
-Example: `ros2 service call /add_two_ints seame_interfaces/srv/AddTwoInts "{a: 2, b: 3}"`
+Example: `ros2 service call /add_two_ints ros2_basics_interfaces/srv/AddTwoInts "{a: 2, b: 3}"`
 
 ## Actions
 
@@ -103,7 +103,7 @@ ros2 action info /<action>
 ros2 action send_goal [--feedback] /<action> <type> "<yaml>"     # Ctrl+C cancels the goal
 ```
 
-Example: `ros2 action send_goal --feedback /fibonacci seame_interfaces/action/Fibonacci "{order: 5}"`
+Example: `ros2 action send_goal --feedback /fibonacci ros2_basics_interfaces/action/Fibonacci "{order: 5}"`
 
 ## Lifecycle
 

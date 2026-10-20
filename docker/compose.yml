@@ -67,6 +67,7 @@ services:
       - ./tests:/opt/seame/tests:ro        # `make talker-listener` etc.; edit on the host, no rebuild
       - ..:/opt/braco:ro                   # `make web-sim`: the braco web page (and its docs) on top of Gazebo
       - ../libs:/opt/seame/libs:ro         # libs/cpp (mycobot_cpp); colcon finds it via make ws-build
+      - ../examples:/opt/seame/examples    # ROS 2 basics tutorials; colcon finds them via make ws-build
 
   # ---------------------------------------------------------------------------------------
   # Jetson Nano: arm driver (pymycobot lifecycle node), ros2_control, controllers
@@ -96,11 +97,12 @@ services:
       - ros-logs-jetson:/home/dev/.ros
       - ./tests:/opt/seame/tests:ro        # `make talker-listener` etc.; edit on the host, no rebuild
       - ../libs:/opt/seame/libs:ro         # libs/cpp (mycobot_cpp); colcon finds it via make ws-build
+      - ../examples:/opt/seame/examples    # ROS 2 basics tutorials; colcon finds them via make ws-build
 
   # ---------------------------------------------------------------------------------------
   # Jetson Nano: the always-on arm (profile "arm"): ONE container, everything runs under ROS 2.
   # Same image as jetson-driver, no build: build the workspace first (make ws-build ROLE=jetson),
-  # then make arm-up. arm_routine.sh starts `ros2 launch seame_arm arm.launch.py`:
+  # then make arm-up. arm_routine.sh starts `ros2 launch braco_bringup braco.launch.py`:
   #   arm_driver           the ONLY process that opens the serial port; never moves the arm by
   #                        itself, so restarting it is safe
   #   temperature_monitor  servo temperatures -> /diagnostics + LCD1602
@@ -121,7 +123,7 @@ services:
     tty: false
     restart: "no"
     stop_grace_period: 20s   # room for the page and the launch to shut down before Docker kills it
-    command: ["/ws/install/seame_arm/lib/seame_arm/arm_routine.sh",
+    command: ["/ws/install/braco_bringup/lib/braco_bringup/arm_routine.sh",
               "port:=${MYCOBOT_PORT:-/dev/ttyTHS1}", "baud:=${MYCOBOT_BAUD:-1000000}",
               "lcd_bus:=${LCD_I2C_BUS:-/dev/i2c-0}", "device:=${JOYSTICK_DEVICE:-/dev/input/js0}"]
     group_add:
@@ -138,6 +140,7 @@ services:
     volumes:
       - ../ros2_ws:/ws
       - ../libs:/opt/seame/libs:ro
+      - ../examples:/opt/seame/examples
       - ..:/opt/braco:ro                   # the braco web page (web/) and the docs it shows
       - ros-logs-arm:/home/dev/.ros
       - /dev/input:/dev/input
