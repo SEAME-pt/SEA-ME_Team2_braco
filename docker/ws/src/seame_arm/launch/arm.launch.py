@@ -16,7 +16,7 @@
 All arm nodes in one ROS 2 launch: driver, temperature monitor and joystick teleop.
 
 This is what the `arm` container runs (make arm-up), started by arm_routine.sh, which also
-moves the arm to zero at start and parks it before stopping. Also usable by hand in the dev
+starts the web page (the arm is not zeroed or parked on start/stop). Also usable by hand in the dev
 container: ros2 launch seame_arm arm.launch.py
 """
 
