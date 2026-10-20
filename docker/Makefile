@@ -100,6 +100,7 @@ RUN1 := $(COMPOSE) run --rm $(NOTTY) $(SERVICE)
 XHOST       ?= 1
 FORCE       ?= 0
 PING_TOPIC  ?= /seame_ping
+WEB_PORT    ?= 8000
 COLCON_ARGS ?= $(if $(filter jetson,$(ROLE)),--parallel-workers 2)
 JETSON_TAG  := $(IMAGE_TAG)-arm64
 NANO        ?=
@@ -118,8 +119,8 @@ define confirm
 endef
 
 .PHONY: _jetson help info doctor env dirs lint tar xhost build rebuild pull push up down restart ps logs config \
-        arm-up arm-down arm-ps arm-logs arm-restart arm-park arm-zero arm-rest arm-resume arm-temps install-service uninstall-service service-status \
-        shell exec run smoke talker-listener talker talker-stop listener ping-pub ping-echo ws-deps ws-build ws-test ws-clean \
+        arm-up arm-down arm-ps arm-logs arm-web-logs arm-basics arm-restart arm-web-restart arm-park arm-zero arm-rest arm-resume arm-temps install-service uninstall-service service-status \
+        shell exec run smoke talker-listener talker talker-stop listener ping-pub ping-echo ws-deps ws-build ws-test ws-clean web-sim _pc_only \
         clean distclean binfmt jetson-cross jetson-ship _role _xhost
 
 ##@ Setup
@@ -314,23 +315,23 @@ ws-test: _role up ## colcon test, then print the results (includes ament lint ch
 ws-clean: ## Delete ws/build, ws/install and ws/log
 	rm -rf $(WS_DIR)/build $(WS_DIR)/install $(WS_DIR)/log
 
-##@ Arm on the Jetson (one container: driver, temperature, teleop + zero/park routine, all under ROS 2)
+##@ Arm on the Jetson (one container: driver, temperature, teleop + web page, all under ROS 2)
 
 arm-up: _jetson | $(WS_DIRS) ## Start the arm (build the workspace first: make ws-build ROLE=jetson)
 	@test -e $(ARM_BUILT) || test -L $(ARM_BUILT) || { echo "seame_arm is not built yet: make ws-build ROLE=jetson" >&2; exit 1; }
 	$(ARM) up -d $(ARM_SERVICES)
 
-arm-down: _jetson ## Stop the arm (parks it first) and remove the container; the dev container is not touched
+arm-down: _jetson ## Stop the arm and remove the container (does not park it: make arm-park first); the dev container is not touched
 	$(ARM) stop $(ARM_SERVICES)
 	$(ARM) rm --force $(ARM_SERVICES)
 
 arm-ps: _jetson ## Status of the arm container
 	$(ARM) ps $(ARM_SERVICES)
 
-arm-logs: _jetson ## Follow the arm logs (driver, temperature and teleop nodes, zero/park)
+arm-logs: _jetson ## Follow the arm logs (driver, temperature and teleop nodes, web page)
 	$(ARM) logs -f --tail=100 $(ARM_SERVICES)
 
-arm-restart: _jetson ## Restart the arm after make ws-build (zeroes the arm again, parks it first)
+arm-restart: _jetson ## Restart the arm container after make ws-build (the arm is not zeroed or parked)
 	$(ARM) restart $(ARM_SERVICES)
 
 # These run inside the already-running arm container (ROS sourced, workspace mounted),
@@ -352,6 +353,16 @@ arm-resume: _jetson ## Rest mode off: motion accepted again (joints stay free un
 arm-temps: _jetson ## Print the servo temperatures once (works in rest mode)
 	$(ARM_EXEC) ros2 topic echo --once /arm/servo_temperatures
 
+arm-web-logs: _jetson ## Follow only the braco web page lines of the arm logs (the page: http://<jetson>:$(WEB_PORT))
+	$(ARM) logs -f --tail=200 $(ARM_SERVICES) | grep --line-buffered -iE 'uvicorn|braco|web page|Application|HTTP'
+
+arm-web-restart: _jetson ## Restart only the braco web page inside the running arm (no zero, no park; everyone must take control again)
+	$(ARM_EXEC) env WEB_PORT=$(WEB_PORT) bash /opt/braco/web/restart.sh
+
+arm-basics: _jetson ## Run the ros2_basics demos in the arm container for the page's ROS 2 > Demos tab (Ctrl-C stops them)
+	$(ARM_EXEC) bash -c 'ros2 run ros2_basics_py managed_talker & ros2 run ros2_basics_cpp managed_talker & \
+	  trap "kill %1 %2 2>/dev/null" EXIT; ros2 launch ros2_basics_py basics.launch.py'
+
 install-service: _jetson ## Start the arm services at boot (systemd unit seame-arm, needs sudo)
 	@test -e $(ARM_BUILT) || test -L $(ARM_BUILT) || { echo "seame_arm is not built yet: make ws-build ROLE=jetson" >&2; exit 1; }
 	sed -e "s|@WORKDIR@|$(CURDIR)|g" -e "s|@DOCKER@|$$(command -v docker)|g" $(SYSTEMD_UNIT) | sudo tee $(SYSTEMD_DEST) >/dev/null
@@ -367,6 +378,14 @@ uninstall-service: ## Remove the boot unit and stop the arm services
 service-status: ## Show the boot unit and the arm services
 	-systemctl status --no-pager seame-arm.service
 	$(ARM) ps $(ARM_SERVICES)
+
+##@ Web dashboard on Gazebo (PC only)
+
+_pc_only: _role
+	@test "$(ROLE)" = pc || { echo "this target is PC only (ROLE=$(ROLE)); on the Jetson the page comes with 'make arm-up' (port $(WEB_PORT))" >&2; exit 1; }
+
+web-sim: _role _pc_only up ## Serve the braco web page from pc-dev, showing and commanding Gazebo (WEB_PORT=8000)
+	$(EXEC) bash -c 'cd /opt/braco && ARM_SOURCE=gazebo exec python3 -m uvicorn web.server.app:app --host 0.0.0.0 --port $(WEB_PORT) --workers 1'
 
 ##@ Jetson image from a PC (no Docker build on the Nano)
 
