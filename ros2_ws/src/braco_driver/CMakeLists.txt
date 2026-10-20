@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(seame_arm)
+project(braco_driver)
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
@@ -14,40 +14,24 @@ find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(std_srvs REQUIRED)
 find_package(diagnostic_msgs REQUIRED)
-find_package(seame_interfaces REQUIRED)
+find_package(braco_interfaces REQUIRED)
 
 add_executable(arm_driver src/arm_driver.cpp)
 target_link_libraries(arm_driver
   mycobot_cpp::mycobot_cpp rclcpp::rclcpp
-  ${sensor_msgs_TARGETS} ${std_msgs_TARGETS} ${std_srvs_TARGETS} ${seame_interfaces_TARGETS})
+  ${sensor_msgs_TARGETS} ${std_msgs_TARGETS} ${std_srvs_TARGETS} ${braco_interfaces_TARGETS})
 
 add_executable(temperature_monitor src/temperature_monitor.cpp)
 target_link_libraries(temperature_monitor
   mycobot_cpp::mycobot_cpp rclcpp::rclcpp
-  ${diagnostic_msgs_TARGETS} ${seame_interfaces_TARGETS})
+  ${diagnostic_msgs_TARGETS} ${braco_interfaces_TARGETS})
 
-add_executable(joystick_teleop src/joystick_teleop.cpp)
-target_include_directories(joystick_teleop PRIVATE include)
-target_link_libraries(joystick_teleop
-  mycobot_cpp::mycobot_cpp rclcpp::rclcpp
-  ${sensor_msgs_TARGETS} ${std_msgs_TARGETS} ${std_srvs_TARGETS} ${seame_interfaces_TARGETS})
-
-install(TARGETS arm_driver temperature_monitor joystick_teleop
+install(TARGETS arm_driver temperature_monitor
   DESTINATION lib/${PROJECT_NAME})
-install(DIRECTORY launch DESTINATION share/${PROJECT_NAME})
-# Container entrypoint (launch + web page); zero.py / park.py are run by hand
-install(PROGRAMS scripts/zero.py scripts/park.py scripts/arm_routine.sh
-  DESTINATION lib/${PROJECT_NAME})
-install(FILES scripts/arm_moves.py DESTINATION lib/${PROJECT_NAME})
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   ament_lint_auto_find_test_dependencies()
-
-  find_package(ament_cmake_gtest REQUIRED)
-  ament_add_gtest(test_teleop_logic test/test_teleop_logic.cpp)
-  target_include_directories(test_teleop_logic PRIVATE include)
-  target_link_libraries(test_teleop_logic mycobot_cpp::mycobot_cpp)
 endif()
 
 ament_package()

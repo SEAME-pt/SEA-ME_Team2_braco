@@ -7,7 +7,7 @@ from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import ExternalShutdownException, MultiThreadedExecutor
 from rclpy.node import Node
 
-from seame_interfaces.action import Fibonacci
+from ros2_basics_interfaces.action import Fibonacci
 
 MAX_ORDER = 50
 

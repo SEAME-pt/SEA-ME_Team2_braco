@@ -17,9 +17,9 @@
 #include <map>
 #include <set>
 
-#include "seame_arm/teleop_logic.hpp"
+#include "braco_teleop/teleop_logic.hpp"
 
-namespace tl = seame_arm::teleop;
+namespace tl = braco_teleop::teleop;
 
 TEST(StickRatio, DeadzoneIsZero)
 {

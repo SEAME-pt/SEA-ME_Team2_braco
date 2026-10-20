@@ -7,7 +7,7 @@ from rclpy.action import ActionClient
 from rclpy.node import Node
 from rclpy.utilities import remove_ros_args
 
-from seame_interfaces.action import Fibonacci
+from ros2_basics_interfaces.action import Fibonacci
 
 
 class FibonacciClient(Node):

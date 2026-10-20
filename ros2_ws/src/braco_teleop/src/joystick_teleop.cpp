@@ -50,17 +50,17 @@
 #include "joystick.hpp"
 #include "mycobot.hpp"
 #include "rclcpp/rclcpp.hpp"
-#include "seame_arm/teleop_logic.hpp"
-#include "seame_interfaces/msg/arm_command.hpp"
+#include "braco_teleop/teleop_logic.hpp"
+#include "braco_interfaces/msg/arm_command.hpp"
 #include "sensor_msgs/msg/joint_state.hpp"
 #include "std_msgs/msg/color_rgba.hpp"
 #include "std_srvs/srv/set_bool.hpp"
 #include "std_srvs/srv/trigger.hpp"
 
 using namespace std::chrono_literals;
-using seame_interfaces::msg::ArmCommand;
-using seame_interfaces::msg::JointTarget;
-namespace tl = seame_arm::teleop;
+using braco_interfaces::msg::ArmCommand;
+using braco_interfaces::msg::JointTarget;
+namespace tl = braco_teleop::teleop;
 
 namespace
 {

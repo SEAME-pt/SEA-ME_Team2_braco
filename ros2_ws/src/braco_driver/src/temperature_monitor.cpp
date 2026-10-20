@@ -17,7 +17,7 @@
 // Never touches the serial port: it listens to /arm/servo_temperatures from
 // arm_driver, so it keeps running whether or not the joystick is in use.
 //
-//   sub  /arm/servo_temperatures   seame_interfaces/ServoTemperatures
+//   sub  /arm/servo_temperatures   braco_interfaces/ServoTemperatures
 //   pub  /diagnostics              diagnostic_msgs/DiagnosticArray (one status per joint)
 //   LCD1602 on I2C, same screens and colours as temps_lcd:
 //     |1:31  2:33  3:35|      normal (green), warm (yellow)
@@ -34,11 +34,11 @@
 #include "lcd_display.hpp"
 #include "mycobot.hpp"
 #include "rclcpp/rclcpp.hpp"
-#include "seame_interfaces/msg/servo_temperatures.hpp"
+#include "braco_interfaces/msg/servo_temperatures.hpp"
 
 using namespace std::chrono_literals;
 using diagnostic_msgs::msg::DiagnosticStatus;
-using seame_interfaces::msg::ServoTemperatures;
+using braco_interfaces::msg::ServoTemperatures;
 
 namespace
 {
