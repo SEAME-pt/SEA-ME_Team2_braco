@@ -50,6 +50,7 @@ ArmMoves::ArmMoves(const std::string & name)
   power_client_ = create_client<std_srvs::srv::Trigger>("arm/power_on");
   release_client_ = create_client<std_srvs::srv::Trigger>("arm/release_servos");
   rest_client_ = create_client<std_srvs::srv::SetBool>("arm/set_read_only");
+  executor_.add_node(get_node_base_interface());
 }
 
 void ArmMoves::onJoints(const sensor_msgs::msg::JointState & msg)
@@ -73,7 +74,7 @@ bool ArmMoves::waitForDriver(std::chrono::duration<double> timeout)
 {
   const auto end = Clock::now() + timeout;
   while (Clock::now() < end && rclcpp::ok()) {
-    rclcpp::spin_some(get_node_base_interface());
+    executor_.spin_some();
     if (angles() && power_client_->service_is_ready() && release_client_->service_is_ready()) {
       return true;
     }
@@ -87,8 +88,8 @@ bool ArmMoves::callTrigger(
   rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr client, const char * what)
 {
   auto future = client->async_send_request(std::make_shared<std_srvs::srv::Trigger::Request>());
-  if (rclcpp::spin_until_future_complete(
-      get_node_base_interface(), future, CALL_TIMEOUT) != rclcpp::FutureReturnCode::SUCCESS)
+  if (executor_.spin_until_future_complete(future, CALL_TIMEOUT) !=
+    rclcpp::FutureReturnCode::SUCCESS)
   {
     RCLCPP_ERROR(get_logger(), "%s failed: timeout", what);
     return false;
@@ -120,8 +121,8 @@ bool ArmMoves::setRest(bool on)
   auto request = std::make_shared<std_srvs::srv::SetBool::Request>();
   request->data = on;
   auto future = rest_client_->async_send_request(request);
-  if (rclcpp::spin_until_future_complete(
-      get_node_base_interface(), future, CALL_TIMEOUT) != rclcpp::FutureReturnCode::SUCCESS)
+  if (executor_.spin_until_future_complete(future, CALL_TIMEOUT) !=
+    rclcpp::FutureReturnCode::SUCCESS)
   {
     RCLCPP_WARN(get_logger(), "rest mode not set: timeout");
     return false;
@@ -140,7 +141,7 @@ bool ArmMoves::moveTo(
   const auto end = Clock::now() + timeout;
   auto next_send = Clock::now();
   while (Clock::now() < end && rclcpp::ok()) {
-    rclcpp::spin_some(get_node_base_interface());
+    executor_.spin_some();
     std::this_thread::sleep_for(LOOP_PERIOD);
     const auto current = angles();
     if (!current) {continue;}
@@ -173,7 +174,7 @@ void ArmMoves::wait(std::chrono::duration<double> duration)
 {
   const auto end = Clock::now() + duration;
   while (Clock::now() < end && rclcpp::ok()) {
-    rclcpp::spin_some(get_node_base_interface());
+    executor_.spin_some();
     std::this_thread::sleep_for(50ms);
   }
 }

@@ -715,22 +715,14 @@ GUI tools (rqt, RViz2, Gazebo, PlotJuggler) are only in the **PC image** (`braco
 
 ## 23. How this maps to our project
 
-```
- PC (dev + sim containers)                          Jetson Nano (real container)
- ┌────────────────────────────────────┐   DDS,      ┌────────────────────────────────────┐
- │ RViz2 · MoveIt 2 · Gazebo          │   domain 42 │ arm driver (lifecycle node,        │
- │ planning, visualisation, QA        │ ◄─────────► │   pymycobot over /dev/ttyTHS1)     │
- │ rqt_graph · PlotJuggler · bags     │   Fast DDS  │ ros2_control + controllers         │
- └────────────────────────────────────┘             │ camera node                        │
-                                                    └────────────────────────────────────┘
-```
+The packages, nodes, topics and services of braco, and where each one runs, are in
+[docs/architecture.md](../architecture.md). In short:
 
-- **Topics**: `/joint_states` from the driver, `/image_raw` from the camera, detections from the vision node.
-- **Services**: quick arm commands (power on/off, gripper state, free-move mode).
-- **Actions**: moving to a pose, following a trajectory, the pick-and-place task.
-- **Lifecycle**: the arm driver, so the serial port is opened in `configure` and motion is only possible in `active`.
-- **Parameters**: port, baud, speed and joint limits.
-- **QoS**: `SensorDataQoS` for images, reliable for joint states and commands.
+- **Topics**: `/joint_states` from `arm_driver`, `/arm/command` from its clients, `/diagnostics` from `temperature_monitor`.
+- **Services**: quick arm commands (`/arm/power_on`, `/arm/release_servos`, `/arm/set_gripper`, `/arm/set_read_only`).
+- **Actions**: moving to a pose, following a trajectory, the pick-and-place task (MoveIt 2, planned).
+- **Parameters**: wiring from the launch arguments, tuning from `braco_bringup/config/braco.yaml`.
+- **QoS**: `SensorDataQoS` for images, reliable for joint states and commands, latched for `/arm/read_only`.
 
 Sprint 0 ([issue #18](https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/18)) builds each of these patterns once in isolation; [INSTRUCTIONS.md](INSTRUCTIONS.md) walks through all of them.
 
