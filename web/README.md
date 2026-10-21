@@ -18,7 +18,11 @@ is in sync**: who is online, who controls the arm, what each person did, and the
 - **One operator at a time.** Click *Take control* in the sidebar. Everybody else sees "View only: <name> is in
   control", with your panel mirrored live (speed, step, the slider you are dragging). Every command except STOP
   needs control, and runs one at a time (a second one while the first is running is refused as *busy*).
-- **STOP works for everybody**, operator or not.
+- **STOP works for everybody**, operator or not, and stops the arm whoever moves it (the joystick too).
+- **The page is one client among others.** On the real arm, taking control also asks `arm_driver` for the arm
+  ([ADR-0002](../docs/ADR-0002-controle-unico.md)): while the **joystick** or `make zero` / `make park` has it,
+  *Take control* is refused (409) and the page shows "the joystick is in control". While the page has it, the
+  joystick is ignored unless someone holds its button 8 for about 1 s; then the page's control ends at once.
 - **Speed is shared**: one value held by the server, shown to everybody, changed only by the operator (viewers see
   it locked). It is capped at **80**; going above asks the operator to accept a warning, and the fast range is
   dropped again when control is released.
@@ -42,7 +46,9 @@ make restart             # after editing web/: restarts the system container; th
 ```
 
 There the page uses `ARM_SOURCE=ros`: it never opens the serial port, it is a client of `arm_driver`
-([docker/README.md](../docker/README.md)). A move is a stream of targets at most 15° ahead of the real angles, resent
+([docker/README.md](../docker/README.md)). Without `ARM_SOURCE` or `ARM_MOCK=1` the server refuses to start: there
+is no direct serial mode. Its lease is `arm_driver`'s control owner `web`, renewed every second while it lasts; the
+temperature levels come from `/diagnostics` (`temperature_monitor`). A move is a stream of targets at most 15° ahead of the real angles, resent
 every 100 ms, exactly like `braco_bringup/src/arm_moves.cpp`; if the page dies, the driver's 300 ms watchdog stops the
 arm. Park uses the firmware limits and leaves the servos on; it does not enter rest mode. Wake up leaves rest mode
 and powers the servos without moving the arm (rest mode is only entered with the *Rest on* button).
@@ -73,11 +79,12 @@ No arm, no ROS and no network needed:
 - `tests/test_server.py`: HTTP routes, `/ws` (presence, lease, live mirror of the operator's panel, STOP for viewers,
   activity), docs path checks, GitHub sprint grouping (fake responses), cache, Gazebo source with fake messages.
 - `tests/test_session.py`: the hub with a fake clock: one operator, commands locked for the others, STOP for
-  everybody, one command at a time, idle expiry, reload vs closing the page, activity log.
+  everybody, one command at a time, idle expiry, reload vs closing the page, activity log; with a fake driver
+  control: taking asks it, refused while the joystick has it, kept alive every tick, lost when forced away.
 - `tests/test_ros_arm.py`: `RosArm` with a fake bridge: joint states, bounded steps resent inside the 300 ms watchdog,
-  STOP and newer commands cancel a move, timeout, park (no release, no rest), wake (no movement), gripper/LED; the ROS panels without ROS.
-- `tests/test_emulated_arm.py`: the **real pymycobot** against an emulated arm on a pseudo-terminal (the fallback
-  source). Skipped if pymycobot is not installed.
+  STOP and newer commands cancel a move, timeout, park (no release, no rest), wake (no movement), gripper/LED,
+  `source: web` on every command, take/release control, losing it ends a move without STOP, temperature levels
+  from `/diagnostics`; the ROS panels without ROS.
 
 The host fallback targets the Jetson's Python 3.8. To test that version from a PC:
 
@@ -89,11 +96,10 @@ docker run --rm -v "$PWD":/src:ro python:3.8 bash -c 'cp -r /src /w && cd /w && 
 
 | Variable | Default | Use |
 |---|---|---|
-| `ARM_SOURCE` | — | `ros`: the arm through arm_driver (the `real` container sets it); `gazebo`: Gazebo over ROS 2 (PC only); unset: pymycobot on the serial port |
+| `ARM_SOURCE` | — | `ros`: the arm through arm_driver (the `real` container sets it); `gazebo`: Gazebo over ROS 2 (PC only). One of `ARM_SOURCE` / `ARM_MOCK` is required |
 | `ARM_MOCK` | — | `1` uses mock data |
 | `BRACO_ROS` | `1` | `0` never starts ROS 2 (health and graph stay empty) |
 | `GZ_JOINT_NAMES` | myCobot 280 URDF names | joints in `/joint_states` for Gazebo, comma separated |
-| `ARM_PORT` / `ARM_BAUD` | `/dev/ttyTHS1` / `1000000` | serial port for the pymycobot fallback |
 | `WEB_PORT` | `8000` | port of the page in the `real` / `sim` container (`docker/.env`) |
 | `GITHUB_TOKEN` | — | optional; raises the GitHub API limit (60 req/h without) |
 | `GITHUB_REPO` | `SEAME-pt/SEA-ME_Team2_braco` | repository of the sprints |
@@ -104,7 +110,7 @@ docker run --rm -v "$PWD":/src:ro python:3.8 bash -c 'cp -r /src /w && cd /w && 
 web/
   server/app.py         FastAPI: /api/*, the /ws live connection, static files
   server/session.py     presence, control lease, one command at a time, activity log
-  server/arm.py         RosArm (arm_driver), GazeboArm, ArmSource (pymycobot), MockArm
+  server/arm.py         RosArm (arm_driver), GazeboArm, MockArm
   server/ros.py         the one shared rclpy node (imported lazily: the server runs without ROS)
   server/ros_health.py  arm nodes and /diagnostics
   server/ros_graph.py   read-only graph explorer and topic echo
@@ -123,7 +129,7 @@ runs **409**.
 | `WS /ws` | the page's connection. First message `{"type": "hello", "id", "name", "page"}`; then the server sends `telemetry` (200 ms), `presence`, `lease`, `activity`, `ui`, `speed`, `health`, `graph` (ROS page), `echo` (watched topic); the page sends `ui`, `page`, `rename`, `watch` / `unwatch` |
 | `WS /ws/telemetry` | bare snapshot stream every 200 ms (scripts, old pages) |
 | `GET /api/status` | latest arm snapshot (`capabilities` lists what the source supports) |
-| `POST /api/control/take` · `/release` | take / release control |
+| `POST /api/control/take` · `/release` | take / release control; take answers **409** while the joystick or zero/park has the arm |
 | `GET /api/session` | clients, lease and activity log |
 | `POST /api/stop` | STOP, **anyone** |
 | `POST /api/pose/{park\|zero}` | move to a fixed pose at the shared speed; 409 while resting |
