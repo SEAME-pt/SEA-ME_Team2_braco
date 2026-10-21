@@ -64,30 +64,25 @@ After cloning the repository, prepare the machine once:
 make setup
 ```
 
-It creates `docker/.env` for this machine (PC or Jetson, detected), binds the git hooks in `.githooks/` (commit
-message format, and a code format check before every push, see [5.1](#51-code-formatting)), and runs `make doctor`. Then `make up` turns the braco system on
-(see [docker/README.md](../docker/README.md)); `make` lists every command.
+It creates `docker/.env` for this machine (PC or Jetson, detected), on the PC the development venv (see
+[2.4](#24-python-software-installation)), binds the git hooks in `.githooks/` (commit message format, and a code
+format check before every push, see [5.1](#51-code-formatting)), and runs `make doctor`. Then `make up` turns the
+braco system on (see [docker/README.md](../docker/README.md)); `make` lists every command.
 
 ### 2.4 Python Software Installation
 
-We recommend using a dedicated Python virtual environment for development:
+The robot code runs in the Docker containers, which bring their own Python and libraries. On the PC, `make setup`
+also creates a host venv (`.venv`, Python from `.python-version`) from `requirements-dev.txt`, for development only:
 
-1. Create and activate a virtual environment:
-   ```bash
-   python3 -m venv .venv
-   source .venv/bin/activate
-   ```
+* `ruff`, `clang-format`: the code formatters used by `make format` and the pre-push hook ([5.1](#51-code-formatting)).
+* `pymycobot`, `pyserial`, `numpy`: the same versions as the container, so the editor resolves imports and
+  autocompletes.
 
-2. Install the required Python packages:
-   ```bash
-   pip install --upgrade pip
-   pip install pymycobot opencv-python pyserial pytest
-   ```
+The hook and `make format` use the venv without activating it. Activate it only to run `python` or `ruff` by hand:
 
-* `pymycobot`: Elephant Robotics official Python SDK for kinematics, angle commands, and ATOM Matrix LED control.
-* `pyserial`: Backend serial communication.
-* `opencv-python`: Captures and inspects frames from the tool-mounted USB camera.
-* `pytest`: Unit testing framework.
+```bash
+source .venv/bin/activate
+```
 
 ### 2.5 C++ Toolchain Installation
 
@@ -105,7 +100,8 @@ A runnable Python verification script is located in `tests/hello_world.py`. It e
 
 ### 3.1 Running the Python Demo
 
-Ensure the virtual environment is activated, then run:
+The script opens the serial port itself: run it on the machine wired to the arm, with `pymycobot` installed there
+(`pip3 install pymycobot pyserial`) and the system off (`make down`), because the `arm_driver` holds the port:
 
 ```bash
 # Direct on the Jetson Nano:
@@ -121,7 +117,7 @@ Upon successful execution, the terminal should display:
 
 ```text
 ========================================
-   myCobot 280 Python Hello World Demo   
+   myCobot 280 Python Hello World Demo
 ========================================
 Connecting to port: /dev/ttyTHS1 at 1000000 baud...
 [INFO] Powering on servos...
@@ -204,7 +200,7 @@ Run the compiled executable, optionally passing the port path:
 
 ```text
 ========================================
-   myCobot 280 C++ Hello World Demo     
+   myCobot 280 C++ Hello World Demo
 ========================================
 Target serial port: /dev/ttyTHS1 (Baud: 1000000)
 [OK] Serial connection established.
@@ -234,7 +230,7 @@ the same commands:
 
 | Job | What it runs | Reproduce locally |
 |---|---|---|
-| `host` | `make ci`: host checks (venv with Python 3.11 from `.python-version`, imports, C++ hello-world build), `make lint` (compose files for both machines, shellcheck, hadolint) and the web page tests (pytest `web/tests`); creates `docker/.env` if missing | `make ci` |
+| `host` | `make ci`: host checks (venv with Python 3.14 from `.python-version`, imports, C++ hello-world build), `make lint` (compose files for both machines, shellcheck, hadolint) and the web page tests (pytest `web/tests`); creates `docker/.env` if missing | `make ci` |
 | `ros` | Builds the Dockerfile's `base` stage (Ubuntu 26.04 + ROS 2 Lyrical), then `rosdep install`, `colcon build` and `colcon test` of `ros2_ws/src` and `libs` in a throw-away container | `make ci-ros` (builds the image the first time) |
 
 * shellcheck and hadolint need no install: without a local binary, `make lint` runs the images pinned in
@@ -247,7 +243,7 @@ the same commands:
 ### 5.1 Code Formatting
 
 C++ is formatted by clang-format (`.clang-format`) and Python by ruff (`.ruff.toml`). Both are pinned in
-`requirements.txt`, so everyone formats the same way.
+`requirements-dev.txt`, so everyone formats the same way.
 
 | Command | What it does |
 |---|---|
@@ -282,3 +278,4 @@ C++ is formatted by clang-format (`.clang-format`) and Python by ruff (`.ruff.to
 | *2026-10-20* | Added the CI section (GitHub Action, issue #16) and its status badge | Petrichor |
 | *2026-10-21* | New make commands (issue #54): `make setup`, `make ci`, `make ci-ros`, `make park` ... | Denionline |
 | *2026-10-21* | Code formatting: `make format`, `make format-check` and the pre-push hook (issue #58) | carlaugu |
+| *2026-10-21* | Host venv: `make setup` creates it from `requirements-dev.txt` (container versions, Python 3.14) | carlaugu |

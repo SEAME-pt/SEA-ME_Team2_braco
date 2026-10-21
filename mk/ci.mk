@@ -34,6 +34,8 @@ HADOLINT_FLAGS   := $(addprefix --ignore ,DL3008 DL3013 DL3059 DL3006 DL3042 DL3
 # packages ($(WS_SRC)) are left to ament_uncrustify and ament_flake8 (make test). format-check is the pre-push hook.
 CPP_FILES = $(shell git ls-files -- '*.cpp' '*.hpp' '*.h' '*.cc' ':!$(WS_SRC)')
 PY_FILES  = $(shell git ls-files '*.py')
+# Use the venv's pinned ruff and clang-format (make setup) even when the venv is not activated.
+format format-check: export PATH := $(CURDIR)/$(VENV)/bin:$(PATH)
 
 .PHONY: ci ci-image ci-ros lint format format-check _host-check
 
@@ -78,17 +80,17 @@ format-check: ## Check the formatting without changing files (used by the pre-pu
 	@ruff format --check -q $(PY_FILES)
 	@printf '\033[0;32mOK:\033[0m formatting is correct\n'
 
-# Hardware-free checks on the host: the venv from requirements.txt, imports, the C++ hello-world build.
+# Hardware-free checks on the host: the venv from requirements-dev.txt, imports, the C++ hello-world build.
 _host-check: $(VENV)/.installed
 	$(VENV)/bin/python -c 'import ast; ast.parse(open("tests/hello_world.py").read())'
 	$(VENV)/bin/python -c 'import numpy, pymycobot, serial'
 	cmake -S $(CPP_DIR) -B $(CPP_BUILD)
 	cmake --build $(CPP_BUILD)
 
-$(VENV)/.installed: requirements.txt .python-version
+$(VENV)/.installed: requirements-dev.txt .python-version
 	@$(PYTHON) -c 'import sys; v="%d.%d" % sys.version_info[:2]; sys.exit(0 if v == "$(PY_VERSION)" else "need Python $(PY_VERSION), $(PYTHON) is " + v + " (install it, e.g. uv python install $(PY_VERSION), or set PYTHON=/path/to/python$(PY_VERSION))")'
 	rm -rf $(VENV)
 	$(PYTHON) -m venv $(VENV)
 	$(PIP) install --upgrade pip
-	$(PIP) install -r requirements.txt
+	$(PIP) install -r requirements-dev.txt
 	touch $@

@@ -17,6 +17,11 @@ RESET='\033[0m'
 # ############################################################ Commit message  #
 SHORT_MSG=$(head -1 "$1")
 
+# Allow the messages git writes itself (git merge, git revert)
+if echo "$SHORT_MSG" | grep -qE "^(Merge|Revert) "; then
+    exit 0
+fi
+
 PATTERN="^(fix|feat|test|style|docs|build|ops|chore|perf|refactor)(\([^)]+\))?: .+"
 
 if ! echo "$SHORT_MSG" | grep -qE "$PATTERN"; then
