@@ -50,7 +50,7 @@
 #include "joystick.hpp"
 #include "mycobot.hpp"
 #include "rclcpp/rclcpp.hpp"
-#include "braco_teleop/teleop_logic.hpp"
+#include "teleop_logic.hpp"
 #include "braco_interfaces/msg/arm_command.hpp"
 #include "sensor_msgs/msg/joint_state.hpp"
 #include "std_msgs/msg/color_rgba.hpp"
@@ -60,7 +60,7 @@
 using namespace std::chrono_literals;
 using braco_interfaces::msg::ArmCommand;
 using braco_interfaces::msg::JointTarget;
-namespace tl = braco_teleop::teleop;
+namespace tl = mycobot::teleop;
 
 namespace
 {

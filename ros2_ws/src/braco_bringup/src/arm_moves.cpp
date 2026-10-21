@@ -20,6 +20,8 @@
 #include <string>
 #include <thread>
 
+#include "mycobot.hpp"
+
 using namespace std::chrono_literals;
 using braco_interfaces::msg::ArmCommand;
 using Clock = std::chrono::steady_clock;
@@ -36,11 +38,6 @@ constexpr auto STATE_TIMEOUT = 500ms;  // older /joint_states = no feedback
 constexpr auto LOOP_PERIOD = 20ms;
 constexpr auto CALL_TIMEOUT = 5s;
 constexpr double RAD_TO_DEG = 180.0 / M_PI;
-
-double round1(double x)
-{
-  return std::round(x * 10.0) / 10.0;
-}
 
 }  // namespace
 
@@ -147,20 +144,16 @@ bool ArmMoves::moveTo(
     std::this_thread::sleep_for(LOOP_PERIOD);
     const auto current = angles();
     if (!current) {continue;}
-    double deviation = 0.0;
-    for (size_t i = 0; i < pose.size(); ++i) {
-      deviation = std::max(deviation, std::abs((*current)[i] - pose[i]));
-    }
-    if (deviation <= tolerance_deg) {return true;}
+    // Same fraction for every joint, so they all arrive together (nothing = arrived)
+    const auto step = mycobot::stepToward(*current, pose, STEP_DEG, tolerance_deg);
+    if (!step) {return true;}
     const auto now = Clock::now();
     if (now < next_send) {continue;}
     next_send = now + RESEND;
-    // Same fraction for every joint, so they all arrive together
-    const double scale = std::min(1.0, STEP_DEG / deviation);
     ArmCommand command;
     command.type = ArmCommand::ALL_ANGLES;
     for (size_t i = 0; i < pose.size(); ++i) {
-      command.angles_deg[i] = round1((*current)[i] + (pose[i] - (*current)[i]) * scale);
+      command.angles_deg[i] = (*step)[i];
     }
     command.speed = static_cast<uint8_t>(speed);
     command_pub_->publish(command);
