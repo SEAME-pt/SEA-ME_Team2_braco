@@ -23,7 +23,7 @@ build: _image _dev_up ## colcon build of ros2_ws/src, libs and examples (COLCON_
 	@touch $(BUILD_STAMP) $(REBUILT)
 
 test: _image _dev_up ## colcon test, then the results (unit tests and ament lint checks)
-	$(DEV_EXEC) bash -c 'colcon test --base-paths $(WS_BASE_PATHS) && colcon test-result --verbose'
+	$(DEV_EXEC) bash -c 'colcon test --base-paths $(WS_BASE_PATHS) $(WS_PACKAGES) && colcon test-result --verbose'
 
 web: $(VENV)/.web-installed ## Serve the page with mock arm data on http://localhost:8080 (no arm, no ROS, no docker)
 	ARM_MOCK=1 BRACO_ROS=0 $(VENV)/bin/uvicorn web.server.app:app --host 127.0.0.1 --port $(WEB_DEV_PORT) --reload

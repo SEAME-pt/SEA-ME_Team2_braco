@@ -205,7 +205,7 @@ The Jetson image has **no GUI tools**. Inspect the Jetson's nodes from the PC (s
 | Turn the system on (idempotent) | `make up` |
 | Open a shell (ROS + workspace sourced) | `make shell` (open as many as you want, one per terminal) |
 | Run one command | `make run CMD='ros2 topic list'` |
-| Build the workspace | `make build` (one package at a time and `MAKEFLAGS=-j2` on the Jetson; `make up` builds only when sources changed) |
+| Build the workspace | `make build` (on the Jetson only the real system's packages, one at a time, `MAKEFLAGS=-j2`; `make up` builds only when sources changed) |
 | Run the workspace tests (linters) | `make test`, then `make run CMD='colcon test-result --verbose'` (see [12.6](#126-run-the-tests-linters)) |
 | Install package dependencies | `make run CMD='rosdep install --from-paths src --ignore-src -y'` |
 | Turn it off | `make down` (`PARK=1` parks the arm first, on the Jetson) |
