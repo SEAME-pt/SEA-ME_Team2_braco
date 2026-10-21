@@ -30,7 +30,7 @@
 //
 // Rest mode (read_only): motion, gripper and power_on are refused, but the
 // serial loop keeps publishing angles and temperatures, so the arm can cool
-// down under watch. park.py enters it; set_read_only false (or make resume) leaves it.
+// down under watch. park enters it; set_read_only false (or make resume) leaves it.
 //
 // One serial thread does all the work, in this order on every pass:
 //   1. a requested stop (drops everything pending)
@@ -80,14 +80,12 @@ struct Target
 {
   double angle;
   int speed;
-  bool firmware_limits;
 };
 
 struct AllTarget
 {
   mycobot::Angles angles;
   int speed;
-  bool firmware_limits;
 };
 
 }  // namespace
@@ -227,14 +225,14 @@ private:
               get_logger(), *get_clock(), 2000, "ignoring target for joint %u", t.joint);
             continue;
           }
-          pending_joints_[t.joint] = Target{t.angle_deg, t.speed, msg.use_firmware_limits};
+          pending_joints_[t.joint] = Target{t.angle_deg, t.speed};
         }
         pending_all_.reset();
         break;
       case ArmCommand::ALL_ANGLES: {
           mycobot::Angles angles{};
           std::copy(msg.angles_deg.begin(), msg.angles_deg.end(), angles.begin());
-          pending_all_ = AllTarget{angles, msg.speed, msg.use_firmware_limits};
+          pending_all_ = AllTarget{angles, msg.speed};
           pending_joints_.clear();
           break;
         }
@@ -347,20 +345,11 @@ private:
       std::this_thread::sleep_for(COMMAND_GAP);
     }
     if (!all && !joint) {return false;}
-    // Firmware limits only for this one command, then back to the soft limits
-    const bool wide = all ? all->firmware_limits : joint->second.firmware_limits;
-    if (wide) {mc_->setSoftLimits(mycobot::FIRMWARE_LIMITS);}
-    try {
-      if (all) {
-        mc_->sendAngles(all->angles, all->speed);
-      } else {
-        mc_->sendAngle(joint->first, joint->second.angle, joint->second.speed);
-      }
-    } catch (...) {
-      if (wide) {mc_->setSoftLimits(mycobot::DEFAULT_SOFT_LIMITS);}
-      throw;
+    if (all) {
+      mc_->sendAngles(all->angles, all->speed);
+    } else {
+      mc_->sendAngle(joint->first, joint->second.angle, joint->second.speed);
     }
-    if (wide) {mc_->setSoftLimits(mycobot::DEFAULT_SOFT_LIMITS);}
     moving_ = true;
     std::this_thread::sleep_for(COMMAND_GAP);
     return true;

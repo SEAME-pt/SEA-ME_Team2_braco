@@ -8,10 +8,10 @@
 ##@ Arm (Jetson, with the system up)
 
 zero: _jetson _system_up ## Leave rest mode and move the arm to the zero pose
-	$(SYS_EXEC) ros2 run braco_bringup zero.py
+	$(SYS_EXEC) ros2 run braco_bringup zero
 
 park: _jetson _system_up ## Fold the arm, release the joints and enter rest mode (temperatures keep being read)
-	$(SYS_EXEC) ros2 run braco_bringup park.py
+	$(SYS_EXEC) ros2 run braco_bringup park
 
 rest: _jetson _system_up ## Rest mode on: motion refused, temperatures keep being published
 	$(SYS_EXEC) ros2 service call /arm/set_read_only std_srvs/srv/SetBool "{data: true}"

@@ -3,20 +3,22 @@
 <package format="3">
   <name>braco_bringup</name>
   <version>0.0.0</version>
-  <description>Starts the braco system: braco.launch.py (sim:=true|false), node parameters, the arm container entrypoint and the zero/park scripts</description>
+  <description>Starts the braco system: braco.launch.py (sim:=true|false), node parameters, the arm container entrypoint and the zero/park programs</description>
   <maintainer email="danielximenes164@gmail.com">Daniel Ximenes</maintainer>
   <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
+  <depend>mycobot_cpp</depend>
+  <depend>rclcpp</depend>
+  <depend>sensor_msgs</depend>
+  <depend>std_srvs</depend>
+  <depend>braco_interfaces</depend>
+
   <exec_depend>braco_driver</exec_depend>
   <exec_depend>braco_teleop</exec_depend>
-  <exec_depend>braco_interfaces</exec_depend>
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
-  <exec_depend>rclpy</exec_depend>
-  <exec_depend>sensor_msgs</exec_depend>
-  <exec_depend>std_srvs</exec_depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>

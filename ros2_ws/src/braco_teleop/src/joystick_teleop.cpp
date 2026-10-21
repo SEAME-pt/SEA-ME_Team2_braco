@@ -457,7 +457,7 @@ private:
     for (const auto & [joint, motion] : wanted) {
       const double angle = angles[joint - 1];
       const auto shaped = tl::shapeNearLimit(
-        mycobot::DEFAULT_SOFT_LIMITS[joint - 1], angle,
+        mycobot::JOINT_LIMITS[joint - 1], angle,
         motion.direction, motion.speed, motion.lead);
       if (!shaped) {
         if (!limit_reported_.count(joint)) {

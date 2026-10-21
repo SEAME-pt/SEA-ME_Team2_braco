@@ -91,7 +91,7 @@ constexpr double HOME_LEAD_DEG = 15.0;
 constexpr double HOME_TOLERANCE_DEG = 1.0;
 constexpr int HOME_MAX_BAD_READS = 3;
 
-// ---- Park (button Y) - same pose and checks as park.py ---------------------
+// ---- Park (button Y) - same pose and checks as the braco_bringup park node ---------------------
 // The park pose is outside the soft limits (J2 131 > 130, J3 -148 < -140,
 // J4 146 > 120), so parking switches to the firmware limits. They stay active
 // after locking the joints again, until every joint is back inside the normal
@@ -202,13 +202,6 @@ std::string fmtAngles(const std::optional<mycobot::Angles>& angles, const char* 
     return out + "]";
 }
 
-bool insideLimits(const mycobot::Angles& angles, const mycobot::JointLimits& limits) {
-    for (size_t i = 0; i < angles.size(); ++i) {
-        if (angles[i] < limits[i].min || angles[i] > limits[i].max) return false;
-    }
-    return true;
-}
-
 std::string fmtJoints(const std::set<int>& joints) {
     std::string out = "[";
     bool first = true;
@@ -307,10 +300,8 @@ void controlLoop(input::Joystick& js, mycobot::MyCobot280& mc,
     std::optional<int64_t> speedBtnMs;
 
     // Park state
-    const mycobot::JointLimits normalLimits = mc.softLimits();
     bool parking = false;                  // moving to the park pose
     bool parked = false;                   // joints released in the park pose
-    bool wideLimits = false;               // firmware limits active (see PARK_ANGLES)
     bool parkedWarned = false;             // "joints are free" shown for this input
     double parkDeadline = 0.0;
     std::optional<double> parkReachedAt;
@@ -318,7 +309,7 @@ void controlLoop(input::Joystick& js, mycobot::MyCobot280& mc,
     // Display state
     ui::Status status;
     for (int j = 0; j < 6; ++j) {
-        const auto& lim = mc.softLimits()[j];
+        const auto& lim = mycobot::JOINT_LIMITS[j];
         status.limits[j] = {lim.min, lim.max};
     }
     double lastIdlePoll = 0.0;
@@ -341,17 +332,11 @@ void controlLoop(input::Joystick& js, mycobot::MyCobot280& mc,
         parkReachedAt.reset();
     };
 
-    // Store a fresh angle reading for the display. Also switches back to the
-    // normal limits once the arm is inside them again after parking.
+    // Store a fresh angle reading for the display.
     auto recordAngles = [&](const std::optional<mycobot::Angles>& angles) {
         status.feedbackOk = angles.has_value();
         if (!angles) return;
         status.angles = *angles;
-        if (wideLimits && !parking && !parked && insideLimits(*angles, normalLimits)) {
-            mc.setSoftLimits(normalLimits);
-            wideLimits = false;
-            display.addMessage(">>> back inside the normal joint limits");
-        }
     };
 
     // One loop tick. Returns early where the Python version used `continue`.
@@ -459,8 +444,6 @@ void controlLoop(input::Joystick& js, mycobot::MyCobot280& mc,
                     homing = false;
                 }
                 display.addMessage(">>> parking (click Y again or touch a stick to abort)");
-                mc.setSoftLimits(mycobot::FIRMWARE_LIMITS);   // park pose needs them
-                wideLimits = true;
                 parking = true;
                 parkReachedAt.reset();
                 parkDeadline = nowSeconds() + PARK_TIMEOUT_S;
@@ -686,7 +669,7 @@ void controlLoop(input::Joystick& js, mycobot::MyCobot280& mc,
         // 6d. Moving joints: proportional speed, slowed near limits
         for (const auto& [joint, motion] : wanted) {
             const double angle = (*angles)[joint - 1];
-            const auto shaped = shapeNearLimit(mc.softLimits()[joint - 1], angle,
+            const auto shaped = shapeNearLimit(mycobot::JOINT_LIMITS[joint - 1], angle,
                                                motion.direction, motion.speed, motion.lead);
             if (!shaped) {
                 if (!limitReported.count(joint)) {
