@@ -83,6 +83,7 @@ elif [ "$$(printf '%s\n2.20.0\n' "$$v" | sort -V | head -n 1)" = "2.20.0" ]; the
 else
   bad "docker compose $$v is too old (this project needs Compose 2.20+)"
 fi
+if docker buildx version >/dev/null 2>&1; then ok "docker buildx $$(docker buildx version | cut -d' ' -f2) (BuildKit)"; else bad "docker buildx not found: the Dockerfile needs BuildKit (apt install docker-buildx, or docker-buildx-plugin from Docker's repo)"; fi
 command -v curl >/dev/null 2>&1 && ok "curl available" || warn "curl not installed: make up cannot wait for the page (apt install curl)"
 missing=""
 for f in $$PROJECT_FILES; do [ -e "$$f" ] || missing="$$missing $$f"; done

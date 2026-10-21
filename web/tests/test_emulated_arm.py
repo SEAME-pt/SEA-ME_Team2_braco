@@ -24,6 +24,9 @@ STOP = 0x29
 # POWER_ON/OFF, RELEASE_ALL_SERVOS, SEND_ANGLE(S), SET_SERVO_DATA, SET_GRIPPER_STATE, SET_COLOR
 MOTION_OR_WRITE = {0x10, 0x11, 0x13, 0x21, 0x22, 0x52, 0x66, 0x6A}
 
+# pymycobot 4.x waits this long for a reply that never comes (measured: 1.50 s for every read).
+MISSED_READ = 1.5
+
 ANGLES = [10.0, -20.0, 30.0, -40.0, 50.0, -60.0]
 TEMPS = [30, 56, 66, 40, 41, 42]
 
@@ -151,10 +154,15 @@ def test_stop_sends_only_stop(emulated, source):
 def test_arm_stops_answering(emulated, source):
     assert wait_for(lambda: source.snapshot()["connected"])
 
+    # Usually the arm goes silent between two polls: get_angles misses twice (~3 s). If it goes silent
+    # right after an answered get_angles, the poller first misses get_coords, then is_power_on,
+    # is_moving and get_servo_temps (due by then), then get_angles twice: 6 missed reads (~9 s).
+    # Asserting the usual case made this test fail whenever the race went the other way.
+    worst = 6 * MISSED_READ
     emulated.silent = True
     start = time.time()
-    assert wait_for(lambda: not source.snapshot()["connected"], timeout=10)
-    assert time.time() - start < 5, "took {:.1f} s to notice".format(time.time() - start)
+    assert wait_for(lambda: not source.snapshot()["connected"], timeout=worst + 5)
+    assert time.time() - start < worst + 2, "took {:.1f} s to notice".format(time.time() - start)
     s = source.snapshot()
     assert s["error"] == "no reply from the arm"
     assert s["angles"] is None   # never show stale angles as live

@@ -15,7 +15,7 @@
 #   mk/dev.mk      shell run build test web clean
 #   mk/setup.mk    setup doctor image boot-on boot-off jetson-image reset
 #   mk/net.mk      net-test net-talk net-listen
-#   mk/ci.mk       ci ci-ros lint
+#   mk/ci.mk       ci ci-image ci-ros lint
 
 .DEFAULT_GOAL := help
 
