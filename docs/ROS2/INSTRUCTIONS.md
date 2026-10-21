@@ -51,7 +51,7 @@ Conventions in this guide:
 | Windows | Docker inside WSL2 (Ubuntu), then section 1.1 from the WSL terminal. GUIs need WSLg |
 | macOS | Docker Desktop works for the CLI; GUIs (RViz2, rqt) are not supported by our setup |
 
-The Docker setup gives everyone the **same** ROS 2 Lyrical install on Ubuntu 26.04, on both the PC (`braco/pc` image: ROS desktop, RViz2, MoveIt 2, Gazebo, rqt, QA tools) and the Jetson (`braco/jetson` image: headless ROS base, serial tools, `pymycobot`). Full details are in [docker/README.md](../docker/README.md).
+The Docker setup gives everyone the **same** ROS 2 Lyrical install on Ubuntu 26.04, on both the PC (`braco-image/pc` image: ROS desktop, RViz2, MoveIt 2, Gazebo, rqt, QA tools) and the Jetson (`braco-image/jetson` image: headless ROS base, serial tools, `pymycobot`). Full details are in [docker/README.md](../docker/README.md).
 
 ---
 
@@ -129,7 +129,7 @@ Every line should be `[ ok ]`. Fix any `[FAIL]` before continuing ([TROUBLESHOOT
 host$ make up
 ```
 
-`make up` creates `ros2_ws/src` and `ros2_ws/bags` as your user, builds the `braco/pc` image if missing, builds the workspace if a source changed, and starts two containers in the background: `dev` (your tools: `make shell`, `make build`, ...) and `sim` (the braco system on the simulated arm, with the web page on port 8000). Running it again only does what is missing.
+`make up` creates `ros2_ws/src` and `ros2_ws/bags` as your user, builds the `braco-image/pc` image if missing, builds the workspace if a source changed, and starts two containers in the background: `dev` (your tools: `make shell`, `make build`, ...) and `sim` (the braco system on the simulated arm, with the web page on port 8000). Running it again only does what is missing.
 
 **Step 8. Verify:**
 
@@ -187,7 +187,7 @@ Check in `.env`: `COMPOSE_PROFILES=jetson`, `MYCOBOT_PORT=/dev/ttyTHS1`, `MYCOBO
 
   It registers QEMU on the PC the first time, and is tagged on the Nano with its usual name.
 
-**Step 4. Start and verify** (`make up` starts `dev` and `real`, the real arm with its web page, and waits until the page sees the arm):
+**Step 4. Start and verify** (`make up` builds the workspace in a throw-away `dev` container, starts `real`, the real arm with its web page, and waits until the page sees the arm):
 
 ```bash
 nano$ make up

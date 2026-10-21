@@ -1,7 +1,8 @@
 # mk/dev.mk - working on the code, in the `dev` container: shell run build test, plus web and clean.
 #
-# `dev` is started by `make up`, or by any of these commands when it is not running. It is the same image as the
-# system, with the workspace mounted at /ws, so a build here is what the system runs after `make restart`.
+# `dev` is the same image as the system, with the workspace mounted at /ws, so a build here is what the system runs
+# after `make restart`. PC: started by `make up` or by these commands, and kept up. Jetson: a throw-away container
+# per command (`run --rm`), gone when the command ends.
 
 # `make web`: the page on this machine with mock data (no arm, no ROS, no docker). Not WEB_PORT, which the
 # PC's `sim` container already uses.
@@ -12,18 +13,18 @@ WEB_DEV_PORT ?= 8080
 ##@ Development (in the dev container)
 
 shell: _image _dev_up ## Open a shell in dev (ROS and the workspace sourced; one per terminal)
-	$(COMPOSE) exec $(DEV) bash
+	$(DEV_SHELL)
 
 run: _image _dev_up ## Run CMD in dev: make run CMD='ros2 topic list'
 	@test -n "$$BRACO_CMD" || { echo "usage: make run CMD='ros2 topic list'" >&2; exit 2; }
-	$(DEV_EXEC) bash -c "$$BRACO_CMD"
+	$(call dev_cmd) bash -c "$$BRACO_CMD"
 
 build: _image _dev_up ## colcon build of ros2_ws/src, libs and examples (COLCON_ARGS=...; make restart to run it)
-	$(COMPOSE) exec $(NOTTY) $(BUILD_ENV) $(DEV) ros_entrypoint.sh $(COLCON)
+	$(call dev_cmd,$(BUILD_ENV)) $(COLCON)
 	@touch $(BUILD_STAMP) $(REBUILT)
 
 test: _image _dev_up ## colcon test, then the results (unit tests and ament lint checks)
-	$(DEV_EXEC) bash -c 'colcon test --base-paths $(WS_BASE_PATHS) $(WS_PACKAGES) && colcon test-result --verbose'
+	$(call dev_cmd) bash -c 'colcon test --base-paths $(WS_BASE_PATHS) $(WS_PACKAGES) && colcon test-result --verbose'
 
 web: $(VENV)/.web-installed ## Serve the page with mock arm data on http://localhost:8080 (no arm, no ROS, no docker)
 	ARM_MOCK=1 BRACO_ROS=0 $(VENV)/bin/uvicorn web.server.app:app --host 127.0.0.1 --port $(WEB_DEV_PORT) --reload

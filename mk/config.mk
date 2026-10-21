@@ -70,7 +70,7 @@ ifneq ($(origin GPU),command line)
 GPU :=
 endif
 
-IMAGE_PREFIX ?= $(or $(call dotenv,IMAGE_PREFIX),braco)
+IMAGE_PREFIX ?= $(or $(call dotenv,IMAGE_PREFIX),braco-image)
 IMAGE_TAG    ?= $(or $(call dotenv,IMAGE_TAG),lyrical)
 MYCOBOT_PORT ?= $(or $(call dotenv,MYCOBOT_PORT),/dev/ttyTHS1)
 WEB_PORT     ?= $(or $(call dotenv,WEB_PORT),8000)
@@ -91,8 +91,19 @@ COMPOSE := COMPOSE_PROFILES=$(ROLE) $(DC)
 # No TTY in CI (GitHub Actions sets CI=true) or when stdin is not a terminal.
 NOTTY ?= $(if $(or $(CI),$(shell [ -t 0 ] || echo 1)),-T)
 
-# Through the image entrypoint, so ROS and the workspace are sourced (a bare `exec` would not).
-DEV_EXEC := $(COMPOSE) exec $(NOTTY) $(DEV) ros_entrypoint.sh
+# `dev` on the PC stays up (several shells, RViz, PlotJuggler in one container). On the Jetson it never runs on its
+# own: every dev command is a throw-away `run --rm`, so normally only `real` uses the Nano's RAM.
+ifeq ($(ROLE),jetson)
+DEV_MODE    := run --rm --no-deps
+UP_SERVICES := $(SYSTEM)
+else
+DEV_MODE    := exec
+UP_SERVICES := $(DEV) $(SYSTEM)
+endif
+# A command in dev ($(1): extra options such as -e VAR=value). Through the image entrypoint, so ROS and the workspace
+# are sourced (a bare `exec` would not).
+dev_cmd   = $(COMPOSE) $(DEV_MODE) $(NOTTY) $(1) $(DEV) ros_entrypoint.sh
+DEV_SHELL = $(COMPOSE) $(DEV_MODE) $(DEV) bash
 SYS_EXEC := $(COMPOSE) exec $(NOTTY) $(SYSTEM) ros_entrypoint.sh
 
 # The Jetson never simulates: it builds and tests only what the real system runs, braco_bringup and its dependencies
