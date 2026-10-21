@@ -40,6 +40,7 @@ struct Status {
 
     std::optional<std::array<int, 6>> temps;   // servo temperatures (deg C), nullopt = unknown
     int hotJoint = 0;                          // 1..6 if that servo is too hot, 0 = none
+    bool autoRest = false;                     // the hot servo put the arm to rest (LCD only)
 };
 
 class TerminalDisplay {

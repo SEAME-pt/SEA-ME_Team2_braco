@@ -9,6 +9,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/JointTarget.msg"
   "msg/ArmCommand.msg"
   "msg/ServoTemperatures.msg"
+  "srv/TakeControl.srv"
   DEPENDENCIES std_msgs
 )
 
