@@ -25,8 +25,7 @@ pymycobot are the same on both machines.
 
 ```
 seame-arm-docker/
-├── Makefile                 single entry point: run `make` to list everything
-├── README.md
+├── README.md                (the Makefile is the single one at the repo root: run `make` there to list everything)
 ├── .env.example             copied to .env by `make env`
 ├── .gitignore
 ├── docker-compose.yml       at the root so plain `docker compose` finds it without -f
@@ -48,9 +47,12 @@ Created by `make` when needed, never shipped: `.env`, **`ws/src`** (your code, m
 `make dirs`, and automatically by `make up` / `make run`, **as your user**. If Docker creates a missing bind-mount
 folder itself it can end up owned by root, and then `colcon build` cannot write to it.
 
+There is a single `Makefile`, at the **repo root** (one level above this folder): run every `make` command from there. It passes `--project-directory docker` to `docker compose`, so `.env`, `ws/` and `../libs` resolve exactly as below. Its host targets (`make host-python`, `host-cpp`, `host-clean`, `init`) are the repo's non-docker workflow; the plain `docker compose` commands in this README still work when run from inside `docker/`.
+
 Every path the Makefile uses is defined in one block at its top (`project layout`), so moving a file means editing
 one line there. `make doctor` checks that all project files are present, and `make lint` validates the compose files,
-runs shellcheck on `docker/scripts/` and `tests/` and hadolint on the Dockerfile (each only if installed).
+runs shellcheck on `docker/scripts/` and `tests/` and hadolint on the Dockerfile (each a local binary, or else its
+pinned image through docker).
 
 ## Quick start
 
@@ -62,7 +64,7 @@ make smoke               # checks every piece below, including an RMW loopback
 make shell
 ```
 
-Without `make`:
+Without `make` (run these from inside `docker/`):
 
 ```bash
 cp .env.example .env                 # set COMPOSE_PROFILES=pc|jetson and USER_UID/USER_GID
@@ -92,7 +94,7 @@ in `.env`, or given on the command line). Run `make` for the full list.
 ```bash
 make env / doctor / info    # setup, host and project checks, what the Makefile resolved
 make dirs                   # create ws/src and ws/bags as your user (up and run do this automatically)
-make lint                   # compose files + shellcheck + hadolint (the last two if installed)
+make lint                   # compose files + shellcheck + hadolint (binaries or their docker images)
 make tar                    # pack the project into dist/seame-arm-docker.tar (no .env, ws/ or dist/)
 make build / rebuild        # rebuild = --no-cache --pull, slow
 make up / down / restart / ps / logs / shell
@@ -101,6 +103,7 @@ make talker  /  make listener                         # the two-machine version 
 make exec CMD='echo $ROS_DISTRO && ros2 topic list'   # in the running container; CMD reaches the shell exactly as typed
 make run  CMD='colcon build'                          # throw-away container (CI style)
 make ws-deps ws-build ws-test ws-clean                # rosdep / colcon on ws/ (--parallel-workers 2 on the Jetson)
+make ci-image ci-ros                                  # the GitHub Action's `ros` job: rosdep + build + test in the `base` image
 make up GPU=nvidia          # or GPU=dri: adds compose/nvidia.yml or compose/dri.yml (PC only)
 ```
 

@@ -34,7 +34,6 @@ Presence and the lease live in the server's memory: run **one** uvicorn process 
 **On the Jetson** the page comes with the arm container, which already runs `arm_driver` and the other arm nodes:
 
 ```bash
-cd docker
 make build ROLE=jetson   # once: the image now includes fastapi/uvicorn
 make ws-build ROLE=jetson
 make arm-up              # http://<jetson-ip>:8000 from any PC on the lab network
@@ -57,12 +56,11 @@ make web-mock          # http://localhost:8000
 **With Gazebo** (PC only, inside the `pc-dev` container where ROS 2 is):
 
 ```bash
-cd docker
 make build          # once
 make web-sim        # http://localhost:8000, with the simulation already running in Gazebo
 ```
 
-The ROS 2 page then shows the PC's graph. The server finds the machine's role like the docker Makefile does
+The ROS 2 page then shows the PC's graph. The server finds the machine's role like the root Makefile does
 (`SEAME_ROLE`, `COMPOSE_PROFILES`, then the CPU): `ARM_SOURCE=gazebo` refuses to start on the Jetson.
 
 **Fallback: pymycobot straight to the serial port** (only while the arm container is down, the port has one owner):

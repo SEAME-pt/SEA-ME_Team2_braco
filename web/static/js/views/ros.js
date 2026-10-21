@@ -14,7 +14,7 @@ let state = null;   // { root, tab, watched, filter, internal, offs }
 
 function unavailable(data) {
   return `<div class="card error-box">ROS 2 is not available here: ${esc(data?.error || "no data yet")}.
-    <div class="small" style="margin-top:6px">On the Jetson the page runs inside the arm container (make arm-up); on the PC use make web-sim in docker/.</div></div>`;
+    <div class="small" style="margin-top:6px">On the Jetson the page runs inside the arm container (make arm-up); on the PC use make web-sim.</div></div>`;
 }
 
 // ---- Health -----------------------------------------------------------------

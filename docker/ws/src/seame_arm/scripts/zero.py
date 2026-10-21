@@ -34,7 +34,8 @@ DRIVER_TIMEOUT_S = 60   # at boot arm_driver may still be starting
 def zero(arm):
     if not arm.wait_for_driver(DRIVER_TIMEOUT_S):
         return False
-    arm.set_rest(False)   # leave rest mode (set by park.py), otherwise power_on and the move are refused
+    # Leave rest mode (set by park.py), otherwise power_on and the move are refused.
+    arm.set_rest(False)
     arm.power_on()   # the joints may still be free from the last park
     if arm.move_to(TARGET_ANGLES, SPEED, TOLERANCE_DEG, TIMEOUT_S):
         arm.get_logger().info('At zero')
