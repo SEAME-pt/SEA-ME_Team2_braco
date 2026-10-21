@@ -1,10 +1,10 @@
 # CI for every PR and every push to main (issue #16). Both jobs call the Makefile, so a failure can be
 # reproduced locally with the same command:
 #
-#   host  make env, then make ci              (host checks, lint, web page tests; no robot, no docker image)
-#   ros   make ci-image, then make ci-ros     (rosdep, colcon build, colcon test of ros2_ws/src + libs)
+#   host  make ci        (host checks, lint, web page tests; no robot, no docker image)
+#   ros   make ci-ros    (rosdep, colcon build, colcon test of ros2_ws/src + libs + examples)
 #
-# The Jetson (arm64) image is not built here: a QEMU build is too slow, use make jetson-cross by hand.
+# The Jetson (arm64) image is not built here: a QEMU build is too slow, use make jetson-image by hand.
 name: CI
 
 on:
@@ -50,18 +50,9 @@ jobs:
           shellcheck --version | head -n 2
           hadolint --version
 
-      # docker/.env as every user creates it: lint validates the compose files against it.
-      - name: make env
-        run: make env
-
-      - name: make host-check
-        run: make host-check PYTHON=${{ steps.py.outputs.python-path }}
-
-      - name: make lint
-        run: make lint
-
-      - name: make web-test
-        run: make web-test PYTHON=${{ steps.py.outputs.python-path }}
+      # Also creates docker/.env as every user gets it: lint validates the compose files against it.
+      - name: make ci
+        run: make ci PYTHON=${{ steps.py.outputs.python-path }}
 
   ros:
     runs-on: ubuntu-24.04
@@ -79,7 +70,7 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
-      # Same image as `make ci-image`, but with the BuildKit layers cached in GitHub's cache between runs.
+      # Same image `make ci-ros` builds when it is missing, but with the BuildKit layers cached in GitHub's cache.
       - name: Build the CI image (Dockerfile stage base)
         uses: docker/build-push-action@v6
         with:

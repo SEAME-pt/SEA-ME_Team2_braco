@@ -51,7 +51,7 @@ Conventions in this guide:
 | Windows | Docker inside WSL2 (Ubuntu), then section 1.1 from the WSL terminal. GUIs need WSLg |
 | macOS | Docker Desktop works for the CLI; GUIs (RViz2, rqt) are not supported by our setup |
 
-The Docker setup gives everyone the **same** ROS 2 Lyrical install on Ubuntu 26.04, on both the PC (`pc-dev` image: ROS desktop, RViz2, MoveIt 2, Gazebo, rqt, QA tools) and the Jetson (`jetson-driver` image: headless ROS base, serial tools, `pymycobot`). Full details are in [docker/README.md](../docker/README.md).
+The Docker setup gives everyone the **same** ROS 2 Lyrical install on Ubuntu 26.04, on both the PC (`braco/pc` image: ROS desktop, RViz2, MoveIt 2, Gazebo, rqt, QA tools) and the Jetson (`braco/jetson` image: headless ROS base, serial tools, `pymycobot`). Full details are in [docker/README.md](../docker/README.md).
 
 ---
 
@@ -98,15 +98,15 @@ host$ sudo apt-get install -y x11-xserver-utils make git
 
 ```bash
 host$ git clone git@github.com:SEAME-pt/SEA-ME_Team2_braco.git
-host$ cd SEA-ME_Team2_braco/docker
+host$ cd SEA-ME_Team2_braco
 ```
 
-All `make` commands below are run **from the `docker/` folder**.
+All `make` commands below are run **from the repo root** (`make` lists them).
 
 **Step 5. Create your `.env`** (fills in your user ID, group IDs and the machine role):
 
 ```bash
-host$ make env ROLE=pc
+host$ make setup ROLE=pc
 ```
 
 Open `docker/.env` and check:
@@ -123,19 +123,19 @@ host$ make doctor
 
 Every line should be `[ ok ]`. Fix any `[FAIL]` before continuing ([TROUBLESHOOTING.md](TROUBLESHOOTING.md) lists the usual causes).
 
-**Step 7. Build and start the container.** The first build downloads Ubuntu 26.04 and ROS 2 and takes a while (tens of minutes, depending on your connection):
+**Step 7. Turn the system on.** The first build downloads Ubuntu 26.04 and ROS 2 and takes a while (tens of minutes, depending on your connection):
 
 ```bash
 host$ make up
 ```
 
-`make up` creates `ros2_ws/src` and `ros2_ws/bags` as your user, builds the `pc-dev` image if missing, and starts it in the background.
+`make up` creates `ros2_ws/src` and `ros2_ws/bags` as your user, builds the `braco/pc` image if missing, builds the workspace if a source changed, and starts two containers in the background: `dev` (your tools: `make shell`, `make build`, ...) and `sim` (the braco system on the simulated arm, with the web page on port 8000). Running it again only does what is missing.
 
 **Step 8. Verify:**
 
 ```bash
-host$ make smoke              # checks packages, pymycobot, RMW loopback
-host$ make talker-listener    # C++ talker + Python listener, prints PASS/FAIL
+host$ make run CMD=seame-smoke-test    # checks packages, pymycobot, RMW loopback
+host$ make net-test                   # C++ talker + Python listener, prints PASS/FAIL
 ```
 
 **Step 9. Open a shell inside the container:**
@@ -164,9 +164,9 @@ Log out and back in.
 
 ```bash
 nano$ git clone git@github.com:SEAME-pt/SEA-ME_Team2_braco.git
-nano$ cd SEA-ME_Team2_braco/docker
-nano$ make env ROLE=jetson
-nano$ make doctor ROLE=jetson
+nano$ cd SEA-ME_Team2_braco
+nano$ make setup ROLE=jetson
+nano$ make doctor
 ```
 
 Check in `.env`: `COMPOSE_PROFILES=jetson`, `MYCOBOT_PORT=/dev/ttyTHS1`, `MYCOBOT_BAUD=1000000`, and the same `ROS_DOMAIN_ID` / `RMW_IMPLEMENTATION` as the PC.
@@ -176,25 +176,23 @@ Check in `.env`: `COMPOSE_PROFILES=jetson`, `MYCOBOT_PORT=/dev/ttyTHS1`, `MYCOBO
 - **Build on the Nano** (slow, and build only one image at a time: parallel builds froze Docker on this device):
 
   ```bash
-  nano$ make build
+  nano$ make image
   ```
 
-- **Or build on the PC and ship it** (faster). On the PC, from `docker/`:
+- **Or build on the PC and ship it** (faster). On the PC:
 
   ```bash
-  host$ make binfmt                              # once: lets the PC build arm64 images
-  host$ make jetson-cross                        # slow: emulated arm64 build
-  host$ make jetson-ship NANO=user@<nano-ip>     # copies the image over ssh
+  host$ make jetson-image NANO=user@<nano-ip>    # slow: emulated arm64 build, then copied over ssh
   ```
 
-  Then on the Nano set `IMAGE_TAG=lyrical-arm64` in `.env`.
+  It registers QEMU on the PC the first time, and is tagged on the Nano with its usual name.
 
-**Step 4. Start and verify:**
+**Step 4. Start and verify** (`make up` starts `dev` and `real`, the real arm with its web page, and waits until the page sees the arm):
 
 ```bash
 nano$ make up
-nano$ make smoke
-nano$ make talker-listener
+nano$ make run CMD=seame-smoke-test
+nano$ make net-test
 nano$ make shell
 ```
 
@@ -202,18 +200,18 @@ The Jetson image has **no GUI tools**. Inspect the Jetson's nodes from the PC (s
 
 ### 1.3 Daily use of the containers
 
-| What | Command (from `docker/`) |
+| What | Command (from the repo root) |
 |---|---|
-| Start the container | `make up` |
+| Turn the system on (idempotent) | `make up` |
 | Open a shell (ROS + workspace sourced) | `make shell` (open as many as you want, one per terminal) |
-| Run one command | `make exec CMD='ros2 topic list'` |
-| Build the workspace | `make ws-build` (adds `--parallel-workers 2` on the Jetson) |
-| Run the workspace tests (linters) | `make ws-test`, then `make exec CMD='colcon test-result --verbose'` (see [12.6](#126-run-the-tests-linters)) |
-| Install package dependencies | `make ws-deps` |
-| Stop the container | `make down` |
+| Run one command | `make run CMD='ros2 topic list'` |
+| Build the workspace | `make build` (one package at a time and `MAKEFLAGS=-j2` on the Jetson; `make up` builds only when sources changed) |
+| Run the workspace tests (linters) | `make test`, then `make run CMD='colcon test-result --verbose'` (see [12.6](#126-run-the-tests-linters)) |
+| Install package dependencies | `make run CMD='rosdep install --from-paths src --ignore-src -y'` |
+| Turn it off | `make down` (`PARK=1` parks the arm first, on the Jetson) |
 | See all targets | `make` |
 
-Without `make`: `docker compose exec pc-dev bash` (or `jetson-driver`). A bare `docker compose exec pc-dev <command>` does **not** source ROS; prefix it with `ros_entrypoint.sh`.
+Without `make` (from `docker/`): `docker compose exec dev bash`. A bare `docker compose exec dev <command>` does **not** source ROS; prefix it with `ros_entrypoint.sh`.
 
 Packages installed with `sudo apt-get install` inside a running container disappear when the container is recreated. Anything permanent must be added to `docker/Dockerfile`.
 
@@ -308,7 +306,7 @@ container$ ros2 run demo_nodes_py listener
 [INFO] [listener]: I heard: [Hello World: 1]
 ```
 
-If the listener prints messages, C++ (`rclcpp`), Python (`rclpy`) and the middleware work. Stop both with `Ctrl+C`. In the Docker setup, `make talker-listener` does exactly this automatically.
+If the listener prints messages, C++ (`rclcpp`), Python (`rclpy`) and the middleware work. Stop both with `Ctrl+C`. In the Docker setup, `make net-test` does exactly this automatically.
 
 Also useful:
 
@@ -362,7 +360,7 @@ ros2_ws/src/
 ```
 
 > The finished copies of these three packages live in `examples/` at the repo root and are built together with
-> `ros2_ws/src` (`make ws-build`). colcon refuses two packages with the same name, so to redo the tutorial from
+> `ros2_ws/src` (`make build`). colcon refuses two packages with the same name, so to redo the tutorial from
 > scratch either pick other package names or put an empty `COLCON_IGNORE` file in `examples/` while you work.
 
 Run in the container:
@@ -1390,7 +1388,7 @@ ros2_ws/src/
         └── managed_talker.py
 ```
 
-The `include/ros2_basics_cpp/` folder that `ros2 pkg create` generates can be deleted: these nodes have no headers. A finished, tested copy of this layout is committed in `examples/` (built by `make ws-build` together with `ros2_ws/src`); compare yours with it.
+The `include/ros2_basics_cpp/` folder that `ros2 pkg create` generates can be deleted: these nodes have no headers. A finished, tested copy of this layout is committed in `examples/` (built by `make build` together with `ros2_ws/src`); compare yours with it.
 
 ---
 
@@ -1400,8 +1398,8 @@ The `include/ros2_basics_cpp/` folder that `ros2 pkg create` generates can be de
 
 ```bash
 container$ cd /ws
-container$ rosdep install --from-paths src --ignore-src -y   # or, from the host: make ws-deps
-container$ colcon build                                      # or, from the host: make ws-build
+container$ rosdep install --from-paths src --ignore-src -y   # or, from the host: make run CMD='rosdep install --from-paths src --ignore-src -y'
+container$ colcon build                                      # or, from the host: make build
 container$ source install/setup.bash
 ```
 
@@ -1410,7 +1408,7 @@ container$ source install/setup.bash
 - On the Jetson: `colcon build --parallel-workers 2` (4 GB RAM).
 - Build one package and the ones it depends on: `colcon build --packages-up-to ros2_basics_py`.
 - Our images use `--symlink-install` by default, so editing a `.py` file does **not** need a rebuild. Adding a new node (new `entry_points` line) does.
-- If the build state gets confused: `rm -rf build install log` (or `make ws-clean` from the host) and build again.
+- If the build state gets confused: `rm -rf build install log` (or `make clean` from the host) and build again.
 
 Check what got installed:
 
@@ -1488,9 +1486,9 @@ Things to observe:
 `ros2 pkg create` adds the standard ament linters to every package, and they are what reviewers and CI check before a merge. Run them after every change:
 
 ```bash
-host$ make ws-build && make ws-test                          # colcon test for every package
-host$ make exec CMD='colcon test-result --all'               # one line per test file
-host$ make exec CMD='colcon test-result --verbose'           # only the failures, with the message
+host$ make build && make test                         # colcon test for every package
+host$ make run CMD='colcon test-result --all'         # one line per test file
+host$ make run CMD='colcon test-result --verbose'     # only the failures, with the message
 ```
 
 Inside the container: `colcon test --packages-select ros2_basics_py` tests one package; the full pytest output is in `/ws/log/latest_test/<package>/stdout_stderr.log`.
@@ -1662,11 +1660,11 @@ host$ ping <jetson-ip>
 **Step 2. Project test** (from `docker/` on each machine):
 
 ```bash
-nano$ make talker
-host$ make listener          # PASS if it hears the Jetson's talker
+nano$ make net-talk
+host$ make net-listen         # PASS if it hears the Jetson's talker
 ```
 
-Then the other way round. Or the simplest test: `make ping-echo` on one and `make ping-pub` on the other.
+Then the other way round.
 
 **Step 3. Our nodes across machines** (after building the workspace on both; `git pull` on the Nano so it has the same code):
 
@@ -1703,8 +1701,8 @@ The finished packages live in `examples/` and the arm packages in `ros2_ws/src/`
 **Step 1. Check that everything builds and the linters pass:**
 
 ```bash
-host$ make ws-build
-host$ make ws-test
+host$ make build
+host$ make test
 ```
 
 **Step 2. Commit on the issue's branch.** The commit hook (`.githooks/commit-msg`) requires the format `<type>(<scope>): <description>` with type one of `fix feat test style docs build ops chore perf refactor`:

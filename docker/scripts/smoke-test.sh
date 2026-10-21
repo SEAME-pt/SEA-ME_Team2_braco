@@ -3,8 +3,8 @@
 #
 # Verifies that this image has the expected pieces and that the selected RMW can move a message.
 # Exit status is non-zero when a hard requirement is missing (warnings do not fail the run).
-#   docker compose exec pc-dev seame-smoke-test
-#   docker compose exec jetson-driver seame-smoke-test
+#   make run CMD=seame-smoke-test          (in the dev container of this machine)
+#   docker compose exec dev seame-smoke-test   (from docker/)
 
 # Source the ROS environment first (ROS setup scripts are not safe under `set -u`).
 # shellcheck disable=SC1091

@@ -2,7 +2,7 @@
 
     RosArm     the real arm through arm_driver (ROS 2), the normal case on the Jetson
     GazeboArm  the arm simulated in Gazebo (ROS 2, PC only)
-    ArmSource  the real arm straight through pymycobot (fallback when no arm container runs)
+    ArmSource  the real arm straight through pymycobot (fallback when no real container runs)
     MockArm    synthetic data, for developing the page without the arm
 
 All of them expose start(), snapshot(), stop_motion(), go_to_pose(), move_joint()
@@ -393,7 +393,7 @@ class GazeboArm(_Base):
     """Arm simulated in Gazebo, read and commanded through ROS 2.
 
     Uses the shared node of ros.py, so it only works where ROS is sourced (the
-    pc-dev container). Reads sensor_msgs/JointState and commands a
+    sim container). Reads sensor_msgs/JointState and commands a
     joint_trajectory_controller. There are no temperatures or servo power in
     simulation: those stay None.
     """
@@ -426,7 +426,7 @@ class GazeboArm(_Base):
     def _setup(self, node):
         if node is None:
             self._update(connected=False,
-                         error="{}, run inside the pc-dev container".format(self._bridge.error))
+                         error="{}, run inside the sim container".format(self._bridge.error))
             return
         from builtin_interfaces.msg import Duration
         from sensor_msgs.msg import JointState
@@ -609,7 +609,7 @@ class RosArm(_Base):
             if self._last_msg and time.time() - self._last_msg > ROS_STALE_AFTER:
                 self._last_msg = 0.0
                 self._update(connected=False, moving=None,
-                             error="no /joint_states for {:.0f} s, is arm_driver running? (make arm-logs)".format(
+                             error="no /joint_states for {:.0f} s, is arm_driver running? (make logs)".format(
                                  ROS_STALE_AFTER))
 
     def _fresh_angles(self):

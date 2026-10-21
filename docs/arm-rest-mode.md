@@ -15,29 +15,29 @@ Rodar `park.py` direto no host (versão antiga, serial direta) enquanto o `arm_d
 | `park.py` | Sai do rest, vai para a pose de park, solta os servos e **entra em rest**. O driver segue vivo medindo temperatura. |
 | `zero.py` | Sai do rest antes de ligar os servos e mover. |
 | `arm_moves.py` | Novo `set_rest(on)` (cliente do serviço acima). |
-| `Makefile` (repo root) | Novos targets `arm-park`, `arm-zero`, `arm-rest`, `arm-resume`, `arm-temps` (rodam dentro do container `arm`). |
+| `Makefile` (repo root) | Comandos `park`, `zero`, `rest`, `resume`, `temps` (rodam dentro do container `real`; eram `arm-*` antes da #54). |
 | `playground/park.py` | Aviso no topo: não usar com o driver ligado. |
 
 ## Como usar (na Jetson, em `docker/`)
 
 ```bash
-make arm-park      # estaciona, solta os servos e entra em rest (nada precisa ser parado)
-make arm-temps     # imprime as temperaturas uma vez (funciona em rest)
-make arm-logs     # acompanha os nós (monitor, driver, teleop); o LCD continua atualizando
-make arm-resume    # sai do rest (movimento aceito de novo)
-make arm-zero      # sai do rest, liga os servos e vai para a pose zero
-make arm-rest      # entra em rest sem estacionar (ex.: só travar movimento)
+make park      # estaciona, solta os servos e entra em rest (nada precisa ser parado)
+make temps     # imprime as temperaturas uma vez (funciona em rest)
+make logs     # acompanha os nós (monitor, driver, teleop); o LCD continua atualizando
+make resume    # sai do rest (movimento aceito de novo)
+make zero      # sai do rest, liga os servos e vai para a pose zero
+make rest      # entra em rest sem estacionar (ex.: só travar movimento)
 ```
 
-Fluxo típico com braço quente: `make arm-park` → esperar → `make arm-temps` (ou olhar o LCD) até
-normalizar (< 55 °C) → `make arm-zero` (ou `make arm-resume` se for usar o joystick; os servos continuam soltos
+Fluxo típico com braço quente: `make park` → esperar → `make temps` (ou olhar o LCD) até
+normalizar (< 55 °C) → `make zero` (ou `make resume` se for usar o joystick; os servos continuam soltos
 até `arm-zero` ou `power_on`).
 
 ## Regras
 
 - **Nunca abra a serial fora do `arm_driver`** (scripts de `playground/`, pymycobot no host). Use os targets acima.
 - Em rest, o joystick e o `ArmCommand` são ignorados (aviso no log do driver a cada 5 s).
-- O `arm_routine.sh` (entrypoint do container `arm`, roda ao parar) já chama `park.py`, então um `make arm-down` também deixa o braço em rest antes de desligar.
+- O `arm_routine.sh` (entrypoint do container `real`) não move o braço ao parar: use `make down PARK=1`, que roda `park.py` antes de desligar e deixa o braço em rest.
 - `ros2 topic echo /arm/read_only` mostra o estado atual.
 
 ## Ainda não existe
@@ -47,7 +47,7 @@ até `arm-zero` ou `power_on`).
 
 ## Como testar
 
-1. `make ws-build ROLE=jetson && make arm-restart`
-2. `make arm-park`, depois `make arm-temps` retorna `valid: true`.
-3. Joystick não move o braço; `make arm-resume` e ele volta a mover.
+1. `make up`
+2. `make park`, depois `make temps` retorna `valid: true`.
+3. Joystick não move o braço; `make resume` e ele volta a mover.
 4. Com o driver ligado, `python3 playground/park.py` no host falha com "Device or resource busy".

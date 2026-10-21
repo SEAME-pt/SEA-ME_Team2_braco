@@ -3,9 +3,10 @@
 # Enable in .env:  COMPOSE_FILE=compose.yml:compose/dri.yml  (or: make up GPU=dri)
 # Find the numeric group ids on the host with:  getent group video render
 services:
-  pc-dev:
+  dev: &gpu
     devices:
       - /dev/dri:/dev/dri
     group_add:
       - "${VIDEO_GID:-44}"
       - "${RENDER_GID:-992}"
+  sim: *gpu

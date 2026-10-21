@@ -2,7 +2,7 @@
 # Needs the NVIDIA driver and nvidia-container-toolkit on the host.
 # Enable in .env:  COMPOSE_FILE=compose.yml:compose/nvidia.yml  (or: make up GPU=nvidia)
 services:
-  pc-dev:
+  dev: &gpu
     environment:
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: all
@@ -14,3 +14,4 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu]
+  sim: *gpu

@@ -1,6 +1,6 @@
 """Tests for the web dashboard server. No arm and no network needed.
 
-    make web-test
+    make ci
 """
 
 import math

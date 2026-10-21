@@ -42,7 +42,7 @@ def park(arm):
     arm.wait(0.5)   # let the arm settle
     if not arm.release_servos():
         return False
-    # The driver stays up, only watching temperatures, until `make arm-resume`
+    # The driver stays up, only watching temperatures, until `make resume`
     arm.set_rest(True)
     arm.get_logger().info('Parked - joints released, rest mode on')
     return True

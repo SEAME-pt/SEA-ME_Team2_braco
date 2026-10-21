@@ -1,10 +1,12 @@
-# SEA:ME 2.0 - Arm class (myCobot 280 Jetson Nano) - Sprint 0 + Module 1
+# braco - SEA:ME 2.0 arm class (myCobot 280 Jetson Nano). Two containers on each machine:
 #
-#   PC / workstation (x86_64):  COMPOSE_PROFILES=pc      -> pc-dev
-#   Jetson Nano (aarch64):      COMPOSE_PROFILES=jetson  -> jetson-driver
+#   dev    the tools: shell, colcon build/test, talker/listener. Same image as the system of that machine.
+#   real   the system on the Jetson (COMPOSE_PROFILES=jetson): the real arm, its ROS 2 nodes and the web page
+#   sim    the system on the PC     (COMPOSE_PROFILES=pc):     the simulated arm and the web page
 #
-# Set the profile (and everything else) in .env - see .env.example.
-# Needs Docker Engine 24+ and Docker Compose v2.20+.
+# COMPOSE_PROFILES in .env is the machine, exactly `pc` or `jetson`: it enables `real` or `sim` and picks the image
+# of `dev` (braco/pc or braco/jetson). Run it through the root Makefile (make up, make down, ...), which builds the
+# image and the workspace first. Needs Docker Engine 24+ and Docker Compose v2.20+.
 
 name: braco
 
@@ -43,112 +45,119 @@ x-ros-common: &ros-common
     memlock: -1
   command: ["sleep", "infinity"]
 
+# What `real` and `sim` share: the system runs its own entrypoint (no TTY) and must stop cleanly.
+x-ros-system: &ros-system
+  <<: *ros-common
+  stdin_open: false
+  tty: false
+  stop_grace_period: 20s     # room for the page and the launch to shut down before Docker kills it
+
+x-system-env: &system-env
+  <<: *ros-env
+  WEB_PORT: ${WEB_PORT:-8000}             # the braco page: http://<machine>:8000
+  GITHUB_TOKEN: ${GITHUB_TOKEN:-}         # optional, for the Sprints page
+  GITHUB_REPO: ${GITHUB_REPO:-SEAME-pt/SEA-ME_Team2_braco}
+
+# The bind mounts of the system containers (dev lists its own, with comments).
+x-volumes:
+  - &vol-ws ../ros2_ws:/ws
+  - &vol-libs ../libs:/opt/seame/libs:ro
+  - &vol-examples ../examples:/opt/seame/examples
+  - &vol-repo ..:/opt/braco:ro             # the braco web page (web/) and the docs it shows
+  - &vol-logs ros-logs:/home/dev/.ros
+
 services:
   # ---------------------------------------------------------------------------------------
-  # PC: RViz2, MoveIt 2, Gazebo + ros2_control in simulation, CI-grade QA tooling
+  # dev - the tools, on both machines (make shell, run, build, test, net-*). Never opens the arm's serial port:
+  # that belongs to `real`. The image is the machine's: PC = RViz2, MoveIt 2, Gazebo, QA tools; Jetson = base.
   # ---------------------------------------------------------------------------------------
-  pc-dev:
+  dev:
     <<: *ros-common
-    profiles: [pc]
-    image: ${IMAGE_PREFIX:-braco}/pc:${IMAGE_TAG:-lyrical}
+    image: ${IMAGE_PREFIX:-braco}/${COMPOSE_PROFILES:-pc}:${IMAGE_TAG:-lyrical}
     build:
       context: .
-      target: pc-dev
+      target: ${COMPOSE_PROFILES:-pc}       # Dockerfile stages `pc` and `jetson`
       args: *build-args
     environment:
       <<: *ros-env
       DISPLAY: ${DISPLAY:-:0}
+      CCACHE_MAXSIZE: ${CCACHE_MAXSIZE:-1G}  # the Nano's SD card; colcon itself is limited by the Makefile
     volumes:
       - ../ros2_ws:/ws
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
-      - ccache-pc:/home/dev/.ccache
+      - ccache:/home/dev/.ccache
       - gz-cache:/home/dev/.gz
-      - ros-logs-pc:/home/dev/.ros
-      - ./tests:/opt/seame/tests:ro        # `make talker-listener` etc.; edit on the host, no rebuild
-      - ..:/opt/braco:ro                   # `make web-sim`: the braco web page (and its docs) on top of Gazebo
-      - ../libs:/opt/seame/libs:ro         # libs/cpp (mycobot_cpp); colcon finds it via make ws-build
-      - ../examples:/opt/seame/examples    # ROS 2 basics tutorials; colcon finds them via make ws-build
+      - ros-logs:/home/dev/.ros
+      - ./tests:/opt/seame/tests:ro        # make net-test etc.; edit on the host, no rebuild
+      - ..:/opt/braco:ro                   # the repository (web page and docs), as in the system containers
+      - ../libs:/opt/seame/libs:ro         # libs/cpp (mycobot_cpp); colcon finds it via make build
+      - ../examples:/opt/seame/examples    # ROS 2 basics tutorials; colcon finds them via make build
 
   # ---------------------------------------------------------------------------------------
-  # Jetson Nano: arm driver (pymycobot lifecycle node), ros2_control, controllers
-  # ---------------------------------------------------------------------------------------
-  jetson-driver:
-    <<: *ros-common
-    profiles: [jetson]
-    image: ${IMAGE_PREFIX:-braco}/jetson:${IMAGE_TAG:-lyrical}
-    build:
-      context: .
-      target: jetson-driver
-      args: *build-args
-    environment:
-      <<: *ros-env
-      MYCOBOT_PORT: ${MYCOBOT_PORT:-/dev/ttyTHS1}
-      MYCOBOT_BAUD: ${MYCOBOT_BAUD:-1000000}
-    group_add:
-      - "${DIALOUT_GID:-20}"
-    devices:
-      - ${MYCOBOT_PORT:-/dev/ttyTHS1}:${MYCOBOT_PORT:-/dev/ttyTHS1}:rwm
-      # Hardwired e-stop: if it reaches the Jetson through a GPIO line, expose the chip here
-      # (the class README does not say how it is wired - confirm with the lab first):
-      # - /dev/gpiochip0:/dev/gpiochip0
-    volumes:
-      - ../ros2_ws:/ws
-      - ccache-jetson:/home/dev/.ccache
-      - ros-logs-jetson:/home/dev/.ros
-      - ./tests:/opt/seame/tests:ro        # `make talker-listener` etc.; edit on the host, no rebuild
-      - ../libs:/opt/seame/libs:ro         # libs/cpp (mycobot_cpp); colcon finds it via make ws-build
-      - ../examples:/opt/seame/examples    # ROS 2 basics tutorials; colcon finds them via make ws-build
-
-  # ---------------------------------------------------------------------------------------
-  # Jetson Nano: the always-on arm (profile "arm"): ONE container, everything runs under ROS 2.
-  # Same image as jetson-driver, no build: build the workspace first (make ws-build ROLE=jetson),
-  # then make arm-up. arm_routine.sh starts `ros2 launch braco_bringup braco.launch.py`:
+  # real - the system on the Jetson: ONE container, everything under ROS 2 (make up). No build of its own: it uses
+  # the image and the workspace that `dev` built. arm_routine.sh starts `ros2 launch braco_bringup braco.launch.py`:
   #   arm_driver           the ONLY process that opens the serial port; never moves the arm by
   #                        itself, so restarting it is safe
   #   temperature_monitor  servo temperatures -> /diagnostics + LCD1602
   #   joystick_teleop      joystick control; waits for the joystick and survives unplugging
   #   braco web page       uvicorn on WEB_PORT (default 8000), talks to the arm only through ROS 2
-  # The arm is not moved when the container starts or stops: zero/park are manual (make arm-zero / arm-park).
+  # The arm is not moved when the container starts or stops: zero/park are manual (make zero / park, make down PARK=1).
   # ---------------------------------------------------------------------------------------
-  arm:
-    <<: *ros-common
-    profiles: [arm]
+  real:
+    <<: *ros-system
+    profiles: [jetson]
     image: ${IMAGE_PREFIX:-braco}/jetson:${IMAGE_TAG:-lyrical}
     environment:
-      <<: *ros-env
-      WEB_PORT: ${WEB_PORT:-8000}             # the braco page: http://<jetson>:8000
-      GITHUB_TOKEN: ${GITHUB_TOKEN:-}         # optional, for the Sprints page
-      GITHUB_REPO: ${GITHUB_REPO:-SEAME-pt/SEA-ME_Team2_braco}
-    stdin_open: false
-    tty: false
-    restart: "no"
-    stop_grace_period: 20s   # room for the page and the launch to shut down before Docker kills it
+      <<: *system-env
+      SIM: "false"
     command: ["/ws/install/braco_bringup/lib/braco_bringup/arm_routine.sh",
               "port:=${MYCOBOT_PORT:-/dev/ttyTHS1}", "baud:=${MYCOBOT_BAUD:-1000000}",
               "lcd_bus:=${LCD_I2C_BUS:-/dev/i2c-0}", "device:=${JOYSTICK_DEVICE:-/dev/input/js0}"]
     group_add:
       - "${DIALOUT_GID:-20}"
-      - "${I2C_GID:-${USER_GID:-1000}}"     # set by make env; fallback: your own group (harmless)
-      - "${INPUT_GID:-${USER_GID:-1000}}"   # set by make env; fallback: your own group (harmless)
+      - "${I2C_GID:-65534}"                 # set by make setup; fallback: nogroup (harmless; the two
+      - "${INPUT_GID:-${USER_GID:-1000}}"   #   fallbacks differ because compose refuses duplicates)
     devices:
       - ${MYCOBOT_PORT:-/dev/ttyTHS1}:${MYCOBOT_PORT:-/dev/ttyTHS1}:rwm
       - ${LCD_I2C_BUS:-/dev/i2c-0}:${LCD_I2C_BUS:-/dev/i2c-0}:rw
+      # Hardwired e-stop: if it reaches the Jetson through a GPIO line, expose the chip here
+      # (the class README does not say how it is wired - confirm with the lab first):
+      # - /dev/gpiochip0:/dev/gpiochip0
     # The whole /dev/input plus a cgroup rule for joystick/event devices (major 13), so the
     # controller can be plugged in after the container started, or unplugged and replugged.
     device_cgroup_rules:
       - "c 13:* rmw"
     volumes:
-      - ../ros2_ws:/ws
-      - ../libs:/opt/seame/libs:ro
-      - ../examples:/opt/seame/examples
-      - ..:/opt/braco:ro                   # the braco web page (web/) and the docs it shows
-      - ros-logs-arm:/home/dev/.ros
+      - *vol-ws
+      - *vol-libs
+      - *vol-examples
+      - *vol-repo
+      - *vol-logs
       - /dev/input:/dev/input
 
+  # ---------------------------------------------------------------------------------------
+  # sim - the system on the PC: the same launch with sim:=true (the Gazebo arm, issues #34/#25) and the web page
+  # on top of it (ARM_SOURCE=gazebo). Uses the image and the workspace that `dev` built.
+  # ---------------------------------------------------------------------------------------
+  sim:
+    <<: *ros-system
+    profiles: [pc]
+    image: ${IMAGE_PREFIX:-braco}/pc:${IMAGE_TAG:-lyrical}
+    environment:
+      <<: *system-env
+      SIM: "true"
+      DISPLAY: ${DISPLAY:-:0}
+    command: ["/ws/install/braco_bringup/lib/braco_bringup/arm_routine.sh"]
+    volumes:
+      - *vol-ws
+      - *vol-libs
+      - *vol-examples
+      - *vol-repo
+      - *vol-logs
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - gz-cache:/home/dev/.gz
+
 volumes:
-  ccache-pc:
-  ccache-jetson:
+  ccache:
   gz-cache:
-  ros-logs-pc:
-  ros-logs-jetson:
-  ros-logs-arm:
+  ros-logs:

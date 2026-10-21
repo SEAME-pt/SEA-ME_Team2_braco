@@ -5,16 +5,16 @@ shared in real time by everybody who has the page open (see session.py).
 
     ARM_MOCK=1 uvicorn web.server.app:app --port 8000      # PC, no arm
     ARM_SOURCE=ros uvicorn web.server.app:app --host 0.0.0.0 --port 8000
-                                                           # Jetson, inside the arm container
+                                                           # Jetson, inside the real container
 
 Run ONE process (no --workers > 1): presence, the control lease and the
 activity log live in memory.
 
 Environment:
     ARM_MOCK=1         synthetic data instead of the arm
-    ARM_SOURCE=ros     the arm through arm_driver (ROS 2); what the arm container uses
-    ARM_SOURCE=gazebo  arm simulated in Gazebo over ROS 2 (PC only: make web-sim
-                       in docker/ runs it inside the pc-dev container)
+    ARM_SOURCE=ros     the arm through arm_driver (ROS 2); what the real container uses
+    ARM_SOURCE=gazebo  arm simulated in Gazebo over ROS 2 (PC only: the sim container
+                       of make up)
     (neither)          the arm straight through pymycobot on ARM_PORT / ARM_BAUD
     BRACO_ROS=0        do not start ROS 2 at all (health, graph and demos stay empty)
     GZ_JOINT_NAMES     joint names in /joint_states, comma separated

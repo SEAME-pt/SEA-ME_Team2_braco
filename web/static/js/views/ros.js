@@ -14,7 +14,7 @@ let state = null;   // { root, tab, watched, filter, internal, offs }
 
 function unavailable(data) {
   return `<div class="card error-box">ROS 2 is not available here: ${esc(data?.error || "no data yet")}.
-    <div class="small" style="margin-top:6px">On the Jetson the page runs inside the arm container (make arm-up); on the PC use make web-sim.</div></div>`;
+    <div class="small" style="margin-top:6px">The page runs inside the system container: make up (the real arm on the Jetson, the simulation on the PC).</div></div>`;
 }
 
 // ---- Health -----------------------------------------------------------------
@@ -32,7 +32,7 @@ function healthHTML(h) {
           <td class="muted small">${esc(n.role)}</td>
           <td>${n.present ? '<span class="pill ok">running</span>' : '<span class="pill hot">missing</span>'}</td></tr>`).join("")}
         </tbody></table>
-        <p class="muted small">From ros2_ws/src/braco_bringup/launch/braco.launch.py. A missing node: <code>make arm-logs</code> on the Jetson.</p>
+        <p class="muted small">From ros2_ws/src/braco_bringup/launch/braco.launch.py. A missing node: <code>make logs</code> on the Jetson.</p>
       </section>
       <section class="card">
         <h2>arm_driver services</h2>
@@ -149,7 +149,7 @@ function demosHTML(d) {
   const running = fib.state === "running" || fib.state === "sending";
   const expected = (fib.order || 0) + 1;
   const done = (fib.result || fib.partial || []).length;
-  const notRunning = (what) => `<div class="hint-box small">${what} is not running. On the Jetson: <code>make arm-basics</code> (docker/).</div>`;
+  const notRunning = (what) => `<div class="hint-box small">${what} is not running: <code>make demos</code>.</div>`;
   return `
     ${d.error ? `<div class="error-box" style="margin-bottom:12px">${esc(d.error)}</div>` : ""}
     ${op ? "" : '<div class="lease-banner taken" style="margin-bottom:16px"><span>👁 View only: take control (sidebar) to call services, send goals and change lifecycle states.</span></div>'}
@@ -203,7 +203,7 @@ function lifecycleHTML(n, op) {
   return `
     <section class="card">
       <h2>Lifecycle · ${esc(n.node)} ${n.present ? `<span class="pill ${n.state === "active" ? "ok" : "accent"}">${esc(n.state || "?")}</span>` : '<span class="pill hot">missing</span>'}</h2>
-      ${n.present ? "" : '<div class="hint-box small">Not running. On the Jetson: <code>make arm-basics</code> (docker/).</div>'}
+      ${n.present ? "" : '<div class="hint-box small">Not running: <code>make demos</code>.</div>'}
       <div class="lc-states">${LIFECYCLE_STATES.map((s) => `<span class="lc ${s === n.state ? "current" : ""}">${s}</span>`).join('<i>→</i>')}</div>
       <div class="btns">${(n.transitions || []).map((t) =>
         `<button data-node="${esc(n.node)}" data-transition="${esc(t)}" ${op ? "" : "disabled"}>${esc(t)}</button>`).join("")
