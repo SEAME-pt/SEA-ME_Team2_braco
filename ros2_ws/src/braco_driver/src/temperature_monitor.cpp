@@ -27,7 +27,7 @@
 //     |J4 66 C cooling |      (|SERVO HOT! J4| / |66 C - rest arm| with auto_rest_on_hot false)
 //   With no fresh data for stale_timeout_s the LCD shows "NO FEEDBACK".
 //
-// Auto rest (docs/ADR-0003-rest-on-overheat.md): the first hot reading of an episode calls
+// Auto rest (docs/ADR-0003-repouso-por-temperatura.md): the first hot reading of an episode calls
 // /arm/set_read_only true, once; the episode ends when every joint is below TEMP_HOT_C.
 // Leaving rest is manual (make resume): the monitor never does it.
 

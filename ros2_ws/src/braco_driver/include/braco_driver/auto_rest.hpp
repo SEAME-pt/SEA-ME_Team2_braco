@@ -12,7 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// AutoRest - when temperature_monitor puts the arm to rest (docs/ADR-0003-rest-on-overheat.md).
+// AutoRest - when temperature_monitor puts the arm to rest
+// (docs/ADR-0003-repouso-por-temperatura.md).
 //
 // An episode starts with the first reading at TEMP_HOT_C or above and ends when every joint
 // is below it again. The arm is put to rest once per episode: an operator who resumes a hot
