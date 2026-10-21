@@ -17,9 +17,9 @@
 #include <map>
 #include <set>
 
-#include "braco_teleop/teleop_logic.hpp"
+#include "teleop_logic.hpp"
 
-namespace tl = braco_teleop::teleop;
+namespace tl = mycobot::teleop;
 
 TEST(StickRatio, DeadzoneIsZero)
 {

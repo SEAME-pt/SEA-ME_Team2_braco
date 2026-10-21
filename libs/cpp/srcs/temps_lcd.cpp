@@ -42,11 +42,10 @@ void onSignal(int) {
 
 // Backlight colour for each temperature level
 void setColour(ui::Status& status, mycobot::TempLevel level) {
-    switch (level) {
-        case mycobot::TempLevel::Normal: status.r = 0; status.g = 255; status.b = 0; break;
-        case mycobot::TempLevel::Warm:   status.r = 255; status.g = 255; status.b = 0;   break;
-        case mycobot::TempLevel::Hot:    status.r = 255; status.g = 0;   status.b = 0;   break;
-    }
+    const mycobot::Rgb colour = mycobot::tempColour(level);
+    status.r = colour.r;
+    status.g = colour.g;
+    status.b = colour.b;
 }
 
 // const char* levelName(mycobot::TempLevel level) {

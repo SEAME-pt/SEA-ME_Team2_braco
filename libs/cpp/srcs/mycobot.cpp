@@ -103,6 +103,22 @@ double minHeightMm(const Angles& angles) {
     return std::min(lowest, tip_z * 1000.0 + BASE_HEIGHT_MM);
 }
 
+std::optional<Angles> stepToward(const Angles& current, const Angles& pose,
+                                 double lead_deg, double tolerance_deg) {
+    double deviation = 0.0;
+    for (size_t i = 0; i < pose.size(); ++i) {
+        deviation = std::max(deviation, std::abs(current[i] - pose[i]));
+    }
+    if (deviation <= tolerance_deg) return std::nullopt;
+
+    const double scale = std::min(1.0, lead_deg / deviation);
+    Angles target{};
+    for (size_t i = 0; i < target.size(); ++i) {
+        target[i] = std::round((current[i] + (pose[i] - current[i]) * scale) * 10.0) / 10.0;
+    }
+    return target;
+}
+
 // ---------------------------------------------------------------- lifecycle
 
 MyCobot280::MyCobot280(const std::string& port, int baud) {
@@ -400,15 +416,26 @@ TempLevel MyCobot280::tempLevel(int celsius) {
     return TempLevel::Normal;
 }
 
+TempCheck evaluateTemps(const ServoTemps& temps) {
+    int hottest = 0;   // index of the hottest joint
+    for (int i = 1; i < 6; ++i) {
+        if (temps[i] > temps[hottest]) hottest = i;
+    }
+    return TempCheck{temps, MyCobot280::tempLevel(temps[hottest]), hottest + 1};
+}
+
+Rgb tempColour(TempLevel level) {
+    switch (level) {
+        case TempLevel::Warm: return {255, 255, 0};
+        case TempLevel::Hot:  return {255, 0, 0};
+        default:              return {0, 255, 0};
+    }
+}
+
 std::optional<TempCheck> MyCobot280::checkTemps(int retries) {
     const auto temps = getTemps(retries);
     if (!temps) return std::nullopt;
-
-    int hottest = 0;   // index of the hottest joint
-    for (int i = 1; i < 6; ++i) {
-        if ((*temps)[i] > (*temps)[hottest]) hottest = i;
-    }
-    return TempCheck{*temps, tempLevel((*temps)[hottest]), hottest + 1};
+    return evaluateTemps(*temps);
 }
 
 // ------------------------------------------------------------ serial layer

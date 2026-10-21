@@ -25,8 +25,6 @@ using namespace std::chrono_literals;
 namespace
 {
 
-constexpr int SPEED = 30;
-constexpr double TOLERANCE_DEG = 2.0;
 constexpr auto TIMEOUT = 20s;
 constexpr auto DRIVER_TIMEOUT = 60s;   // at boot arm_driver may still be starting
 
@@ -36,7 +34,9 @@ bool zero(braco_bringup::ArmMoves & arm)
   // Leave rest mode (set by park), otherwise power_on and the move are refused.
   arm.setRest(false);
   arm.powerOn();   // the joints may still be free from the last park
-  if (arm.moveTo(mycobot::ZERO_ANGLES, SPEED, TOLERANCE_DEG, TIMEOUT)) {
+  if (arm.moveTo(
+      mycobot::ZERO_ANGLES, mycobot::MOVE_SPEED, mycobot::POSE_TOLERANCE_DEG, TIMEOUT))
+  {
     RCLCPP_INFO(arm.get_logger(), "At zero");
     return true;
   }

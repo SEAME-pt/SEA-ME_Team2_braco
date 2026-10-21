@@ -26,8 +26,6 @@ using namespace std::chrono_literals;
 namespace
 {
 
-constexpr int SPEED = 30;
-constexpr double TOLERANCE_DEG = 2.0;
 constexpr auto TIMEOUT = 20s;
 constexpr auto DRIVER_TIMEOUT = 10s;
 
@@ -35,7 +33,9 @@ bool park(braco_bringup::ArmMoves & arm)
 {
   if (!arm.waitForDriver(DRIVER_TIMEOUT)) {return false;}
   arm.setRest(false);   // rest mode refuses the park move itself
-  if (!arm.moveTo(mycobot::PARK_ANGLES, SPEED, TOLERANCE_DEG, TIMEOUT)) {
+  if (!arm.moveTo(
+      mycobot::PARK_ANGLES, mycobot::MOVE_SPEED, mycobot::POSE_TOLERANCE_DEG, TIMEOUT))
+  {
     RCLCPP_ERROR(arm.get_logger(), "Park position not reached - joints left locked");
     return false;
   }
