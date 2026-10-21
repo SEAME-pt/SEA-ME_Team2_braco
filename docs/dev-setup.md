@@ -120,7 +120,7 @@ Run everything from the repo root. ROS commands run inside the `dev` container, 
 test requirements, `make web` only the web page's. To use it for the hello-world script:
 
 ```bash
-make ci                       # or only the arm packages: python3.11 -m venv .venv && .venv/bin/pip install -r requirements.txt
+make ci                       # or only the arm packages: make .venv/.installed
 source .venv/bin/activate
 ```
 
