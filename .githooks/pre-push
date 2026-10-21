@@ -6,8 +6,11 @@ RED='\033[0;31m'
 YELLOW='\033[1;33m'
 RESET='\033[0m'
 
+# Use the venv's tools (make setup) even when the venv is not activated.
+PATH="$(git rev-parse --show-toplevel)/.venv/bin:$PATH"
+
 for tool in clang-format ruff; do
-    command -v "$tool" >/dev/null || { printf "${RED}ERROR:${RESET} '%s' not installed\n" "$tool"; exit 1; }
+    command -v "$tool" >/dev/null || { printf "${RED}ERROR:${RESET} '%s' not installed. Run: ${YELLOW}make setup${RESET}\n" "$tool"; exit 1; }
 done
 
 if ! make -s format-check; then

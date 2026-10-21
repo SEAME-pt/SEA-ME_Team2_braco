@@ -8,7 +8,8 @@ JETSON_TAG := $(IMAGE_TAG)-arm64
 
 ##@ Setup (once per machine)
 
-setup: _role $(ENV_FILE) | $(WS_DIRS) ## docker/.env for this machine, git hooks, folders, then doctor
+# On the PC, setup also creates the venv: the pre-push hook needs its ruff and clang-format (requirements-dev.txt).
+setup: _role $(ENV_FILE) $(if $(filter pc,$(ROLE)),$(VENV)/.installed) | $(WS_DIRS) ## docker/.env for this machine, venv (PC), git hooks, folders, then doctor
 	git config core.hooksPath .githooks
 	@$(DOCTOR_RUN)
 
