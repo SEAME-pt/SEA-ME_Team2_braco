@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// ControlLease - who may move the arm (docs/ADR-0002-single-control-owner.md).
+// ControlLease - who may move the arm (docs/ADR-0002-controle-unico.md).
 //
 // One owner at a time ("web", "joystick", "script", "mission"; "" = free). arm_driver
 // obeys motion only from the owner; STOP is not its business, it always passes.

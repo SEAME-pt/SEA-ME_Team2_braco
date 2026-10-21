@@ -37,13 +37,15 @@ até `arm-zero` ou `power_on`).
 
 - **Nunca abra a serial fora do `arm_driver`** (scripts de `playground/`, pymycobot no host). Use os targets acima.
 - Em rest, o joystick e o `ArmCommand` são ignorados (aviso no log do driver a cada 5 s).
+- Um servo a ≥ 65 °C (`TEMP_HOT_C`) põe o braço em rest **sozinho**: o `temperature_monitor` chama
+  `/arm/set_read_only true` uma vez por episódio (até todas as juntas ficarem abaixo de 65 °C) e o LCD mostra
+  `REST: SERVO HOT` / `J4 66 C cooling`. A volta é sempre manual (`make resume`); um `make resume` durante o
+  mesmo episódio não é desfeito (serve para estacionar um braço quente de propósito). Desligável com o
+  parâmetro `auto_rest_on_hot`. Ver [ADR-0003](ADR-0003-repouso-por-temperatura.md).
+- `zero` e `park` pegam o controle do braço à força (`take_control("script", force=true)`) e devolvem no fim:
+  funcionam com o joystick conectado ou a página no controle. Ver [ADR-0002](ADR-0002-controle-unico.md).
 - O `arm_routine.sh` (entrypoint do container `real`) não move o braço ao parar: use `make down PARK=1`, que roda `park` antes de desligar e deixa o braço em rest.
 - `ros2 topic echo /arm/read_only` mostra o estado atual.
-
-## Ainda não existe
-
-- Park automático ao atingir 65 °C (o monitor continua passivo).
-- Indicação de "REST" no LCD.
 
 ## Como testar
 
@@ -51,3 +53,7 @@ até `arm-zero` ou `power_on`).
 2. `make park`, depois `make temps` retorna `valid: true`.
 3. Joystick não move o braço; `make resume` e ele volta a mover.
 4. Com o driver ligado, `python3 playground/park.py` no host falha com "Device or resource busy".
+5. Servo quente simulado: com o sistema rodando, uma leitura falsa a 66 °C basta (a leitura real seguinte,
+   2 s depois, encerra o episódio):
+   `make run CMD='ros2 topic pub --once /arm/servo_temperatures braco_interfaces/msg/ServoTemperatures "{celsius: [40, 40, 40, 66, 40, 40], valid: true}"'`.
+   O braço entra em rest, o log do monitor e o LCD avisam, e `make resume` faz voltar.

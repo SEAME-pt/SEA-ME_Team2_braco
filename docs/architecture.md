@@ -17,14 +17,19 @@ The containers and the `make` commands: [docker/README.md](../docker/README.md).
    topics and services, so each of them can start, stop or crash without touching the port.
 2. **The driver never moves the arm by itself.** Starting or stopping the system does not zero, park or power on
    the arm; those are explicit commands (`make zero`, `make park`, `make down PARK=1`).
-3. **Safety lives next to the hardware.** Joint limits, the table margin, the motion watchdog and rest mode are
-   enforced in `arm_driver`, not in its clients: a buggy client cannot bypass them.
-4. **Faults are visible.** `arm_driver` is not respawned: if it dies the launch ends and the container stops.
-   Clients that only read or command (`temperature_monitor`, `joystick_teleop`) are respawned.
-5. **Same interface for the real arm and the simulation.** Everything above the driver uses `/joint_states`
+3. **Safety lives next to the hardware.** Joint limits, the table margin, the motion watchdog, rest mode and
+   the control owner are enforced in `arm_driver`, not in its clients: a buggy client cannot bypass them.
+4. **Faults are visible.** `arm_driver` is not respawned: if it dies the launch shuts down (an `OnProcessExit`
+   handler in `braco.launch.py`), `arm_routine.sh` ends and the container stops. Clients that only read or
+   command (`temperature_monitor`, `joystick_teleop`) are respawned.
+5. **One client moves the arm at a time.** The page, the joystick, zero/park and the mission take the control
+   from `arm_driver` before moving; motion from anyone else is ignored, STOP never is
+   ([ADR-0002](ADR-0002-controle-unico.md)).
+6. **Same interface for the real arm and the simulation.** Everything above the driver uses `/joint_states`
    and `braco_interfaces`, so the mission and planning layers run unchanged on both (#37).
-6. **Logic without ROS where possible.** The serial protocol, the joystick reader, the LCD and the teleop logic
-   live in `mycobot_cpp` (`libs/cpp`), plain C++ that is unit-tested without a ROS graph.
+7. **Logic without ROS where possible.** The serial protocol, the joystick reader, the LCD and the teleop logic
+   live in `mycobot_cpp` (`libs/cpp`), plain C++ that is unit-tested without a ROS graph; so do the control
+   owner and the auto-rest decision of `braco_driver` (`include/braco_driver/`).
 
 ---
 
@@ -49,8 +54,8 @@ libs/cpp/                                mycobot_cpp: serial protocol, joystick,
 | Package | Kind | Role | Status |
 |---|---|---|---|
 | [`mycobot_cpp`](../libs/cpp) | C++ library | myCobot 280 serial driver, joint limits and poses (`mycobot.hpp`), joystick, LCD1602, teleop logic. Also builds the stand-alone tools (no ROS) | Done |
-| [`braco_interfaces`](../ros2_ws/src/braco_interfaces/README.md) | Interfaces | `ArmCommand`, `JointTarget`, `ServoTemperatures` | Done |
-| [`braco_driver`](../ros2_ws/src/braco_driver/README.md) | Nodes | `arm_driver` (owns the port), `temperature_monitor` (LCD + `/diagnostics`) | Done |
+| [`braco_interfaces`](../ros2_ws/src/braco_interfaces/README.md) | Interfaces | `ArmCommand`, `JointTarget`, `ServoTemperatures`, `TakeControl` | Done |
+| [`braco_driver`](../ros2_ws/src/braco_driver/README.md) | Nodes | `arm_driver` (owns the port and the control), `temperature_monitor` (LCD + `/diagnostics` + rest on overheat) | Done |
 | [`braco_teleop`](../ros2_ws/src/braco_teleop/README.md) | Node | `joystick_teleop`: jogs the arm through `arm_driver` | Done |
 | [`braco_bringup`](../ros2_ws/src/braco_bringup/README.md) | Launch + config | `braco.launch.py`, `braco.yaml`, the container entrypoint, `zero` / `park` | Done (`sim:=true` reserved) |
 | [`braco_description`](../ros2_ws/src/braco_description/README.md) | Model | URDF of the myCobot 280 | Placeholder, #25 |
@@ -119,28 +124,34 @@ Every package has its own README with its topics, parameters and how to run it b
   │  arm_driver  │─────┘ ◄─────────────────────────────── │ joystick_teleop│  │ web page │
   │              │       ◄─────────────────────────────── └────────────────┘  │ (rclpy)  │
   │ serial port  │       /arm/led (ColorRGBA)                    │            └──────────┘
-  │ watchdog     │ ◄─────────────────────────────────────────────┘                │
-  │ limits       │       /arm/power_on, /arm/set_gripper  (joystick, page)        │
-  │ rest mode    │ ◄──────────────────────────────────────────────────────────────┘
+  │ control owner│ ◄─────────────────────────────────────────────┘                │
+  │ watchdog     │       /arm/take_control  (joystick, page, zero/park)           │
+  │ limits       │ ◄──────────────────────────────────────────────────────────────┤
+  │ rest mode    │       /arm/power_on, /arm/set_gripper  (joystick, page)        │
+  │              │ ◄──────────────────────────────────────────────────────────────┘
   └──────────────┘       /arm/release_servos, /arm/set_read_only  (page, zero/park)
-        │   │
-        │   └── /arm/read_only (Bool, latched) ──────────────────────► page
-        │
-        └── /arm/servo_temperatures (every 2 s) ──► temperature_monitor ──► LCD1602
-                                                          │
-                                                          └── /diagnostics ──► page (ROS health view)
+     │   │   │
+     │   │   └── /arm/control_owner (String, latched) ───────────────► joystick, page
+     │   └────── /arm/read_only (Bool, latched) ─────────────────────► page
+     │
+     └── /arm/servo_temperatures (every 2 s) ──► temperature_monitor ──► LCD1602
+                                                   │        │
+                                                   │        └── /diagnostics ──► page (levels, ROS health)
+                                                   └── /arm/set_read_only true (a servo at 65 °C)
 ```
 
 | Name | Type | Publisher / server | Users |
 |---|---|---|---|
 | `/joint_states` | `sensor_msgs/JointState` (rad, `joint1..joint6`) | `arm_driver` | teleop, page, zero/park, MoveIt (planned) |
-| `/arm/command` | `braco_interfaces/ArmCommand` | teleop, page, zero/park | `arm_driver` |
+| `/arm/command` | `braco_interfaces/ArmCommand` (with `source`) | teleop, page, zero/park | `arm_driver` (the owner's motion, anyone's STOP) |
 | `/arm/led` | `std_msgs/ColorRGBA` | teleop, page | `arm_driver` |
 | `/arm/servo_temperatures` | `braco_interfaces/ServoTemperatures` | `arm_driver` | `temperature_monitor`, page |
 | `/arm/read_only` | `std_msgs/Bool`, latched | `arm_driver` | page |
+| `/arm/control_owner` | `std_msgs/String`, latched (`""` = free) | `arm_driver` | teleop, page |
 | `/diagnostics` | `diagnostic_msgs/DiagnosticArray` | `temperature_monitor` | page |
+| `/arm/take_control` | `braco_interfaces/TakeControl` | `arm_driver` | teleop, page, zero/park |
 | `/arm/power_on`, `/arm/release_servos` | `std_srvs/Trigger` | `arm_driver` | teleop, page, zero/park |
-| `/arm/set_gripper`, `/arm/set_read_only` | `std_srvs/SetBool` | `arm_driver` | teleop, page, zero/park |
+| `/arm/set_gripper`, `/arm/set_read_only` | `std_srvs/SetBool` | `arm_driver` | teleop, page, zero/park, `temperature_monitor` |
 
 ### Commanding the arm
 
@@ -152,11 +163,27 @@ Every package has its own README with its topics, parameters and how to run it b
 - **Limits:** angles are clamped to `JOINT_LIMITS` (`mycobot.hpp`); poses that put the wrist or tool below the
   table margin are refused.
 - **Rest mode** (`/arm/set_read_only true`): motion, gripper and power on are refused; angles and temperatures
-  keep being published. See [arm-rest-mode.md](arm-rest-mode.md).
+  keep being published. `temperature_monitor` enters it by itself when a servo reaches 65 °C, once per hot
+  episode; leaving it is manual (`make resume`). See [arm-rest-mode.md](arm-rest-mode.md) and
+  [ADR-0003](ADR-0003-repouso-por-temperatura.md).
 
-Several clients can command the arm today; a single control owner (`source` in `ArmCommand`,
-`/arm/take_control`) and auto-rest on overheat are the subject of
-[issue #55](https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/55).
+### Who moves the arm
+
+One control owner at a time, kept by `arm_driver` ([ADR-0002](ADR-0002-controle-unico.md)):
+
+| | |
+|---|---|
+| Owner | `web`, `joystick`, `script` (zero/park) or `mission`, the `source` of its `ArmCommand`s; `""` = free |
+| Take | `/arm/take_control`: succeeds when free, already ours, or with `force` (drops the old owner's pending motion and stops the arm) |
+| Motion | obeyed only from the owner; ignored (and logged) from anyone else |
+| STOP | always obeyed, from anyone |
+| Lose | `release`, forced away, or `control_idle_s` (5 s) without motion |
+
+| Client | Takes the control | Gives it back |
+|---|---|---|
+| Web page | with the page lease ("Take control"), renewed every second while the lease lasts; **409** while the joystick or zero/park has it | when the lease ends |
+| Joystick | first stick / X / A / B with the control free; from another owner only by **holding button 8 for 1 s** | 5 s after the last move |
+| zero / park | forced, before moving | at the end, also on failure |
 
 ---
 
