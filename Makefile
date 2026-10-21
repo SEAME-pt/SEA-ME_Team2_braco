@@ -162,7 +162,7 @@ define confirm
 @if [ "$(FORCE)" != 1 ]; then printf '%s [y/N] ' "$(1)"; read -r ans; [ "$$ans" = y ] || { echo "aborted"; exit 1; }; fi
 endef
 
-.PHONY: all ci ci-image ci-ros init host-venv host-python host-cpp host-check host-clean _jetson help info doctor env dirs lint tar xhost build rebuild pull push up down restart ps logs config \
+.PHONY: all ci ci-image ci-ros init host-venv host-python host-cpp host-check host-clean _jetson help info doctor env dirs lint format format-check tarxhost build rebuild pull push up down restart ps logs config \
         arm-up arm-down arm-ps arm-logs arm-web-logs arm-basics arm-restart arm-web-restart arm-park arm-zero arm-rest arm-resume arm-temps install-service uninstall-service service-status \
         shell exec run smoke talker-listener talker talker-stop listener ping-pub ping-echo ws-deps ws-build ws-test ws-clean web-sim _pc_only \
         web-deps web web-start web-stop web-restart web-re web-reinstall web-status web-logs web-mock web-test \
@@ -289,6 +289,20 @@ lint: _role ## Check the project: compose files, scripts and tests (shellcheck),
 	else \
 	  { docker image inspect $(HADOLINT_IMAGE) >/dev/null 2>&1 || docker pull -q $(HADOLINT_IMAGE) >/dev/null; } && \
 	  docker run --rm -i $(HADOLINT_IMAGE) hadolint $(HADOLINT_FLAGS) - < $(DOCKERFILE) && echo "  hadolint ($(HADOLINT_IMAGE)): clean"; fi
+
+# ROS 2 packages ($(WS_SRC)) are checked by ament_uncrustify (make ws-test), not clang-format.
+CPP_FILES = $(shell git ls-files -- '*.cpp' '*.hpp' '*.h' '*.cc' ':!$(WS_SRC)')
+PY_FILES  = $(shell git ls-files '*.py')
+
+format: ## Fix the formatting of all C++ (clang-format) and Python (ruff) files
+	@clang-format -i $(CPP_FILES)
+	@ruff format -q $(PY_FILES)
+	@printf '\033[0;32mOK:\033[0m all files formatted\n'
+
+format-check: ## Check the formatting without changing files (used by the pre-push hook)
+	@clang-format --dry-run --Werror $(CPP_FILES)
+	@ruff format --check -q $(PY_FILES)
+	@printf '\033[0;32mOK:\033[0m formatting is correct\n'
 
 TAR ?= tar
 tar: ## Pack docker/ into docker/dist/seame-arm-docker.tar (leaves out .env, ws/ and dist/; needs GNU tar)
