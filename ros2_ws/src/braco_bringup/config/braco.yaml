@@ -9,12 +9,16 @@ arm_driver:
     command_timeout_ms: 300   # watchdog: stop the arm when motion commands stop for this long
     gripper_speed: 50         # 1..100
     read_only: false          # start in rest mode
+    control_idle_s: 5.0       # the control owner loses it after this long without motion
 
 temperature_monitor:
   ros__parameters:
     stale_timeout_s: 5.0      # no temperatures for this long: "no feedback" on the LCD
+    auto_rest_on_hot: true    # a servo at TEMP_HOT_C (65 C) puts the arm to rest, once per episode
 
 joystick_teleop:
   ros__parameters:
     state_timeout_ms: 150     # older /joint_states: no jogging
     debug: false              # log every joystick event
+    force_button: 8           # hold it to take the control from another owner (the web page)
+    force_hold_s: 1.0         # ... for this long

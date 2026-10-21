@@ -19,22 +19,29 @@
 //
 //   sub  /arm/servo_temperatures   braco_interfaces/ServoTemperatures
 //   pub  /diagnostics              diagnostic_msgs/DiagnosticArray (one status per joint)
+//   cli  /arm/set_read_only        rest mode on, when a servo gets hot
 //   LCD1602 on I2C, same screens and colours as temps_lcd:
 //     |1:31  2:33  3:35|      normal (green), warm (yellow)
 //     |4:41  5:38  6:30|
-//     |SERVO HOT! J4   |      a servo at TEMP_HOT_C or above (red)
-//     |66 C - rest arm |
+//     |REST: SERVO HOT |      a servo at TEMP_HOT_C or above (red): the arm was put to rest
+//     |J4 66 C cooling |      (|SERVO HOT! J4| / |66 C - rest arm| with auto_rest_on_hot false)
 //   With no fresh data for stale_timeout_s the LCD shows "NO FEEDBACK".
+//
+// Auto rest (docs/ADR-0003-rest-on-overheat.md): the first hot reading of an episode calls
+// /arm/set_read_only true, once; the episode ends when every joint is below TEMP_HOT_C.
+// Leaving rest is manual (make resume): the monitor never does it.
 
 #include <chrono>
 #include <memory>
 #include <string>
 
+#include "braco_driver/auto_rest.hpp"
 #include "diagnostic_msgs/msg/diagnostic_array.hpp"
 #include "lcd_display.hpp"
 #include "mycobot.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "braco_interfaces/msg/servo_temperatures.hpp"
+#include "std_srvs/srv/set_bool.hpp"
 
 using namespace std::chrono_literals;
 using diagnostic_msgs::msg::DiagnosticStatus;
@@ -81,6 +88,7 @@ public:
   {
     stale_timeout_ = std::chrono::duration<double>(
       declare_parameter<double>("stale_timeout_s", 5.0));
+    auto_rest_on_hot_ = declare_parameter<bool>("auto_rest_on_hot", true);
 
     if (!lcd_.ok()) {
       RCLCPP_WARN(
@@ -92,6 +100,7 @@ public:
     lcd_.show(status_, true);
 
     diag_pub_ = create_publisher<diagnostic_msgs::msg::DiagnosticArray>("diagnostics", 10);
+    rest_client_ = create_client<std_srvs::srv::SetBool>("arm/set_read_only");
     temp_sub_ = create_subscription<ServoTemperatures>(
       "arm/servo_temperatures", 10,
       [this](ServoTemperatures::ConstSharedPtr msg) {onTemps(*msg);});
@@ -117,9 +126,14 @@ private:
     const auto level = check.level;
     const int hottest = check.hottestJoint - 1;
 
+    if (auto_rest_on_hot_ && auto_rest_.update(level)) {
+      requestRest(hottest + 1, temps[hottest]);
+    }
+
     status_.feedbackOk = true;
     status_.temps = temps;
     status_.hotJoint = (level == mycobot::TempLevel::Hot) ? hottest + 1 : 0;
+    status_.autoRest = status_.hotJoint != 0 && auto_rest_.active();
     setColour(status_, level);
     lcd_.show(status_, true);
 
@@ -153,6 +167,31 @@ private:
     }
     last_level_ = level;
     had_data_ = true;
+  }
+
+  // Put the arm to rest (arm_driver stops it and refuses motion until make resume).
+  void requestRest(int joint, int celsius)
+  {
+    if (!rest_client_->service_is_ready()) {
+      RCLCPP_ERROR(
+        get_logger(), "servo J%d is HOT (%d C) but arm_driver is not reachable: "
+        "cannot put the arm to rest", joint, celsius);
+      auto_rest_.retry();
+      return;
+    }
+    RCLCPP_ERROR(
+      get_logger(), "servo J%d is HOT (%d C): putting the arm to rest (make resume to leave it)",
+      joint, celsius);
+    auto request = std::make_shared<std_srvs::srv::SetBool::Request>();
+    request->data = true;
+    rest_client_->async_send_request(
+      request, [this](rclcpp::Client<std_srvs::srv::SetBool>::SharedFuture future) {
+        const auto result = future.get();
+        if (!result->success) {
+          RCLCPP_ERROR(get_logger(), "rest mode not set: %s", result->message.c_str());
+          auto_rest_.retry();
+        }
+      });
   }
 
   void checkStale()
@@ -193,8 +232,11 @@ private:
   mycobot::TempLevel last_level_ = mycobot::TempLevel::Normal;
   bool had_data_ = false;
   bool warned_ = false;
+  bool auto_rest_on_hot_ = true;
+  braco_driver::AutoRest auto_rest_;
 
   rclcpp::Publisher<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr diag_pub_;
+  rclcpp::Client<std_srvs::srv::SetBool>::SharedPtr rest_client_;
   rclcpp::Subscription<ServoTemperatures>::SharedPtr temp_sub_;
   rclcpp::TimerBase::SharedPtr stale_timer_;
 };

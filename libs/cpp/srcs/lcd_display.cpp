@@ -137,6 +137,10 @@ std::array<std::string, 2> LcdDisplay::linesFor(const Status& s) {
     if (!s.feedbackOk) return {fit("NO FEEDBACK"), fit("check arm power")};
     if (s.hotJoint >= 1 && s.hotJoint <= 6 && s.temps) {
         const int t = (*s.temps)[s.hotJoint - 1];
+        if (s.autoRest) {
+            return {fit("REST: SERVO HOT"),
+                    fit("J" + std::to_string(s.hotJoint) + " " + std::to_string(t) + " C cooling")};
+        }
         return {fit("SERVO HOT! J" + std::to_string(s.hotJoint)),
                 fit(std::to_string(t) + " C - rest arm")};
     }
