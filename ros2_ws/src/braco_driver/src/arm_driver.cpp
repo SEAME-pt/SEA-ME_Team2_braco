@@ -266,9 +266,10 @@ private:
       owner = control_.owner();
       changed = owner != last_owner_;
       last_owner_ = owner;
+      // Under the lock, so the serial thread's idle release cannot publish out of order
+      if (changed) {publishOwner(owner);}
     }
     if (changed) {
-      publishOwner(owner);
       RCLCPP_INFO(
         get_logger(), "control: %s (%s)",
         owner.empty() ? "free" : owner.c_str(), res.message.c_str());
@@ -285,10 +286,12 @@ private:
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
       dropped = control_.expireIdle(std::chrono::steady_clock::now(), control_idle_);
-      if (!dropped.empty()) {last_owner_.clear();}
+      if (!dropped.empty()) {
+        last_owner_.clear();
+        publishOwner("");
+      }
     }
     if (dropped.empty()) {return;}
-    publishOwner("");
     RCLCPP_INFO(
       get_logger(), "control: free (%s idle for %.1f s)", dropped.c_str(),
       std::chrono::duration<double>(control_idle_).count());
