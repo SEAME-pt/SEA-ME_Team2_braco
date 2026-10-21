@@ -5,7 +5,7 @@
 #   sim    the system on the PC     (COMPOSE_PROFILES=pc):     the simulated arm and the web page
 #
 # COMPOSE_PROFILES in .env is the machine, exactly `pc` or `jetson`: it enables `real` or `sim` and picks the image
-# of `dev` (braco/pc or braco/jetson). Run it through the root Makefile (make up, make down, ...), which builds the
+# of `dev` (braco-image/pc or braco-image/jetson). Run it through the root Makefile (make up, make down, ...), which builds the
 # image and the workspace first. Needs Docker Engine 24+ and Docker Compose v2.20+.
 
 name: braco
@@ -69,10 +69,11 @@ services:
   # ---------------------------------------------------------------------------------------
   # dev - the tools, on both machines (make shell, run, build, test, net-*). Never opens the arm's serial port:
   # that belongs to `real`. The image is the machine's: PC = RViz2, MoveIt 2, Gazebo, QA tools; Jetson = base.
+  # PC: kept running. Jetson: never left running, the Makefile uses throw-away `docker compose run --rm dev ...`.
   # ---------------------------------------------------------------------------------------
   dev:
     <<: *ros-common
-    image: ${IMAGE_PREFIX:-braco}/${COMPOSE_PROFILES:-pc}:${IMAGE_TAG:-lyrical}
+    image: ${IMAGE_PREFIX:-braco-image}/${COMPOSE_PROFILES:-pc}:${IMAGE_TAG:-lyrical}
     build:
       context: .
       target: ${COMPOSE_PROFILES:-pc}       # Dockerfile stages `pc` and `jetson`
@@ -104,7 +105,7 @@ services:
   real:
     <<: *ros-system
     profiles: [jetson]
-    image: ${IMAGE_PREFIX:-braco}/jetson:${IMAGE_TAG:-lyrical}
+    image: ${IMAGE_PREFIX:-braco-image}/jetson:${IMAGE_TAG:-lyrical}
     environment:
       <<: *system-env
       SIM: "false"
@@ -139,7 +140,7 @@ services:
   sim:
     <<: *ros-system
     profiles: [pc]
-    image: ${IMAGE_PREFIX:-braco}/pc:${IMAGE_TAG:-lyrical}
+    image: ${IMAGE_PREFIX:-braco-image}/pc:${IMAGE_TAG:-lyrical}
     environment:
       <<: *system-env
       SIM: "true"

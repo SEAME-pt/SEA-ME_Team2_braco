@@ -1,7 +1,8 @@
 # SEA:ME 2.0 - Arm class containers (braco)
 
-Ubuntu 26.04 + ROS 2 Lyrical Luth for the myCobot 280 Jetson Nano. Each machine runs **two containers**: `dev` for
-the tools, and the braco system itself, `real` on the Jetson or `sim` on the PC.
+Ubuntu 26.04 + ROS 2 Lyrical Luth for the myCobot 280 Jetson Nano. Each machine has **two containers**: `dev` for
+the tools, and the braco system itself, `real` on the Jetson or `sim` on the PC (on the Jetson `dev` only exists
+while a command runs).
 
 ```
  PC / workstation (x86_64)                        Jetson Nano in the arm base (aarch64)
@@ -10,19 +11,20 @@ the tools, and the braco system itself, `real` on the Jetson or `sim` on the PC.
  │      RViz2 · MoveIt 2 · Gazebo│ ◄────────────► │ real  arm_driver, temperature,│
  │ sim  simulated arm + web page │  host network  │       joystick + web page     │
  └───────────────┬───────────────┘                └───────────────┬───────────────┘
-        image braco/pc ─────────► stage `base` ◄───────── image braco/jetson
+        image braco-image/pc ─────────► stage `base` ◄───────── image braco-image/jetson
           Ubuntu 26.04 · ROS 2 Lyrical (ros-base) · ros2_control · pymycobot · colcon defaults
 ```
 
 One `docker/Dockerfile` with three stages. Both images are built `FROM base`, so ROS, ros2_control and
 pymycobot are the same on both machines. On each machine `dev` and the system use the **same image**, and the
-system runs what `dev` built in `ros2_ws`.
+system runs what `dev` built in `ros2_ws`. On the PC `dev` stays up; on the Jetson it never does: each `make build`,
+`shell`, `test`, `run` or `net-*` is a throw-away `docker compose run --rm dev`, so normally only `real` runs there.
 
 | Compose service | Profile | Image (Dockerfile target) | Runs | Contains |
 |---|---|---|---|---|
-| `dev` | (always) | `braco/pc` (`pc`) or `braco/jetson` (`jetson`), from `COMPOSE_PROFILES` | `sleep infinity`; you `exec` into it | PC: `ros-lyrical-desktop`, `ros-lyrical-ros-gz`, `ros-lyrical-moveit` **and** `ros-lyrical-moveit-servo` (a separate package), clang-tidy, cppcheck, lcov/gcovr, ruff, pre-commit, pytest-cov, **PlotJuggler 4**; optional gz_ros2_control, Foxglove bridge. Jetson: `base` plus serial tooling and the demo nodes |
-| `real` | `jetson` | `braco/jetson` | `arm_routine.sh`: the braco launch on the real arm + the web page | the serial port, the LCD's I2C bus, `/dev/input` |
-| `sim` | `pc` | `braco/pc` | `arm_routine.sh` with `SIM=true`: the launch with `sim:=true` + the web page on Gazebo | your display (X11) |
+| `dev` | (always) | `braco-image/pc` (`pc`) or `braco-image/jetson` (`jetson`), from `COMPOSE_PROFILES` | PC: `sleep infinity`, you `exec` into it. Jetson: one throw-away container per command | PC: `ros-lyrical-desktop`, `ros-lyrical-ros-gz`, `ros-lyrical-moveit` **and** `ros-lyrical-moveit-servo` (a separate package), clang-tidy, cppcheck, lcov/gcovr, ruff, pre-commit, pytest-cov, **PlotJuggler 4**; optional gz_ros2_control, Foxglove bridge. Jetson: `base` plus serial tooling and the demo nodes |
+| `real` | `jetson` | `braco-image/jetson` | `arm_routine.sh`: the braco launch on the real arm + the web page | the serial port, the LCD's I2C bus, `/dev/input` |
+| `sim` | `pc` | `braco-image/pc` | `arm_routine.sh` with `SIM=true`: the launch with `sim:=true` + the web page on Gazebo | your display (X11) |
 
 `COMPOSE_PROFILES` in `.env` is the machine: exactly `pc` or `jetson`. It enables `sim` or `real` and picks the image
 of `dev`.
@@ -104,7 +106,8 @@ skips the entrypoint, so ROS is **not** sourced - prefix it with `ros_entrypoint
 
 - `make up GPU=nvidia` (or `GPU=dri`) adds `compose/nvidia.yml` or `compose/dri.yml` for `dev` and `sim` (PC only);
   `COMPOSE_FILE` in `.env` does the same permanently.
-- `make build` always runs colcon; `make up` only when something under `ros2_ws/src` or `libs` changed.
+- `make build` always runs colcon; `make up` only when something under `ros2_ws/src` or `libs` changed
+  (on the Jetson, only the packages of the real system: see below).
   After `make build`, `make restart` (or the next `make up`) runs the new build.
 - `make clean` deletes colcon's `build/ install/ log/` and the ROS logs (`~/.ros/log` on the host and in the
   containers). `make reset` also removes the containers, the cache volumes and the images, and asks first
@@ -172,7 +175,7 @@ Notes:
 ## The system on the Jetson: driver, temperature, joystick, web page
 
 Everything from `ros2_ws/src/braco_driver`, `braco_teleop` and `braco_bringup` runs all the time on the Nano **inside
-ROS 2, in one container**, `real` (same `braco/jetson` image as `dev`, no build of its own). `arm_routine.sh` is its
+ROS 2, in one container**, `real` (same `braco-image/jetson` image as `dev`, no build of its own). `arm_routine.sh` is its
 entrypoint: it starts `ros2 launch braco_bringup braco.launch.py sim:=false` and the web page. It does **not** move
 the arm at start or stop:
 
@@ -214,7 +217,7 @@ Launch arguments: `port`, `baud`, `lcd_bus`, `device` (filled from `.env`). Use 
   its own `Makefile` still builds the stand-alone programs.
 
 ```bash
-make up                                  # build if needed, start dev + real, wait for the arm, print the URL
+make up                                  # build if needed, start real, wait for the arm, print the URL
 make status                              # containers, CPU/RAM, the arm as the page sees it, 3 s of tegrastats
 make park                                # fold, release joints, rest mode (driver keeps reading temperatures)
 make temps                               # print the servo temperatures once
@@ -245,7 +248,7 @@ starts no node, so the page is up but shows the arm as not connected, and `make 
 | Gazebo | Installed **only** via `ros-lyrical-ros-gz`: on Lyrical that is Gazebo **Jetty** from packages.ros.org (Harmonic and Ionic are source-only). Never `apt install gz-*` by hand. |
 | RMW / DDS | `ROS_DOMAIN_ID` and `RMW_IMPLEMENTATION` come from one `.env` field and must be copied to both machines. Default is Fast DDS; Cyclone DDS is installed too. Zenoh (`rmw_zenoh_cpp`) is installed if available but needs `ros2 run rmw_zenoh_cpp rmw_zenohd` - it is not a drop-in switch. |
 | Networking | `network_mode: host` + `ipc: host` (multicast discovery across machines; Fast DDS shared memory between containers on one host). Allow UDP between the machines if a firewall is active. |
-| Images | Built locally and tagged `braco/pc:lyrical` and `braco/jetson:lyrical`. `pull_policy: never` stops Compose from looking those names up on Docker Hub; `make up` builds a missing image and uses an existing one as is (`make image` rebuilds it). |
+| Images | Built locally and tagged `braco-image/pc:lyrical` and `braco-image/jetson:lyrical`. `pull_policy: never` stops Compose from looking those names up on Docker Hub; `make up` builds a missing image and uses an existing one as is (`make image` rebuilds it). |
 | Build flags | `colcon-defaults.yaml` is identical in both images (symlink-install, RelWithDebInfo, ccache). On the Nano `make build` adds `--parallel-workers 1`, `MAKEFLAGS=-j2`, Release and no tests. |
 | User IDs | The image creates user `dev` with your `USER_UID/USER_GID` (and removes Ubuntu's default `ubuntu` user at UID 1000) so `ros2_ws` stays writable. If you pull a prebuilt image whose UID differs from yours, rebuild with your IDs. |
 | Real-time | The unprivileged `dev` user gets SCHED_FIFO and locked memory from the `rtprio`/`memlock` ulimits in `compose.yml` (the `cap_add` entries only help root/sudo). If rootless Docker refuses the ulimits, delete that block. |
@@ -304,7 +307,7 @@ Found by that real smoke test run:
 |---|---|
 | `curl: (60) SSL certificate ... self-signed certificate in certificate chain` in step 2 | A network that re-signs HTTPS (some campus/corporate proxies). Add the proxy's CA certificate to the image (copy it to `/usr/local/share/ca-certificates/` and run `update-ca-certificates` before step 2). |
 | `could not determine the ros-apt-source version` / 403 | Only with `ROS_APT_SOURCE_VERSION=latest` and no way to reach github.com. Use the pinned default. |
-| `! Image braco/pc:lyrical pull access denied ... repository does not exist` | Harmless and gone in this version. Compose used to try Docker Hub for `braco/pc` (an image that only exists once you build it) before falling back to building. The compose file now has `pull_policy: never`, so it builds locally without asking a registry. If you still see it, your `compose.yml` predates that line. |
+| `! Image braco-image/pc:lyrical pull access denied ... repository does not exist` | Harmless and gone in this version. Compose used to try Docker Hub for `braco-image/pc` (an image that only exists once you build it) before falling back to building. The compose file now has `pull_policy: never`, so it builds locally without asking a registry. If you still see it, your `compose.yml` predates that line. |
 | `toomanyrequests` pulling `ubuntu:26.04` | Docker Hub's anonymous pull limit; `docker login`, or wait. |
 | Warning block "optional packages that could NOT be installed" | Not an error: those packages are optional and the build continues. The smoke test (`make run CMD=seame-smoke-test`) lists them with a hint. |
 | `PlotJuggler 4: not installed: ...` in the skipped list | The GitHub download failed or its checksum did not match; the image still works. Rebuild with network access, or on a non-amd64 host use Foxglove Studio via `foxglove_bridge` or `rqt_plot`. |
@@ -347,5 +350,5 @@ docker compose build --no-cache dev                     # refresh this machine's
 docker compose down                                     # stop the containers (volumes with ccache/gz cache are kept)
 docker compose run --rm dev bash -c 'colcon build && colcon test && colcon test-result --verbose'
 docker compose run --rm dev ros2 launch urdf_tutorial display.launch.py model:=/ws/src/<pkg>/urdf/arm.urdf.xacro
-docker build --target pc -t braco/pc:lyrical docker     # without compose
+docker build --target pc -t braco-image/pc:lyrical docker     # without compose
 ```
