@@ -30,7 +30,7 @@ constexpr auto DRIVER_TIMEOUT = 60s;   // at boot arm_driver may still be starti
 
 bool zero(braco_bringup::ArmMoves & arm)
 {
-  if (!arm.waitForDriver(DRIVER_TIMEOUT)) {return false;}
+  if (!arm.waitForDriver(DRIVER_TIMEOUT) || !arm.takeControl()) {return false;}
   // Leave rest mode (set by park), otherwise power_on and the move are refused.
   arm.setRest(false);
   arm.powerOn();   // the joints may still be free from the last park

@@ -31,7 +31,7 @@ constexpr auto DRIVER_TIMEOUT = 10s;
 
 bool park(braco_bringup::ArmMoves & arm)
 {
-  if (!arm.waitForDriver(DRIVER_TIMEOUT)) {return false;}
+  if (!arm.waitForDriver(DRIVER_TIMEOUT) || !arm.takeControl()) {return false;}
   arm.setRest(false);   // rest mode refuses the park move itself
   if (!arm.moveTo(
       mycobot::PARK_ANGLES, mycobot::MOVE_SPEED, mycobot::POSE_TOLERANCE_DEG, TIMEOUT))
