@@ -5,7 +5,7 @@
     action      /fibonacci     ros2_basics_interfaces/action/Fibonacci (feedback, cancel)
     lifecycle   managed_talker_py, managed_talker_cpp (get_state / change_state)
 
-Start them in the arm container with `make arm-basics` (from the repo root).
+Start them in the system container with `make demos` (from the repo root).
 """
 
 import collections
@@ -79,7 +79,7 @@ class Demos:
         if self._types is None:
             raise RuntimeError(self._bridge.error or "ROS 2 not available")
         if what not in self._clients:
-            raise RuntimeError("ros2_basics_interfaces not found: build the workspace (make ws-build)")
+            raise RuntimeError("ros2_basics_interfaces not found: build the workspace (make build)")
         return self._clients[what]
 
     # ---- service -----------------------------------------------------------------
@@ -102,7 +102,7 @@ class Demos:
             if self._fib["state"] in ("sending", "running"):
                 raise RuntimeError("a Fibonacci goal is already running")
         if not client.wait_for_server(timeout_sec=1.0):
-            raise RuntimeError("action /fibonacci is not available (make arm-basics)")
+            raise RuntimeError("action /fibonacci is not available (make demos)")
         with self._lock:
             self._fib = {"state": "sending", "order": order, "partial": [], "result": None,
                          "by": who, "t": time.time()}
@@ -199,7 +199,7 @@ class Demos:
             return {
                 "available": True,
                 "error": None if self._types and self._types["AddTwoInts"] else
-                "ros2_basics_interfaces not found: build the workspace (make ws-build)",
+                "ros2_basics_interfaces not found: build the workspace (make build)",
                 "chatter": list(self._feeds["chatter"]),
                 "lifecycle_chatter": list(self._feeds["lifecycle_chatter"]),
                 "add_two_ints": {"present": "/add_two_ints" in services, "last": self._sum},

@@ -16,9 +16,9 @@
 The braco system in one ROS 2 launch, on the real arm or in simulation.
 
     sim:=false  arm_driver, temperature_monitor and joystick_teleop (the default). This is
-                what the `arm` container runs (make arm-up), started by arm_routine.sh, which
+                what the `real` container runs (make up), started by arm_routine.sh, which
                 also starts the web page. The arm is not zeroed or parked on start/stop.
-    sim:=true   the simulated arm. Reserved for the Gazebo bringup (#34) with the model from
+    sim:=true   the simulated arm, what the `sim` container on the PC runs. Reserved for the Gazebo bringup (#34) with the model from
                 braco_description (#25): until then it starts nothing and says so.
 
 Tuning parameters of the nodes live in config/braco.yaml. The wiring (port, baud, lcd_bus,

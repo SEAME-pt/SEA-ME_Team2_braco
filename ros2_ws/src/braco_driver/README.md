@@ -30,7 +30,7 @@ Reads `/arm/servo_temperatures` (never the port), shows them on the LCD1602 (`/d
 
 ## Run
 
-Both start with the whole system: `make arm-up` on the Jetson (`braco_bringup/launch/braco.launch.py`).
+Both start with the whole system: `make up` on the Jetson (`braco_bringup/launch/braco.launch.py`).
 Parameters are in `braco_bringup/config/braco.yaml`. By hand, in the dev container:
 
 ```bash

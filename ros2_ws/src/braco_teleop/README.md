@@ -22,6 +22,6 @@ anything dies.
 | client | `/arm/power_on` (when a joystick connects), `/arm/set_gripper` |
 
 The jogging logic (dead zone, speed modes, slow-down near the soft limits, homing steps) is in
-`include/braco_teleop/teleop_logic.hpp`, without ROS, and tested by `test/test_teleop_logic.cpp` (`make ws-test`).
+`include/braco_teleop/teleop_logic.hpp`, without ROS, and tested by `test/test_teleop_logic.cpp` (`make test`).
 
-Starts with the whole system (`make arm-up`); by hand: `ros2 run braco_teleop joystick_teleop`.
+Starts with the whole system (`make up`); by hand: `ros2 run braco_teleop joystick_teleop`.

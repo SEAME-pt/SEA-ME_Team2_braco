@@ -31,14 +31,15 @@ Presence and the lease live in the server's memory: run **one** uvicorn process 
 
 ## Run
 
-**On the Jetson** the page comes with the arm container, which already runs `arm_driver` and the other arm nodes:
+The page is part of the braco system: `make up` starts it with the rest, on port 8000 (`WEB_PORT` in `docker/.env`).
+
+**On the Jetson** it runs in the `real` container, next to `arm_driver` and the other arm nodes:
 
 ```bash
-make build ROLE=jetson   # once: the image now includes fastapi/uvicorn
-make ws-build ROLE=jetson
-make arm-up              # http://<jetson-ip>:8000 from any PC on the lab network
-make arm-basics          # optional: the ros2_basics demos for ROS 2 > Demos
-make arm-web-restart      # after editing web/: restarts only the page, the arm keeps running (control must be taken again)
+make up                  # http://<jetson-ip>:8000 from any PC on the lab network
+make demos               # optional: the ros2_basics demos for ROS 2 > Demos
+make logs S=web          # only the page's log lines
+make restart             # after editing web/: restarts the system container; the arm is not zeroed or parked
 ```
 
 There the page uses `ARM_SOURCE=ros`: it never opens the serial port, it is a client of `arm_driver`
@@ -47,32 +48,25 @@ every 100 ms, exactly like `braco_bringup/scripts/arm_moves.py`; if the page die
 arm. Park uses the firmware limits and leaves the servos on; it does not enter rest mode. Wake up leaves rest mode
 and powers the servos without moving the arm (rest mode is only entered with the *Rest on* button).
 
-**On a PC, without the arm** (mock data, no ROS):
+**On a PC** it runs in the `sim` container with `ARM_SOURCE=gazebo` (http://localhost:8000):
 
 ```bash
-make web-mock          # http://localhost:8000
-```
-
-**With Gazebo** (PC only, inside the `pc-dev` container where ROS 2 is):
-
-```bash
-make build          # once
-make web-sim        # http://localhost:8000, with the simulation already running in Gazebo
+make up                  # the page shows the arm as not connected until the Gazebo bringup (#34) exists
 ```
 
 The ROS 2 page then shows the PC's graph. The server finds the machine's role like the root Makefile does
 (`SEAME_ROLE`, `COMPOSE_PROFILES`, then the CPU): `ARM_SOURCE=gazebo` refuses to start on the Jetson.
 
-**Fallback: pymycobot straight to the serial port** (only while the arm container is down, the port has one owner):
+**Without the arm, ROS or docker** (mock data, for working on the page itself):
 
 ```bash
-make web               # or make web-start / web-stop / web-logs, in the background
+make web                 # http://localhost:8080, reloads when a file changes
 ```
 
 ## Tests
 
 ```bash
-make web-test
+make ci          # with the host checks and lint; the tests alone: .venv/bin/python -m pytest web/tests -q
 ```
 
 No arm, no ROS and no network needed:
@@ -89,19 +83,19 @@ No arm, no ROS and no network needed:
 The host fallback targets the Jetson's Python 3.8. To test that version from a PC:
 
 ```bash
-docker run --rm -v "$PWD":/src:ro python:3.8 bash -c 'cp -r /src /w && cd /w && rm -rf .venv && make web-test'
+docker run --rm -v "$PWD":/src:ro python:3.8 bash -c 'cp -r /src /w && cd /w && rm -rf .venv && make .venv/.web-test-installed && .venv/bin/python -m pytest web/tests -q'
 ```
 
 ## Environment variables
 
 | Variable | Default | Use |
 |---|---|---|
-| `ARM_SOURCE` | — | `ros`: the arm through arm_driver (the arm container sets it); `gazebo`: Gazebo over ROS 2 (PC only); unset: pymycobot on the serial port |
+| `ARM_SOURCE` | — | `ros`: the arm through arm_driver (the `real` container sets it); `gazebo`: Gazebo over ROS 2 (PC only); unset: pymycobot on the serial port |
 | `ARM_MOCK` | — | `1` uses mock data |
 | `BRACO_ROS` | `1` | `0` never starts ROS 2 (health, graph and demos stay empty) |
 | `GZ_JOINT_NAMES` | myCobot 280 URDF names | joints in `/joint_states` for Gazebo, comma separated |
 | `ARM_PORT` / `ARM_BAUD` | `/dev/ttyTHS1` / `1000000` | serial port for the pymycobot fallback |
-| `WEB_PORT` | `8000` | port in the arm container (`docker/.env`) |
+| `WEB_PORT` | `8000` | port of the page in the `real` / `sim` container (`docker/.env`) |
 | `GITHUB_TOKEN` | — | optional; raises the GitHub API limit (60 req/h without) |
 | `GITHUB_REPO` | `SEAME-pt/SEA-ME_Team2_braco` | repository of the sprints |
 

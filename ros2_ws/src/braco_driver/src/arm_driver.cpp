@@ -30,7 +30,7 @@
 //
 // Rest mode (read_only): motion, gripper and power_on are refused, but the
 // serial loop keeps publishing angles and temperatures, so the arm can cool
-// down under watch. park.py enters it; set_read_only false (or make arm-resume) leaves it.
+// down under watch. park.py enters it; set_read_only false (or make resume) leaves it.
 //
 // One serial thread does all the work, in this order on every pass:
 //   1. a requested stop (drops everything pending)
@@ -210,7 +210,7 @@ private:
     if (read_only_ && msg.type != ArmCommand::STOP) {
       RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 5000,
-        "rest mode: motion ignored (make arm-resume or call arm/set_read_only false)");
+        "rest mode: motion ignored (make resume or call arm/set_read_only false)");
       return;
     }
     std::lock_guard<std::mutex> lock(state_mutex_);

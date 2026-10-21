@@ -2,20 +2,20 @@
 
 Quick reference for daily work. Explanations are in [README.md](README.md), step-by-step usage in [INSTRUCTIONS.md](INSTRUCTIONS.md).
 
-## Project containers (run from `docker/`)
+## Project containers (run from the repo root)
 
 | Command | What it does |
 |---|---|
-| `make env ROLE=pc` / `make env ROLE=jetson` | Create `.env` for this machine (once) |
-| `make doctor` | Check Docker, Compose, `.env`, folders, display/serial |
-| `make up` / `make down` | Start / stop the container |
-| `make shell` | Shell inside the container (ROS + `/ws` sourced) |
-| `make exec CMD='ros2 node list'` | Run one command in the running container |
-| `make smoke` | Check the install |
-| `make talker-listener` | C++ talker + Python listener self-test (PASS/FAIL) |
-| `make talker` / `make listener` | Two-machine test (one on each machine) |
-| `make ping-pub` / `make ping-echo` | Simplest cross-machine test |
-| `make ws-deps` / `make ws-build` / `make ws-test` / `make ws-clean` | rosdep / colcon build / colcon test / delete build output |
+| `make setup` | Create `.env` for this machine, git hooks, folders (once; `ROLE=pc\|jetson` to override the detection) |
+| `make doctor` | Check Docker, Compose, `.env`, folders, devices; on the Jetson also RAM, power mode, swap |
+| `make up` / `make down` | Turn the system on / off (`real` on the Jetson, `sim` on the PC, plus `dev`) |
+| `make status` / `make logs` | Containers and resources / follow the system's log (`S=web`, `S=arm_driver`, ...) |
+| `make shell` | Shell inside the `dev` container (ROS + `/ws` sourced) |
+| `make run CMD='ros2 node list'` | Run one command in `dev` |
+| `make run CMD=seame-smoke-test` | Check the install |
+| `make net-test` | C++ talker + Python listener self-test (PASS/FAIL) |
+| `make net-talk` / `make net-listen` | Two-machine test (one on each machine) |
+| `make build` / `make test` / `make clean` | colcon build / colcon test / delete build output and ROS logs |
 | `make` | List all targets |
 
 ## Environment

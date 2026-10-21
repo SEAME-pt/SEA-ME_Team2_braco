@@ -58,13 +58,15 @@ sudo usermod -aG dialout $USER
 
 ### 2.3 Repository Initialization
 
-After cloning the repository, configure the project git hooks:
+After cloning the repository, prepare the machine once:
 
 ```bash
-make init
+make setup
 ```
 
-This binds commit message linters in `.githooks/` to ensure commit message standards are maintained.
+It creates `docker/.env` for this machine (PC or Jetson, detected), binds the commit message linters in `.githooks/`
+so commit message standards are maintained, and runs `make doctor`. Then `make up` turns the braco system on
+(see [docker/README.md](../docker/README.md)); `make` lists every command.
 
 ### 2.4 Python Software Installation
 
@@ -232,14 +234,14 @@ the same commands:
 
 | Job | What it runs | Reproduce locally |
 |---|---|---|
-| `host` | `make env`, then `make host-check` (venv with Python 3.11 from `.python-version`, imports, C++ hello-world build), `make lint` (compose files, shellcheck, hadolint) and `make web-test` (pytest `web/tests`) | `make env` (once), then `make ci` |
-| `ros` | Builds the Dockerfile's `base` stage (Ubuntu 26.04 + ROS 2 Lyrical), then `rosdep install`, `colcon build` and `colcon test` of `ros2_ws/src` and `libs` in a throw-away container | `make ci-image ci-ros` |
+| `host` | `make ci`: host checks (venv with Python 3.11 from `.python-version`, imports, C++ hello-world build), `make lint` (compose files for both machines, shellcheck, hadolint) and the web page tests (pytest `web/tests`); creates `docker/.env` if missing | `make ci` |
+| `ros` | Builds the Dockerfile's `base` stage (Ubuntu 26.04 + ROS 2 Lyrical), then `rosdep install`, `colcon build` and `colcon test` of `ros2_ws/src`, `libs` and `examples` in a throw-away container | `make ci-ros` (builds the image the first time) |
 
 * Install `shellcheck` and `hadolint` locally: without them `make lint` skips those checks, while CI always runs them.
 * Caches: pip (`actions/setup-python`), the image layers (BuildKit `type=gha`), and ccache + colcon `build/`
   (`actions/cache`, reset whenever `docker/` changes). A warm run only recompiles what changed.
-* The arm64 Jetson image is not built in CI (QEMU is too slow); build it by hand with `make jetson-cross`.
-* `ci-ros` writes to `ros2_ws/build`, `install` and `log`, like `make ws-build`, plus its ccache in `ros2_ws/.ccache`.
+* The arm64 Jetson image is not built in CI (QEMU is too slow); build it by hand with `make jetson-image`.
+* `ci-ros` writes to `ros2_ws/build`, `install` and `log`, like `make build`, plus its ccache in `ros2_ws/.ccache`.
 
 ---
 
@@ -248,9 +250,9 @@ the same commands:
 | Problem | Cause | Solution |
 |---|---|---|
 | `Permission denied: '/dev/ttyTHS1'` | User not in `dialout` group | Run `sudo usermod -aG dialout $USER`, then log out and back in. |
-| `Device or resource busy` | Another process is accessing UART (with the arm services up it is the `arm_driver` node in the `arm` container, which holds the port exclusively) | Check active locks using `lsof /dev/ttyTHS1` or `fuser /dev/ttyTHS1`. Don't stop the driver just to run a script: use `make arm-park`, `arm-zero` or `arm-temps` from the repo root (see [arm-rest-mode.md](arm-rest-mode.md)). |
+| `Device or resource busy` | Another process is accessing UART (with the system up it is the `arm_driver` node in the `real` container, which holds the port exclusively) | Check active locks using `lsof /dev/ttyTHS1` or `fuser /dev/ttyTHS1`. Don't stop the driver just to run a script: use `make park`, `make zero` or `make temps` from the repo root (see [arm-rest-mode.md](arm-rest-mode.md)). |
 | `[WARN] No response to get_angles query` | Base power switch off or wrong baud rate | Ensure the circular 60W power switch on the base is turned ON and baud rate is set to `1000000`. |
-| Motors locked or resisting movement | Active closed-loop holding torque | Run torque release script (see [Safety Guide](safety.md#52-software-operational-stop--holding-torque-behavior)): `mc.release_all_servos()`. With the arm services up, `make arm-park` releases the joints and keeps the driver monitoring temperatures. |
+| Motors locked or resisting movement | Active closed-loop holding torque | Run torque release script (see [Safety Guide](safety.md#52-software-operational-stop--holding-torque-behavior)): `mc.release_all_servos()`. With the system up, `make park` releases the joints and keeps the driver monitoring temperatures. |
 
 ---
 
@@ -262,3 +264,4 @@ the same commands:
 | *2026-10-09* | Added hardware installation guides, C++ & Python test suites, and CMake build support | d-branco |
 | *2026-10-09* | Fixed CMake output path to tests/ directory and recorded successful physical robot test verification | d-branco |
 | *2026-10-20* | Added the CI section (GitHub Action, issue #16) and its status badge | Petrichor |
+| *2026-10-21* | New make commands (issue #54): `make setup`, `make ci`, `make ci-ros`, `make park` ... | Denionline |

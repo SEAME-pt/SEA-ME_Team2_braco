@@ -1,8 +1,8 @@
 # SEA:ME 2.0 - arm class images, one Dockerfile with three stages:
 #
 #   base           Ubuntu 26.04 + ROS 2 Lyrical Luth (ros-base) + ros2_control + build/test tooling + pymycobot
-#   jetson-driver  base + serial tooling - the aarch64 robot-side image for the Jetson Nano
-#   pc-dev         base + RViz2, MoveIt 2, Gazebo (ros_gz), QA tooling - the x86_64 workstation image
+#   jetson         base + serial tooling - the aarch64 robot-side image for the Jetson Nano (braco/jetson)
+#   pc             base + RViz2, MoveIt 2, Gazebo (ros_gz), QA tooling - the x86_64 workstation image (braco/pc)
 #
 # Both final images are built FROM the same `base` stage, so the ROS distro, ros2_control and pymycobot
 # versions cannot drift apart between the two machines. Stages (instead of three files linked by a
@@ -10,8 +10,8 @@
 # `docker compose up`, and prebuilt images cannot be pulled on the Jetson. With stages, `up` only builds
 # when an image is missing and BuildKit shares the base layers by itself.
 #
-#   docker build --target pc-dev        -t braco/pc:lyrical        docker
-#   docker build --target jetson-driver -t braco/jetson:lyrical docker
+#   docker build --target pc     -t braco/pc:lyrical     docker
+#   docker build --target jetson -t braco/jetson:lyrical docker
 #
 # The `base` steps follow "Installing on Ubuntu - how-to" from the ROS 2 Lyrical documentation:
 # locale, Universe, ros2-apt-source, `apt upgrade`, then the ROS packages.
@@ -74,8 +74,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         python3-pip python3-dev python3-numpy python3-yaml python3-serial \
         python3-fastapi python3-uvicorn python3-websockets \
  && rm -rf /var/lib/apt/lists/*
-# (fastapi/uvicorn: the braco web page, served by the arm container on the Jetson and by
-#  `make web-sim` in pc-dev, so both images need them)
+# (fastapi/uvicorn: the braco web page, served by the `real` container on the Jetson and by
+#  the `sim` container on the PC, so both images need them)
 
 # Same version on PC and Jetson because both inherit this layer. (pymycobot also pulls pyserial and
 # numpy - already provided by apt above - and bleak.) It must live in the system Python so that
@@ -155,11 +155,11 @@ ENTRYPOINT ["/usr/local/bin/ros_entrypoint.sh"]
 CMD ["bash"]
 
 # ============================================================================================
-# jetson-driver - robot side (Module 1: pymycobot lifecycle driver, ros2_control, controllers)
+# jetson - robot side (Module 1: pymycobot lifecycle driver, ros2_control, controllers)
 #   No GUI, MoveIt or Gazebo: those run on the PC and talk to this container over DDS.
 #   GPU / TensorRT is intentionally NOT here - see README, "Module 2 and the Nano".
 # ============================================================================================
-FROM base AS jetson-driver
+FROM base AS jetson
 
 ARG DEBIAN_FRONTEND=noninteractive
 USER root
@@ -168,7 +168,7 @@ ENV SEAME_ROLE=jetson-driver
 
 # picocom/pyserial are already in base. libserial-dev is only needed if you implement the myCobot
 # protocol in a C++ hardware_interface instead of calling pymycobot.
-# demo_nodes_cpp / demo_nodes_py are the C++ talker and Python listener used by `make talker-listener`
+# demo_nodes_cpp / demo_nodes_py are the C++ talker and Python listener used by `make net-test`
 # (ros-base does not include them; the PC image gets them from ros-lyrical-desktop). They are added in this
 # stage, not in `base`, so the PC image's layers stay cached.
 RUN apt-get update \
@@ -182,9 +182,9 @@ USER dev
 CMD ["bash"]
 
 # ============================================================================================
-# pc-dev - workstation: RViz2, MoveIt 2, Gazebo + ros2_control in simulation, CI-grade QA tooling
+# pc - workstation: RViz2, MoveIt 2, Gazebo + ros2_control in simulation, CI-grade QA tooling
 # ============================================================================================
-FROM base AS pc-dev
+FROM base AS pc
 
 ARG DEBIAN_FRONTEND=noninteractive
 USER root

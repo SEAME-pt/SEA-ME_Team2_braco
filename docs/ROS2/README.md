@@ -695,7 +695,7 @@ Our images configure `colcon` with `symlink-install`, `RelWithDebInfo` and `ccac
 | ros2 doctor | `ros2 doctor --report` | Checks the setup and network, prints a report |
 | Gazebo | via `ros_gz` | Physics simulation |
 
-GUI tools (rqt, RViz2, Gazebo, PlotJuggler) are only in the **PC image** (`pc-dev`); the Jetson image is headless. The Jetson's topics are visible from the PC over the network, so you inspect the arm from the PC.
+GUI tools (rqt, RViz2, Gazebo, PlotJuggler) are only in the **PC image** (`braco/pc`); the Jetson image is headless. The Jetson's topics are visible from the PC over the network, so you inspect the arm from the PC.
 
 ---
 
@@ -716,7 +716,7 @@ GUI tools (rqt, RViz2, Gazebo, PlotJuggler) are only in the **PC image** (`pc-de
 ## 23. How this maps to our project
 
 ```
- PC (pc-dev container)                              Jetson Nano (jetson-driver container)
+ PC (dev + sim containers)                          Jetson Nano (dev + real containers)
  ┌────────────────────────────────────┐   DDS,      ┌────────────────────────────────────┐
  │ RViz2 · MoveIt 2 · Gazebo          │   domain 42 │ arm driver (lifecycle node,        │
  │ planning, visualisation, QA        │ ◄─────────► │   pymycobot over /dev/ttyTHS1)     │

@@ -78,7 +78,7 @@ if ! command -v ros2 >/dev/null 2>&1 && [ -r /usr/local/share/seame/env.sh ]; th
     . /usr/local/share/seame/env.sh
 fi
 if ! command -v ros2 >/dev/null 2>&1; then
-    bad "ros2 not found - run this through the container (make talker-listener), which sources ROS first"
+    bad "ros2 not found - run this through the container (make net-test), which sources ROS first"
     exit 2
 fi
 
@@ -95,7 +95,7 @@ preflight() {
     done
     if [ "${missing}" -ne 0 ]; then
         echo "       install for this session: sudo apt-get update && sudo apt-get install -y ros-${ROS_DISTRO:-lyrical}-demo-nodes-cpp ros-${ROS_DISTRO:-lyrical}-demo-nodes-py"
-        echo "       (the jetson-driver image includes them; rebuild with: make build)"
+        echo "       (the jetson image includes them; rebuild with: make image)"
         exit 2
     fi
 }
@@ -135,10 +135,10 @@ publishers_of() {       # publishers_of TOPIC -> one fully qualified node name p
 
 hints_no_messages() {
     echo "       Nothing was heard. Check, in this order:"
-    echo "         1. is a talker running?  On the other machine:  make talker   (same TOPIC=${TOPIC})"
+    echo "         1. is a talker running?  On the other machine:  make net-talk   (same TOPIC=${TOPIC})"
     echo "         2. both machines use the same ROS_DOMAIN_ID (here: ${ROS_DOMAIN_ID:-0}) and RMW_IMPLEMENTATION (here: ${RMW_IMPLEMENTATION:-default})"
     echo "         3. network: same subnet, UDP not blocked by a firewall; if multicast is blocked set ROS_STATIC_PEERS in compose.yml"
-    echo "         4. what this container can see:  make exec CMD='ros2 node list; ros2 topic list'"
+    echo "         4. what this container can see:  make run CMD='ros2 node list; ros2 topic list'"
 }
 
 # ---- modes ------------------------------------------------------------------------------------------
@@ -149,7 +149,7 @@ mode_talker() {
     preflight
     echo
     echo "  Publishing 'Hello World: N' once a second on ${TOPIC} as node /${node}."
-    echo "  Now start the listener on the other machine (or this one):  make listener"
+    echo "  Now start the listener on the other machine (or this one):  make net-listen"
     echo "  Ctrl-C stops the talker."
     echo
     exec ros2 run demo_nodes_cpp talker --ros-args -r "chatter:=${TOPIC}" -r "__node:=${node}"
@@ -239,10 +239,10 @@ mode_selftest() {
     echo
     if [ "${failed}" -eq 0 ]; then
         echo "PASS: C++ talker -> Python listener over ${RMW_IMPLEMENTATION:-the default RMW} works on ${ROLE_TAG}"
-        echo "      Next: prove the network - 'make talker' on one machine, 'make listener' on the other."
+        echo "      Next: prove the network - 'make net-talk' on one machine, 'make net-listen' on the other."
         exit 0
     fi
-    [ "${HEARD}" -eq 0 ] && echo "       No message arrived even on this machine: check the RMW and the container's network (make info, make doctor)."
+    [ "${HEARD}" -eq 0 ] && echo "       No message arrived even on this machine: check the RMW and the container's network (make doctor)."
     echo; echo "FAIL"; exit 1
 }
 
