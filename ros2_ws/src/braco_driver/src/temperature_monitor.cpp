@@ -43,14 +43,13 @@ using braco_interfaces::msg::ServoTemperatures;
 namespace
 {
 
-// Backlight colour for each temperature level (as in temps_lcd.cpp)
+// Backlight colour for each temperature level (mycobot::tempColour, as in temps_lcd.cpp)
 void setColour(ui::Status & status, mycobot::TempLevel level)
 {
-  switch (level) {
-    case mycobot::TempLevel::Normal: status.r = 0; status.g = 255; status.b = 0; break;
-    case mycobot::TempLevel::Warm: status.r = 255; status.g = 255; status.b = 0; break;
-    case mycobot::TempLevel::Hot: status.r = 255; status.g = 0; status.b = 0; break;
-  }
+  const mycobot::Rgb colour = mycobot::tempColour(level);
+  status.r = colour.r;
+  status.g = colour.g;
+  status.b = colour.b;
 }
 
 uint8_t diagLevel(mycobot::TempLevel level)
@@ -109,14 +108,14 @@ private:
       return;
     }
 
-    // Same check as MyCobot280::checkTemps(): the hottest joint sets the level
+    // The same check as MyCobot280::checkTemps(): the hottest joint sets the level
     mycobot::ServoTemps temps{};
-    int hottest = 0;
     for (size_t j = 0; j < temps.size(); ++j) {
       temps[j] = msg.celsius[j];
-      if (temps[j] > temps[hottest]) {hottest = static_cast<int>(j);}
     }
-    const auto level = mycobot::MyCobot280::tempLevel(temps[hottest]);
+    const auto check = mycobot::evaluateTemps(temps);
+    const auto level = check.level;
+    const int hottest = check.hottestJoint - 1;
 
     status_.feedbackOk = true;
     status_.temps = temps;

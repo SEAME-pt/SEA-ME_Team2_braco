@@ -16,8 +16,6 @@ using namespace std::chrono_literals;
 
 namespace {
 
-const int SPEED = 30;
-
 void printAngles(const char* label, const std::optional<mycobot::Angles>& angles) {
     if (!angles) {
         std::printf("%s (no valid reading)\n", label);
@@ -40,7 +38,7 @@ int main() {
         printAngles("Before:", mc.getAngles());
 
         // Send the command for all 6 joints to move simultaneously
-        mc.sendAngles({0, 0, 0, 0, 0, 0}, SPEED);
+        mc.sendAngles(mycobot::ZERO_ANGLES, mycobot::MOVE_SPEED);
 
         // Wait for the movement to finish before reading the angles again
         std::this_thread::sleep_for(3s);

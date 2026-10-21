@@ -51,6 +51,16 @@ constexpr JointLimits JOINT_LIMITS = {{
 constexpr Angles ZERO_ANGLES = {0, 0, 0, 0, 0, 0};
 constexpr Angles PARK_ANGLES = {0, 131, -148, 146, 4.5, 0};
 
+// Speed (1..100) and arrival tolerance used by every zero / park move, stand-alone and ROS 2.
+constexpr int MOVE_SPEED = 30;
+constexpr double POSE_TOLERANCE_DEG = 2.0;
+
+// One bounded step from `current` toward `pose`: every joint moves the same fraction, so
+// they all arrive together, and no joint ends more than about `lead_deg` short of the
+// worst deviation. Returns nothing when every joint is within `tolerance_deg` of `pose`.
+std::optional<Angles> stepToward(const Angles& current, const Angles& pose,
+                                 double lead_deg, double tolerance_deg);
+
 // Table clearance, from the measured setup. Heights are above the table.
 constexpr double BASE_HEIGHT_MM = 140.0;    // table -> arm base (Jetson casing)
 constexpr double TOOL_LENGTH_MM = 130.0;    // J6 flange -> tip of camera + gripper
@@ -125,6 +135,15 @@ struct TempCheck {
     TempLevel level;    // level of the hottest joint
     int hottestJoint;   // 1..6
 };
+
+// The hottest joint of `temps` sets the level (same check as MyCobot280::checkTemps()).
+TempCheck evaluateTemps(const ServoTemps& temps);
+
+// Backlight / LED colour for each level: green normal, yellow warm, red hot.
+struct Rgb {
+    uint8_t r, g, b;
+};
+Rgb tempColour(TempLevel level);
 
 // Factory values read from this arm with pymycobot (get_servo_data 21/23/22).
 constexpr PidSet FACTORY_PID = {{
