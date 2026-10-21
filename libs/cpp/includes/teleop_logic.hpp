@@ -98,6 +98,8 @@ constexpr int BUTTON_HOME = 3;            // X
 constexpr int BUTTON_L1 = 6;              // J6 negative
 constexpr int BUTTON_R1 = 7;              // J6 positive
 constexpr int BUTTON_SPEED_MODE = 9;      // cycle speed mode
+constexpr int BUTTON_FORCE_CONTROL = 8;   // hold: take the control from another owner (ROS only)
+constexpr double FORCE_HOLD_S = 1.0;
 
 // Axes that change while button 9 is held, or within this window of its
 // press/release, are ignored until they return to centre.
@@ -188,6 +190,31 @@ inline Wanted wantedMotion(const std::map<int, int>& axisState,
     }
     return wanted;
 }
+
+// Fires once when a button has been held down for holdS seconds; releasing it re-arms it.
+// Used by joystick_teleop to take the control on purpose (a brush of the button does nothing).
+class ButtonHold {
+public:
+    explicit ButtonHold(double holdS = FORCE_HOLD_S) : holdS_(holdS) {}
+
+    // pressed: the button's state now; nowS: any monotonic clock in seconds.
+    bool update(bool pressed, double nowS) {
+        if (!pressed) {
+            since_.reset();
+            fired_ = false;
+            return false;
+        }
+        if (!since_) since_ = nowS;
+        if (fired_ || nowS - *since_ < holdS_) return false;
+        fired_ = true;
+        return true;
+    }
+
+private:
+    double holdS_;
+    std::optional<double> since_;   // when the current press started
+    bool fired_ = false;            // already fired during this press
+};
 
 // Homing step: one bounded step of stepToward() to the zero pose. Returns nothing
 // when every joint is within HOME_TOLERANCE_DEG of zero.

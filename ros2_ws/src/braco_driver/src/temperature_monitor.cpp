@@ -157,7 +157,7 @@ private:
     if (level != last_level_ || !had_data_) {
       if (level == mycobot::TempLevel::Hot) {
         RCLCPP_ERROR(
-          get_logger(), "servo J%d is HOT (%d C) - let the arm rest",
+          get_logger(), "servo J%d is HOT (%d C)",
           hottest + 1, temps[hottest]);
       } else if (level == mycobot::TempLevel::Warm) {
         RCLCPP_WARN(get_logger(), "servo J%d is warm (%d C)", hottest + 1, temps[hottest]);
