@@ -29,35 +29,35 @@ import time
 
 from pymycobot import MyCobot280
 
-SERIAL_PORT = "/dev/ttyTHS1"
+SERIAL_PORT = '/dev/ttyTHS1'
 BAUD_RATE = 1000000
-JOYSTICK_DEVICE = "/dev/input/js0"
+JOYSTICK_DEVICE = '/dev/input/js0'
 
-SPEED = 25              # movement speed while a direction is held (1 to 100)
+SPEED = 25  # movement speed while a direction is held (1 to 100)
 HOME_SPEED = 25
 GRIPPER_SPEED = 50
 AXIS_THRESHOLD = 16000  # stick must pass this (max is 32767) to count as pushed
-COMMAND_GAP = 0.05      # seconds between two serial commands
+COMMAND_GAP = 0.05  # seconds between two serial commands
 
 # axis number -> (joint 1..6, direction: 1 or -1)
 # Run with --debug to see the axis numbers of your controller.
 AXIS_TO_JOINT = {
-    0: (1, 1),   # left stick X
-    1: (2, 1),   # left stick Y
-    4: (3, 1),   # right stick Y
-    3: (4, 1),   # right stick X
-    7: (5, 1),   # d-pad Y
-    6: (6, 1),   # d-pad X
+    0: (1, 1),  # left stick X
+    1: (2, 1),  # left stick Y
+    4: (3, 1),  # right stick Y
+    3: (4, 1),  # right stick X
+    7: (5, 1),  # d-pad Y
+    6: (6, 1),  # d-pad X
 }
 
 BUTTON_GRIPPER_CLOSE = 0  # A
-BUTTON_GRIPPER_OPEN = 1   # B
-BUTTON_HOME = 3           # Y
+BUTTON_GRIPPER_OPEN = 1  # B
+BUTTON_HOME = 3  # Y
 
 # Slightly inside the mechanical limits. Index 0 is unused so joint N is LIMITS[N].
 LIMITS = [None, 160, 130, 145, 140, 160, 175]
 
-EVENT_FORMAT = "IhBB"  # time (ms), value, type, number
+EVENT_FORMAT = 'IhBB'  # time (ms), value, type, number
 EVENT_SIZE = struct.calcsize(EVENT_FORMAT)
 TYPE_BUTTON = 0x01
 TYPE_AXIS = 0x02
@@ -98,24 +98,24 @@ def quit_on_signal(signum, frame):
 
 
 def main():
-    debug = "--debug" in sys.argv
+    debug = '--debug' in sys.argv
 
     # Closing the terminal or SSH session must also stop the arm.
     signal.signal(signal.SIGTERM, quit_on_signal)
     signal.signal(signal.SIGHUP, quit_on_signal)
 
-    print("1/2 Opening joystick", JOYSTICK_DEVICE)
+    print('1/2 Opening joystick', JOYSTICK_DEVICE)
     fd = os.open(JOYSTICK_DEVICE, os.O_RDONLY | os.O_NONBLOCK)
-    print("    OK")
+    print('    OK')
 
-    print("2/2 Connecting to the arm on", SERIAL_PORT)
+    print('2/2 Connecting to the arm on', SERIAL_PORT)
     mc = MyCobot280(SERIAL_PORT, BAUD_RATE)
     time.sleep(1)
     mc.power_on()
     time.sleep(0.5)
-    print("    Current angles:", mc.get_angles())
+    print('    Current angles:', mc.get_angles())
 
-    print("Ready. Hold a direction to move, release to stop. Ctrl+C quits.")
+    print('Ready. Hold a direction to move, release to stop. Ctrl+C quits.')
     axis_state = {}
     moving = {}  # joint -> direction currently commanded
 
@@ -125,14 +125,14 @@ def main():
                 if ev_type == TYPE_AXIS:
                     axis_state[number] = value
                     if debug:
-                        print("axis   %d = %d" % (number, value))
+                        print('axis   %d = %d' % (number, value))
                 elif ev_type == TYPE_BUTTON:
                     if debug:
-                        print("button %d = %d" % (number, value))
+                        print('button %d = %d' % (number, value))
                     if value != 1:
                         continue
                     if number == BUTTON_HOME:
-                        print(">>> all joints to 0")
+                        print('>>> all joints to 0')
                         mc.stop()
                         time.sleep(COMMAND_GAP)
                         mc.send_angles([0, 0, 0, 0, 0, 0], HOME_SPEED)
@@ -141,10 +141,10 @@ def main():
                         axis_state = {}
                         moving = {}
                     elif number == BUTTON_GRIPPER_CLOSE:
-                        print(">>> gripper close")
+                        print('>>> gripper close')
                         mc.set_gripper_state(1, GRIPPER_SPEED)
                     elif number == BUTTON_GRIPPER_OPEN:
-                        print(">>> gripper open")
+                        print('>>> gripper open')
                         mc.set_gripper_state(0, GRIPPER_SPEED)
 
             wanted = wanted_motion(axis_state)
@@ -153,7 +153,7 @@ def main():
                 # so the ones still held are sent again right after.
                 released = [j for j in moving if wanted.get(j) != moving[j]]
                 if released:
-                    print(">>> stop")
+                    print('>>> stop')
                     mc.stop()
                     time.sleep(COMMAND_GAP)
                     moving = {}
@@ -161,23 +161,23 @@ def main():
                     if joint in moving:
                         continue
                     target = direction * LIMITS[joint]
-                    print(">>> send_angle(%d, %d, %d)" % (joint, target, SPEED))
+                    print('>>> send_angle(%d, %d, %d)' % (joint, target, SPEED))
                     mc.send_angle(joint, target, SPEED)
                     time.sleep(COMMAND_GAP)
                 moving = dict(wanted)
 
             time.sleep(0.02)
     except KeyboardInterrupt:
-        print("\nQuitting.")
+        print('\nQuitting.')
     except OSError as error:
-        print("\nJoystick lost (%s)." % error)
+        print('\nJoystick lost (%s).' % error)
     finally:
         # Never leave the arm travelling towards a limit.
         mc.stop()
         time.sleep(0.2)
-        print("Arm stopped. Final angles:", mc.get_angles())
+        print('Arm stopped. Final angles:', mc.get_angles())
         os.close(fd)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
