@@ -1,6 +1,6 @@
 """Tests for the web dashboard server. No arm and no network needed.
 
-    make web-test
+    make ci
 """
 
 import math
@@ -189,14 +189,14 @@ def test_arm_source_handles_missing_temps_method(fake_pymycobot, monkeypatch):
     assert s["temps"] is None and s["temp_levels"] is None
 
 
-def test_mock_arm_stays_inside_soft_limits(monkeypatch):
+def test_mock_arm_stays_inside_joint_limits(monkeypatch):
     monkeypatch.setattr(arm, "ANGLE_PERIOD", 0.01)
     mock = arm.MockArm()
     mock.start()
     assert wait_for(lambda: mock.snapshot()["temps"] is not None)
     for _ in range(20):
         angles = mock.snapshot()["angles"]
-        for a, (lo, hi) in zip(angles, arm.SOFT_LIMITS):
+        for a, (lo, hi) in zip(angles, arm.JOINT_LIMITS):
             assert lo <= a <= hi
         time.sleep(0.01)
 
@@ -568,7 +568,7 @@ def test_ros_source_is_chosen(monkeypatch):
 
 
 def test_ros_panels_without_ros(client):
-    for path in ("/api/ros/health", "/api/ros/graph", "/api/ros/demos"):
+    for path in ("/api/ros/health", "/api/ros/graph"):
         data = client.get(path).json()
         assert data["available"] is False and "BRACO_ROS=0" in data["error"]
 
@@ -700,9 +700,5 @@ def test_operator_only_extras(client):
             assert r.status_code == 409   # resting: wake up first
             assert client.post("/api/wake", headers=A).status_code == 200
             assert client.get("/api/status").json()["resting"] is False
-            # demos need ROS: a clear error, not a crash
-            r = client.post("/api/ros/demos/add_two_ints", json={"a": 1, "b": 2}, headers=A)
-            assert r.status_code == 503 and "BRACO_ROS=0" in r.json()["detail"]
-            assert client.post("/api/ros/demos/fibonacci", json={"order": 99}, headers=A).status_code == 422
         finally:
             client.post("/api/control/release", headers=A)

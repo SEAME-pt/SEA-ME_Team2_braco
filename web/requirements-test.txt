@@ -1,4 +1,4 @@
-# Tests for the web dashboard (make web-test). Python 3.8 compatible.
+# Tests for the web dashboard (make ci). Python 3.8 compatible.
 -r requirements.txt
 pytest==8.3.4
 httpx==0.27.2

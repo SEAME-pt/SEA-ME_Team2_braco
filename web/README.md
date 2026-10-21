@@ -8,7 +8,7 @@ is in sync**: who is online, who controls the arm, what each person did, and the
 |---|---|---|
 | **Home** | arm summary, who is on the page, ROS 2 node health, activity log, current sprint, shortcuts | the other pages |
 | **Arm** | 3D model, angles with soft/firmware limits, temperatures, cartesian pose, 60 s history, control (STOP, Park, Zero, wake up, per-joint sliders, gripper, LED, rest mode), activity, protocol table, limits and factory PID | `/ws` + `js/specs.js` |
-| **ROS 2** | *Health*: arm_driver / temperature_monitor / joystick_teleop up or missing, driver services, `/diagnostics`. *Graph*: every node, topic (with live echo and rate), service and action. *Demos*: `/chatter`, `add_two_ints`, the `fibonacci` action with feedback and cancel, lifecycle talkers | the web server's ROS 2 node |
+| **ROS 2** | *Health*: arm_driver / temperature_monitor / joystick_teleop up or missing, driver services, `/diagnostics`. *Graph*: every node, topic (with live echo and rate), service and action | the web server's ROS 2 node |
 | **Docs** | every `.md` in the repository, grouped by topic, rendered | `GET /api/docs` |
 | **Sprints** | milestone timeline, countdown, one card per `SPRINT N` issue with its sub-issues, and a page per sprint (`#/sprints/N`) | GitHub API, 5 min cache |
 
@@ -31,48 +31,41 @@ Presence and the lease live in the server's memory: run **one** uvicorn process 
 
 ## Run
 
-**On the Jetson** the page comes with the arm container, which already runs `arm_driver` and the other arm nodes:
+The page is part of the braco system: `make up` starts it with the rest, on port 8000 (`WEB_PORT` in `docker/.env`).
+
+**On the Jetson** it runs in the `real` container, next to `arm_driver` and the other arm nodes:
 
 ```bash
-make build ROLE=jetson   # once: the image now includes fastapi/uvicorn
-make ws-build ROLE=jetson
-make arm-up              # http://<jetson-ip>:8000 from any PC on the lab network
-make arm-basics          # optional: the ros2_basics demos for ROS 2 > Demos
-make arm-web-restart      # after editing web/: restarts only the page, the arm keeps running (control must be taken again)
+make up                  # http://<jetson-ip>:8000 from any PC on the lab network
+make logs S=web          # only the page's log lines
+make restart             # after editing web/: restarts the system container; the arm is not zeroed or parked
 ```
 
 There the page uses `ARM_SOURCE=ros`: it never opens the serial port, it is a client of `arm_driver`
 ([docker/README.md](../docker/README.md)). A move is a stream of targets at most 15° ahead of the real angles, resent
-every 100 ms, exactly like `seame_arm/scripts/arm_moves.py`; if the page dies, the driver's 300 ms watchdog stops the
+every 100 ms, exactly like `braco_bringup/src/arm_moves.cpp`; if the page dies, the driver's 300 ms watchdog stops the
 arm. Park uses the firmware limits and leaves the servos on; it does not enter rest mode. Wake up leaves rest mode
 and powers the servos without moving the arm (rest mode is only entered with the *Rest on* button).
 
-**On a PC, without the arm** (mock data, no ROS):
+**On a PC** it runs in the `sim` container with `ARM_SOURCE=gazebo` (http://localhost:8000):
 
 ```bash
-make web-mock          # http://localhost:8000
-```
-
-**With Gazebo** (PC only, inside the `pc-dev` container where ROS 2 is):
-
-```bash
-make build          # once
-make web-sim        # http://localhost:8000, with the simulation already running in Gazebo
+make up                  # the page shows the arm as not connected until the Gazebo bringup (#34) exists
 ```
 
 The ROS 2 page then shows the PC's graph. The server finds the machine's role like the root Makefile does
 (`SEAME_ROLE`, `COMPOSE_PROFILES`, then the CPU): `ARM_SOURCE=gazebo` refuses to start on the Jetson.
 
-**Fallback: pymycobot straight to the serial port** (only while the arm container is down, the port has one owner):
+**Without the arm, ROS or docker** (mock data, for working on the page itself):
 
 ```bash
-make web               # or make web-start / web-stop / web-logs, in the background
+make web                 # http://localhost:8080, reloads when a file changes
 ```
 
 ## Tests
 
 ```bash
-make web-test
+make ci          # with the host checks and lint; the tests alone: .venv/bin/python -m pytest web/tests -q
 ```
 
 No arm, no ROS and no network needed:
@@ -89,19 +82,19 @@ No arm, no ROS and no network needed:
 The host fallback targets the Jetson's Python 3.8. To test that version from a PC:
 
 ```bash
-docker run --rm -v "$PWD":/src:ro python:3.8 bash -c 'cp -r /src /w && cd /w && rm -rf .venv && make web-test'
+docker run --rm -v "$PWD":/src:ro python:3.8 bash -c 'cp -r /src /w && cd /w && rm -rf .venv && make .venv/.web-test-installed && .venv/bin/python -m pytest web/tests -q'
 ```
 
 ## Environment variables
 
 | Variable | Default | Use |
 |---|---|---|
-| `ARM_SOURCE` | — | `ros`: the arm through arm_driver (the arm container sets it); `gazebo`: Gazebo over ROS 2 (PC only); unset: pymycobot on the serial port |
+| `ARM_SOURCE` | — | `ros`: the arm through arm_driver (the `real` container sets it); `gazebo`: Gazebo over ROS 2 (PC only); unset: pymycobot on the serial port |
 | `ARM_MOCK` | — | `1` uses mock data |
-| `BRACO_ROS` | `1` | `0` never starts ROS 2 (health, graph and demos stay empty) |
+| `BRACO_ROS` | `1` | `0` never starts ROS 2 (health and graph stay empty) |
 | `GZ_JOINT_NAMES` | myCobot 280 URDF names | joints in `/joint_states` for Gazebo, comma separated |
 | `ARM_PORT` / `ARM_BAUD` | `/dev/ttyTHS1` / `1000000` | serial port for the pymycobot fallback |
-| `WEB_PORT` | `8000` | port in the arm container (`docker/.env`) |
+| `WEB_PORT` | `8000` | port of the page in the `real` / `sim` container (`docker/.env`) |
 | `GITHUB_TOKEN` | — | optional; raises the GitHub API limit (60 req/h without) |
 | `GITHUB_REPO` | `SEAME-pt/SEA-ME_Team2_braco` | repository of the sprints |
 
@@ -115,7 +108,6 @@ web/
   server/ros.py         the one shared rclpy node (imported lazily: the server runs without ROS)
   server/ros_health.py  arm nodes and /diagnostics
   server/ros_graph.py   read-only graph explorer and topic echo
-  server/ros_demos.py   chatter, add_two_ints, fibonacci action, lifecycle talkers
   server/docs.py        finds, groups and reads every Markdown file in the repository
   server/github.py      milestones, SPRINT issues and sub-issues
   static/               plain HTML/CSS/JS, no build (three.js, marked and highlight.js from a CDN)
@@ -128,7 +120,7 @@ runs **409**.
 
 | Route | Description |
 |---|---|
-| `WS /ws` | the page's connection. First message `{"type": "hello", "id", "name", "page"}`; then the server sends `telemetry` (200 ms), `presence`, `lease`, `activity`, `ui`, `speed`, `health`, `demos`, `graph` (ROS page), `echo` (watched topic); the page sends `ui`, `page`, `rename`, `watch` / `unwatch` |
+| `WS /ws` | the page's connection. First message `{"type": "hello", "id", "name", "page"}`; then the server sends `telemetry` (200 ms), `presence`, `lease`, `activity`, `ui`, `speed`, `health`, `graph` (ROS page), `echo` (watched topic); the page sends `ui`, `page`, `rename`, `watch` / `unwatch` |
 | `WS /ws/telemetry` | bare snapshot stream every 200 ms (scripts, old pages) |
 | `GET /api/status` | latest arm snapshot (`capabilities` lists what the source supports) |
 | `POST /api/control/take` · `/release` | take / release control |
@@ -139,10 +131,7 @@ runs **409**.
 | `POST /api/joint/{1-6}` `{angle}` | move one joint, inside its soft limit, at the shared speed |
 | `POST /api/speed` `{value, unlocked}` | the one speed everybody shares (1-100), **operator only**. Above 80 it needs `unlocked: true` (the page asks the operator to accept a warning); releasing control puts a speed above 80 back to 80 |
 | `POST /api/rest` `{on}` · `/api/gripper` `{closed}` · `/api/led` `{r, g, b}` | rest mode, gripper, Atom LED (ROS and mock sources) |
-| `GET /api/ros/health` · `/graph` · `/demos` | the ROS 2 panels |
-| `POST /api/ros/demos/add_two_ints` `{a, b}` | call the service |
-| `POST /api/ros/demos/fibonacci` `{order}` · `/fibonacci/cancel` | send / cancel a goal |
-| `POST /api/ros/demos/lifecycle/{node}` `{transition}` | configure, activate, deactivate, cleanup, shutdown |
+| `GET /api/ros/health` · `/graph` | the ROS 2 panels |
 | `GET /api/docs` · `/api/docs/{path}` | document list / Markdown of one |
 | `GET /api/sprints?refresh=1` | sprint data (`refresh` skips the cache) |
 
