@@ -1,7 +1,6 @@
 # braco_interfaces
 
-Messages of the braco arm. Every node that commands or watches the myCobot 280 uses these types; the
-tutorial types (`AddTwoInts`, `Fibonacci`) live in `examples/ros2_basics_interfaces` instead.
+Messages of the braco arm. Every node that commands or watches the myCobot 280 uses these types.
 
 | Type | Used on | Meaning |
 |---|---|---|

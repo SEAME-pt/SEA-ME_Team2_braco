@@ -19,12 +19,10 @@ WS_DIR       := ros2_ws
 WS_SRC       := $(WS_DIR)/src
 WS_BAGS      := $(WS_DIR)/bags
 LIBS_DIR     := libs
-EXAMPLES_DIR := examples
-# Where compose.yml mounts docker/tests, ../libs and ../examples inside the containers.
+# Where compose.yml mounts docker/tests and ../libs inside the containers.
 CONTAINER_TESTS    := /opt/seame/tests
 CONTAINER_LIBS     := /opt/seame/libs
-CONTAINER_EXAMPLES := /opt/seame/examples
-WS_BASE_PATHS      := src $(CONTAINER_LIBS) $(CONTAINER_EXAMPLES)
+WS_BASE_PATHS      := src $(CONTAINER_LIBS)
 
 # Folders that must exist before a container bind-mounts ros2_ws. Created by make as YOUR user;
 # if Docker creates them instead they end up owned by root.
@@ -95,9 +93,16 @@ NOTTY ?= $(if $(or $(CI),$(shell [ -t 0 ] || echo 1)),-T)
 DEV_EXEC := $(COMPOSE) exec $(NOTTY) $(DEV) ros_entrypoint.sh
 SYS_EXEC := $(COMPOSE) exec $(NOTTY) $(SYSTEM) ros_entrypoint.sh
 
-# The Jetson Nano has 4 GB of RAM: one package at a time, two compiler jobs (the ccache limit is in compose.yml).
+# The Jetson never simulates: it builds only what the real system runs, braco_bringup and its dependencies (driver,
+# teleop, interfaces, mycobot_cpp). A package the real arm needs later goes in braco_bringup's package.xml as an
+# exec_depend; a simulation package (Gazebo, MoveIt) never does, or the Jetson builds it again. The PC builds everything.
+# The Nano is slow and has 4 GB of RAM: one package at a time, two compiler jobs (the ccache limit is in compose.yml),
+# Release without tests (they run on the PC and in CI). --cmake-args REPLACES the cmake-args of colcon-defaults.yaml,
+# so the ccache launchers are repeated here.
 ifeq ($(ROLE),jetson)
-COLCON_ARGS ?= --parallel-workers 1
+WS_PACKAGES := --packages-up-to braco_bringup
+COLCON_ARGS ?= --parallel-workers 1 --cmake-args -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF \
+               -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 BUILD_ENV   := -e MAKEFLAGS=-j2
 endif
 COLCON = colcon build --base-paths $(WS_BASE_PATHS) $(COLCON_ARGS)

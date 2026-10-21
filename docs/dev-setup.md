@@ -235,7 +235,7 @@ the same commands:
 | Job | What it runs | Reproduce locally |
 |---|---|---|
 | `host` | `make ci`: host checks (venv with Python 3.11 from `.python-version`, imports, C++ hello-world build), `make lint` (compose files for both machines, shellcheck, hadolint) and the web page tests (pytest `web/tests`); creates `docker/.env` if missing | `make ci` |
-| `ros` | Builds the Dockerfile's `base` stage (Ubuntu 26.04 + ROS 2 Lyrical), then `rosdep install`, `colcon build` and `colcon test` of `ros2_ws/src`, `libs` and `examples` in a throw-away container | `make ci-ros` (builds the image the first time) |
+| `ros` | Builds the Dockerfile's `base` stage (Ubuntu 26.04 + ROS 2 Lyrical), then `rosdep install`, `colcon build` and `colcon test` of `ros2_ws/src` and `libs` in a throw-away container | `make ci-ros` (builds the image the first time) |
 
 * Install `shellcheck` and `hadolint` locally: without them `make lint` skips those checks, while CI always runs them.
 * Caches: pip (`actions/setup-python`), the image layers (BuildKit `type=gha`), and ccache + colcon `build/`

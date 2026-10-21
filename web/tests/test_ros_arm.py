@@ -10,7 +10,7 @@ import time
 
 import pytest
 
-from web.server import arm, ros, ros_demos, ros_graph, ros_health
+from web.server import arm, ros, ros_graph, ros_health
 
 
 class FakeMsg:
@@ -317,11 +317,9 @@ def test_mock_park_does_not_rest():
 def test_panels_report_unavailable_ros():
     bridge = ros.RosBridge()
     bridge.error = "rclpy not available"
-    for panel in (ros_health.Health(bridge), ros_graph.Graph(bridge), ros_demos.Demos(bridge)):
+    for panel in (ros_health.Health(bridge), ros_graph.Graph(bridge)):
         assert panel.snapshot() == {"available": False, "error": "rclpy not available"}
     assert ros_graph.Graph(bridge).watch("/chatter", "a") == "rclpy not available"
-    with pytest.raises(RuntimeError, match="rclpy"):
-        ros_demos.Demos(bridge).add_two_ints(1, 2, "Ana")
 
 
 def test_bridge_without_rclpy(monkeypatch):

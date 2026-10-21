@@ -79,7 +79,7 @@ cp .env.example .env                    # set COMPOSE_PROFILES=pc|jetson and USE
 mkdir -p ../ros2_ws/src ../ros2_ws/bags # as YOUR user, so Docker does not create them as root
 docker compose build dev                # the machine's image
 docker compose up -d dev
-docker compose exec dev ros_entrypoint.sh colcon build --base-paths src /opt/seame/libs /opt/seame/examples
+docker compose exec dev ros_entrypoint.sh colcon build --base-paths src /opt/seame/libs
 docker compose up -d sim                # or real on the Jetson
 docker compose exec dev bash
 ```
@@ -96,7 +96,7 @@ skips the entrypoint, so ROS is **not** sourced - prefix it with `ros_entrypoint
 | Group | Commands |
 |---|---|
 | System | `up`, `down` (`PARK=1`), `restart`, `status`, `logs` (`S=web`, `S=arm_driver`, any pattern) |
-| Arm (Jetson) | `zero`, `park`, `rest`, `resume`, `temps`, `demos` |
+| Arm (Jetson) | `zero`, `park`, `rest`, `resume`, `temps` |
 | Development | `shell`, `run CMD='...'`, `build` (`COLCON_ARGS=...`), `test`, `web` (mock page on :8080), `clean` |
 | Setup | `setup`, `doctor`, `image` (`IMAGE_ARGS='--no-cache --pull'`), `boot-on`, `boot-off`, `jetson-image` (`NANO=user@host`), `reset` |
 | Network | `net-test`, `net-talk`, `net-listen` |
@@ -104,15 +104,23 @@ skips the entrypoint, so ROS is **not** sourced - prefix it with `ros_entrypoint
 
 - `make up GPU=nvidia` (or `GPU=dri`) adds `compose/nvidia.yml` or `compose/dri.yml` for `dev` and `sim` (PC only);
   `COMPOSE_FILE` in `.env` does the same permanently.
-- `make build` always runs colcon; `make up` only when something under `ros2_ws/src`, `libs` or `examples` changed.
+- `make build` always runs colcon; `make up` only when something under `ros2_ws/src` or `libs` changed.
   After `make build`, `make restart` (or the next `make up`) runs the new build.
 - `make clean` deletes colcon's `build/ install/ log/` and the ROS logs (`~/.ros/log` on the host and in the
   containers). `make reset` also removes the containers, the cache volumes and the images, and asks first
   (`FORCE=1` skips the prompt).
 - In CI (`CI=true`) or without a terminal, TTY allocation is turned off automatically.
 
+**The Jetson never simulates.** Its image has no Gazebo, MoveIt or RViz (those are only in the `pc` stage), and
+`make build` there only takes `braco_bringup` and what it depends on (driver, teleop, interfaces,
+`mycobot_cpp`): `braco_description`, `braco_moveit_config` and
+`braco_mission` are left out (`WS_PACKAGES` in `mk/config.mk`). If the real arm needs another package, add it to
+`braco_bringup/package.xml` as an `exec_depend`; the opposite holds too: never make `braco_bringup` depend on a
+simulation package (Gazebo, MoveIt), or the Jetson builds it again. The PC builds everything.
+
 **Jetson Nano limits.** On the Jetson `make build` runs colcon with one package at a time
-(`--parallel-workers 1`) and `MAKEFLAGS=-j2`, and ccache is capped at 1 GB (`CCACHE_MAXSIZE` in `.env` overrides
+(`--parallel-workers 1`) and `MAKEFLAGS=-j2`, in `Release` without tests (`BUILD_TESTING=OFF`: `make test` runs on the
+PC and in CI), and ccache is capped at 1 GB (`CCACHE_MAXSIZE` in `.env` overrides
 it). `make doctor` warns when a desktop session is running (~1 GB of RAM), when the power mode is not MAXN (10 W),
 and when there is no swap.
 
@@ -202,7 +210,6 @@ Launch arguments: `port`, `baud`, `lcd_bus`, `device` (filled from `.env`). Use 
   read-only at `/opt/braco` and `arm_routine.sh` starts uvicorn there (one process, `--workers 1`). It moves the arm
   only through `/arm/command` (bounded steps resent every 100 ms, so the 300 ms watchdog stops the arm if the page
   dies) and the driver's services. If the page crashes only a log line is printed; the arm keeps running.
-  Its ROS 2 > Demos tab uses the issue-18 demos: start them with `make demos`.
 - The C++ library in `../libs/cpp` is mounted read-only at `/opt/seame/libs` and built by colcon as `mycobot_cpp`;
   its own `Makefile` still builds the stand-alone programs.
 
@@ -212,7 +219,6 @@ make status                              # containers, CPU/RAM, the arm as the p
 make park                                # fold, release joints, rest mode (driver keeps reading temperatures)
 make temps                               # print the servo temperatures once
 make resume                              # leave rest mode; make zero also moves to zero; make rest enters it
-make demos                               # ros2_basics demos (chatter, add_two_ints, fibonacci, lifecycle) for the page
 make boot-on                             # start the system at boot (systemd unit braco), needs sudo; make boot-off
 make run CMD='ros2 topic echo /arm/servo_temperatures'
 ```
@@ -240,7 +246,7 @@ starts no node, so the page is up but shows the arm as not connected, and `make 
 | RMW / DDS | `ROS_DOMAIN_ID` and `RMW_IMPLEMENTATION` come from one `.env` field and must be copied to both machines. Default is Fast DDS; Cyclone DDS is installed too. Zenoh (`rmw_zenoh_cpp`) is installed if available but needs `ros2 run rmw_zenoh_cpp rmw_zenohd` - it is not a drop-in switch. |
 | Networking | `network_mode: host` + `ipc: host` (multicast discovery across machines; Fast DDS shared memory between containers on one host). Allow UDP between the machines if a firewall is active. |
 | Images | Built locally and tagged `braco/pc:lyrical` and `braco/jetson:lyrical`. `pull_policy: never` stops Compose from looking those names up on Docker Hub; `make up` builds a missing image and uses an existing one as is (`make image` rebuilds it). |
-| Build flags | `colcon-defaults.yaml` is identical in both images (symlink-install, RelWithDebInfo, ccache). On the Nano `make build` adds `--parallel-workers 1` and `MAKEFLAGS=-j2`. |
+| Build flags | `colcon-defaults.yaml` is identical in both images (symlink-install, RelWithDebInfo, ccache). On the Nano `make build` adds `--parallel-workers 1`, `MAKEFLAGS=-j2`, Release and no tests. |
 | User IDs | The image creates user `dev` with your `USER_UID/USER_GID` (and removes Ubuntu's default `ubuntu` user at UID 1000) so `ros2_ws` stays writable. If you pull a prebuilt image whose UID differs from yours, rebuild with your IDs. |
 | Real-time | The unprivileged `dev` user gets SCHED_FIFO and locked memory from the `rtprio`/`memlock` ulimits in `compose.yml` (the `cap_add` entries only help root/sudo). If rootless Docker refuses the ulimits, delete that block. |
 | Python | System Python of Ubuntu 26.04 (3.14). `pymycobot` is pip-installed into it with `PIP_BREAK_SYSTEM_PACKAGES=1` so ROS nodes can import it. `ruff`/`pre-commit` live in their own virtualenv (they conflict with apt-owned `packaging`). |

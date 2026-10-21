@@ -1,7 +1,7 @@
 # mk/ci.mk - what .github/workflows/ci.yml runs, reproducible here: ci ci-ros lint.
 #
 #   host job   make ci       host checks (venv, imports, C++ hello-world build), lint, web page tests
-#   ros job    make ci-ros   rosdep, colcon build and colcon test of ros2_ws/src + libs + examples
+#   ros job    make ci-ros   rosdep, colcon build and colcon test of ros2_ws/src + libs
 #
 # No robot and no display needed.
 
@@ -26,8 +26,7 @@ ci-ros: ## The `ros` CI job: rosdep + colcon build + colcon test in a throw-away
 	@docker image inspect $(CI_IMAGE) >/dev/null 2>&1 || \
 	  docker build --target $(CI_TARGET) --build-arg USER_UID=$$(id -u) --build-arg USER_GID=$$(id -g) -t $(CI_IMAGE) $(DOCKER_DIR)
 	docker run --rm -e CCACHE_DIR=/ws/.ccache -e CCACHE_MAXSIZE=500M -v $(CURDIR)/$(WS_DIR):/ws \
-	    -v $(CURDIR)/$(LIBS_DIR):$(CONTAINER_LIBS):ro -v $(CURDIR)/$(EXAMPLES_DIR):$(CONTAINER_EXAMPLES) \
-	    $(CI_IMAGE) bash -c '$(CI_ROS_SH)'
+	    -v $(CURDIR)/$(LIBS_DIR):$(CONTAINER_LIBS):ro $(CI_IMAGE) bash -c '$(CI_ROS_SH)'
 
 lint: $(ENV_FILE) ## Compose files (both machines, GPU overrides), shellcheck and hadolint (each if installed)
 	@echo "== compose =="

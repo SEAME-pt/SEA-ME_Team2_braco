@@ -359,9 +359,8 @@ ros2_ws/src/
 └── ros2_basics_py/     ament_python  Python nodes: the same, plus action server/client and a launch file
 ```
 
-> The finished copies of these three packages live in `examples/` at the repo root and are built together with
-> `ros2_ws/src` (`make build`). colcon refuses two packages with the same name, so to redo the tutorial from
-> scratch either pick other package names or put an empty `COLCON_IGNORE` file in `examples/` while you work.
+> These packages are for learning only: they are not part of the repository, so create them in your own
+> `ros2_ws/src` and do not commit them (or delete them when you are done).
 
 Run in the container:
 
@@ -1265,7 +1264,7 @@ endif()
 ament_package()
 ```
 
-Every `.cpp` file must start with a license header, or `colcon test` fails the `copyright` and `cpplint` linters. The examples above leave it out to stay short; the finished copies in `examples/` have it:
+Every `.cpp` file must start with a license header, or `colcon test` fails the `copyright` and `cpplint` linters. The examples above leave it out to stay short; add it at the top of each file:
 
 ```cpp
 // Copyright 2026 SEA:ME Team 2
@@ -1388,7 +1387,7 @@ ros2_ws/src/
         └── managed_talker.py
 ```
 
-The `include/ros2_basics_cpp/` folder that `ros2 pkg create` generates can be deleted: these nodes have no headers. A finished, tested copy of this layout is committed in `examples/` (built by `make build` together with `ros2_ws/src`); compare yours with it.
+The `include/ros2_basics_cpp/` folder that `ros2 pkg create` generates can be deleted: these nodes have no headers.
 
 ---
 
@@ -1696,7 +1695,7 @@ container$ ros2 bag record -s mcap -a -o /ws/bags/everything            # all to
 
 ## 18. Push the examples to the repo
 
-The finished packages live in `examples/` and the arm packages in `ros2_ws/src/`; both **are** tracked by git. Generated folders (`ros2_ws/build`, `install`, `log`, `bags`) are ignored by the root `.gitignore`.
+The arm packages live in `ros2_ws/src/` and **are** tracked by git; the tutorial packages are not. Generated folders (`ros2_ws/build`, `install`, `log`, `bags`) are ignored by the root `.gitignore`.
 
 **Step 1. Check that everything builds and the linters pass:**
 

@@ -17,7 +17,7 @@ GROUPS = [
     ("Web page (braco)", lambda p: p.startswith("web/")),
     ("Docker and ROS 2", lambda p: p.startswith(("docker/", "ros2_ws/"))),
     ("Contributing", lambda p: p.startswith(".github/")),
-    ("Code", lambda p: p.startswith(("libs/", "playground/", "tests/", "examples/"))),
+    ("Code", lambda p: p.startswith(("libs/", "playground/", "tests/"))),
 ]
 OTHER = "Other"
 ORDER = [g for g, _ in GROUPS] + [OTHER]
