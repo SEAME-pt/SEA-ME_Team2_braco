@@ -1,0 +1,10 @@
+# Ruff config: Python style aligned with ROS 2 (ament_flake8).
+
+line-length = 99
+
+# ROS 2 packages are checked by ament_flake8 (make ws-test), not by ruff.
+extend-exclude = ["docker/ws/src"]
+force-exclude = true
+
+[format]
+quote-style = "single"
