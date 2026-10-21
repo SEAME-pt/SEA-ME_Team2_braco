@@ -14,6 +14,8 @@ export const FACTORY_PID = [
   [15, 0, 20], [32, 0, 8], [32, 0, 8], [25, 0, 25], [25, 0, 25], [25, 0, 25],
 ];
 
+// Reference only (the help text and the chart's grid lines): the level of each servo
+// comes from the server, from temperature_monitor's /diagnostics on the real arm.
 export const TEMP_WARM_C = 55;
 export const TEMP_HOT_C = 65;
 
@@ -45,10 +47,3 @@ export const COMMANDS = [
   { code: "0x6A", name: "SET_COLOR", py: "mc.set_color(r, g, b)", cpp: "setColor(r, g, b)", desc: "Atom LED", write: true },
   { code: "0xE5", name: "GET_SERVO_TEMPS", py: "mc.get_servo_temps()", cpp: "getTemps()", desc: "Temperature of each servo (°C)" },
 ];
-
-export function tempLevel(c) {
-  if (c == null) return null;
-  if (c >= TEMP_HOT_C) return "hot";
-  if (c >= TEMP_WARM_C) return "warm";
-  return "normal";
-}

@@ -1,14 +1,15 @@
 // Live arm panel: 3D model, joints, temperatures, history, control, reference.
 //
 // Only the operator (the tab holding the control lease) can move the arm; STOP
-// works for everybody. The operator's control panel (speed, step, the slider
+// works for everybody. While the joystick or zero/park has the arm (arm_driver's
+// control owner), nobody on the page can take control. The operator's control panel (speed, step, the slider
 // being dragged) is mirrored live to every other page. The speed is one shared value
 // held by the server: only the operator changes it, everybody sees it, and above the
 // limit (80) the operator has to accept a warning.
 
 import { mountActivity } from "../activity.js";
 import {
-  esc, fmt, holderName, isOperator, live, on, post, shareUi, takeControl,
+  esc, fmt, holderName, isOperator, live, on, OWNER_NAMES, outsideOwner, post, shareUi, takeControl,
 } from "../util.js";
 import {
   COMMANDS, CONNECTION, FACTORY_PID, JOINT_LIMITS, JOINTS, JOINT_NAMES,
@@ -270,6 +271,7 @@ export function render(root) {
   const dragging = rows.map(() => false);
   let connected = false;
   let resting = false;
+  let owner = null;     // arm_driver's control owner, last drawn
   let operator = isOperator();
   let remote = null;   // the operator's mirrored panel, when someone else is in control
 
@@ -315,6 +317,10 @@ export function render(root) {
     } else if (holder) {
       box.className = "lease-banner taken";
       box.innerHTML = `<span>👁 <b>View only:</b> ${esc(holder)} is in control. Their panel is mirrored here. STOP still works for you.</span>`;
+    } else if (outsideOwner()) {
+      const who = OWNER_NAMES[outsideOwner()] || outsideOwner();
+      box.className = "lease-banner taken";
+      box.innerHTML = `<span>🎮 <b>${esc(who)} is in control</b> of the arm. The page can take it back once it is free (5 s after the last move). STOP still works for you.</span>`;
     } else {
       box.className = "lease-banner";
       box.innerHTML = '<span>Nobody is in control. Take control to move the arm.</span><button id="c-take">Take control</button>';
@@ -489,6 +495,10 @@ export function render(root) {
       connected = !!s.connected;
       resting = nowResting;
       updateEnabled();
+    }
+    if ((s.control_owner ?? null) !== owner) {
+      owner = s.control_owner ?? null;
+      drawLease();
     }
     rows.forEach((row, i) => {
       const a = s.angles?.[i];

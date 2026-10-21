@@ -10,16 +10,18 @@ shared in real time by everybody who has the page open (see session.py).
 Run ONE process (no --workers > 1): presence, the control lease and the
 activity log live in memory.
 
-Environment:
+The page is a plain ROS 2 client of arm_driver: it never opens the serial port.
+With ARM_SOURCE=ros the control lease is also arm_driver's control owner "web"
+(docs/ADR-0002-single-control-owner.md): taking it fails with 409 while the
+joystick or zero/park has the arm.
+
+Environment (one of ARM_MOCK / ARM_SOURCE is required):
     ARM_MOCK=1         synthetic data instead of the arm
     ARM_SOURCE=ros     the arm through arm_driver (ROS 2); what the real container uses
     ARM_SOURCE=gazebo  arm simulated in Gazebo over ROS 2 (PC only: the sim container
                        of make up)
-    (neither)          the arm straight through pymycobot on ARM_PORT / ARM_BAUD
     BRACO_ROS=0        do not start ROS 2 at all (health and graph stay empty)
     GZ_JOINT_NAMES     joint names in /joint_states, comma separated
-    ARM_PORT           serial port (default /dev/ttyTHS1)
-    ARM_BAUD           baud rate (default 1000000)
     GITHUB_TOKEN       optional, raises the GitHub API rate limit
 """
 
@@ -35,12 +37,11 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from . import docs, github, ros
-from .arm import (DEFAULT_BAUD, DEFAULT_PORT, POSES, JOINT_LIMITS,
-                  ArmSource, GazeboArm, MockArm, RestingError, RosArm)
+from .arm import POSES, JOINT_LIMITS, GazeboArm, MockArm, RestingError, RosArm
 from .role import machine_role
 from .ros_graph import Graph
 from .ros_health import Health
-from .session import BusyError, Hub, LockedError, drain, new_queue
+from .session import BusyError, ControlError, Hub, LockedError, drain, new_queue
 
 STATIC = Path(__file__).resolve().parents[1] / "static"
 PUSH_PERIOD = 0.2       # telemetry
@@ -62,12 +63,15 @@ def build_arm():
             raise RuntimeError("ARM_SOURCE=gazebo only runs on the PC (this machine is the {})".format(role))
         names = os.environ.get("GZ_JOINT_NAMES")
         return GazeboArm([n.strip() for n in names.split(",")] if names else None)
-    return ArmSource(os.environ.get("ARM_PORT", DEFAULT_PORT),
-                     int(os.environ.get("ARM_BAUD", DEFAULT_BAUD)))
+    if source:
+        raise RuntimeError("unknown ARM_SOURCE={!r}: use ros or gazebo".format(source))
+    # The serial port belongs to arm_driver: the page never opens it itself
+    raise RuntimeError("no arm source: set ARM_SOURCE=ros (real container) or ARM_MOCK=1")
 
 
 arm = build_arm()
-hub = Hub()
+hub = Hub(control=arm)
+arm.on_control_lost = hub.control_lost   # RosArm: the joystick forced the control away
 health = Health(ros.bridge)
 graph = Graph(ros.bridge)
 _latest = {}   # last health sent, for new connections and change detection
@@ -90,7 +94,7 @@ async def _pump():
                 hub.log("arm", notice["text"], ok=False)
 
             if tick % HEALTH_EVERY == 0:
-                hub.tick()
+                await loop.run_in_executor(None, hub.tick)   # may call /arm/take_control
                 data = await loop.run_in_executor(None, health.snapshot)
                 text = json.dumps(data, sort_keys=True, default=str)
                 if _latest.get("health", (None,))[0] != text:
@@ -271,6 +275,10 @@ def take_control(request: Request):
         hub.take(cid)
     except LockedError as e:
         raise HTTPException(status_code=423, detail=str(e))
+    except ControlError as e:   # the joystick or zero/park has the arm
+        raise HTTPException(status_code=409, detail=str(e))
+    except Exception as e:      # arm_driver not reachable
+        raise HTTPException(status_code=503, detail=str(e))
     return hub.lease()
 
 
