@@ -12,9 +12,9 @@ Rodar `park.py` direto no host (versão antiga, serial direta) enquanto o `arm_d
 |---|---|
 | `arm_driver.cpp` | Novo **modo rest** (somente leitura): recusa movimento, gripper e `power_on`, mas continua publicando `/joint_states` e `/arm/servo_temperatures`. Serviço `/arm/set_read_only` (`std_srvs/SetBool`), tópico `/arm/read_only` (latched) e parâmetro `read_only`. `STOP` e `release_servos` continuam funcionando. |
 | `libs/cpp/srcs/mycobot.cpp` | A porta serial é aberta com `TIOCEXCL`: um segundo processo (não-root) recebe "Device or resource busy" na hora, em vez de corromper a leitura. |
-| `park.py` | Sai do rest, vai para a pose de park, solta os servos e **entra em rest**. O driver segue vivo medindo temperatura. |
-| `zero.py` | Sai do rest antes de ligar os servos e mover. |
-| `arm_moves.py` | Novo `set_rest(on)` (cliente do serviço acima). |
+| `park` (C++, `braco_bringup`) | Sai do rest, vai para a pose de park, solta os servos e **entra em rest**. O driver segue vivo medindo temperatura. |
+| `zero` (C++, `braco_bringup`) | Sai do rest antes de ligar os servos e mover. |
+| `arm_moves.cpp` | Novo `setRest(on)` (cliente do serviço acima). |
 | `Makefile` (repo root) | Comandos `park`, `zero`, `rest`, `resume`, `temps` (rodam dentro do container `real`; eram `arm-*` antes da #54). |
 | `playground/park.py` | Aviso no topo: não usar com o driver ligado. |
 
@@ -37,7 +37,7 @@ até `arm-zero` ou `power_on`).
 
 - **Nunca abra a serial fora do `arm_driver`** (scripts de `playground/`, pymycobot no host). Use os targets acima.
 - Em rest, o joystick e o `ArmCommand` são ignorados (aviso no log do driver a cada 5 s).
-- O `arm_routine.sh` (entrypoint do container `real`) não move o braço ao parar: use `make down PARK=1`, que roda `park.py` antes de desligar e deixa o braço em rest.
+- O `arm_routine.sh` (entrypoint do container `real`) não move o braço ao parar: use `make down PARK=1`, que roda `park` antes de desligar e deixa o braço em rest.
 - `ros2 topic echo /arm/read_only` mostra o estado atual.
 
 ## Ainda não existe

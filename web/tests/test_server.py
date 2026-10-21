@@ -189,14 +189,14 @@ def test_arm_source_handles_missing_temps_method(fake_pymycobot, monkeypatch):
     assert s["temps"] is None and s["temp_levels"] is None
 
 
-def test_mock_arm_stays_inside_soft_limits(monkeypatch):
+def test_mock_arm_stays_inside_joint_limits(monkeypatch):
     monkeypatch.setattr(arm, "ANGLE_PERIOD", 0.01)
     mock = arm.MockArm()
     mock.start()
     assert wait_for(lambda: mock.snapshot()["temps"] is not None)
     for _ in range(20):
         angles = mock.snapshot()["angles"]
-        for a, (lo, hi) in zip(angles, arm.SOFT_LIMITS):
+        for a, (lo, hi) in zip(angles, arm.JOINT_LIMITS):
             assert lo <= a <= hi
         time.sleep(0.01)
 

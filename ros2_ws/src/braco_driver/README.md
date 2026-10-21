@@ -18,7 +18,7 @@ crash independently while the port keeps a single owner. It never powers the arm
 | srv | `/arm/power_on`, `/arm/release_servos` | `std_srvs/Trigger` |
 | srv | `/arm/set_gripper`, `/arm/set_read_only` | `std_srvs/SetBool` |
 
-Safety: angles are clamped to the soft limits of `mycobot.hpp`; a **watchdog** stops the arm when motion commands
+Safety: angles are clamped to `JOINT_LIMITS` of `mycobot.hpp` and poses that put the wrist or tool below the table margin are refused; a **watchdog** stops the arm when motion commands
 stop for `command_timeout_ms` (300 ms); in **rest mode** motion, gripper and power on are refused while angles and
 temperatures keep being published. Not respawned on purpose: a driver fault must be seen.
 

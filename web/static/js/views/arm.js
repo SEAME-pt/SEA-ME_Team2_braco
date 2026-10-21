@@ -11,8 +11,8 @@ import {
   esc, fmt, holderName, isOperator, live, on, post, shareUi, takeControl,
 } from "../util.js";
 import {
-  COMMANDS, CONNECTION, FACTORY_PID, FIRMWARE_LIMITS, JOINTS, JOINT_NAMES,
-  SOFT_LIMITS, TEMP_HOT_C, TEMP_WARM_C,
+  COMMANDS, CONNECTION, FACTORY_PID, JOINT_LIMITS, JOINTS, JOINT_NAMES,
+  TEMP_HOT_C, TEMP_WARM_C,
 } from "../specs.js";
 
 const JC = ["--j1", "--j2", "--j3", "--j4", "--j5", "--j6"];
@@ -22,22 +22,20 @@ const LEVEL_TEXT = { normal: "ok", warm: "warm", hot: "HOT" };
 const SOURCE_PORT = { ros: "through arm_driver (ROS 2)", gazebo: "in Gazebo", mock: "mock data" };
 
 function pct(v, i) {
-  const [lo, hi] = FIRMWARE_LIMITS[i];
+  const [lo, hi] = JOINT_LIMITS[i];
   return ((v - lo) / (hi - lo)) * 100;
 }
 
 function jointCard(i) {
-  const [slo, shi] = SOFT_LIMITS[i];
-  const [flo, fhi] = FIRMWARE_LIMITS[i];
+  const [lo, hi] = JOINT_LIMITS[i];
   return `
     <div class="joint" style="--jc:var(${JC[i]})" data-j="${i}">
       <div class="joint-head"><div><b class="ang">—</b></div><span>${JOINTS[i]} · ${JOINT_NAMES[i]}</span></div>
-      <div class="range" title="yellow band = soft limit; whole bar = firmware limit">
-        <div class="soft" style="left:${pct(slo, i)}%;right:${100 - pct(shi, i)}%"></div>
+      <div class="range" title="whole bar = joint limits">
         <div class="zero" style="left:${pct(0, i)}%"></div>
         <div class="needle" style="left:${pct(0, i)}%"></div>
       </div>
-      <div class="range-labels"><span>${flo}°</span><span>${slo}° … ${shi}°</span><span>${fhi}°</span></div>
+      <div class="range-labels"><span>${lo}°</span><span>${hi}°</span></div>
       <div class="temp"><span class="muted">temperature</span><span class="temp-cell tval">—</span></div>
     </div>`;
 }
@@ -59,11 +57,10 @@ function referenceHTML() {
       <section class="card">
         <h2>Limits and factory PID</h2>
         <div class="table-wrap"><table>
-          <thead><tr><th>Joint</th><th>Firmware</th><th>Soft</th><th>P</th><th>I</th><th>D</th></tr></thead>
+          <thead><tr><th>Joint</th><th>Limits</th><th>P</th><th>I</th><th>D</th></tr></thead>
           <tbody>${JOINTS.map((j, i) => `
             <tr><td><b>${j}</b> <span class="muted small">${JOINT_NAMES[i]}</span></td>
-            <td class="mono">${FIRMWARE_LIMITS[i].join(" … ")}</td>
-            <td class="mono">${SOFT_LIMITS[i].join(" … ")}</td>
+            <td class="mono">${JOINT_LIMITS[i].join(" … ")}</td>
             ${FACTORY_PID[i].map((v) => `<td class="mono">${v}</td>`).join("")}</tr>`).join("")}
           </tbody></table></div>
         <p class="muted small">setPid() accepts P and D up to 1.5× the factory value and I up to 8.</p>
@@ -77,7 +74,7 @@ function referenceHTML() {
 }
 
 function controlRow(i) {
-  const [lo, hi] = SOFT_LIMITS[i];
+  const [lo, hi] = JOINT_LIMITS[i];
   return `
     <div class="ctl-row" style="--jc:var(${JC[i]})" data-j="${i}">
       <div class="ctl-name"><b>${JOINTS[i]}</b><span class="muted small">${JOINT_NAMES[i]}</span></div>
@@ -131,7 +128,7 @@ function controlHTML() {
           <div class="btns"><button id="c-rest-on" title="refuse motion, keep reading temperatures">Rest on</button></div>
         </div>
       </div>
-      <p class="muted small" id="a-stop-msg">Each joint is sent when you release its control (or with Enter / Go) and stays inside the soft limit. Park goes to the rest pose; Zero moves every joint to 0°. Speed is shared by everybody and capped at 80 unless the operator accepts the warning. Tick “enable motion” to unlock the controls.</p>
+      <p class="muted small" id="a-stop-msg">Each joint is sent when you release its control (or with Enter / Go) and stays inside the joint limits. Park goes to the rest pose; Zero moves every joint to 0°. Speed is shared by everybody and capped at 80 unless the operator accepts the warning. Tick “enable motion” to unlock the controls.</p>
       <div id="a-error"></div>
     </section>`;
 }
@@ -407,7 +404,7 @@ export function render(root) {
   });
 
   rows.forEach((row, i) => {
-    const [lo, hi] = SOFT_LIMITS[i];
+    const [lo, hi] = JOINT_LIMITS[i];
     const slider = row.querySelector('input[type="range"]');
     const num = row.querySelector(".num");
     const clamp = (v) => Math.max(lo, Math.min(hi, v));
