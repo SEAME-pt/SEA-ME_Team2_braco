@@ -5,18 +5,18 @@ shared in real time by everybody who has the page open (see session.py).
 
     ARM_MOCK=1 uvicorn web.server.app:app --port 8000      # PC, no arm
     ARM_SOURCE=ros uvicorn web.server.app:app --host 0.0.0.0 --port 8000
-                                                           # Jetson, inside the arm container
+                                                           # Jetson, inside the real container
 
 Run ONE process (no --workers > 1): presence, the control lease and the
 activity log live in memory.
 
 Environment:
     ARM_MOCK=1         synthetic data instead of the arm
-    ARM_SOURCE=ros     the arm through arm_driver (ROS 2); what the arm container uses
-    ARM_SOURCE=gazebo  arm simulated in Gazebo over ROS 2 (PC only: make web-sim
-                       in docker/ runs it inside the pc-dev container)
+    ARM_SOURCE=ros     the arm through arm_driver (ROS 2); what the real container uses
+    ARM_SOURCE=gazebo  arm simulated in Gazebo over ROS 2 (PC only: the sim container
+                       of make up)
     (neither)          the arm straight through pymycobot on ARM_PORT / ARM_BAUD
-    BRACO_ROS=0        do not start ROS 2 at all (health, graph and demos stay empty)
+    BRACO_ROS=0        do not start ROS 2 at all (health and graph stay empty)
     GZ_JOINT_NAMES     joint names in /joint_states, comma separated
     ARM_PORT           serial port (default /dev/ttyTHS1)
     ARM_BAUD           baud rate (default 1000000)
@@ -35,17 +35,16 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from . import docs, github, ros
-from .arm import (DEFAULT_BAUD, DEFAULT_PORT, POSES, SOFT_LIMITS,
+from .arm import (DEFAULT_BAUD, DEFAULT_PORT, POSES, JOINT_LIMITS,
                   ArmSource, GazeboArm, MockArm, RestingError, RosArm)
 from .role import machine_role
-from .ros_demos import FIB_MAX_ORDER, Demos
 from .ros_graph import Graph
 from .ros_health import Health
 from .session import BusyError, Hub, LockedError, drain, new_queue
 
 STATIC = Path(__file__).resolve().parents[1] / "static"
 PUSH_PERIOD = 0.2       # telemetry
-HEALTH_EVERY = 5        # x PUSH_PERIOD: health, demos, lease tick
+HEALTH_EVERY = 5        # x PUSH_PERIOD: health, lease tick
 GRAPH_EVERY = 10        # x PUSH_PERIOD: graph, to the clients on the ROS page
 ECHO_EVERY = 3          # x PUSH_PERIOD: watched topics
 ROS_ENABLED = os.environ.get("BRACO_ROS", "1") != "0"
@@ -71,8 +70,7 @@ arm = build_arm()
 hub = Hub()
 health = Health(ros.bridge)
 graph = Graph(ros.bridge)
-demos = Demos(ros.bridge)
-_latest = {}   # last health / demos sent, for new connections and change detection
+_latest = {}   # last health sent, for new connections and change detection
 
 
 async def _pump():
@@ -93,12 +91,11 @@ async def _pump():
 
             if tick % HEALTH_EVERY == 0:
                 hub.tick()
-                for name, source in (("health", health), ("demos", demos)):
-                    data = await loop.run_in_executor(None, source.snapshot)
-                    text = json.dumps(data, sort_keys=True, default=str)
-                    if _latest.get(name, (None,))[0] != text:
-                        _latest[name] = (text, data)
-                        hub.broadcast({"type": name, "data": data})
+                data = await loop.run_in_executor(None, health.snapshot)
+                text = json.dumps(data, sort_keys=True, default=str)
+                if _latest.get("health", (None,))[0] != text:
+                    _latest["health"] = (text, data)
+                    hub.broadcast({"type": "health", "data": data})
 
             if tick % GRAPH_EVERY == 0:
                 viewers = hub.clients_on("ros")
@@ -117,15 +114,13 @@ async def _pump():
 async def lifespan(_app):
     hub.bind(asyncio.get_running_loop())
     if ROS_ENABLED:
-        for part in (health, demos):
-            part.start()
+        health.start()
     else:
         ros.bridge.error = "ROS 2 disabled (BRACO_ROS=0)"
     arm.start()
     pump = asyncio.create_task(_pump())
     yield
     pump.cancel()
-    demos.close()
     arm.close()
     ros.bridge.close()
 
@@ -195,10 +190,10 @@ class JointMove(BaseModel):
 
 @app.post("/api/joint/{index}")
 def joint(index: int, move: JointMove, request: Request):
-    """Move one joint (1-6) inside its soft limits."""
+    """Move one joint (1-6) inside its joint limits."""
     if not 1 <= index <= 6:
         raise HTTPException(status_code=404, detail="joint must be 1-6")
-    lo, hi = SOFT_LIMITS[index - 1]
+    lo, hi = JOINT_LIMITS[index - 1]
     if not lo <= move.angle <= hi:
         raise HTTPException(status_code=422,
                             detail="J{} must be between {} and {} degrees".format(index, lo, hi))
@@ -303,55 +298,6 @@ def ros_graph():
     return graph.snapshot()
 
 
-@app.get("/api/ros/demos")
-def ros_demos():
-    return demos.snapshot()
-
-
-class AddTwoInts(BaseModel):
-    a: int
-    b: int
-
-
-@app.post("/api/ros/demos/add_two_ints")
-def demo_add_two_ints(body: AddTwoInts, request: Request):
-    cid, ip = _client(request)
-    who = hub.name_of(cid, ip)
-    total = command(request, "add_two_ints({}, {})".format(body.a, body.b),
-                    lambda: demos.add_two_ints(body.a, body.b, who))
-    return {"ok": True, "sum": total}
-
-
-class FibonacciGoal(BaseModel):
-    order: int = Field(ge=1, le=FIB_MAX_ORDER)
-
-
-@app.post("/api/ros/demos/fibonacci")
-def demo_fibonacci(body: FibonacciGoal, request: Request):
-    cid, ip = _client(request)
-    who = hub.name_of(cid, ip)
-    command(request, "fibonacci goal (order {})".format(body.order),
-            lambda: demos.fibonacci_start(body.order, who))
-    return {"ok": True}
-
-
-@app.post("/api/ros/demos/fibonacci/cancel")
-def demo_fibonacci_cancel(request: Request):
-    command(request, "fibonacci cancel", demos.fibonacci_cancel)
-    return {"ok": True}
-
-
-class Transition(BaseModel):
-    transition: str
-
-
-@app.post("/api/ros/demos/lifecycle/{node}")
-def demo_lifecycle(node: str, body: Transition, request: Request):
-    state = command(request, "{}: {}".format(node, body.transition),
-                    lambda: demos.lifecycle_transition(node, body.transition))
-    return {"ok": True, "state": state}
-
-
 # ---- websockets ---------------------------------------------------------------------
 
 @app.websocket("/ws")
@@ -375,9 +321,8 @@ async def live(ws: WebSocket):
         for message in hub.connect(cid, hello.get("name"), ip, queue):
             await ws.send_json(message)
         await ws.send_json({"type": "telemetry", "data": arm.snapshot()})
-        for name in ("health", "demos"):
-            if name in _latest:
-                await ws.send_json({"type": name, "data": _latest[name][1]})
+        if "health" in _latest:
+            await ws.send_json({"type": "health", "data": _latest["health"][1]})
         hub.set_page(cid, hello.get("page"))
         sender = asyncio.create_task(drain(queue, ws.send_json))
         while True:

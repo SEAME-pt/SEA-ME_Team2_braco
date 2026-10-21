@@ -48,7 +48,7 @@ def main():
         from pymycobot import MyCobot280
     except ImportError:
         print("[ERROR] 'pymycobot' is not installed.")
-        print("Install required dependencies with: make host-venv")
+        print("Install required dependencies with: make ci")
         sys.exit(EXIT_COMM_ERROR)
 
     print("========================================")

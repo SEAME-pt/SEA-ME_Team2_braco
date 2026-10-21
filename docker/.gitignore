@@ -1,10 +1,5 @@
 .env
-ws/build/
-ws/install/
-ws/log/
-ws/bags/
 dist/
 .vscode
 __pycache__/
 *.pyc
-ws/.ccache/

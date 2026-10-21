@@ -6,11 +6,18 @@
 /libs/cpp/pid_tool
 /libs/cpp/temps_lcd
 
-# CMake build of tests/ (root Makefile: make host-cpp / host-check)
+# CMake build of tests/ (root Makefile: make ci)
 /tests/build/
 
+# ---- ROS 2 workspace (colcon output, recordings, ccache) ------------------------
+/ros2_ws/build/
+/ros2_ws/install/
+/ros2_ws/log/
+/ros2_ws/bags/
+/ros2_ws/.ccache/
+
 # ---- Python -------------------------------------------------------------------
-# Virtual environment created by make init / make host-venv / make web
+# Virtual environment created by make ci / make web
 /.venv/
 __pycache__/
 *.py[cod]
