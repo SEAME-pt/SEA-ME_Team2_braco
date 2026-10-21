@@ -33,29 +33,37 @@ struct JointLimit
 };
 using JointLimits = std::array<JointLimit, 6>;  // index 0 = J1 ... 5 = J6
 
-// Limits enforced by the arm's firmware, read from this arm with
-// get_joint_min_angle() / get_joint_max_angle(). Absolute ceiling: soft
-// limits can never be set outside these.
-constexpr JointLimits FIRMWARE_LIMITS = {{
-  {-168.0, 168.0},  // J1
-  {-140.0, 140.0},  // J2
-  {-150.0, 150.0},  // J3
-  {-150.0, 150.0},  // J4
-  {-155.0, 160.0},  // J5
-  {-180.0, 180.0},  // J6
+// The one set of joint limits. Based on the limits enforced by the arm's
+// firmware (read from this arm with get_joint_min_angle() / get_joint_max_angle()
+// and equal to Elephant Robotics' official URDF), minus 1-2 deg so a joint
+// never rests on its mechanical end stop. The park pose is inside them.
+// A box of per-joint limits cannot keep the tool off the table (that depends on
+// J2..J5 together), so poses are also checked with minHeightMm() below.
+constexpr JointLimits JOINT_LIMITS = {{
+  {-166.0, 166.0},  // J1
+  {-138.0, 138.0},  // J2
+  {-149.0, 149.0},  // J3
+  {-149.0, 149.0},  // J4
+  {-153.0, 158.0},  // J5
+  {-178.0, 178.0},  // J6
 }};
 
-// Default soft limits for this setup (from the joystick program). Tighter
-// than the firmware to keep the arm away from collisions with itself, the
-// table and cables. Change per setup with setSoftLimits().
-constexpr JointLimits DEFAULT_SOFT_LIMITS = {{
-  {-160.0, 160.0},  // J1
-  {-130.0, 130.0},  // J2
-  {-140.0, 140.0},  // J3
-  {-120.0, 120.0},  // J4
-  {-135.0, 135.0},  // J5
-  {-170.0, 170.0},  // J6
-}};
+// Fixed poses, shared by zero, park and the ROS 2 nodes of braco_bringup.
+// Park folds the arm (wrist 245 mm above the table); J3 -148 is just inside its limit.
+constexpr Angles ZERO_ANGLES = {0, 0, 0, 0, 0, 0};
+constexpr Angles PARK_ANGLES = {0, 131, -148, 146, 4.5, 0};
+
+// Table clearance, from the measured setup. Heights are above the table.
+constexpr double BASE_HEIGHT_MM = 140.0;  // table -> arm base (Jetson casing)
+constexpr double TOOL_LENGTH_MM = 130.0;  // J6 flange -> tip of camera + gripper
+                                          // (130 closed, 110 open: use the longer)
+constexpr double TABLE_MARGIN_MM = 20.0;  // lowest point must stay above this
+
+// Height above the table (mm) of the lowest of the wrist (J4, J5, J6) and the
+// tool tip, for these joint angles. Forward kinematics of the myCobot 280 from
+// Elephant Robotics' URDF. Only height is checked: the casing footprint and the
+// sideways size of the gripper are not modelled.
+double minHeightMm(const Angles & angles);
 
 // Command codes, taken from pymycobot's ProtocolCode.
 // Verify against your installed version:
@@ -163,17 +171,14 @@ public:
   void releaseAllServos();          // free all joints (move by hand)
   std::optional<bool> isPowerOn();  // nullopt if no valid reply
 
-  // ---- Joint limits --------------------------------------------------------
-  // Every angle sent to the arm is clamped to the soft limits, so no program
-  // can command a joint outside them. Throws std::invalid_argument if any
-  // limit lies outside FIRMWARE_LIMITS or has min >= max.
-  void setSoftLimits(const JointLimits & limits);
-  const JointLimits & softLimits() const { return softLimits_; }
-
   // ---- Motion (fire-and-forget, like pymycobot) --------------------------
-  // Angles outside the soft limits are clamped to the nearest limit.
-  // Returns true if any angle was clamped. Throws std::invalid_argument for
-  // non-finite angles (NaN/inf) or a joint outside 1..6.
+  // Angles outside JOINT_LIMITS are clamped to the nearest limit. A pose whose
+  // lowest point is under TABLE_MARGIN_MM is not sent at all (the constraint
+  // involves several joints, so there is nothing to clamp to).
+  // Returns true if any angle was clamped or the move was refused. Throws
+  // std::invalid_argument for non-finite angles (NaN/inf) or a joint outside 1..6.
+  // sendAngle() checks the height with the last known angles (from getAngles()
+  // or sendAngles()), reading them once if there are none yet.
   bool sendAngles(const Angles & angles, int speed);
   bool sendAngle(int joint, double angle, int speed);  // joint 1..6
   void stop();
@@ -221,9 +226,9 @@ public:
 
 private:
   int fd_ = -1;
-  JointLimits softLimits_ = DEFAULT_SOFT_LIMITS;
+  std::optional<Angles> lastAngles_;  // last angles read or commanded
 
-  // Clamp one angle to the soft limit of `joint` (1..6); sets `clamped`.
+  // Clamp one angle to JOINT_LIMITS of `joint` (1..6); sets `clamped`.
   double limitAngle(int joint, double angle, bool & clamped) const;
 
   // Build a frame and write it to the port.

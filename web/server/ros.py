@@ -1,9 +1,9 @@
 """One shared ROS 2 node for the whole web server.
 
-The arm source, the health panel, the graph explorer and the demos all hang
+The arm source, the health panel and the graph explorer all hang
 off the same rclpy node, spun by a MultiThreadedExecutor in a daemon thread.
 rclpy is imported in that thread, never at module load, so the server still
-runs where ROS is not installed (a PC, make web-mock, the tests): every ROS
+runs where ROS is not installed (a PC, make web, the tests): every ROS
 feature then reports `error` instead of data.
 
     bridge.start()

@@ -9,7 +9,7 @@
 // chart) and a floating label. The flange leaves a fading trail.
 
 import * as THREE from "three";
-import { JOINTS, SOFT_LIMITS } from "./specs.js";
+import { JOINTS, JOINT_LIMITS } from "./specs.js";
 
 // theta offset (rad), d (mm), a (mm), alpha (rad)
 const DH = [
@@ -284,7 +284,7 @@ export function createArm3D(container) {
     for (let i = 0; i < 6; i++) {
       current[i] += (target[i] - current[i]) * 0.25;
       joints[i].rotation.z = THREE.MathUtils.degToRad(current[i]) + DH[i][0];
-      const [lo, hi] = SOFT_LIMITS[i];
+      const [lo, hi] = JOINT_LIMITS[i];
       const outside = current[i] < lo || current[i] > hi;
       ringMats[i].emissive.set(outside ? 0xff0000 : COLORS[i]);
       ringMats[i].emissiveIntensity = outside ? 0.9 : 0.15;

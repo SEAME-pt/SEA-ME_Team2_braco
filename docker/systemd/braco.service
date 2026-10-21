@@ -1,0 +1,23 @@
+# braco.service - start the system on the Jetson (the `real` container: ROS 2 launch of driver, temperature,
+# teleop + the web page) at boot. Installed by `make boot-on` (removed by `make boot-off`), which fills in @WORKDIR@ (this docker/ folder) and @DOCKER@.
+# The container has no restart policy; this unit brings it up after boot and takes it down on
+# `systemctl stop braco` or at shutdown. The arm is not zeroed or parked by either.
+
+[Unit]
+Description=SEA:ME arm services (ROS 2 driver, temperature monitor, joystick teleop, web page)
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=@WORKDIR@
+ExecStart=@DOCKER@ compose up -d real
+ExecStop=@DOCKER@ compose stop real
+ExecStop=@DOCKER@ compose rm --force real
+TimeoutStartSec=120
+TimeoutStopSec=120
+
+[Install]
+WantedBy=multi-user.target
