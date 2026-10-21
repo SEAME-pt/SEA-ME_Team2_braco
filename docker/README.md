@@ -59,6 +59,9 @@ Created by `make` when needed, never shipped: `.env`, `ros2_ws/bags`.
 There is a single `Makefile`, at the **repo root**, split into `mk/*.mk`: run every `make` command from there. It
 passes `--project-directory docker` to `docker compose`, so `.env`, `../ros2_ws` and `../libs` resolve exactly as
 below. Every path it uses is defined in one block of `mk/config.mk`, so moving a file means editing one line there.
+`make doctor` checks that all project files are present, and `make lint` validates the compose files, runs shellcheck
+on `docker/scripts/` and `docker/tests/` and hadolint on the Dockerfile (each a local binary, or else its pinned image
+through docker).
 
 ## Quick start
 
@@ -102,7 +105,7 @@ skips the entrypoint, so ROS is **not** sourced - prefix it with `ros_entrypoint
 | Development | `shell`, `run CMD='...'`, `build` (`COLCON_ARGS=...`), `test`, `web` (mock page on :8080), `clean` |
 | Setup | `setup`, `doctor`, `image` (`IMAGE_ARGS='--no-cache --pull'`), `boot-on`, `boot-off`, `jetson-image` (`NANO=user@host`), `reset` |
 | Network | `net-test`, `net-talk`, `net-listen` |
-| CI | `ci`, `ci-ros`, `lint` |
+| CI | `ci`, `ci-image`, `ci-ros`, `lint` |
 
 - `make up GPU=nvidia` (or `GPU=dri`) adds `compose/nvidia.yml` or `compose/dri.yml` for `dev` and `sim` (PC only);
   `COMPOSE_FILE` in `.env` does the same permanently.

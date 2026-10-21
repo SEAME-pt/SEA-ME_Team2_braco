@@ -21,9 +21,6 @@ concurrency:
 permissions:
   contents: read
 
-env:
-  HADOLINT_VERSION: v2.12.0
-
 jobs:
   host:
     runs-on: ubuntu-24.04
@@ -40,15 +37,8 @@ jobs:
             requirements.txt
             web/requirements*.txt
 
-      # make lint skips shellcheck and hadolint when they are missing, so install both to make the job mean something.
-      - name: Install shellcheck and hadolint
-        run: |
-          command -v shellcheck >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck; }
-          sudo curl -fsSL -o /usr/local/bin/hadolint \
-            "https://github.com/hadolint/hadolint/releases/download/${HADOLINT_VERSION}/hadolint-Linux-x86_64"
-          sudo chmod +x /usr/local/bin/hadolint
-          shellcheck --version | head -n 2
-          hadolint --version
+      # shellcheck and hadolint need no install step: without a local binary, make lint runs the images pinned in
+      # SHELLCHECK_IMAGE and HADOLINT_IMAGE (Makefile) through docker.
 
       # Also creates docker/.env as every user gets it: lint validates the compose files against it.
       - name: make ci
@@ -70,7 +60,8 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
-      # Same image `make ci-ros` builds when it is missing, but with the BuildKit layers cached in GitHub's cache.
+      # Same image as `make ci-image` (keep target and build-args in step with CI_TARGET there), but with the
+      # BuildKit layers cached in GitHub's cache between runs.
       - name: Build the CI image (Dockerfile stage base)
         uses: docker/build-push-action@v6
         with:
