@@ -62,7 +62,6 @@ x-system-env: &system-env
 x-volumes:
   - &vol-ws ../ros2_ws:/ws
   - &vol-libs ../libs:/opt/seame/libs:ro
-  - &vol-examples ../examples:/opt/seame/examples
   - &vol-repo ..:/opt/braco:ro             # the braco web page (web/) and the docs it shows
   - &vol-logs ros-logs:/home/dev/.ros
 
@@ -91,7 +90,6 @@ services:
       - ./tests:/opt/seame/tests:ro        # make net-test etc.; edit on the host, no rebuild
       - ..:/opt/braco:ro                   # the repository (web page and docs), as in the system containers
       - ../libs:/opt/seame/libs:ro         # libs/cpp (mycobot_cpp); colcon finds it via make build
-      - ../examples:/opt/seame/examples    # ROS 2 basics tutorials; colcon finds them via make build
 
   # ---------------------------------------------------------------------------------------
   # real - the system on the Jetson: ONE container, everything under ROS 2 (make up). No build of its own: it uses
@@ -130,7 +128,6 @@ services:
     volumes:
       - *vol-ws
       - *vol-libs
-      - *vol-examples
       - *vol-repo
       - *vol-logs
       - /dev/input:/dev/input
@@ -151,7 +148,6 @@ services:
     volumes:
       - *vol-ws
       - *vol-libs
-      - *vol-examples
       - *vol-repo
       - *vol-logs
       - /tmp/.X11-unix:/tmp/.X11-unix:rw

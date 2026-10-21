@@ -18,12 +18,13 @@ run: _image _dev_up ## Run CMD in dev: make run CMD='ros2 topic list'
 	@test -n "$$BRACO_CMD" || { echo "usage: make run CMD='ros2 topic list'" >&2; exit 2; }
 	$(DEV_EXEC) bash -c "$$BRACO_CMD"
 
-build: _image _dev_up ## colcon build of ros2_ws/src, libs and examples (COLCON_ARGS=...; make restart to run it)
+build: _image _dev_up ## colcon build of ros2_ws/src and libs (COLCON_ARGS=...; make restart to run it)
 	$(COMPOSE) exec $(NOTTY) $(BUILD_ENV) $(DEV) ros_entrypoint.sh $(COLCON)
 	@touch $(BUILD_STAMP) $(REBUILT)
 
-test: _image _dev_up ## colcon test, then the results (unit tests and ament lint checks)
-	$(DEV_EXEC) bash -c 'colcon test --base-paths $(WS_BASE_PATHS) && colcon test-result --verbose'
+test: _image _dev_up ## colcon test, then the results (unit tests and ament lint checks; PC only)
+	@[ "$(ROLE)" != jetson ] || { echo "the Jetson builds without tests (BUILD_TESTING=OFF): run make test on the PC, or make ci-ros" >&2; exit 1; }
+	$(call dev_cmd) bash -c 'colcon test --base-paths $(WS_BASE_PATHS) && colcon test-result --verbose'
 
 web: $(VENV)/.web-installed ## Serve the page with mock arm data on http://localhost:8080 (no arm, no ROS, no docker)
 	ARM_MOCK=1 BRACO_ROS=0 $(VENV)/bin/uvicorn web.server.app:app --host 127.0.0.1 --port $(WEB_DEV_PORT) --reload

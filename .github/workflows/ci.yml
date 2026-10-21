@@ -2,7 +2,7 @@
 # reproduced locally with the same command:
 #
 #   host  make ci        (host checks, lint, web page tests; no robot, no docker image)
-#   ros   make ci-ros    (rosdep, colcon build, colcon test of ros2_ws/src + libs + examples)
+#   ros   make ci-ros    (rosdep, colcon build, colcon test of ros2_ws/src + libs)
 #
 # The Jetson (arm64) image is not built here: a QEMU build is too slow, use make jetson-image by hand.
 name: CI

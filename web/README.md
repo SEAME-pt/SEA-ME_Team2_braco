@@ -8,7 +8,7 @@ is in sync**: who is online, who controls the arm, what each person did, and the
 |---|---|---|
 | **Home** | arm summary, who is on the page, ROS 2 node health, activity log, current sprint, shortcuts | the other pages |
 | **Arm** | 3D model, angles with soft/firmware limits, temperatures, cartesian pose, 60 s history, control (STOP, Park, Zero, wake up, per-joint sliders, gripper, LED, rest mode), activity, protocol table, limits and factory PID | `/ws` + `js/specs.js` |
-| **ROS 2** | *Health*: arm_driver / temperature_monitor / joystick_teleop up or missing, driver services, `/diagnostics`. *Graph*: every node, topic (with live echo and rate), service and action. *Demos*: `/chatter`, `add_two_ints`, the `fibonacci` action with feedback and cancel, lifecycle talkers | the web server's ROS 2 node |
+| **ROS 2** | *Health*: arm_driver / temperature_monitor / joystick_teleop up or missing, driver services, `/diagnostics`. *Graph*: every node, topic (with live echo and rate), service and action | the web server's ROS 2 node |
 | **Docs** | every `.md` in the repository, grouped by topic, rendered | `GET /api/docs` |
 | **Sprints** | milestone timeline, countdown, one card per `SPRINT N` issue with its sub-issues, and a page per sprint (`#/sprints/N`) | GitHub API, 5 min cache |
 
@@ -37,7 +37,6 @@ The page is part of the braco system: `make up` starts it with the rest, on port
 
 ```bash
 make up                  # http://<jetson-ip>:8000 from any PC on the lab network
-make demos               # optional: the ros2_basics demos for ROS 2 > Demos
 make logs S=web          # only the page's log lines
 make restart             # after editing web/: restarts the system container; the arm is not zeroed or parked
 ```
@@ -92,7 +91,7 @@ docker run --rm -v "$PWD":/src:ro python:3.8 bash -c 'cp -r /src /w && cd /w && 
 |---|---|---|
 | `ARM_SOURCE` | — | `ros`: the arm through arm_driver (the `real` container sets it); `gazebo`: Gazebo over ROS 2 (PC only); unset: pymycobot on the serial port |
 | `ARM_MOCK` | — | `1` uses mock data |
-| `BRACO_ROS` | `1` | `0` never starts ROS 2 (health, graph and demos stay empty) |
+| `BRACO_ROS` | `1` | `0` never starts ROS 2 (health and graph stay empty) |
 | `GZ_JOINT_NAMES` | myCobot 280 URDF names | joints in `/joint_states` for Gazebo, comma separated |
 | `ARM_PORT` / `ARM_BAUD` | `/dev/ttyTHS1` / `1000000` | serial port for the pymycobot fallback |
 | `WEB_PORT` | `8000` | port of the page in the `real` / `sim` container (`docker/.env`) |
@@ -109,7 +108,6 @@ web/
   server/ros.py         the one shared rclpy node (imported lazily: the server runs without ROS)
   server/ros_health.py  arm nodes and /diagnostics
   server/ros_graph.py   read-only graph explorer and topic echo
-  server/ros_demos.py   chatter, add_two_ints, fibonacci action, lifecycle talkers
   server/docs.py        finds, groups and reads every Markdown file in the repository
   server/github.py      milestones, SPRINT issues and sub-issues
   static/               plain HTML/CSS/JS, no build (three.js, marked and highlight.js from a CDN)
@@ -122,7 +120,7 @@ runs **409**.
 
 | Route | Description |
 |---|---|
-| `WS /ws` | the page's connection. First message `{"type": "hello", "id", "name", "page"}`; then the server sends `telemetry` (200 ms), `presence`, `lease`, `activity`, `ui`, `speed`, `health`, `demos`, `graph` (ROS page), `echo` (watched topic); the page sends `ui`, `page`, `rename`, `watch` / `unwatch` |
+| `WS /ws` | the page's connection. First message `{"type": "hello", "id", "name", "page"}`; then the server sends `telemetry` (200 ms), `presence`, `lease`, `activity`, `ui`, `speed`, `health`, `graph` (ROS page), `echo` (watched topic); the page sends `ui`, `page`, `rename`, `watch` / `unwatch` |
 | `WS /ws/telemetry` | bare snapshot stream every 200 ms (scripts, old pages) |
 | `GET /api/status` | latest arm snapshot (`capabilities` lists what the source supports) |
 | `POST /api/control/take` · `/release` | take / release control |
@@ -133,10 +131,7 @@ runs **409**.
 | `POST /api/joint/{1-6}` `{angle}` | move one joint, inside its soft limit, at the shared speed |
 | `POST /api/speed` `{value, unlocked}` | the one speed everybody shares (1-100), **operator only**. Above 80 it needs `unlocked: true` (the page asks the operator to accept a warning); releasing control puts a speed above 80 back to 80 |
 | `POST /api/rest` `{on}` · `/api/gripper` `{closed}` · `/api/led` `{r, g, b}` | rest mode, gripper, Atom LED (ROS and mock sources) |
-| `GET /api/ros/health` · `/graph` · `/demos` | the ROS 2 panels |
-| `POST /api/ros/demos/add_two_ints` `{a, b}` | call the service |
-| `POST /api/ros/demos/fibonacci` `{order}` · `/fibonacci/cancel` | send / cancel a goal |
-| `POST /api/ros/demos/lifecycle/{node}` `{transition}` | configure, activate, deactivate, cleanup, shutdown |
+| `GET /api/ros/health` · `/graph` | the ROS 2 panels |
 | `GET /api/docs` · `/api/docs/{path}` | document list / Markdown of one |
 | `GET /api/sprints?refresh=1` | sprint data (`refresh` skips the cache) |
 
