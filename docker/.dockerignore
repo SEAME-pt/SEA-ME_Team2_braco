@@ -1,0 +1,5 @@
+# The build context is docker/: the image only needs Dockerfile, config/ and scripts/.
+*
+!Dockerfile
+!config/
+!scripts/

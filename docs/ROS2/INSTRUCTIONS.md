@@ -51,7 +51,7 @@ Conventions in this guide:
 | Windows | Docker inside WSL2 (Ubuntu), then section 1.1 from the WSL terminal. GUIs need WSLg |
 | macOS | Docker Desktop works for the CLI; GUIs (RViz2, rqt) are not supported by our setup |
 
-The Docker setup gives everyone the **same** ROS 2 Lyrical install on Ubuntu 26.04, on both the PC (`pc-dev` image: ROS desktop, RViz2, MoveIt 2, Gazebo, rqt, QA tools) and the Jetson (`jetson-driver` image: headless ROS base, serial tools, `pymycobot`). Full details are in [docker/README.md](../docker/README.md).
+The Docker setup gives everyone the **same** ROS 2 Lyrical install on Ubuntu 26.04, on both the PC (`braco-image/pc` image: ROS desktop, RViz2, MoveIt 2, Gazebo, rqt, QA tools) and the Jetson (`braco-image/jetson` image: headless ROS base, serial tools, `pymycobot`). Full details are in [docker/README.md](../docker/README.md).
 
 ---
 
@@ -98,15 +98,15 @@ host$ sudo apt-get install -y x11-xserver-utils make git
 
 ```bash
 host$ git clone git@github.com:SEAME-pt/SEA-ME_Team2_braco.git
-host$ cd SEA-ME_Team2_braco/docker
+host$ cd SEA-ME_Team2_braco
 ```
 
-All `make` commands below are run **from the `docker/` folder**.
+All `make` commands below are run **from the repo root** (`make` lists them).
 
 **Step 5. Create your `.env`** (fills in your user ID, group IDs and the machine role):
 
 ```bash
-host$ make env ROLE=pc
+host$ make setup ROLE=pc
 ```
 
 Open `docker/.env` and check:
@@ -123,19 +123,19 @@ host$ make doctor
 
 Every line should be `[ ok ]`. Fix any `[FAIL]` before continuing ([TROUBLESHOOTING.md](TROUBLESHOOTING.md) lists the usual causes).
 
-**Step 7. Build and start the container.** The first build downloads Ubuntu 26.04 and ROS 2 and takes a while (tens of minutes, depending on your connection):
+**Step 7. Turn the system on.** The first build downloads Ubuntu 26.04 and ROS 2 and takes a while (tens of minutes, depending on your connection):
 
 ```bash
 host$ make up
 ```
 
-`make up` creates `docker/ws/src` and `docker/ws/bags` as your user, builds the `pc-dev` image if missing, and starts it in the background.
+`make up` creates `ros2_ws/src` and `ros2_ws/bags` as your user, builds the `braco-image/pc` image if missing, builds the workspace if a source changed, and starts two containers in the background: `dev` (your tools: `make shell`, `make build`, ...) and `sim` (the braco system on the simulated arm, with the web page on port 8000). Running it again only does what is missing.
 
 **Step 8. Verify:**
 
 ```bash
-host$ make smoke              # checks packages, pymycobot, RMW loopback
-host$ make talker-listener    # C++ talker + Python listener, prints PASS/FAIL
+host$ make run CMD=seame-smoke-test    # checks packages, pymycobot, RMW loopback
+host$ make net-test                   # C++ talker + Python listener, prints PASS/FAIL
 ```
 
 **Step 9. Open a shell inside the container:**
@@ -146,7 +146,7 @@ host$ make shell
 lyrical
 ```
 
-You are now in `/ws`, which is the folder `docker/ws` of the repo, mounted into the container. Anything you put in `/ws/src` is saved in the repo on the host.
+You are now in `/ws`, which is the folder `ros2_ws` of the repo, mounted into the container. Anything you put in `/ws/src` is saved in the repo on the host.
 
 ### 1.2 On the Jetson Nano
 
@@ -164,9 +164,9 @@ Log out and back in.
 
 ```bash
 nano$ git clone git@github.com:SEAME-pt/SEA-ME_Team2_braco.git
-nano$ cd SEA-ME_Team2_braco/docker
-nano$ make env ROLE=jetson
-nano$ make doctor ROLE=jetson
+nano$ cd SEA-ME_Team2_braco
+nano$ make setup ROLE=jetson
+nano$ make doctor
 ```
 
 Check in `.env`: `COMPOSE_PROFILES=jetson`, `MYCOBOT_PORT=/dev/ttyTHS1`, `MYCOBOT_BAUD=1000000`, and the same `ROS_DOMAIN_ID` / `RMW_IMPLEMENTATION` as the PC.
@@ -176,25 +176,23 @@ Check in `.env`: `COMPOSE_PROFILES=jetson`, `MYCOBOT_PORT=/dev/ttyTHS1`, `MYCOBO
 - **Build on the Nano** (slow, and build only one image at a time: parallel builds froze Docker on this device):
 
   ```bash
-  nano$ make build
+  nano$ make image
   ```
 
-- **Or build on the PC and ship it** (faster). On the PC, from `docker/`:
+- **Or build on the PC and ship it** (faster). On the PC:
 
   ```bash
-  host$ make binfmt                              # once: lets the PC build arm64 images
-  host$ make jetson-cross                        # slow: emulated arm64 build
-  host$ make jetson-ship NANO=user@<nano-ip>     # copies the image over ssh
+  host$ make jetson-image NANO=user@<nano-ip>    # slow: emulated arm64 build, then copied over ssh
   ```
 
-  Then on the Nano set `IMAGE_TAG=lyrical-arm64` in `.env`.
+  It registers QEMU on the PC the first time, and is tagged on the Nano with its usual name.
 
-**Step 4. Start and verify:**
+**Step 4. Start and verify** (`make up` builds the workspace in a throw-away `dev` container, starts `real`, the real arm with its web page, and waits until the page sees the arm):
 
 ```bash
 nano$ make up
-nano$ make smoke
-nano$ make talker-listener
+nano$ make run CMD=seame-smoke-test
+nano$ make net-test
 nano$ make shell
 ```
 
@@ -202,20 +200,20 @@ The Jetson image has **no GUI tools**. Inspect the Jetson's nodes from the PC (s
 
 ### 1.3 Daily use of the containers
 
-| What | Command (from `docker/`) |
+| What | Command (from the repo root) |
 |---|---|
-| Start the container | `make up` |
+| Turn the system on (idempotent) | `make up` |
 | Open a shell (ROS + workspace sourced) | `make shell` (open as many as you want, one per terminal) |
-| Run one command | `make exec CMD='ros2 topic list'` |
-| Build the workspace | `make ws-build` (adds `--parallel-workers 2` on the Jetson) |
-| Run the workspace tests (linters) | `make ws-test`, then `make exec CMD='colcon test-result --verbose'` (see [12.6](#126-run-the-tests-linters)) |
-| Install package dependencies | `make ws-deps` |
-| Stop the container | `make down` |
+| Run one command | `make run CMD='ros2 topic list'` |
+| Build the workspace | `make build` (on the Jetson only the real system's packages, one at a time, `MAKEFLAGS=-j2`; `make up` builds only when sources changed) |
+| Run the workspace tests (linters) | `make test`, then `make run CMD='colcon test-result --verbose'` (see [12.6](#126-run-the-tests-linters)) |
+| Install package dependencies | `make run CMD='rosdep install --from-paths src --ignore-src -y'` |
+| Turn it off | `make down` (`PARK=1` parks the arm first, on the Jetson) |
 | See all targets | `make` |
 
-Without `make`: `docker compose exec pc-dev bash` (or `jetson-driver`). A bare `docker compose exec pc-dev <command>` does **not** source ROS; prefix it with `ros_entrypoint.sh`.
+Without `make` (from `docker/`): `docker compose exec dev bash`. A bare `docker compose exec dev <command>` does **not** source ROS; prefix it with `ros_entrypoint.sh`.
 
-Packages installed with `sudo apt-get install` inside a running container disappear when the container is recreated. Anything permanent must be added to `docker/docker/Dockerfile`.
+Packages installed with `sudo apt-get install` inside a running container disappear when the container is recreated. Anything permanent must be added to `docker/Dockerfile`.
 
 ---
 
@@ -308,7 +306,7 @@ container$ ros2 run demo_nodes_py listener
 [INFO] [listener]: I heard: [Hello World: 1]
 ```
 
-If the listener prints messages, C++ (`rclcpp`), Python (`rclpy`) and the middleware work. Stop both with `Ctrl+C`. In the Docker setup, `make talker-listener` does exactly this automatically.
+If the listener prints messages, C++ (`rclcpp`), Python (`rclpy`) and the middleware work. Stop both with `Ctrl+C`. In the Docker setup, `make net-test` does exactly this automatically.
 
 Also useful:
 
@@ -352,30 +350,33 @@ If no window opens, run `xhost +local:` on the host (`make up` does it for you) 
 
 ## 5. Create the workspace and the packages
 
-We create three packages in `docker/ws/src` (`/ws/src` in the container):
+We create three packages in `ros2_ws/src` (`/ws/src` in the container):
 
 ```
-docker/ws/src/
-├── seame_interfaces/   ament_cmake   custom service and action definitions
+ros2_ws/src/
+├── ros2_basics_interfaces/   ament_cmake   custom service and action definitions
 ├── ros2_basics_cpp/    ament_cmake   C++ nodes: talker, listener, service server/client, lifecycle node
 └── ros2_basics_py/     ament_python  Python nodes: the same, plus action server/client and a launch file
 ```
+
+> These packages are for learning only: they are not part of the repository, so create them in your own
+> `ros2_ws/src` and do not commit them (or delete them when you are done).
 
 Run in the container:
 
 ```bash
 container$ cd /ws/src
 
-container$ ros2 pkg create seame_interfaces \
+container$ ros2 pkg create ros2_basics_interfaces \
     --build-type ament_cmake --license Apache-2.0
 
 container$ ros2 pkg create ros2_basics_cpp \
     --build-type ament_cmake --license Apache-2.0 \
-    --dependencies rclcpp rclcpp_lifecycle std_msgs seame_interfaces
+    --dependencies rclcpp rclcpp_lifecycle std_msgs ros2_basics_interfaces
 
 container$ ros2 pkg create ros2_basics_py \
     --build-type ament_python --license Apache-2.0 \
-    --dependencies rclpy std_msgs action_msgs seame_interfaces
+    --dependencies rclpy std_msgs action_msgs ros2_basics_interfaces
 ```
 
 `ros2 pkg create` generates the skeleton: `package.xml`, `CMakeLists.txt` or `setup.py`, and empty folders. Open `package.xml` in each package and fill in `<description>` and `<maintainer>` (or pass `--maintainer-name "Your Name" --maintainer-email you@example.com` to `ros2 pkg create`: without `--maintainer-email` it derives an address from the name, and a name with characters like `:` gives an invalid e-mail that makes the build fail with `Invalid email`).
@@ -383,10 +384,10 @@ container$ ros2 pkg create ros2_basics_py \
 The interfaces package does not need `include/` or `src/`:
 
 ```bash
-container$ rm -rf /ws/src/seame_interfaces/include /ws/src/seame_interfaces/src
+container$ rm -rf /ws/src/ros2_basics_interfaces/include /ws/src/ros2_basics_interfaces/src
 ```
 
-> Edit the files from the host with your usual editor (VS Code etc.): `docker/ws/src` on the host is `/ws/src` in the container. Build and run inside the container.
+> Edit the files from the host with your usual editor (VS Code etc.): `ros2_ws/src` on the host is `/ws/src` in the container. Build and run inside the container.
 
 ---
 
@@ -397,10 +398,10 @@ Interface packages must be `ament_cmake`, even if only Python uses them.
 **Step 1. Create the definition files:**
 
 ```bash
-container$ mkdir -p /ws/src/seame_interfaces/srv /ws/src/seame_interfaces/action
+container$ mkdir -p /ws/src/ros2_basics_interfaces/srv /ws/src/ros2_basics_interfaces/action
 ```
 
-`seame_interfaces/srv/AddTwoInts.srv`:
+`ros2_basics_interfaces/srv/AddTwoInts.srv`:
 
 ```text
 # Request
@@ -411,7 +412,7 @@ int64 b
 int64 sum
 ```
 
-`seame_interfaces/action/Fibonacci.action`:
+`ros2_basics_interfaces/action/Fibonacci.action`:
 
 ```text
 # Goal: how many numbers of the sequence to compute
@@ -424,11 +425,11 @@ int32[] sequence
 int32[] partial_sequence
 ```
 
-**Step 2. `seame_interfaces/CMakeLists.txt`** (replace the generated one):
+**Step 2. `ros2_basics_interfaces/CMakeLists.txt`** (replace the generated one):
 
 ```cmake
 cmake_minimum_required(VERSION 3.10)
-project(seame_interfaces)
+project(ros2_basics_interfaces)
 
 find_package(ament_cmake REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
@@ -442,7 +443,7 @@ ament_export_dependencies(rosidl_default_runtime)
 ament_package()
 ```
 
-**Step 3. `seame_interfaces/package.xml`**: add these lines inside `<package>`, after `<buildtool_depend>ament_cmake</buildtool_depend>`:
+**Step 3. `ros2_basics_interfaces/package.xml`**: add these lines inside `<package>`, after `<buildtool_depend>ament_cmake</buildtool_depend>`:
 
 ```xml
   <buildtool_depend>rosidl_default_generators</buildtool_depend>
@@ -455,10 +456,10 @@ ament_package()
 
 ```bash
 container$ cd /ws
-container$ colcon build --packages-select seame_interfaces
+container$ colcon build --packages-select ros2_basics_interfaces
 container$ source install/setup.bash
-container$ ros2 interface show seame_interfaces/srv/AddTwoInts
-container$ ros2 interface show seame_interfaces/action/Fibonacci
+container$ ros2 interface show ros2_basics_interfaces/srv/AddTwoInts
+container$ ros2 interface show ros2_basics_interfaces/action/Fibonacci
 ```
 
 ---
@@ -686,7 +687,7 @@ container$ ros2 topic info -v /chatter
 
 ## 8. Service server and client
 
-Service `add_two_ints` of type `seame_interfaces/srv/AddTwoInts`.
+Service `add_two_ints` of type `ros2_basics_interfaces/srv/AddTwoInts`.
 
 ### 8.1 Python
 
@@ -698,7 +699,7 @@ import rclpy
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 
-from seame_interfaces.srv import AddTwoInts
+from ros2_basics_interfaces.srv import AddTwoInts
 
 
 class AddTwoIntsServer(Node):
@@ -739,7 +740,7 @@ import rclpy
 from rclpy.node import Node
 from rclpy.utilities import remove_ros_args
 
-from seame_interfaces.srv import AddTwoInts
+from ros2_basics_interfaces.srv import AddTwoInts
 
 
 class AddTwoIntsClient(Node):
@@ -788,9 +789,9 @@ Note `call_async` + `spin_until_future_complete`: the client never blocks inside
 #include <memory>
 
 #include "rclcpp/rclcpp.hpp"
-#include "seame_interfaces/srv/add_two_ints.hpp"
+#include "ros2_basics_interfaces/srv/add_two_ints.hpp"
 
-using AddTwoInts = seame_interfaces::srv::AddTwoInts;
+using AddTwoInts = ros2_basics_interfaces::srv::AddTwoInts;
 
 class AddTwoIntsServer : public rclcpp::Node
 {
@@ -834,9 +835,9 @@ int main(int argc, char ** argv)
 #include <vector>
 
 #include "rclcpp/rclcpp.hpp"
-#include "seame_interfaces/srv/add_two_ints.hpp"
+#include "ros2_basics_interfaces/srv/add_two_ints.hpp"
 
-using AddTwoInts = seame_interfaces::srv::AddTwoInts;
+using AddTwoInts = ros2_basics_interfaces::srv::AddTwoInts;
 using namespace std::chrono_literals;
 
 int main(int argc, char ** argv)
@@ -879,9 +880,9 @@ int main(int argc, char ** argv)
 
 ## 9. Action server and client
 
-Action `fibonacci` of type `seame_interfaces/action/Fibonacci`: computes the sequence one number per second, publishes feedback, can be canceled, rejects goals that are too large.
+Action `fibonacci` of type `ros2_basics_interfaces/action/Fibonacci`: computes the sequence one number per second, publishes feedback, can be canceled, rejects goals that are too large.
 
-The examples are in Python. For C++ (`rclcpp_action`), follow the official tutorial "Writing an action server and client (C++)" at <https://docs.ros.org/en/lyrical/Tutorials/Intermediate/Writing-an-Action-Server-Client/Cpp.html> using the same `seame_interfaces/action/Fibonacci` type; it is good practice for whoever implements the arm's motion action later.
+The examples are in Python. For C++ (`rclcpp_action`), follow the official tutorial "Writing an action server and client (C++)" at <https://docs.ros.org/en/lyrical/Tutorials/Intermediate/Writing-an-Action-Server-Client/Cpp.html> using the same `ros2_basics_interfaces/action/Fibonacci` type; it is good practice for whoever implements the arm's motion action later.
 
 > Use `get_logger().warning(...)`, not `.warn(...)`: older tutorials use `.warn`, which no longer exists in Lyrical (`AttributeError: 'RcutilsLogger' object has no attribute 'warn'`) and crashes the node the first time that line runs.
 
@@ -897,7 +898,7 @@ from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import ExternalShutdownException, MultiThreadedExecutor
 from rclpy.node import Node
 
-from seame_interfaces.action import Fibonacci
+from ros2_basics_interfaces.action import Fibonacci
 
 MAX_ORDER = 50
 
@@ -974,7 +975,7 @@ from rclpy.action import ActionClient
 from rclpy.node import Node
 from rclpy.utilities import remove_ros_args
 
-from seame_interfaces.action import Fibonacci
+from ros2_basics_interfaces.action import Fibonacci
 
 
 class FibonacciClient(Node):
@@ -1233,7 +1234,7 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
 find_package(std_msgs REQUIRED)
-find_package(seame_interfaces REQUIRED)
+find_package(ros2_basics_interfaces REQUIRED)
 
 add_executable(talker src/talker.cpp)
 target_link_libraries(talker rclcpp::rclcpp ${std_msgs_TARGETS})
@@ -1242,10 +1243,10 @@ add_executable(listener src/listener.cpp)
 target_link_libraries(listener rclcpp::rclcpp ${std_msgs_TARGETS})
 
 add_executable(add_two_ints_server src/add_two_ints_server.cpp)
-target_link_libraries(add_two_ints_server rclcpp::rclcpp ${seame_interfaces_TARGETS})
+target_link_libraries(add_two_ints_server rclcpp::rclcpp ${ros2_basics_interfaces_TARGETS})
 
 add_executable(add_two_ints_client src/add_two_ints_client.cpp)
-target_link_libraries(add_two_ints_client rclcpp::rclcpp ${seame_interfaces_TARGETS})
+target_link_libraries(add_two_ints_client rclcpp::rclcpp ${ros2_basics_interfaces_TARGETS})
 
 add_executable(managed_talker src/managed_talker.cpp)
 target_link_libraries(managed_talker
@@ -1263,7 +1264,7 @@ endif()
 ament_package()
 ```
 
-Every `.cpp` file must start with a license header, or `colcon test` fails the `copyright` and `cpplint` linters. The examples above leave it out to stay short; the files in `docker/ws/src` have it:
+Every `.cpp` file must start with a license header, or `colcon test` fails the `copyright` and `cpplint` linters. The examples above leave it out to stay short; add it at the top of each file:
 
 ```cpp
 // Copyright 2026 SEA:ME Team 2
@@ -1284,7 +1285,7 @@ Executables must be installed to `lib/<package>` or `ros2 run` will not find the
   <depend>rclcpp</depend>
   <depend>rclcpp_lifecycle</depend>
   <depend>std_msgs</depend>
-  <depend>seame_interfaces</depend>
+  <depend>ros2_basics_interfaces</depend>
 ```
 
 ### 11.3 `ros2_basics_py/setup.py`
@@ -1349,8 +1350,8 @@ In addition to the generated `<depend>` lines, add the runtime dependencies of t
 ### 11.5 Final layout
 
 ```
-docker/ws/src/
-├── seame_interfaces/
+ros2_ws/src/
+├── ros2_basics_interfaces/
 │   ├── CMakeLists.txt
 │   ├── LICENSE                    (generated by ros2 pkg create --license)
 │   ├── package.xml
@@ -1386,7 +1387,7 @@ docker/ws/src/
         └── managed_talker.py
 ```
 
-The `include/ros2_basics_cpp/` folder that `ros2 pkg create` generates can be deleted: these nodes have no headers. A finished, tested copy of this layout is committed in `docker/ws/src`; compare yours with it.
+The `include/ros2_basics_cpp/` folder that `ros2 pkg create` generates can be deleted: these nodes have no headers.
 
 ---
 
@@ -1396,8 +1397,8 @@ The `include/ros2_basics_cpp/` folder that `ros2 pkg create` generates can be de
 
 ```bash
 container$ cd /ws
-container$ rosdep install --from-paths src --ignore-src -y   # or, from the host: make ws-deps
-container$ colcon build                                      # or, from the host: make ws-build
+container$ rosdep install --from-paths src --ignore-src -y   # or, from the host: make run CMD='rosdep install --from-paths src --ignore-src -y'
+container$ colcon build                                      # or, from the host: make build
 container$ source install/setup.bash
 ```
 
@@ -1406,7 +1407,7 @@ container$ source install/setup.bash
 - On the Jetson: `colcon build --parallel-workers 2` (4 GB RAM).
 - Build one package and the ones it depends on: `colcon build --packages-up-to ros2_basics_py`.
 - Our images use `--symlink-install` by default, so editing a `.py` file does **not** need a rebuild. Adding a new node (new `entry_points` line) does.
-- If the build state gets confused: `rm -rf build install log` (or `make ws-clean` from the host) and build again.
+- If the build state gets confused: `rm -rf build install log` (or `make clean` from the host) and build again.
 
 Check what got installed:
 
@@ -1436,7 +1437,7 @@ container$ ros2 run ros2_basics_cpp talker --ros-args -p publish_rate_hz:=5.0
 container$ ros2 run ros2_basics_cpp add_two_ints_server
 container$ ros2 run ros2_basics_py add_two_ints_client 2 3        # Result: 5
 container$ ros2 run ros2_basics_cpp add_two_ints_client 40 2      # Result: 42
-container$ ros2 service call /add_two_ints seame_interfaces/srv/AddTwoInts "{a: 7, b: 8}"
+container$ ros2 service call /add_two_ints ros2_basics_interfaces/srv/AddTwoInts "{a: 7, b: 8}"
 ```
 
 ### 12.4 Run the action examples
@@ -1445,7 +1446,7 @@ container$ ros2 service call /add_two_ints seame_interfaces/srv/AddTwoInts "{a: 
 container$ ros2 run ros2_basics_py fibonacci_server
 container$ ros2 run ros2_basics_py fibonacci_client 8             # feedback every second, then the result
 container$ ros2 run ros2_basics_py fibonacci_client 100           # rejected (order > 50)
-container$ ros2 action send_goal --feedback /fibonacci seame_interfaces/action/Fibonacci "{order: 5}"
+container$ ros2 action send_goal --feedback /fibonacci ros2_basics_interfaces/action/Fibonacci "{order: 5}"
 ```
 
 To test **cancellation**, start a long goal with the CLI (`{order: 30}`) and press `Ctrl+C` in that terminal: `ros2 action send_goal` cancels the goal, and the server logs `Goal canceled`.
@@ -1484,9 +1485,9 @@ Things to observe:
 `ros2 pkg create` adds the standard ament linters to every package, and they are what reviewers and CI check before a merge. Run them after every change:
 
 ```bash
-host$ make ws-build && make ws-test                          # colcon test for every package
-host$ make exec CMD='colcon test-result --all'               # one line per test file
-host$ make exec CMD='colcon test-result --verbose'           # only the failures, with the message
+host$ make build && make test                         # colcon test for every package
+host$ make run CMD='colcon test-result --all'         # one line per test file
+host$ make run CMD='colcon test-result --verbose'     # only the failures, with the message
 ```
 
 Inside the container: `colcon test --packages-select ros2_basics_py` tests one package; the full pytest output is in `/ws/log/latest_test/<package>/stdout_stderr.log`.
@@ -1611,7 +1612,7 @@ container$ ros2 action info /fibonacci           # its clients and servers
 
 ```bash
 container$ ros2 interface show std_msgs/msg/String
-container$ ros2 interface package seame_interfaces
+container$ ros2 interface package ros2_basics_interfaces
 ```
 
 ### rqt_graph (PC only)
@@ -1658,11 +1659,11 @@ host$ ping <jetson-ip>
 **Step 2. Project test** (from `docker/` on each machine):
 
 ```bash
-nano$ make talker
-host$ make listener          # PASS if it hears the Jetson's talker
+nano$ make net-talk
+host$ make net-listen         # PASS if it hears the Jetson's talker
 ```
 
-Then the other way round. Or the simplest test: `make ping-echo` on one and `make ping-pub` on the other.
+Then the other way round.
 
 **Step 3. Our nodes across machines** (after building the workspace on both; `git pull` on the Nano so it has the same code):
 
@@ -1675,7 +1676,7 @@ container$ ros2 run ros2_basics_py listener            # on the PC
 container$ ros2 run rqt_graph rqt_graph                 # shows the Jetson's node too
 ```
 
-If nothing arrives: check the firewall (`sudo ufw status`; allow UDP between the machines), multicast (set `ROS_STATIC_PEERS` with the other machine's IP in `docker/docker-compose.yml`), and the domain/RMW values. More in [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
+If nothing arrives: check the firewall (`sudo ufw status`; allow UDP between the machines), multicast (set `ROS_STATIC_PEERS` with the other machine's IP in `docker/compose.yml`), and the domain/RMW values. More in [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
 
 ---
 
@@ -1688,26 +1689,26 @@ container$ ros2 bag play /ws/bags/chatter_test                          # republ
 container$ ros2 bag record -s mcap -a -o /ws/bags/everything            # all topics (careful with images)
 ```
 
-`docker/ws/bags` is ignored by git; bags are not committed. On the PC, open bags in PlotJuggler (`plotjuggler4`) to plot numeric fields.
+`ros2_ws/bags` is ignored by git; bags are not committed. On the PC, open bags in PlotJuggler (`plotjuggler4`) to plot numeric fields.
 
 ---
 
 ## 18. Push the examples to the repo
 
-The packages live in `docker/ws/src/`, which **is** tracked by git. Generated folders (`docker/ws/build`, `install`, `log`, `bags`) are ignored by `docker/.gitignore`.
+The arm packages live in `ros2_ws/src/` and **are** tracked by git; the tutorial packages are not. Generated folders (`ros2_ws/build`, `install`, `log`, `bags`) are ignored by the root `.gitignore`.
 
 **Step 1. Check that everything builds and the linters pass:**
 
 ```bash
-host$ make ws-build
-host$ make ws-test
+host$ make build
+host$ make test
 ```
 
 **Step 2. Commit on the issue's branch.** The commit hook (`.githooks/commit-msg`) requires the format `<type>(<scope>): <description>` with type one of `fix feat test style docs build ops chore perf refactor`:
 
 ```bash
 host$ git checkout 18-ros-2-basics-topics-services-actions-lifecycle
-host$ git add docker/ws/src
+host$ git add ros2_ws/src
 host$ git status                           # make sure no build/ install/ log/ folders are staged
 host$ git commit -m "feat(ros2): add ROS 2 basics examples (QoS pub/sub, service, action, lifecycle)"
 host$ git push

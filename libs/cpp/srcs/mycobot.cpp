@@ -36,7 +36,72 @@ std::runtime_error systemError(const std::string& what) {
     return std::runtime_error(what + ": " + std::strerror(errno));
 }
 
+// Forward kinematics for the height check. Joint frames from Elephant Robotics'
+// official URDF (mycobot_280_m5): each joint is a fixed origin (xyz in m, rpy in
+// rad, applied as Rz*Ry*Rx) followed by a rotation about its own z axis.
+struct Transform {
+    double r[3][3];
+    double t[3];
+};
+
+Transform identity() {
+    return {{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}, {0, 0, 0}};
+}
+
+Transform operator*(const Transform& a, const Transform& b) {
+    Transform out{};
+    for (int i = 0; i < 3; ++i) {
+        for (int j = 0; j < 3; ++j) {
+            for (int k = 0; k < 3; ++k) out.r[i][j] += a.r[i][k] * b.r[k][j];
+        }
+        out.t[i] = a.t[i];
+        for (int k = 0; k < 3; ++k) out.t[i] += a.r[i][k] * b.t[k];
+    }
+    return out;
+}
+
+Transform jointTransform(const double xyz[3], const double rpy[3], double angle) {
+    const double cr = std::cos(rpy[0]), sr = std::sin(rpy[0]);
+    const double cp = std::cos(rpy[1]), sp = std::sin(rpy[1]);
+    const double cy = std::cos(rpy[2]), sy = std::sin(rpy[2]);
+    const double cq = std::cos(angle), sq = std::sin(angle);
+    const Transform origin = {{{cy * cp, cy * sp * sr - sy * cr, cy * sp * cr + sy * sr},
+                               {sy * cp, sy * sp * sr + cy * cr, sy * sp * cr - cy * sr},
+                               {-sp, cp * sr, cp * cr}},
+                              {xyz[0], xyz[1], xyz[2]}};
+    const Transform spin = {{{cq, -sq, 0}, {sq, cq, 0}, {0, 0, 1}}, {0, 0, 0}};
+    return origin * spin;
+}
+
+struct JointOrigin {
+    double xyz[3];
+    double rpy[3];
+};
+
+constexpr double HALF_PI = 1.5707963267948966;
+constexpr JointOrigin JOINT_ORIGINS[6] = {
+    {{0, 0, 0.13156}, {0, 0, 0}},                       // J1
+    {{0, 0, 0}, {0, HALF_PI, -HALF_PI}},                // J2
+    {{-0.1104, 0, 0}, {0, 0, 0}},                       // J3
+    {{-0.096, 0, 0.06462}, {0, 0, -HALF_PI}},           // J4
+    {{0, -0.07318, 0}, {HALF_PI, -HALF_PI, 0}},         // J5
+    {{0, 0.0456, 0}, {-HALF_PI, 0, 0}},                 // J6 (flange)
+};
+
 }  // namespace
+
+double minHeightMm(const Angles& angles) {
+    constexpr double DEG = 3.14159265358979323846 / 180.0;
+    Transform pose = identity();
+    double lowest = 1e9;
+    for (int i = 0; i < 6; ++i) {
+        pose = pose * jointTransform(JOINT_ORIGINS[i].xyz, JOINT_ORIGINS[i].rpy, angles[i] * DEG);
+        if (i >= 3) lowest = std::min(lowest, pose.t[2] * 1000.0 + BASE_HEIGHT_MM);   // J4, J5, J6
+    }
+    // The tool points along the flange z axis.
+    const double tip_z = pose.t[2] + pose.r[2][2] * TOOL_LENGTH_MM / 1000.0;
+    return std::min(lowest, tip_z * 1000.0 + BASE_HEIGHT_MM);
+}
 
 // ---------------------------------------------------------------- lifecycle
 
@@ -101,28 +166,11 @@ std::optional<bool> MyCobot280::isPowerOn() {
 
 // ------------------------------------------------------------ joint limits
 
-void MyCobot280::setSoftLimits(const JointLimits& limits) {
-    for (size_t i = 0; i < limits.size(); ++i) {
-        const JointLimit& soft = limits[i];
-        const JointLimit& hard = FIRMWARE_LIMITS[i];
-        const std::string joint = "J" + std::to_string(i + 1);
-        if (!std::isfinite(soft.min) || !std::isfinite(soft.max) || soft.min >= soft.max) {
-            throw std::invalid_argument(joint + " soft limit: min must be below max");
-        }
-        if (soft.min < hard.min || soft.max > hard.max) {
-            throw std::invalid_argument(joint + " soft limit outside firmware range [" +
-                                        std::to_string(hard.min) + ", " +
-                                        std::to_string(hard.max) + "]");
-        }
-    }
-    softLimits_ = limits;
-}
-
 double MyCobot280::limitAngle(int joint, double angle, bool& clamped) const {
     if (!std::isfinite(angle)) {
         throw std::invalid_argument("J" + std::to_string(joint) + ": angle is not a finite number");
     }
-    const JointLimit& lim = softLimits_[joint - 1];
+    const JointLimit& lim = JOINT_LIMITS[joint - 1];
     const double limited = std::clamp(angle, lim.min, lim.max);
     if (limited != angle) clamped = true;
     return limited;
@@ -130,15 +178,28 @@ double MyCobot280::limitAngle(int joint, double angle, bool& clamped) const {
 
 // ------------------------------------------------------------------- motion
 
+// A move is allowed if its lowest point stays above the margin, or at least
+// does not get lower than the arm already is (so a pose that is already too
+// low can still be left).
+static bool heightAllowed(const Angles& target, const std::optional<Angles>& current) {
+    const double height = minHeightMm(target);
+    if (height >= TABLE_MARGIN_MM) return true;
+    return current && height >= minHeightMm(*current);
+}
+
 bool MyCobot280::sendAngles(const Angles& angles, int speed) {
     bool clamped = false;
-    std::vector<uint8_t> data;
+    Angles limited{};
     for (size_t i = 0; i < angles.size(); ++i) {
-        const double a = limitAngle(static_cast<int>(i) + 1, angles[i], clamped);
-        appendInt16(data, static_cast<int16_t>(std::lround(a * 100.0)));
+        limited[i] = limitAngle(static_cast<int>(i) + 1, angles[i], clamped);
     }
+    if (!heightAllowed(limited, lastAngles_)) return true;
+
+    std::vector<uint8_t> data;
+    for (double a : limited) appendInt16(data, static_cast<int16_t>(std::lround(a * 100.0)));
     data.push_back(clampSpeed(speed));
     sendCommand(protocol::SEND_ANGLES, data);
+    lastAngles_ = limited;
     return clamped;
 }
 
@@ -148,11 +209,19 @@ bool MyCobot280::sendAngle(int joint, double angle, int speed) {
     }
     bool clamped = false;
     const double a = limitAngle(joint, angle, clamped);
+
+    if (!lastAngles_) lastAngles_ = getAngles();
+    if (!lastAngles_) return true;   // pose unknown: cannot prove the move is safe
+    Angles target = *lastAngles_;
+    target[joint - 1] = a;
+    if (!heightAllowed(target, lastAngles_)) return true;
+
     std::vector<uint8_t> data;
     data.push_back(static_cast<uint8_t>(joint));
     appendInt16(data, static_cast<int16_t>(std::lround(a * 100.0)));
     data.push_back(clampSpeed(speed));
     sendCommand(protocol::SEND_ANGLE, data);
+    lastAngles_ = target;
     return clamped;
 }
 
@@ -176,6 +245,7 @@ std::optional<Angles> MyCobot280::getAngles(int retries) {
     for (size_t i = 0; i < 6; ++i) {
         angles[i] = readInt16(*data, 2 * i) / 100.0;
     }
+    lastAngles_ = angles;
     return angles;
 }
 
