@@ -18,6 +18,8 @@ The braco system in one ROS 2 launch, on the real arm or in simulation.
     sim:=false  arm_driver, temperature_monitor and joystick_teleop (the default). This is
                 what the `real` container runs (make up), started by arm_routine.sh, which
                 also starts the web page. The arm is not zeroed or parked on start/stop.
+                arm_driver is not respawned: when it exits the whole launch shuts down, so
+                arm_routine.sh ends and the container stops (a driver fault is always seen).
     sim:=true   the simulated arm, what the `sim` container on the PC runs. Reserved for
                 the Gazebo bringup (#34) with the model from braco_description (#25): until
                 then it starts nothing and says so.
@@ -28,8 +30,9 @@ Also usable by hand in the dev container: ros2 launch braco_bringup braco.launch
 """
 
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, LogInfo
+from launch.actions import DeclareLaunchArgument, LogInfo, RegisterEventHandler, Shutdown
 from launch.conditions import IfCondition, UnlessCondition
+from launch.event_handlers import OnProcessExit
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
@@ -44,6 +47,11 @@ def generate_launch_description():
     device = LaunchConfiguration('device')
     config = PathJoinSubstitution([FindPackageShare('braco_bringup'), 'config', 'braco.yaml'])
     real = UnlessCondition(sim)
+    # The only process that opens the serial port. Not respawned: a fault must be seen.
+    arm_driver = Node(package='braco_driver', executable='arm_driver', name='arm_driver',
+                      output='screen', condition=real,
+                      parameters=[config, {'port': port,
+                                           'baud': ParameterValue(baud, value_type=int)}])
     return LaunchDescription([
         DeclareLaunchArgument('sim', default_value='false',
                               description='true: simulated arm, false: real arm'),
@@ -51,10 +59,12 @@ def generate_launch_description():
         DeclareLaunchArgument('baud', default_value='1000000'),
         DeclareLaunchArgument('lcd_bus', default_value='/dev/i2c-0'),
         DeclareLaunchArgument('device', default_value='/dev/input/js0'),
-        # The only process that opens the serial port. Not respawned: a fault must be seen.
-        Node(package='braco_driver', executable='arm_driver', name='arm_driver',
-             output='screen', condition=real,
-             parameters=[config, {'port': port, 'baud': ParameterValue(baud, value_type=int)}]),
+        arm_driver,
+        # Without the driver nothing else is useful: end the launch instead of idling
+        RegisterEventHandler(
+            OnProcessExit(target_action=arm_driver,
+                          on_exit=[Shutdown(reason='arm_driver exited')]),
+            condition=real),
         Node(package='braco_driver', executable='temperature_monitor',
              name='temperature_monitor', output='screen', respawn=True, condition=real,
              parameters=[config, {'lcd_bus': lcd_bus}]),
