@@ -64,8 +64,8 @@ After cloning the repository, prepare the machine once:
 make setup
 ```
 
-It creates `docker/.env` for this machine (PC or Jetson, detected), binds the commit message linters in `.githooks/`
-so commit message standards are maintained, and runs `make doctor`. Then `make up` turns the braco system on
+It creates `docker/.env` for this machine (PC or Jetson, detected), binds the git hooks in `.githooks/` (commit
+message format, and a code format check before every push, see [5.1](#51-code-formatting)), and runs `make doctor`. Then `make up` turns the braco system on
 (see [docker/README.md](../docker/README.md)); `make` lists every command.
 
 ### 2.4 Python Software Installation
@@ -244,6 +244,21 @@ the same commands:
 * The arm64 Jetson image is not built in CI (QEMU is too slow); build it by hand with `make jetson-image`.
 * `ci-ros` writes to `ros2_ws/build`, `install` and `log`, like `make build`, plus its ccache in `ros2_ws/.ccache`.
 
+### 5.1 Code Formatting
+
+C++ is formatted by clang-format (`.clang-format`) and Python by ruff (`.ruff.toml`). Both are pinned in
+`requirements.txt`, so everyone formats the same way.
+
+| Command | What it does |
+|---|---|
+| `make format` | Fixes the formatting of every C++ and Python file |
+| `make format-check` | Only checks, changes nothing; prints `OK` or the files to fix |
+
+* The pre-push hook (`.githooks/pre-push`) runs `make format-check` and blocks the push if it fails. Fix with
+  `make format`, then commit and push again.
+* `ros2_ws/src` is skipped: the ROS 2 packages are checked by their own linters (`ament_uncrustify`,
+  `ament_flake8`) in `make test`, because their style rules differ from clang-format and ruff.
+
 ---
 
 ## 6. Troubleshooting & FAQ
@@ -266,3 +281,4 @@ the same commands:
 | *2026-10-09* | Fixed CMake output path to tests/ directory and recorded successful physical robot test verification | d-branco |
 | *2026-10-20* | Added the CI section (GitHub Action, issue #16) and its status badge | Petrichor |
 | *2026-10-21* | New make commands (issue #54): `make setup`, `make ci`, `make ci-ros`, `make park` ... | Denionline |
+| *2026-10-21* | Code formatting: `make format`, `make format-check` and the pre-push hook (issue #58) | carlaugu |
