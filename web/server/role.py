@@ -9,28 +9,30 @@ import os
 import platform
 from pathlib import Path
 
-DOCKER_ENV = Path(__file__).resolve().parents[2] / "docker" / ".env"
+DOCKER_ENV = Path(__file__).resolve().parents[2] / 'docker' / '.env'
 
 
 def _dotenv(name):
     try:
         for line in DOCKER_ENV.read_text().splitlines():
-            key, _, value = line.partition("=")
+            key, _, value = line.partition('=')
             if key.strip() == name:
-                return value.split("#")[0].strip().strip("\"'")
+                return value.split('#')[0].strip().strip('"\'')
     except OSError:
         pass
-    return ""
+    return ''
 
 
 def machine_role():
     """Return "pc" or "jetson"."""
-    for raw in (os.environ.get("SEAME_ROLE"),
-                os.environ.get("COMPOSE_PROFILES"),
-                _dotenv("COMPOSE_PROFILES")):
-        value = (raw or "").strip().lower()
-        if value.startswith("jetson"):
-            return "jetson"
-        if value.startswith("pc"):
-            return "pc"
-    return "jetson" if platform.machine().lower() in ("aarch64", "arm64") else "pc"
+    for raw in (
+        os.environ.get('SEAME_ROLE'),
+        os.environ.get('COMPOSE_PROFILES'),
+        _dotenv('COMPOSE_PROFILES'),
+    ):
+        value = (raw or '').strip().lower()
+        if value.startswith('jetson'):
+            return 'jetson'
+        if value.startswith('pc'):
+            return 'pc'
+    return 'jetson' if platform.machine().lower() in ('aarch64', 'arm64') else 'pc'

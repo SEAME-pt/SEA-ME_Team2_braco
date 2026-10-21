@@ -7,18 +7,19 @@ mc.power_on()
 time.sleep(0.5)
 
 POSES = {
-    "home":    [0, 0, 0, 0, 0, 0],
-    "transit": [0, 30, -60, 30, 0, 0],
-    "left":    [90, 30, -60, 30, 0, 0],
+    'home': [0, 0, 0, 0, 0, 0],
+    'transit': [0, 30, -60, 30, 0, 0],
+    'left': [90, 30, -60, 30, 0, 0],
 }
 
 SEQUENCE = [
-    ("home", 25),
-    ("transit", 50),
-    ("left", 50),
-    ("transit", 50),
-    ("home", 25),
+    ('home', 25),
+    ('transit', 50),
+    ('left', 50),
+    ('transit', 50),
+    ('home', 25),
 ]
+
 
 def move_and_wait(angles, speed, timeout=10.0):
     mc.send_angles(angles, speed)
@@ -29,6 +30,7 @@ def move_and_wait(angles, speed, timeout=10.0):
         time.sleep(0.1)
     return False
 
+
 def run(sequence):
     for name, speed in sequence:
         target = POSES[name]
@@ -38,7 +40,8 @@ def run(sequence):
             return False
         actual = mc.get_angles()
         error = [round(a - t, 2) for a, t in zip(actual, target)]
-        print(f"{name}: error per joint = {error}")
+        print(f'{name}: error per joint = {error}')
     return True
+
 
 run(SEQUENCE)

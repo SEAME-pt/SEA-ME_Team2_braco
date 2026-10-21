@@ -19,9 +19,6 @@
 //
 // Stop other programs using the serial port first (joystick program, driver).
 
-#include "lcd_display.hpp"
-#include "mycobot.hpp"
-
 #include <signal.h>
 
 #include <chrono>
@@ -30,23 +27,38 @@
 #include <exception>
 #include <thread>
 
-namespace {
+#include "lcd_display.hpp"
+#include "mycobot.hpp"
 
-constexpr auto TEMP_PERIOD = std::chrono::seconds(2);   // temperatures change slowly
+namespace
+{
+
+constexpr auto TEMP_PERIOD = std::chrono::seconds(2);  // temperatures change slowly
 
 volatile std::sig_atomic_t g_quit = 0;
 
-void onSignal(int) {
-    g_quit = 1;
-}
+void onSignal(int) { g_quit = 1; }
 
 // Backlight colour for each temperature level
-void setColour(ui::Status& status, mycobot::TempLevel level) {
-    switch (level) {
-        case mycobot::TempLevel::Normal: status.r = 0; status.g = 255; status.b = 0; break;
-        case mycobot::TempLevel::Warm:   status.r = 255; status.g = 255; status.b = 0;   break;
-        case mycobot::TempLevel::Hot:    status.r = 255; status.g = 0;   status.b = 0;   break;
-    }
+void setColour(ui::Status & status, mycobot::TempLevel level)
+{
+  switch (level) {
+    case mycobot::TempLevel::Normal:
+      status.r = 0;
+      status.g = 255;
+      status.b = 0;
+      break;
+    case mycobot::TempLevel::Warm:
+      status.r = 255;
+      status.g = 255;
+      status.b = 0;
+      break;
+    case mycobot::TempLevel::Hot:
+      status.r = 255;
+      status.g = 0;
+      status.b = 0;
+      break;
+  }
 }
 
 // const char* levelName(mycobot::TempLevel level) {
@@ -59,69 +71,70 @@ void setColour(ui::Status& status, mycobot::TempLevel level) {
 
 }  // namespace
 
-int main() {
-    // Ctrl+C or kill: finish the current step, then exit cleanly
-    struct sigaction sa {};
-    sa.sa_handler = onSignal;
-    sigemptyset(&sa.sa_mask);
-    sigaction(SIGINT, &sa, nullptr);
-    sigaction(SIGTERM, &sa, nullptr);
+int main()
+{
+  // Ctrl+C or kill: finish the current step, then exit cleanly
+  struct sigaction sa{};
+  sa.sa_handler = onSignal;
+  sigemptyset(&sa.sa_mask);
+  sigaction(SIGINT, &sa, nullptr);
+  sigaction(SIGTERM, &sa, nullptr);
 
-    try {
-        // 1. LCD: never throws, check ok() instead
-        ui::LcdDisplay lcd;
-        if (!lcd.ok()) {
-            std::printf("LCD not available (%s) - showing temperatures here only\n",
-                        lcd.error().c_str());
-        }
-
-        // 2. Arm: throws if the serial port cannot be opened
-        mycobot::MyCobot280 mc;
-        std::this_thread::sleep_for(std::chrono::seconds(1));
-        std::printf("Reading servo temperatures every %lld s. Ctrl+C quits.\n\n",
-                    static_cast<long long>(TEMP_PERIOD.count()));
-
-        ui::Status status;   // everything the LCD shows
-        setColour(status, mycobot::TempLevel::Normal);
-
-        while (!g_quit) {
-            // 3. Read and check the temperatures
-            const auto check = mc.checkTemps();
-
-            if (!check) {
-                // No answer: the LCD shows "NO FEEDBACK / check arm power"
-                status.feedbackOk = false;
-                status.temps.reset();
-                status.hotJoint = 0;
-                std::printf("No answer from the arm\n");
-            } else {
-                // 4. Fill the status: temperatures, hot warning, colour
-                status.feedbackOk = true;
-                status.temps = check->temps;
-                status.hotJoint = (check->level == mycobot::TempLevel::Hot) ? check->hottestJoint : 0;
-                setColour(status, check->level);
-
-                // for (int j = 0; j < 6; ++j) {
-                //     std::printf("J%d %3d C   ", j + 1, check->temps[j]);
-                // }
-                // std::printf("%s\n", levelName(check->level));
-            }
-
-            // 5. Draw now (force: we only update every TEMP_PERIOD anyway)
-            lcd.show(status, true);
-
-            // Sleep in small steps so Ctrl+C reacts quickly
-            const auto wakeUp = std::chrono::steady_clock::now() + TEMP_PERIOD;
-            while (!g_quit && std::chrono::steady_clock::now() < wakeUp) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            }
-        }
-
-        std::printf("\nStopped. The last values stay on the LCD.\n");
-        return 0;
-
-    } catch (const std::exception& e) {
-        std::fprintf(stderr, "Error: %s\n", e.what());
-        return 1;
+  try {
+    // 1. LCD: never throws, check ok() instead
+    ui::LcdDisplay lcd;
+    if (!lcd.ok()) {
+      std::printf("LCD not available (%s) - showing temperatures here only\n", lcd.error().c_str());
     }
+
+    // 2. Arm: throws if the serial port cannot be opened
+    mycobot::MyCobot280 mc;
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+    std::printf(
+      "Reading servo temperatures every %lld s. Ctrl+C quits.\n\n",
+      static_cast<long long>(TEMP_PERIOD.count()));
+
+    ui::Status status;  // everything the LCD shows
+    setColour(status, mycobot::TempLevel::Normal);
+
+    while (!g_quit) {
+      // 3. Read and check the temperatures
+      const auto check = mc.checkTemps();
+
+      if (!check) {
+        // No answer: the LCD shows "NO FEEDBACK / check arm power"
+        status.feedbackOk = false;
+        status.temps.reset();
+        status.hotJoint = 0;
+        std::printf("No answer from the arm\n");
+      } else {
+        // 4. Fill the status: temperatures, hot warning, colour
+        status.feedbackOk = true;
+        status.temps = check->temps;
+        status.hotJoint = (check->level == mycobot::TempLevel::Hot) ? check->hottestJoint : 0;
+        setColour(status, check->level);
+
+        // for (int j = 0; j < 6; ++j) {
+        //     std::printf("J%d %3d C   ", j + 1, check->temps[j]);
+        // }
+        // std::printf("%s\n", levelName(check->level));
+      }
+
+      // 5. Draw now (force: we only update every TEMP_PERIOD anyway)
+      lcd.show(status, true);
+
+      // Sleep in small steps so Ctrl+C reacts quickly
+      const auto wakeUp = std::chrono::steady_clock::now() + TEMP_PERIOD;
+      while (!g_quit && std::chrono::steady_clock::now() < wakeUp) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      }
+    }
+
+    std::printf("\nStopped. The last values stay on the LCD.\n");
+    return 0;
+
+  } catch (const std::exception & e) {
+    std::fprintf(stderr, "Error: %s\n", e.what());
+    return 1;
+  }
 }

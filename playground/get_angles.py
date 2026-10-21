@@ -27,7 +27,7 @@ try:
 except ImportError:
     from pymycobot.mycobot import MyCobot
 
-DEFAULT_PORT = "/dev/ttyTHS1"
+DEFAULT_PORT = '/dev/ttyTHS1'
 DEFAULT_BAUD = 1000000
 
 
@@ -52,17 +52,16 @@ def release(mc):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Release joints and read angles on Enter")
-    parser.add_argument("--port", default=DEFAULT_PORT, help="Serial port")
-    parser.add_argument("--baud", type=int, default=DEFAULT_BAUD, help="Baud rate")
-    parser.add_argument("--coords", action="store_true",
-                        help="Also print Cartesian coordinates")
+    parser = argparse.ArgumentParser(description='Release joints and read angles on Enter')
+    parser.add_argument('--port', default=DEFAULT_PORT, help='Serial port')
+    parser.add_argument('--baud', type=int, default=DEFAULT_BAUD, help='Baud rate')
+    parser.add_argument('--coords', action='store_true', help='Also print Cartesian coordinates')
     args = parser.parse_args()
 
     try:
         mc = MyCobot(args.port, args.baud)
     except Exception as e:
-        print(f"Could not open {args.port}: {e}")
+        print(f'Could not open {args.port}: {e}')
         print("Tip: check the port and run with sudo or add your user to the 'dialout' group.")
         sys.exit(1)
 
@@ -71,8 +70,8 @@ def main():
     # Start locked: 1st Enter releases, 2nd Enter locks and reads, and so on.
     lock(mc)
     locked = True
-    print("Joints locked.")
-    print("Enter toggles: release -> lock and read -> release -> ...")
+    print('Joints locked.')
+    print('Enter toggles: release -> lock and read -> release -> ...')
     print("Type 'q' and press Enter to quit.\n")
 
     saved = []
@@ -80,18 +79,18 @@ def main():
     try:
         while True:
             if locked:
-                prompt = "[locked] Hold the arm, then Enter to release (q to quit) > "
+                prompt = '[locked] Hold the arm, then Enter to release (q to quit) > '
             else:
-                prompt = "[released] Enter to lock and read angles (q to quit) > "
+                prompt = '[released] Enter to lock and read angles (q to quit) > '
 
             cmd = input(prompt).strip().lower()
-            if cmd == "q":
+            if cmd == 'q':
                 break
 
             if locked:
                 release(mc)
                 locked = False
-                print("Joints released. Move the arm to the next position.\n")
+                print('Joints released. Move the arm to the next position.\n')
                 continue
 
             # Lock first so the arm holds the pose while we read it.
@@ -100,36 +99,36 @@ def main():
 
             angles = read_value(mc.get_angles)
             if angles is None:
-                print("Failed to read angles (is the robot powered on?)")
+                print('Failed to read angles (is the robot powered on?)')
                 continue
 
             saved.append(angles)
-            joints = "  ".join(f"J{i + 1}: {a:8.2f}°" for i, a in enumerate(angles))
-            print(f"[{len(saved)}] Angles -> {joints}")
+            joints = '  '.join(f'J{i + 1}: {a:8.2f}°' for i, a in enumerate(angles))
+            print(f'[{len(saved)}] Angles -> {joints}')
 
             if args.coords:
                 coords = read_value(mc.get_coords)
                 if coords is not None:
-                    labels = ["X", "Y", "Z", "RX", "RY", "RZ"]
-                    values = "  ".join(f"{l}: {v:8.2f}" for l, v in zip(labels, coords))
-                    print(f"    Coords -> {values}")
+                    labels = ['X', 'Y', 'Z', 'RX', 'RY', 'RZ']
+                    values = '  '.join(f'{l}: {v:8.2f}' for l, v in zip(labels, coords))
+                    print(f'    Coords -> {values}')
                 else:
-                    print("    Failed to read coordinates")
+                    print('    Failed to read coordinates')
     except (KeyboardInterrupt, EOFError):
         print()
 
     # Make sure the arm ends up locked.
     if not locked:
-        input("Hold the arm, then press Enter to lock the joints...")
+        input('Hold the arm, then press Enter to lock the joints...')
         lock(mc)
 
-    print("Joints locked.")
+    print('Joints locked.')
 
     if saved:
-        print("\nAll recorded positions (ready to paste into mc.send_angles):")
+        print('\nAll recorded positions (ready to paste into mc.send_angles):')
         for i, a in enumerate(saved, 1):
-            print(f"{i}: {[round(x, 2) for x in a]}")
+            print(f'{i}: {[round(x, 2) for x in a]}')
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
