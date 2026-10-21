@@ -12,7 +12,8 @@ EXPECTED_NODES = [
     ("temperature_monitor", "temperatures -> /diagnostics and the LCD"),
     ("joystick_teleop", "joystick -> /arm/command"),
 ]
-EXPECTED_SERVICES = ["/arm/power_on", "/arm/release_servos", "/arm/set_gripper", "/arm/set_read_only"]
+EXPECTED_SERVICES = ["/arm/power_on", "/arm/release_servos", "/arm/set_gripper", "/arm/set_read_only",
+                     "/arm/take_control"]
 LEVELS = {0: "ok", 1: "warn", 2: "error", 3: "stale"}
 
 

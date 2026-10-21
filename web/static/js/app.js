@@ -6,7 +6,8 @@ import * as rosView from "./views/ros.js";
 import * as docs from "./views/docs.js";
 import * as sprints from "./views/sprints.js";
 import {
-  connect, esc, isOperator, live, me, on, releaseControl, setName, setPage, takeControl, toast,
+  connect, esc, isOperator, live, me, on, OWNER_NAMES, outsideOwner, releaseControl, setName, setPage,
+  takeControl, toast,
 } from "./util.js";
 
 const ROUTES = { "": home, arm, ros: rosView, docs, sprints };
@@ -90,10 +91,13 @@ function drawControl() {
   const lease = live.lease;
   const mine = isOperator();
   box.classList.toggle("mine", mine);
-  box.classList.toggle("taken", !!lease?.holder && !mine);
   btn.disabled = !live.online || (!!lease?.holder && !mine);
+  const outside = outsideOwner();
+  box.classList.toggle("taken", (!!lease?.holder && !mine) || (!lease?.holder && !!outside));
   if (!live.online) {
     text.textContent = "offline";
+  } else if (!lease?.holder && outside) {
+    text.innerHTML = `<b>${esc(OWNER_NAMES[outside] || outside)}</b> is in control of the arm`;
   } else if (!lease?.holder) {
     text.innerHTML = "<b>Free</b> · nobody is in control";
   } else if (mine) {
@@ -119,7 +123,11 @@ function drawPresence(clients) {
 
 function initLive() {
   on("online", () => { drawConn(); drawControl(); });
-  on("telemetry", drawConn);
+  let owner = null;
+  on("telemetry", (s) => {
+    drawConn();
+    if ((s?.control_owner ?? null) !== owner) { owner = s?.control_owner ?? null; drawControl(); }
+  });
   on("lease", () => { drawControl(); drawPresence(live.presence); });
   on("presence", drawPresence);
   on("activity", ({ entry }) => {

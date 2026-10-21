@@ -7,11 +7,10 @@ import math
 import os
 import sys
 import time
-import types
 
 import pytest
 
-os.environ["ARM_MOCK"] = "1"   # before importing the app: never open a serial port
+os.environ["ARM_MOCK"] = "1"   # before importing the app: the mock, never ROS or the arm
 os.environ["BRACO_ROS"] = "0"  # and never start ROS 2, even where it is installed
 
 from fastapi.testclient import TestClient  # noqa: E402
@@ -19,6 +18,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 from web.server import app as app_module  # noqa: E402
 from web.server import arm, docs, github, role, ros  # noqa: E402
 from web.server.app import app  # noqa: E402
+from web.server.session import ControlError  # noqa: E402
 
 STATIC_FILES = [
     "index.html", "css/style.css", "js/app.js", "js/util.js", "js/specs.js", "js/arm3d.js",
@@ -31,7 +31,7 @@ STATIC_FILES = [
 def close_sources(monkeypatch):
     """Stop the polling thread of every source a test starts (not the app's own)."""
     created = []
-    for cls in (arm.ArmSource, arm.MockArm, arm.GazeboArm, arm.RosArm):
+    for cls in (arm.MockArm, arm.GazeboArm, arm.RosArm):
         def start(self, _original=cls.start):
             if self is not app_module.arm:
                 created.append(self)
@@ -59,134 +59,6 @@ def test_temp_level_matches_mycobot_hpp():
     assert arm.temp_level(55) == "warm"
     assert arm.temp_level(64) == "warm"
     assert arm.temp_level(65) == "hot"
-
-
-def test_read_value_retries_until_six_numbers():
-    replies = iter([-1, None, [1, 2, 3], [1, 2, 3, 4, 5, 6]])
-    assert arm.read_value(lambda: next(replies), retries=5) == [1, 2, 3, 4, 5, 6]
-    assert arm.read_value(lambda: -1, retries=2) is None
-
-
-def test_as_bool():
-    assert arm.as_bool(1) is True
-    assert arm.as_bool(0) is False
-    assert arm.as_bool(-1) is None
-    assert arm.as_bool(None) is None
-
-
-class FakeMyCobot:
-    """Stands in for pymycobot.MyCobot280 and records every call."""
-
-    instances = []
-    angles = [10.0, -20.0, 30.0, -40.0, 50.0, -60.0]
-    temps = [30, 56, 66, 40, 41, 42]
-
-    def __init__(self, port, baud):
-        self.port, self.baud = port, baud
-        self.calls = []
-        FakeMyCobot.instances.append(self)
-
-    def get_angles(self):
-        self.calls.append("get_angles")
-        return list(self.angles)
-
-    def get_coords(self):
-        self.calls.append("get_coords")
-        return [100.0, 0.0, 200.0, 0.0, 0.0, 0.0]
-
-    def is_power_on(self):
-        self.calls.append("is_power_on")
-        return 1
-
-    def is_moving(self):
-        self.calls.append("is_moving")
-        return 0
-
-    def get_servo_temps(self):
-        self.calls.append("get_servo_temps")
-        return list(self.temps)
-
-    def stop(self):
-        self.calls.append("stop")
-
-
-@pytest.fixture
-def fake_pymycobot(monkeypatch):
-    FakeMyCobot.instances = []
-    module = types.ModuleType("pymycobot")
-    module.MyCobot280 = FakeMyCobot
-    monkeypatch.setitem(sys.modules, "pymycobot", module)
-    monkeypatch.setattr(arm, "ANGLE_PERIOD", 0.01)
-    return FakeMyCobot
-
-
-def test_arm_source_reads_telemetry(fake_pymycobot):
-    source = arm.ArmSource("/dev/fake", 115200)
-    source.start()
-    assert wait_for(lambda: source.snapshot()["temps"] is not None)
-
-    s = source.snapshot()
-    mc = fake_pymycobot.instances[0]
-    assert (mc.port, mc.baud) == ("/dev/fake", 115200)
-    assert s["connected"] is True and s["error"] is None and s["mock"] is False
-    assert s["angles"] == FakeMyCobot.angles
-    assert s["coords"][2] == 200.0
-    assert s["power_on"] is True and s["moving"] is False
-    assert s["temps"] == [30, 56, 66, 40, 41, 42]
-    assert s["temp_levels"] == ["normal", "warm", "hot", "normal", "normal", "normal"]
-
-
-def test_arm_source_is_read_only(fake_pymycobot):
-    source = arm.ArmSource()
-    source.start()
-    assert wait_for(lambda: source.snapshot()["temps"] is not None)
-    time.sleep(0.1)
-
-    reads = {"get_angles", "get_coords", "is_power_on", "is_moving", "get_servo_temps"}
-    assert set(fake_pymycobot.instances[0].calls) <= reads
-
-    source.stop_motion()
-    assert fake_pymycobot.instances[0].calls[-1] == "stop"
-
-
-def test_arm_source_reports_missing_replies(fake_pymycobot, monkeypatch):
-    monkeypatch.setattr(FakeMyCobot, "get_angles", lambda self: -1)
-    source = arm.ArmSource()
-    source.start()
-    assert wait_for(lambda: source.snapshot()["error"] is not None)
-    s = source.snapshot()
-    assert s["connected"] is False
-    assert s["angles"] is None
-    assert "no reply" in s["error"]
-
-
-def test_arm_source_survives_port_error(monkeypatch):
-    def broken(port, baud):
-        raise OSError("could not open port /dev/ttyTHS1: Device or resource busy")
-
-    module = types.ModuleType("pymycobot")
-    module.MyCobot280 = broken
-    monkeypatch.setitem(sys.modules, "pymycobot", module)
-
-    source = arm.ArmSource()
-    source.start()
-    assert wait_for(lambda: source.snapshot()["error"] is not None)
-    s = source.snapshot()
-    assert s["connected"] is False
-    assert "busy" in s["error"]
-    with pytest.raises(RuntimeError):
-        source.stop_motion()
-
-
-def test_arm_source_handles_missing_temps_method(fake_pymycobot, monkeypatch):
-    monkeypatch.delattr(FakeMyCobot, "get_servo_temps")
-    source = arm.ArmSource()
-    source.start()
-    assert wait_for(lambda: source.snapshot()["power_on"] is not None)
-    time.sleep(0.05)
-    s = source.snapshot()
-    assert s["connected"] is True
-    assert s["temps"] is None and s["temp_levels"] is None
 
 
 def test_mock_arm_stays_inside_joint_limits(monkeypatch):
@@ -567,6 +439,17 @@ def test_ros_source_is_chosen(monkeypatch):
     assert isinstance(app_module.build_arm(), arm.RosArm)
 
 
+def test_no_source_is_an_error_not_the_serial_port(monkeypatch):
+    """The page never opens the serial port itself: without a source it refuses to start."""
+    monkeypatch.delenv("ARM_MOCK", raising=False)
+    monkeypatch.delenv("ARM_SOURCE", raising=False)
+    with pytest.raises(RuntimeError, match="ARM_SOURCE=ros .* or ARM_MOCK=1"):
+        app_module.build_arm()
+    monkeypatch.setenv("ARM_SOURCE", "serial")
+    with pytest.raises(RuntimeError, match="unknown ARM_SOURCE"):
+        app_module.build_arm()
+
+
 def test_ros_panels_without_ros(client):
     for path in ("/api/ros/health", "/api/ros/graph"):
         data = client.get(path).json()
@@ -647,6 +530,24 @@ def test_lease_and_live_sync_between_two_pages(client):
             client.post("/api/control/release", headers=A)
         assert client.get("/api/session").json()["lease"]["holder"] is None
         next_of(wb, "lease", lambda m: m["holder"] is None)
+
+
+def test_take_control_is_409_while_the_joystick_has_the_arm(client, monkeypatch):
+    class Joystick:
+        """arm_driver's answer while the joystick has the control."""
+
+        def take_control(self):
+            raise ControlError("the arm is controlled by joystick")
+
+        def release_control(self):
+            pass
+
+    monkeypatch.setattr(app_module.hub, "control", Joystick())
+    with client.websocket_connect("/ws") as ws:
+        hello(ws, "t-ana", "Ana")
+        r = client.post("/api/control/take", headers={"X-Client-Id": "t-ana"})
+        assert r.status_code == 409 and "joystick" in r.json()["detail"]
+        assert client.get("/api/session").json()["lease"]["holder"] is None
 
 
 def test_speed_is_shared_capped_and_operator_only(client):

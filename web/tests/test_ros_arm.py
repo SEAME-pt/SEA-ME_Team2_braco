@@ -1,7 +1,8 @@
 """RosArm and the ROS panels without ROS: the bridge, messages and services are faked.
 
 What matters most: a move is a stream of bounded steps resent faster than
-arm_driver's 300 ms watchdog, STOP cancels it, and park / wake never power or rest the arm by themselves.
+arm_driver's 300 ms watchdog, STOP cancels it, park / wake never power or rest the arm by themselves,
+and the page moves the arm only while it is arm_driver's control owner ("web").
 """
 
 import math
@@ -40,7 +41,10 @@ class FakePublisher:
 
 
 class FakeBridge:
-    """Records service calls; every call succeeds unless `fail` names it."""
+    """Records service calls; every call succeeds unless `fail` names it.
+
+    take_control behaves like arm_driver's ControlLease, with `owner` as its state.
+    """
 
     def __init__(self):
         self.node = None
@@ -48,6 +52,7 @@ class FakeBridge:
         self.error = "fake bridge"
         self.calls = []
         self.fail = set()
+        self.owner = ""
 
     def start(self):
         pass
@@ -56,9 +61,24 @@ class FakeBridge:
         pass
 
     def call(self, client, request, timeout=5.0):
+        if client == "take_control":
+            return self._take_control(request)
         self.calls.append((client, getattr(request, "data", None)))
         ok = client not in self.fail
         return FakeMsg(success=ok, message="" if ok else client + " refused")
+
+    def _take_control(self, req):
+        self.calls.append(("take_control", "release" if req.release else "take"))
+        if req.release:
+            ok = self.owner in ("", req.source)
+            if ok:
+                self.owner = ""
+        else:
+            ok = self.owner in ("", req.source) or req.force
+            if ok:
+                self.owner = req.source
+        message = "ok" if ok else "the arm is controlled by " + self.owner
+        return FakeMsg(success=ok, owner=self.owner, message=message)
 
 
 class Feeder:
@@ -90,10 +110,13 @@ def joint_state(degrees, names=None):
 def ros_arm():
     bridge = FakeBridge()
     source = arm.RosArm(bridge=bridge)
-    source._types = {"ArmCommand": FakeArmCommand, "ColorRGBA": FakeMsg, "SetBool": FakeSrv, "Trigger": FakeSrv}
+    source._types = {"ArmCommand": FakeArmCommand, "ColorRGBA": FakeMsg, "SetBool": FakeSrv, "Trigger": FakeSrv,
+                     "TakeControl": FakeSrv}
     source._cmd_pub = FakePublisher()
     source._led_pub = FakePublisher()
-    source._clients = {n: n for n in ("power_on", "release_servos", "set_gripper", "set_read_only")}
+    source._clients = {n: n for n in ("power_on", "release_servos", "set_gripper", "set_read_only",
+                                      "take_control")}
+    source._update(control_owner="web")   # most tests: the page holds the control
     feeders = []
 
     def feed(angles):
@@ -135,15 +158,32 @@ def test_joint_states_become_degrees_in_joint_order(ros_arm):
     assert "gripper" in s["capabilities"] and "rest" in s["capabilities"]
 
 
+def diagnostics(levels):
+    """/diagnostics as temperature_monitor publishes it: one status per joint."""
+    return FakeMsg(status=[FakeMsg(name="mycobot: J{} servo temperature".format(j + 1), level=lv)
+                           for j, lv in enumerate(levels)])
+
+
 def test_temperatures_and_rest_mode(ros_arm):
     ros_arm._on_temps(FakeMsg(celsius=[30, 56, 66, 40, 41, 42], valid=True))
     s = ros_arm.snapshot()
     assert s["temps"] == [30, 56, 66, 40, 41, 42]
-    assert s["temp_levels"] == ["normal", "warm", "hot", "normal", "normal", "normal"]
+    assert s["temp_levels"] is None   # no copy of the limits: the levels come from /diagnostics
     ros_arm._on_temps(FakeMsg(celsius=[0] * 6, valid=False))
     assert ros_arm.snapshot()["temps"] is None
     ros_arm._on_read_only(FakeMsg(data=True))
     assert ros_arm.snapshot()["resting"] is True
+
+
+def test_temperature_levels_come_from_diagnostics(ros_arm):
+    ros_arm._on_diagnostics(diagnostics([b"\x00", b"\x01", b"\x02", 0, 0, 0]))
+    assert ros_arm.snapshot()["temp_levels"] == ["normal", "warm", "hot", "normal", "normal", "normal"]
+    # Other diagnostics leave them alone
+    ros_arm._on_diagnostics(FakeMsg(status=[FakeMsg(name="camera", level=2)]))
+    assert ros_arm.snapshot()["temp_levels"][2] == "hot"
+    # STALE (no temperatures from arm_driver): unknown
+    ros_arm._on_diagnostics(FakeMsg(status=[FakeMsg(name="mycobot: servo temperatures", level=3)]))
+    assert ros_arm.snapshot()["temp_levels"] is None
 
 
 def test_stale_joint_states_disconnect(ros_arm, monkeypatch):
@@ -212,6 +252,14 @@ def test_newer_command_replaces_the_running_one(ros_arm):
     assert moves(ros_arm)[-1].angles_deg == [0, -15.0, 0, 0, 0, 0]
 
 
+def test_every_command_is_signed_web(ros_arm):
+    ros_arm.feed([0] * 6)
+    ros_arm.move_joint(0, 30)
+    assert wait_for(lambda: moves(ros_arm))
+    ros_arm.stop_motion()
+    assert {m.source for m in ros_arm._cmd_pub.sent} == {"web"}
+
+
 def test_move_timeout_stops_and_notifies(ros_arm, monkeypatch):
     monkeypatch.setattr(arm, "ROS_MOVE_TIMEOUT", 0.3)
     ros_arm.feed([0] * 6)
@@ -219,6 +267,58 @@ def test_move_timeout_stops_and_notifies(ros_arm, monkeypatch):
     assert wait_for(lambda: ros_arm.snapshot()["notice"] is not None)
     assert ros_arm._cmd_pub.sent[-1].type == FakeArmCommand.STOP
     assert "not reached" in ros_arm.snapshot()["notice"]["text"]
+
+
+# ---- control owner ----------------------------------------------------------------------
+
+def test_take_and_release_the_control(ros_arm):
+    ros_arm._update(control_owner="")
+    ros_arm.take_control()
+    assert ros_arm.bridge.owner == "web" and ros_arm.snapshot()["control_owner"] == "web"
+    ros_arm.take_control()   # renewing it is fine
+    ros_arm.release_control()
+    assert ros_arm.bridge.owner == "" and ros_arm.snapshot()["control_owner"] == ""
+    assert ros_arm.bridge.calls == [("take_control", "take")] * 2 + [("take_control", "release")]
+
+
+def test_take_control_refused_while_the_joystick_has_it(ros_arm):
+    ros_arm.bridge.owner = "joystick"
+    with pytest.raises(arm.ControlError, match="joystick"):
+        ros_arm.take_control()
+    assert ros_arm.snapshot()["control_owner"] == "joystick"
+
+
+def test_losing_the_control_ends_the_move_without_stop(ros_arm):
+    lost = []
+    ros_arm.on_control_lost = lost.append
+    ros_arm.feed([0] * 6)
+    ros_arm.move_joint(0, 90)
+    assert wait_for(lambda: moves(ros_arm))
+    ros_arm._on_control_owner(FakeMsg(data="joystick"))   # held button 8
+    assert lost == ["joystick"]
+    time.sleep(0.15)
+    count = len(ros_arm._cmd_pub.sent)
+    time.sleep(0.3)
+    assert len(ros_arm._cmd_pub.sent) == count   # the stream stopped
+    # and the page did not STOP the joystick's motion
+    assert all(m.type != FakeArmCommand.STOP for m in ros_arm._cmd_pub.sent)
+
+
+def test_idle_release_by_the_driver_is_not_a_loss(ros_arm):
+    lost = []
+    ros_arm.on_control_lost = lost.append
+    ros_arm._on_control_owner(FakeMsg(data=""))
+    assert lost == [] and ros_arm.snapshot()["control_owner"] == ""
+
+
+def test_no_timeout_stop_without_the_control(ros_arm, monkeypatch):
+    monkeypatch.setattr(arm, "ROS_MOVE_TIMEOUT", 0.3)
+    ros_arm.feed([0] * 6)
+    ros_arm.move_joint(0, 90)
+    assert wait_for(lambda: moves(ros_arm))
+    ros_arm._update(control_owner="script")   # without the callback: only the final STOP is checked
+    time.sleep(0.6)
+    assert all(m.type != FakeArmCommand.STOP for m in ros_arm._cmd_pub.sent)
 
 
 # ---- poses, rest, wake ------------------------------------------------------------------
