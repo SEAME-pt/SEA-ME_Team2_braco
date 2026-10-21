@@ -104,12 +104,20 @@ skips the entrypoint, so ROS is **not** sourced - prefix it with `ros_entrypoint
 
 - `make up GPU=nvidia` (or `GPU=dri`) adds `compose/nvidia.yml` or `compose/dri.yml` for `dev` and `sim` (PC only);
   `COMPOSE_FILE` in `.env` does the same permanently.
-- `make build` always runs colcon; `make up` only when something under `ros2_ws/src`, `libs` or `examples` changed.
+- `make build` always runs colcon; `make up` only when something under `ros2_ws/src`, `libs` or `examples` changed
+  (on the Jetson, only the packages of the real system: see below).
   After `make build`, `make restart` (or the next `make up`) runs the new build.
 - `make clean` deletes colcon's `build/ install/ log/` and the ROS logs (`~/.ros/log` on the host and in the
   containers). `make reset` also removes the containers, the cache volumes and the images, and asks first
   (`FORCE=1` skips the prompt).
 - In CI (`CI=true`) or without a terminal, TTY allocation is turned off automatically.
+
+**The Jetson never simulates.** Its image has no Gazebo, MoveIt or RViz (those are only in the `pc` stage), and
+`make build` / `make test` there only take `braco_bringup` and what it depends on (driver, teleop, interfaces,
+`mycobot_cpp`) plus the `ros2_basics` demos of `make demos`: `braco_description`, `braco_moveit_config` and
+`braco_mission` are left out (`WS_PACKAGES` in `mk/config.mk`). If the real arm needs another package, add it to
+`braco_bringup/package.xml` as an `exec_depend`; the opposite holds too: never make `braco_bringup` depend on a
+simulation package (Gazebo, MoveIt), or the Jetson builds it again. The PC builds everything.
 
 **Jetson Nano limits.** On the Jetson `make build` runs colcon with one package at a time
 (`--parallel-workers 1`) and `MAKEFLAGS=-j2`, and ccache is capped at 1 GB (`CCACHE_MAXSIZE` in `.env` overrides

@@ -95,12 +95,17 @@ NOTTY ?= $(if $(or $(CI),$(shell [ -t 0 ] || echo 1)),-T)
 DEV_EXEC := $(COMPOSE) exec $(NOTTY) $(DEV) ros_entrypoint.sh
 SYS_EXEC := $(COMPOSE) exec $(NOTTY) $(SYSTEM) ros_entrypoint.sh
 
-# The Jetson Nano has 4 GB of RAM: one package at a time, two compiler jobs (the ccache limit is in compose.yml).
+# The Jetson never simulates: it builds and tests only what the real system runs, braco_bringup and its dependencies
+# (driver, teleop, interfaces, mycobot_cpp), plus the ros2_basics demos of `make demos`. A package the real arm needs
+# later goes in braco_bringup's package.xml as an exec_depend; a simulation package (Gazebo, MoveIt) never does, or
+# the Jetson builds it again. The PC builds everything.
+# The Nano has 4 GB of RAM: one package at a time, two compiler jobs (the ccache limit is in compose.yml).
 ifeq ($(ROLE),jetson)
+WS_PACKAGES := --packages-up-to braco_bringup ros2_basics_py ros2_basics_cpp
 COLCON_ARGS ?= --parallel-workers 1
 BUILD_ENV   := -e MAKEFLAGS=-j2
 endif
-COLCON = colcon build --base-paths $(WS_BASE_PATHS) $(COLCON_ARGS)
+COLCON = colcon build --base-paths $(WS_BASE_PATHS) $(WS_PACKAGES) $(COLCON_ARGS)
 
 FORCE ?= 0
 
