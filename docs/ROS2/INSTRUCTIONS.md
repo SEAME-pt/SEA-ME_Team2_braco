@@ -1484,7 +1484,6 @@ Things to observe:
 `ros2 pkg create` adds the standard ament linters to every package, and they are what reviewers and CI check before a merge. Run them after every change:
 
 ```bash
-host$ cd docker
 host$ make ws-build && make ws-test                          # colcon test for every package
 host$ make exec CMD='colcon test-result --all'               # one line per test file
 host$ make exec CMD='colcon test-result --verbose'           # only the failures, with the message
@@ -1700,7 +1699,6 @@ The packages live in `docker/ws/src/`, which **is** tracked by git. Generated fo
 **Step 1. Check that everything builds and the linters pass:**
 
 ```bash
-host$ cd docker
 host$ make ws-build
 host$ make ws-test
 ```

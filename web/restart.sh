@@ -3,7 +3,7 @@
 #
 # The arm container starts the page from arm_routine.sh and does not respawn it, so after a
 # change in web/ this replaces the uvicorn process without touching the driver or the arm
-# (no zero, no park). Run it with `make arm-web-restart` in docker/.
+# (no zero, no park). Run it with `make arm-web-restart` from the repo root.
 #
 # The new server logs to the container's output, so `make arm-web-logs` keeps working.
 # Presence and the control lease live in the server's memory: everybody reconnects by

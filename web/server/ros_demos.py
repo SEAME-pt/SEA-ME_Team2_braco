@@ -5,7 +5,7 @@
     action      /fibonacci     seame_interfaces/action/Fibonacci (feedback, cancel)
     lifecycle   managed_talker_py, managed_talker_cpp (get_state / change_state)
 
-Start them in the arm container with `make arm-basics` (docker/Makefile).
+Start them in the arm container with `make arm-basics` (from the repo root).
 """
 
 import collections

@@ -1,0 +1,98 @@
+# CI for every PR and every push to main (issue #16). Both jobs call the Makefile, so a failure can be
+# reproduced locally with the same command:
+#
+#   host  make env, then make ci              (host checks, lint, web page tests; no robot, no docker image)
+#   ros   make ci-image, then make ci-ros     (rosdep, colcon build, colcon test of docker/ws/src + libs)
+#
+# The Jetson (arm64) image is not built here: a QEMU build is too slow, use make jetson-cross by hand.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# A new push to a PR cancels its older run; runs on main always finish.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  host:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - id: py
+        uses: actions/setup-python@v6
+        with:
+          python-version-file: .python-version
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            web/requirements*.txt
+
+      # shellcheck and hadolint need no install step: without a local binary, make lint runs the images pinned in
+      # SHELLCHECK_IMAGE and HADOLINT_IMAGE (Makefile) through docker.
+
+      # docker/.env as every user creates it: lint validates the compose files against it.
+      - name: make env
+        run: make env
+
+      - name: make host-check
+        run: make host-check PYTHON=${{ steps.py.outputs.python-path }}
+
+      - name: make lint
+        run: make lint
+
+      - name: make web-test
+        run: make web-test PYTHON=${{ steps.py.outputs.python-path }}
+
+  ros:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      CI_IMAGE: seame/ci:lyrical
+    steps:
+      - uses: actions/checkout@v5
+
+      # The image's `dev` user gets the runner's UID/GID (1001 on GitHub), so the bind-mounted docker/ws is writable.
+      - id: ids
+        run: |
+          echo "uid=$(id -u)" >> "$GITHUB_OUTPUT"
+          echo "gid=$(id -g)" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      # Same image as `make ci-image` (keep target and build-args in step with CI_TARGET there), but with the
+      # BuildKit layers cached in GitHub's cache between runs.
+      - name: Build the CI image (Dockerfile stage base)
+        uses: docker/build-push-action@v6
+        with:
+          context: docker/docker
+          target: base
+          load: true
+          tags: ${{ env.CI_IMAGE }}
+          build-args: |
+            USER_UID=${{ steps.ids.outputs.uid }}
+            USER_GID=${{ steps.ids.outputs.gid }}
+          cache-from: type=gha,scope=ci-base
+          cache-to: type=gha,scope=ci-base,mode=max
+
+      # ccache and colcon's build/ make warm runs incremental. The key changes with the image definition,
+      # so a new toolchain never reuses an old CMake cache.
+      - uses: actions/cache@v4
+        with:
+          path: |
+            docker/ws/.ccache
+            docker/ws/build
+          key: colcon-${{ hashFiles('docker/docker/**') }}-${{ github.sha }}
+          restore-keys: colcon-${{ hashFiles('docker/docker/**') }}-
+
+      - name: make ci-ros
+        run: make ci-ros CI_IMAGE=${{ env.CI_IMAGE }}

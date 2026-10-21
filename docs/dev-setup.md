@@ -1,5 +1,7 @@
 # Developer Setup Guide (Sprint 0)
 
+[![CI](https://github.com/SEAME-pt/SEA-ME_Team2_braco/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/SEAME-pt/SEA-ME_Team2_braco/actions/workflows/ci.yml)
+
 This guide documents how to set up the development environment on developer hardware to interface with our robot platform (**Elephant Robotics myCobot 280 Jetson Nano**). It details system toolchains, Python and C++ dependencies, and step-by-step verification using provided hello-world test suites.
 
 > **Safety Notice:** Before powering on or executing any motion on the physical arm, review [Lab Safety Induction & Workstation Rules](safety.md). Ensure the robot is clamped to the workstation, the 350 mm perimeter is clear, and the arm is manually placed in the upright configuration ($0^\circ$) before engaging motor power.
@@ -222,21 +224,42 @@ Hello, myCobot! C++ communication verified successfully.
 
 ---
 
-## 5. Troubleshooting & FAQ
+## 5. Continuous Integration (CI)
+
+Every pull request and every push to `main` runs [`.github/workflows/ci.yml`](../.github/workflows/ci.yml). No robot,
+serial port or display is needed. Both jobs only call `make`, so a red check can be reproduced on a workstation with
+the same commands:
+
+| Job | What it runs | Reproduce locally |
+|---|---|---|
+| `host` | `make env`, then `make host-check` (venv with Python 3.11 from `.python-version`, imports, C++ hello-world build), `make lint` (compose files, shellcheck, hadolint) and `make web-test` (pytest `web/tests`) | `make env` (once), then `make ci` |
+| `ros` | Builds the Dockerfile's `base` stage (Ubuntu 26.04 + ROS 2 Lyrical), then `rosdep install`, `colcon build` and `colcon test` of `docker/ws/src` and `libs` in a throw-away container | `make ci-image ci-ros` |
+
+* shellcheck and hadolint need no install: without a local binary, `make lint` runs the images pinned in
+  `SHELLCHECK_IMAGE` and `HADOLINT_IMAGE` through docker, so it never skips a check that CI runs.
+* Caches: pip (`actions/setup-python`), the image layers (BuildKit `type=gha`), and ccache + colcon `build/`
+  (`actions/cache`, reset whenever `docker/docker/` changes). A warm run only recompiles what changed.
+* The arm64 Jetson image is not built in CI (QEMU is too slow); build it by hand with `make jetson-cross`.
+* `ci-ros` writes to `docker/ws/build`, `install` and `log`, like `make ws-build`, plus its ccache in `docker/ws/.ccache`.
+
+---
+
+## 6. Troubleshooting & FAQ
 
 | Problem | Cause | Solution |
 |---|---|---|
 | `Permission denied: '/dev/ttyTHS1'` | User not in `dialout` group | Run `sudo usermod -aG dialout $USER`, then log out and back in. |
-| `Device or resource busy` | Another process is accessing UART (with the arm services up it is the `arm_driver` node in the `arm` container, which holds the port exclusively) | Check active locks using `lsof /dev/ttyTHS1` or `fuser /dev/ttyTHS1`. Don't stop the driver just to run a script: use `make arm-park`, `arm-zero` or `arm-temps` from `docker/` (see [arm-rest-mode.md](arm-rest-mode.md)). |
+| `Device or resource busy` | Another process is accessing UART (with the arm services up it is the `arm_driver` node in the `arm` container, which holds the port exclusively) | Check active locks using `lsof /dev/ttyTHS1` or `fuser /dev/ttyTHS1`. Don't stop the driver just to run a script: use `make arm-park`, `arm-zero` or `arm-temps` from the repo root (see [arm-rest-mode.md](arm-rest-mode.md)). |
 | `[WARN] No response to get_angles query` | Base power switch off or wrong baud rate | Ensure the circular 60W power switch on the base is turned ON and baud rate is set to `1000000`. |
 | Motors locked or resisting movement | Active closed-loop holding torque | Run torque release script (see [Safety Guide](safety.md#52-software-operational-stop--holding-torque-behavior)): `mc.release_all_servos()`. With the arm services up, `make arm-park` releases the joints and keeps the driver monitoring temperatures. |
 
 ---
 
-## 6. Changelog
+## 7. Changelog
 
 | Date | Change | Author |
 |---|---|---|
 | *2026-10-09* | Initial setup draft | d-branco |
 | *2026-10-09* | Added hardware installation guides, C++ & Python test suites, and CMake build support | d-branco |
 | *2026-10-09* | Fixed CMake output path to tests/ directory and recorded successful physical robot test verification | d-branco |
+| *2026-10-20* | Added the CI section (GitHub Action, issue #16) and its status badge | Petrichor |

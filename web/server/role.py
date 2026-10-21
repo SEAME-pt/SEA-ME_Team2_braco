@@ -1,6 +1,6 @@
 """Which machine is this: the PC (workstation) or the Jetson (in the arm's base)?
 
-Same answer as the docker Makefile gives, so the page and the containers agree:
+Same answer as the root Makefile gives, so the page and the containers agree:
 SEAME_ROLE (set inside the containers), then COMPOSE_PROFILES (environment or
 docker/.env). If none of them says, the CPU decides: the Nano is aarch64.
 """

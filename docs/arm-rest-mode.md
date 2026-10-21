@@ -15,7 +15,7 @@ Rodar `park.py` direto no host (versão antiga, serial direta) enquanto o `arm_d
 | `park.py` | Sai do rest, vai para a pose de park, solta os servos e **entra em rest**. O driver segue vivo medindo temperatura. |
 | `zero.py` | Sai do rest antes de ligar os servos e mover. |
 | `arm_moves.py` | Novo `set_rest(on)` (cliente do serviço acima). |
-| `docker/Makefile` | Novos targets `arm-park`, `arm-zero`, `arm-rest`, `arm-resume`, `arm-temps` (rodam dentro do container `arm`). |
+| `Makefile` (repo root) | Novos targets `arm-park`, `arm-zero`, `arm-rest`, `arm-resume`, `arm-temps` (rodam dentro do container `arm`). |
 | `playground/park.py` | Aviso no topo: não usar com o driver ligado. |
 
 ## Como usar (na Jetson, em `docker/`)
