@@ -82,6 +82,8 @@ private:
   rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr power_client_;
   rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr release_client_;
   rclcpp::Client<std_srvs::srv::SetBool>::SharedPtr rest_client_;
+  // Runs the callbacks while a move or a call waits (rclcpp::spin_some is deprecated)
+  rclcpp::executors::SingleThreadedExecutor executor_;
 };
 
 // Init ROS, run action(node) -> bool, shut down; return a process exit code.
