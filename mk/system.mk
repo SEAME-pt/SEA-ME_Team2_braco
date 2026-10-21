@@ -5,7 +5,7 @@
 #   2. host checks          only problems are printed (make doctor shows everything)
 #   3. image                built only if missing (make image rebuilds it)
 #   4. colcon build         only when a file under ros2_ws/src, libs or examples changed since the last build
-#   5. start                the system (`real` or `sim`, plus `dev` on the PC); restarted if it was running and step 4 rebuilt
+#   5. start                `dev` + the system (`real` or `sim`); restarted if it was running and step 4 rebuilt
 #   6. wait                 until the page's /api/status says connected (UP_TIMEOUT seconds)
 #   7. print the page URL
 
@@ -29,7 +29,7 @@ REBUILT     := $(WS_DIR)/build/.braco-rebuilt
 up: _image | $(WS_DIRS) ## Turn the system on: .env, checks, image and build only if needed, start, wait, URL
 	@$(MAKE) -s --no-print-directory $(BUILD_STAMP)
 	@was_up=$$($(COMPOSE) ps -q --status running $(SYSTEM) 2>/dev/null); \
-	$(COMPOSE) up -d $(UP_SERVICES) || exit 1; \
+	$(COMPOSE) up -d $(DEV) $(SYSTEM) || exit 1; \
 	if [ -n "$$was_up" ] && [ -f $(REBUILT) ]; then echo "workspace rebuilt: restarting $(SYSTEM)"; $(COMPOSE) restart $(SYSTEM); fi; \
 	rm -f $(REBUILT)
 	@$(MAKE) --no-print-directory _xhost
@@ -37,7 +37,7 @@ up: _image | $(WS_DIRS) ## Turn the system on: .env, checks, image and build onl
 
 down: _role ## Turn the system off (PARK=1 parks the arm first; the caches are kept)
 	@if [ "$(PARK)" = 1 ] && [ "$(ROLE)" = jetson ] && [ -n "$$($(COMPOSE) ps -q --status running $(SYSTEM))" ]; then \
-	  echo "parking the arm"; $(SYS_EXEC) ros2 run braco_bringup park.py || exit 1; fi
+	  echo "parking the arm"; $(SYS_EXEC) ros2 run braco_bringup park || exit 1; fi
 	$(COMPOSE) down --remove-orphans
 
 restart: _role ## Restart the system container (the arm is not zeroed or parked), then like up
@@ -66,15 +66,14 @@ _checks: _role $(ENV_FILE)
 _image: _checks
 	@docker image inspect $(IMAGE) >/dev/null 2>&1 || { echo "image $(IMAGE) not found: building it (once)"; $(COMPOSE) build $(DEV); }
 
-# PC: starts `dev` if it is not running (on the Jetson dev commands are `run --rm`: nothing to start).
-# Commands that need dev depend on `_image _dev_up` (in that order).
+# Starts `dev` if it is not running. Commands that need it depend on `_image _dev_up` (in that order).
 _dev_up: | $(WS_DIRS)
-	@[ "$(ROLE)" = jetson ] || [ -n "$$($(COMPOSE) ps -q --status running $(DEV) 2>/dev/null)" ] || $(COMPOSE) up -d $(DEV)
+	@[ -n "$$($(COMPOSE) ps -q --status running $(DEV) 2>/dev/null)" ] || $(COMPOSE) up -d $(DEV)
 
 $(BUILD_STAMP): $(WS_SOURCES)
 	@echo "workspace changed: colcon build"
 	@$(MAKE) --no-print-directory _dev_up
-	$(call dev_cmd,$(BUILD_ENV)) $(COLCON)
+	$(COMPOSE) exec $(NOTTY) $(BUILD_ENV) $(DEV) ros_entrypoint.sh $(COLCON)
 	@touch $@ $(REBUILT)
 
 _xhost:

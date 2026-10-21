@@ -44,7 +44,7 @@ make restart             # after editing web/: restarts the system container; th
 
 There the page uses `ARM_SOURCE=ros`: it never opens the serial port, it is a client of `arm_driver`
 ([docker/README.md](../docker/README.md)). A move is a stream of targets at most 15° ahead of the real angles, resent
-every 100 ms, exactly like `braco_bringup/scripts/arm_moves.py`; if the page dies, the driver's 300 ms watchdog stops the
+every 100 ms, exactly like `braco_bringup/src/arm_moves.cpp`; if the page dies, the driver's 300 ms watchdog stops the
 arm. Park uses the firmware limits and leaves the servos on; it does not enter rest mode. Wake up leaves rest mode
 and powers the servos without moving the arm (rest mode is only entered with the *Rest on* button).
 

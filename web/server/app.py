@@ -35,7 +35,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from . import docs, github, ros
-from .arm import (DEFAULT_BAUD, DEFAULT_PORT, POSES, SOFT_LIMITS,
+from .arm import (DEFAULT_BAUD, DEFAULT_PORT, POSES, JOINT_LIMITS,
                   ArmSource, GazeboArm, MockArm, RestingError, RosArm)
 from .role import machine_role
 from .ros_demos import FIB_MAX_ORDER, Demos
@@ -195,10 +195,10 @@ class JointMove(BaseModel):
 
 @app.post("/api/joint/{index}")
 def joint(index: int, move: JointMove, request: Request):
-    """Move one joint (1-6) inside its soft limits."""
+    """Move one joint (1-6) inside its joint limits."""
     if not 1 <= index <= 6:
         raise HTTPException(status_code=404, detail="joint must be 1-6")
-    lo, hi = SOFT_LIMITS[index - 1]
+    lo, hi = JOINT_LIMITS[index - 1]
     if not lo <= move.angle <= hi:
         raise HTTPException(status_code=422,
                             detail="J{} must be between {} and {} degrees".format(index, lo, hi))

@@ -70,7 +70,7 @@ ifneq ($(origin GPU),command line)
 GPU :=
 endif
 
-IMAGE_PREFIX ?= $(or $(call dotenv,IMAGE_PREFIX),braco-image)
+IMAGE_PREFIX ?= $(or $(call dotenv,IMAGE_PREFIX),braco)
 IMAGE_TAG    ?= $(or $(call dotenv,IMAGE_TAG),lyrical)
 MYCOBOT_PORT ?= $(or $(call dotenv,MYCOBOT_PORT),/dev/ttyTHS1)
 WEB_PORT     ?= $(or $(call dotenv,WEB_PORT),8000)
@@ -91,32 +91,16 @@ COMPOSE := COMPOSE_PROFILES=$(ROLE) $(DC)
 # No TTY in CI (GitHub Actions sets CI=true) or when stdin is not a terminal.
 NOTTY ?= $(if $(or $(CI),$(shell [ -t 0 ] || echo 1)),-T)
 
-# `dev` on the PC stays up (several shells, RViz, PlotJuggler in one container). On the Jetson it never runs on its
-# own: every dev command is a throw-away `run --rm`, so normally only `real` uses the Nano's RAM.
-ifeq ($(ROLE),jetson)
-DEV_MODE    := run --rm --no-deps
-UP_SERVICES := $(SYSTEM)
-else
-DEV_MODE    := exec
-UP_SERVICES := $(DEV) $(SYSTEM)
-endif
-# A command in dev ($(1): extra options such as -e VAR=value). Through the image entrypoint, so ROS and the workspace
-# are sourced (a bare `exec` would not).
-dev_cmd   = $(COMPOSE) $(DEV_MODE) $(NOTTY) $(1) $(DEV) ros_entrypoint.sh
-DEV_SHELL = $(COMPOSE) $(DEV_MODE) $(DEV) bash
+# Through the image entrypoint, so ROS and the workspace are sourced (a bare `exec` would not).
+DEV_EXEC := $(COMPOSE) exec $(NOTTY) $(DEV) ros_entrypoint.sh
 SYS_EXEC := $(COMPOSE) exec $(NOTTY) $(SYSTEM) ros_entrypoint.sh
 
-# The Jetson never simulates: it builds and tests only what the real system runs, braco_bringup and its dependencies
-# (driver, teleop, interfaces, mycobot_cpp), plus the ros2_basics demos of `make demos`. A package the real arm needs
-# later goes in braco_bringup's package.xml as an exec_depend; a simulation package (Gazebo, MoveIt) never does, or
-# the Jetson builds it again. The PC builds everything.
-# The Nano has 4 GB of RAM: one package at a time, two compiler jobs (the ccache limit is in compose.yml).
+# The Jetson Nano has 4 GB of RAM: one package at a time, two compiler jobs (the ccache limit is in compose.yml).
 ifeq ($(ROLE),jetson)
-WS_PACKAGES := --packages-up-to braco_bringup ros2_basics_py ros2_basics_cpp
 COLCON_ARGS ?= --parallel-workers 1
 BUILD_ENV   := -e MAKEFLAGS=-j2
 endif
-COLCON = colcon build --base-paths $(WS_BASE_PATHS) $(WS_PACKAGES) $(COLCON_ARGS)
+COLCON = colcon build --base-paths $(WS_BASE_PATHS) $(COLCON_ARGS)
 
 FORCE ?= 0
 

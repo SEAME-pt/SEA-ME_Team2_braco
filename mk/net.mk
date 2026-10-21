@@ -5,7 +5,7 @@
 # may well exist as unrelated environment variables: make net-listen COUNT=20 TIMEOUT=60 TOPIC=/arm_test
 
 TL_ENV := $(foreach v,TOPIC COUNT TIMEOUT,$(if $(filter command line,$(origin $(v))),-e $(v)=$($(v))))
-TL      = $(call dev_cmd,$(TL_ENV)) bash $(CONTAINER_TESTS)/talker-listener.sh
+TL      = $(COMPOSE) exec $(NOTTY) $(TL_ENV) $(DEV) ros_entrypoint.sh bash $(CONTAINER_TESTS)/talker-listener.sh
 
 .PHONY: net-test net-talk net-listen
 
