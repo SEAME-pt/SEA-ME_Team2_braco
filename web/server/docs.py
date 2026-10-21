@@ -26,7 +26,7 @@ GROUPS = [
     ('Architecture and decisions', lambda p: p.startswith('docs/ADR-')),
     ('Inventory', lambda p: p.startswith('docs/inventory/')),
     ('Web page (braco)', lambda p: p.startswith('web/')),
-    ('Docker and ROS 2', lambda p: p.startswith('docker/')),
+    ('Docker and ROS 2', lambda p: p.startswith(('docker/', 'ros2_ws/'))),
     ('Contributing', lambda p: p.startswith('.github/')),
     ('Code', lambda p: p.startswith(('libs/', 'playground/', 'tests/'))),
 ]

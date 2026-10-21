@@ -4,14 +4,9 @@
 export const JOINTS = ["J1", "J2", "J3", "J4", "J5", "J6"];
 export const JOINT_NAMES = ["Base", "Shoulder", "Elbow", "Wrist 1", "Wrist 2", "Wrist 3"];
 
-// FIRMWARE_LIMITS
-export const FIRMWARE_LIMITS = [
-  [-168, 168], [-140, 140], [-150, 150], [-150, 150], [-155, 160], [-180, 180],
-];
-
-// DEFAULT_SOFT_LIMITS
-export const SOFT_LIMITS = [
-  [-160, 160], [-130, 130], [-140, 140], [-120, 120], [-135, 135], [-170, 170],
+// JOINT_LIMITS
+export const JOINT_LIMITS = [
+  [-166, 166], [-138, 138], [-149, 149], [-149, 149], [-153, 158], [-178, 178],
 ];
 
 // FACTORY_PID: P, I, D
@@ -39,7 +34,7 @@ export const COMMANDS = [
   { code: "0x12", name: "IS_POWER_ON", py: "mc.is_power_on()", cpp: "isPowerOn()", desc: "Servos powered?" },
   { code: "0x13", name: "RELEASE_ALL_SERVOS", py: "mc.release_all_servos()", cpp: "releaseAllServos()", desc: "Releases the joints so they move by hand", write: true },
   { code: "0x20", name: "GET_ANGLES", py: "mc.get_angles()", cpp: "getAngles()", desc: "Reads the 6 angles (degrees)" },
-  { code: "0x21", name: "SEND_ANGLE", py: "mc.send_angle(j, a, s)", cpp: "sendAngle(j, a, s)", desc: "Moves one joint (clamped to the soft limit)", write: true },
+  { code: "0x21", name: "SEND_ANGLE", py: "mc.send_angle(j, a, s)", cpp: "sendAngle(j, a, s)", desc: "Moves one joint (clamped to the joint limits)", write: true },
   { code: "0x22", name: "SEND_ANGLES", py: "mc.send_angles([…], s)", cpp: "sendAngles(a, s)", desc: "Moves all 6 joints", write: true },
   { code: "0x23", name: "GET_COORDS", py: "mc.get_coords()", cpp: "getCoords()", desc: "Cartesian pose [X, Y, Z, RX, RY, RZ]" },
   { code: "0x29", name: "STOP", py: "mc.stop()", cpp: "stop()", desc: "Stops the current motion", write: true },

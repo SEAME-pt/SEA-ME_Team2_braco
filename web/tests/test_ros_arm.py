@@ -10,7 +10,7 @@ import time
 
 import pytest
 
-from web.server import arm, ros, ros_demos, ros_graph, ros_health
+from web.server import arm, ros, ros_graph, ros_health
 
 
 class FakeMsg:
@@ -185,7 +185,7 @@ def test_move_is_streamed_in_bounded_steps(ros_arm):
     sent = moves(ros_arm)
     for m in sent:
         assert m.angles_deg == [15.0, 0, 0, 0, 0, 0]  # at most ROS_STEP_DEG ahead
-        assert m.speed == 40 and m.use_firmware_limits is False
+        assert m.speed == 40
     gaps = [b - a for a, b in zip(ros_arm._cmd_pub.times, ros_arm._cmd_pub.times[1:])]
     assert max(gaps) < 0.3  # always inside arm_driver's 300 ms watchdog
 
@@ -235,22 +235,21 @@ def test_move_timeout_stops_and_notifies(ros_arm, monkeypatch):
 # ---- poses, rest, wake ------------------------------------------------------------------
 
 
-def test_park_uses_firmware_limits_and_keeps_the_servos_on(ros_arm):
+def test_park_keeps_the_servos_on(ros_arm):
     feeder = ros_arm.feed([0] * 6)
     ros_arm.go_to_pose('park')
     assert wait_for(lambda: moves(ros_arm))
-    assert moves(ros_arm)[0].use_firmware_limits is True
     feeder.angles = list(arm.POSES['park'])
     time.sleep(0.4)
     assert ros_arm.bridge.calls == []  # no release, no rest mode
     assert ros_arm.snapshot()['resting'] is False
 
 
-def test_zero_does_not_use_firmware_limits(ros_arm):
+def test_zero_streams_all_angles(ros_arm):
     ros_arm.feed([10] * 6)
     ros_arm.go_to_pose('zero')
     assert wait_for(lambda: moves(ros_arm))
-    assert moves(ros_arm)[0].use_firmware_limits is False
+    assert moves(ros_arm)[0].type == FakeArmCommand.ALL_ANGLES
 
 
 def test_resting_arm_refuses_motion(ros_arm):
@@ -332,15 +331,9 @@ def test_mock_park_does_not_rest():
 def test_panels_report_unavailable_ros():
     bridge = ros.RosBridge()
     bridge.error = 'rclpy not available'
-    for panel in (
-        ros_health.Health(bridge),
-        ros_graph.Graph(bridge),
-        ros_demos.Demos(bridge),
-    ):
+    for panel in (ros_health.Health(bridge), ros_graph.Graph(bridge)):
         assert panel.snapshot() == {'available': False, 'error': 'rclpy not available'}
     assert ros_graph.Graph(bridge).watch('/chatter', 'a') == 'rclpy not available'
-    with pytest.raises(RuntimeError, match='rclpy'):
-        ros_demos.Demos(bridge).add_two_ints(1, 2, 'Ana')
 
 
 def test_bridge_without_rclpy(monkeypatch):
@@ -368,12 +361,7 @@ def test_echo_payload_is_plain_and_bounded():
     import array
 
     data = ros_graph.jsonable(
-        {
-            'a': array.array('d', [1.0, 2.0]),
-            'b': b'\x01\x02',
-            'c': (1, 'x'),
-            'd': object,
-        }
+        {'a': array.array('d', [1.0, 2.0]), 'b': b'\x01\x02', 'c': (1, 'x'), 'd': object}
     )
     assert (
         data['a'] == [1.0, 2.0]

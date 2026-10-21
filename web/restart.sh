@@ -3,9 +3,10 @@
 #
 # The arm container starts the page from arm_routine.sh and does not respawn it, so after a
 # change in web/ this replaces the uvicorn process without touching the driver or the arm
-# (no zero, no park). Run it with `make arm-web-restart` from the repo root.
+# (no zero, no park). From the repo root (make restart restarts the whole system instead):
+#   docker compose --project-directory docker exec real bash /opt/braco/web/restart.sh
 #
-# The new server logs to the container's output, so `make arm-web-logs` keeps working.
+# The new server logs to the container's output, so `make logs S=web` keeps working.
 # Presence and the control lease live in the server's memory: everybody reconnects by
 # themselves and has to take control again.
 set -u
@@ -51,6 +52,6 @@ sleep 3
 if [ -n "$(pids)" ]; then
     echo "web: restarted on port $WEB_PORT"
 else
-    echo "web: failed to start, see make arm-logs" >&2
+    echo "web: failed to start, see make logs" >&2
     exit 1
 fi
