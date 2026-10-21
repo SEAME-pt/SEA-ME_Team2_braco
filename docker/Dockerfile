@@ -1,8 +1,8 @@
 # SEA:ME 2.0 - arm class images, one Dockerfile with three stages:
 #
 #   base           Ubuntu 26.04 + ROS 2 Lyrical Luth (ros-base) + ros2_control + build/test tooling + pymycobot
-#   jetson         base + serial tooling - the aarch64 robot-side image for the Jetson Nano (braco/jetson)
-#   pc             base + RViz2, MoveIt 2, Gazebo (ros_gz), QA tooling - the x86_64 workstation image (braco/pc)
+#   jetson         base + serial tooling - the aarch64 robot-side image for the Jetson Nano (braco-image/jetson)
+#   pc             base + RViz2, MoveIt 2, Gazebo (ros_gz), QA tooling - the x86_64 workstation image (braco-image/pc)
 #
 # Both final images are built FROM the same `base` stage, so the ROS distro, ros2_control and pymycobot
 # versions cannot drift apart between the two machines. Stages (instead of three files linked by a
@@ -10,8 +10,8 @@
 # `docker compose up`, and prebuilt images cannot be pulled on the Jetson. With stages, `up` only builds
 # when an image is missing and BuildKit shares the base layers by itself.
 #
-#   docker build --target pc     -t braco/pc:lyrical     docker
-#   docker build --target jetson -t braco/jetson:lyrical docker
+#   docker build --target pc     -t braco-image/pc:lyrical     docker
+#   docker build --target jetson -t braco-image/jetson:lyrical docker
 #
 # The `base` steps follow "Installing on Ubuntu - how-to" from the ROS 2 Lyrical documentation:
 # locale, Universe, ros2-apt-source, `apt upgrade`, then the ROS packages.

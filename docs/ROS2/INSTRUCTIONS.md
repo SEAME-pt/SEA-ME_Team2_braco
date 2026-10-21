@@ -51,7 +51,7 @@ Conventions in this guide:
 | Windows | Docker inside WSL2 (Ubuntu), then section 1.1 from the WSL terminal. GUIs need WSLg |
 | macOS | Docker Desktop works for the CLI; GUIs (RViz2, rqt) are not supported by our setup |
 
-The Docker setup gives everyone the **same** ROS 2 Lyrical install on Ubuntu 26.04, on both the PC (`braco/pc` image: ROS desktop, RViz2, MoveIt 2, Gazebo, rqt, QA tools) and the Jetson (`braco/jetson` image: headless ROS base, serial tools, `pymycobot`). Full details are in [docker/README.md](../docker/README.md).
+The Docker setup gives everyone the **same** ROS 2 Lyrical install on Ubuntu 26.04, on both the PC (`braco-image/pc` image: ROS desktop, RViz2, MoveIt 2, Gazebo, rqt, QA tools) and the Jetson (`braco-image/jetson` image: headless ROS base, serial tools, `pymycobot`). Full details are in [docker/README.md](../docker/README.md).
 
 ---
 
@@ -129,7 +129,7 @@ Every line should be `[ ok ]`. Fix any `[FAIL]` before continuing ([TROUBLESHOOT
 host$ make up
 ```
 
-`make up` creates `ros2_ws/src` and `ros2_ws/bags` as your user, builds the `braco/pc` image if missing, builds the workspace if a source changed, and starts two containers in the background: `dev` (your tools: `make shell`, `make build`, ...) and `sim` (the braco system on the simulated arm, with the web page on port 8000). Running it again only does what is missing.
+`make up` creates `ros2_ws/src` and `ros2_ws/bags` as your user, builds the `braco-image/pc` image if missing, builds the workspace if a source changed, and starts two containers in the background: `dev` (your tools: `make shell`, `make build`, ...) and `sim` (the braco system on the simulated arm, with the web page on port 8000). Running it again only does what is missing.
 
 **Step 8. Verify:**
 
@@ -187,7 +187,7 @@ Check in `.env`: `COMPOSE_PROFILES=jetson`, `MYCOBOT_PORT=/dev/ttyTHS1`, `MYCOBO
 
   It registers QEMU on the PC the first time, and is tagged on the Nano with its usual name.
 
-**Step 4. Start and verify** (`make up` starts `dev` and `real`, the real arm with its web page, and waits until the page sees the arm):
+**Step 4. Start and verify** (`make up` builds the workspace in a throw-away `dev` container, starts `real`, the real arm with its web page, and waits until the page sees the arm):
 
 ```bash
 nano$ make up
@@ -205,7 +205,7 @@ The Jetson image has **no GUI tools**. Inspect the Jetson's nodes from the PC (s
 | Turn the system on (idempotent) | `make up` |
 | Open a shell (ROS + workspace sourced) | `make shell` (open as many as you want, one per terminal) |
 | Run one command | `make run CMD='ros2 topic list'` |
-| Build the workspace | `make build` (one package at a time and `MAKEFLAGS=-j2` on the Jetson; `make up` builds only when sources changed) |
+| Build the workspace | `make build` (on the Jetson only the real system's packages, one at a time, `MAKEFLAGS=-j2`; `make up` builds only when sources changed) |
 | Run the workspace tests (linters) | `make test`, then `make run CMD='colcon test-result --verbose'` (see [12.6](#126-run-the-tests-linters)) |
 | Install package dependencies | `make run CMD='rosdep install --from-paths src --ignore-src -y'` |
 | Turn it off | `make down` (`PARK=1` parks the arm first, on the Jetson) |
