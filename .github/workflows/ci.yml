@@ -58,7 +58,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
-      CI_IMAGE: braco/ci:lyrical
+      CI_IMAGE: braco-image/ci:lyrical
     steps:
       - uses: actions/checkout@v5
 
