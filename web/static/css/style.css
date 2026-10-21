@@ -14,7 +14,6 @@
   --hot: #c62828;
   --hot-soft: #fbe1e1;
   --info: #2563eb;
-  --soft-band: #f8d9a8;
   --shadow: 0 1px 2px rgba(16, 24, 40, .06), 0 1px 3px rgba(16, 24, 40, .08);
   --radius: 12px;
   --mono: "JetBrains Mono", ui-monospace, monospace;
@@ -40,7 +39,6 @@
     --hot: #f87171;
     --hot-soft: #3d1717;
     --info: #60a5fa;
-    --soft-band: #4a3818;
     --shadow: none;
     color-scheme: dark;
   }
@@ -61,7 +59,6 @@
   --hot: #f87171;
   --hot-soft: #3d1717;
   --info: #60a5fa;
-  --soft-band: #4a3818;
   --shadow: none;
   color-scheme: dark;
 }
@@ -197,7 +194,6 @@ tr:last-child td { border-bottom: none; }
 .joint-head span { font-size: 12px; color: var(--muted); }
 .joint-head b { font-family: var(--mono); font-size: 18px; }
 .range { position: relative; height: 8px; margin: 8px 0 4px; background: var(--border); border-radius: 4px; }
-.range .soft { position: absolute; top: 0; bottom: 0; background: var(--soft-band); border-radius: 4px; }
 .range .zero { position: absolute; top: -2px; bottom: -2px; width: 1px; background: var(--muted); }
 .range .needle { position: absolute; top: -4px; width: 4px; height: 16px; margin-left: -2px; border-radius: 2px; background: var(--jc); transition: left .2s linear; }
 .range-labels { display: flex; justify-content: space-between; font: 11px var(--mono); color: var(--muted); }

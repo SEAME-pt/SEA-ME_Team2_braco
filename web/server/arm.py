@@ -26,8 +26,8 @@ DEFAULT_BAUD = 1000000
 TEMP_WARM_C = 55
 TEMP_HOT_C = 65
 
-# DEFAULT_SOFT_LIMITS from mycobot.hpp, used by the mock
-SOFT_LIMITS = [(-160, 160), (-130, 130), (-140, 140), (-120, 120), (-135, 135), (-170, 170)]
+# JOINT_LIMITS from mycobot.hpp, used by the mock
+JOINT_LIMITS = [(-166, 166), (-138, 138), (-149, 149), (-149, 149), (-153, 158), (-178, 178)]
 
 # myCobot 280 standard DH: theta offset (rad), d (mm), a (mm), alpha (rad).
 # Same table as web/static/js/arm3d.js.
@@ -40,8 +40,8 @@ DH = [
     (0, 45.6, 0, 0),
 ]
 
-# Fixed poses, same as ros2_ws/src/braco_bringup/scripts/park.py and zero.py
-# (J3 -148: just inside the -150 firmware limit)
+# Fixed poses, same as ZERO_ANGLES / PARK_ANGLES in libs/cpp/includes/mycobot.hpp
+# (J3 -148: just inside the J3 limit)
 POSES = {
     "park": [0, 131, -148, 146, 4.5, 0],
     "zero": [0, 0, 0, 0, 0, 0],
@@ -60,7 +60,7 @@ GZ_MIN_MOVE_TIME = 0.5   # seconds, so a tiny move is not an instant jump
 GZ_MOVING_EPS = 0.05     # degrees: smaller changes between two states count as standing still
 GZ_STALE_AFTER = 2.0     # seconds without /joint_states before the page shows "disconnected"
 
-# arm_driver (ROS 2) source: same values as ros2_ws/src/braco_bringup/scripts/arm_moves.py.
+# arm_driver (ROS 2) source: same values as ros2_ws/src/braco_bringup/src/arm_moves.cpp.
 # The driver stops the arm when no motion command arrives for 300 ms, so a move is a
 # stream of targets at most ROS_STEP_DEG ahead of the real angles, resent every ROS_RESEND_S.
 ROS_STEP_DEG = 15.0
@@ -297,7 +297,7 @@ class ArmSource(_Base):
 
 
 class MockArm(_Base):
-    """Synthetic arm: slow sine waves inside the soft limits, warming servos."""
+    """Synthetic arm: slow sine waves inside the joint limits, warming servos."""
 
     CAPABILITIES = ("stop", "poses", "joints", "wake", "rest", "gripper", "led")
 
@@ -330,7 +330,7 @@ class MockArm(_Base):
                 t = now - self._t0
                 angles = [
                     round(0.55 * hi * math.sin(t * (0.15 + 0.05 * i) + i), 2)
-                    for i, (_, hi) in enumerate(SOFT_LIMITS)
+                    for i, (_, hi) in enumerate(JOINT_LIMITS)
                 ]
                 moving = True
             self._frozen = angles
@@ -514,7 +514,7 @@ class RosArm(_Base):
         srv  /arm/power_on, /arm/release_servos, /arm/set_gripper, /arm/set_read_only
 
     A move runs in a worker thread that resends bounded steps until the arm is
-    within ROS_TOLERANCE_DEG of the target, exactly like arm_moves.move_to(). A
+    within ROS_TOLERANCE_DEG of the target, exactly like ArmMoves::moveTo(). A
     newer command or STOP cancels it; if the web server dies, the driver's
     300 ms watchdog stops the arm.
     """
@@ -635,10 +635,10 @@ class RosArm(_Base):
             raise RuntimeError(result.message or name + " failed")
         return result.message
 
-    def _publish_angles(self, angles, speed, firmware_limits=False):
+    def _publish_angles(self, angles, speed):
         ArmCommand = self._types["ArmCommand"]
         self._cmd_pub.publish(ArmCommand(type=ArmCommand.ALL_ANGLES, angles_deg=[float(a) for a in angles],
-                                         speed=int(speed), use_firmware_limits=firmware_limits))
+                                         speed=int(speed)))
 
     def _publish_stop(self):
         ArmCommand = self._types["ArmCommand"]
@@ -649,14 +649,14 @@ class RosArm(_Base):
             self._motion += 1
             return self._motion
 
-    def _start_move(self, target, speed, firmware_limits=False):
+    def _start_move(self, target, speed):
         """Stream `target` in a worker thread."""
         token = self._cancel()
-        threading.Thread(target=self._stream, args=(token, list(target), speed, firmware_limits),
+        threading.Thread(target=self._stream, args=(token, list(target), speed),
                          daemon=True).start()
         return token
 
-    def _stream(self, token, target, speed, firmware_limits):
+    def _stream(self, token, target, speed):
         end = time.monotonic() + ROS_MOVE_TIMEOUT
         while token == self._motion and not self._closed.is_set():
             angles = self._fresh_angles()
@@ -667,7 +667,7 @@ class RosArm(_Base):
                 # Same fraction for every joint, so they all arrive together
                 scale = min(1.0, ROS_STEP_DEG / deviation)
                 self._publish_angles([round(a + (p - a) * scale, 1) for a, p in zip(angles, target)],
-                                     speed, firmware_limits)
+                                     speed)
             if time.monotonic() >= end:
                 break
             self._closed.wait(ROS_RESEND_S)
@@ -692,8 +692,7 @@ class RosArm(_Base):
         if name not in POSES:
             raise ValueError("unknown pose: " + name)
         self._check_can_move()
-        # Park is outside the driver's soft limits (J2, J3, J4): the firmware limits, as park.py does
-        self._start_move(POSES[name], speed, firmware_limits=name == "park")
+        self._start_move(POSES[name], speed)
 
     def move_joint(self, index, angle, speed=POSE_SPEED):
         self._check_can_move()

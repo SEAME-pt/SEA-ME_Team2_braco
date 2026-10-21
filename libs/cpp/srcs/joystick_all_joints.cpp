@@ -75,7 +75,7 @@ struct SpeedMode {
 };
 
 const std::array<SpeedMode, 5> SPEED_MODES = {{
-    {"15%",   15,  5.0,  10, 0,   0,   255},   // blue
+    {"12%",   12,  5.0,  10, 0,   0,   255},   // blue
     {"30%",   30,  10.0, 20, 0,   255, 0},     // green
     {"50%",   50,  15.0, 30, 128, 0,   255},   // purple
     {"75%",   75,  20.0, 40, 255, 255, 255},   // white
@@ -114,9 +114,15 @@ constexpr bool BUMPERS_EXCLUSIVE = true;
 constexpr auto COMMAND_GAP = 50ms;
 constexpr auto LOOP_PERIOD = 20ms;
 
-// One attempt per angle read while moving: if the arm does not answer, stop
-// immediately instead of retrying while a joint may still be moving.
+// One attempt per angle read while moving: a read that fails is not retried
+// while a joint may still be moving.
 constexpr int ANGLE_READ_RETRIES = 1;
+
+// A missed read only skips that tick: the arm keeps heading for the target of
+// the last tick (at most the mode's lead away). The arm is stopped only when
+// there has been no good reading for this long, the same limit as the
+// driver's command watchdog in the ROS 2 system (command_timeout_ms).
+constexpr double STATE_GRACE_S = 0.3;
 
 struct AxisMap {
     int joint;
@@ -146,7 +152,7 @@ constexpr int BUTTON_SPEED_MODE = 9;      // cycle speed mode
 // press/release, are ignored until they return to centre.
 constexpr int64_t SPEED_BUTTON_GUARD_MS = 250;
 
-// Joint limits come from the library: mc.softLimits() (mycobot.hpp).
+// Joint limits come from the library: mycobot::JOINT_LIMITS (mycobot.hpp).
 
 // ---- Helpers ---------------------------------------------------------------
 
@@ -314,6 +320,21 @@ void controlLoop(input::Joystick& js, mycobot::MyCobot280& mc, bool debug) {
         hold.clear();
     };
 
+    // Feedback for one tick: Fresh (angles filled in), Missed (no reply, but
+    // the last good reading is recent: skip the tick) or Lost (stop the arm).
+    enum class Feedback { Fresh, Missed, Lost };
+    double lastGoodRead = -1e9;
+    auto readFeedback = [&](mycobot::Angles& out) {
+        const auto angles = mc.getAngles(ANGLE_READ_RETRIES);
+        const double now = nowSeconds();
+        if (angles) {
+            out = *angles;
+            lastGoodRead = now;
+            return Feedback::Fresh;
+        }
+        return now - lastGoodRead <= STATE_GRACE_S ? Feedback::Missed : Feedback::Lost;
+    };
+
     while (!g_quit) {
         // 1. Drain joystick events
         bool homeClicked = false;
@@ -398,8 +419,14 @@ void controlLoop(input::Joystick& js, mycobot::MyCobot280& mc, bool debug) {
 
         // 3. Homing: bounded, synchronised steps toward all-zero
         if (homing) {
-            const auto angles = mc.getAngles(ANGLE_READ_RETRIES);
-            if (!angles) {
+            mycobot::Angles angles{};
+            const Feedback feedback = readFeedback(angles);
+            if (feedback == Feedback::Missed) {
+                if (debug) std::printf("angle read missed, skipping the tick\n");
+                pause(LOOP_PERIOD);
+                continue;
+            }
+            if (feedback == Feedback::Lost) {
                 ++badReads;
                 mc.stop();
                 pause(COMMAND_GAP);
@@ -413,7 +440,7 @@ void controlLoop(input::Joystick& js, mycobot::MyCobot280& mc, bool debug) {
             badReads = 0;
 
             double maxDev = 0.0;
-            for (double a : *angles) maxDev = std::max(maxDev, std::abs(a));
+            for (double a : angles) maxDev = std::max(maxDev, std::abs(a));
 
             if (maxDev <= HOME_TOLERANCE_DEG) {
                 std::printf(">>> home reached\n");
@@ -423,7 +450,7 @@ void controlLoop(input::Joystick& js, mycobot::MyCobot280& mc, bool debug) {
                 const double scale = std::min(1.0, HOME_LEAD_DEG / maxDev);
                 mycobot::Angles targets{};
                 for (size_t i = 0; i < targets.size(); ++i) {
-                    targets[i] = round1((*angles)[i] * (1.0 - scale));
+                    targets[i] = round1(angles[i] * (1.0 - scale));
                 }
                 if (debug) std::printf("home targets %s\n", fmtAngles(targets, "%.1f").c_str());
                 mc.sendAngles(targets, HOME_SPEED);
@@ -446,8 +473,14 @@ void controlLoop(input::Joystick& js, mycobot::MyCobot280& mc, bool debug) {
         }
 
         // 5. Jogging requires fresh feedback
-        const auto angles = mc.getAngles(ANGLE_READ_RETRIES);
-        if (!angles) {
+        mycobot::Angles angles{};
+        const Feedback feedback = readFeedback(angles);
+        if (feedback == Feedback::Missed) {
+            if (debug) std::printf("angle read missed, skipping the tick\n");
+            pause(LOOP_PERIOD);
+            continue;
+        }
+        if (feedback == Feedback::Lost) {
             std::printf("!!! no valid angle feedback, stopping\n");
             stopArm();
             pause(LOOP_PERIOD);
@@ -473,7 +506,7 @@ void controlLoop(input::Joystick& js, mycobot::MyCobot280& mc, bool debug) {
             if (moving.count(j)) {
                 hold.erase(j);
             } else if (!hold.count(j)) {
-                hold[j] = (*angles)[j - 1];
+                hold[j] = angles[j - 1];
             }
         }
 
@@ -487,7 +520,7 @@ void controlLoop(input::Joystick& js, mycobot::MyCobot280& mc, bool debug) {
         // 6c. Idle joints that drifted (e.g. J4 sag while J6 rotates)
         for (const auto& [j, held] : hold) {
             if (released.count(j)) continue;
-            const double drift = (*angles)[j - 1] - held;
+            const double drift = angles[j - 1] - held;
             auto it = lastHoldSend.find(j);
             const double lastSend = it == lastHoldSend.end() ? 0.0 : it->second;
             if (std::abs(drift) > HOLD_TOLERANCE_DEG && now - lastSend >= HOLD_RESEND_PERIOD) {
@@ -502,8 +535,8 @@ void controlLoop(input::Joystick& js, mycobot::MyCobot280& mc, bool debug) {
 
         // 6d. Moving joints: proportional speed, slowed near limits
         for (const auto& [joint, motion] : wanted) {
-            const double angle = (*angles)[joint - 1];
-            const auto shaped = shapeNearLimit(mc.softLimits()[joint - 1], angle,
+            const double angle = angles[joint - 1];
+            const auto shaped = shapeNearLimit(mycobot::JOINT_LIMITS[joint - 1], angle,
                                                motion.direction, motion.speed, motion.lead);
             if (!shaped) {
                 if (!limitReported.count(joint)) {
