@@ -6,7 +6,7 @@
   The driver does not publish the gripper state yet (arm_driver /joint_states has joint1..joint6
   only), so by default every finger joint is FIXED at the open pose. With actuated:=true the
   vendor's linkage is used instead: one master joint (gripper_controller) and five mimic joints.
-  That is for the sliders in RViz and for later (Gazebo, MoveIt); on the real arm the fingers
+  That is for later (Gazebo, MoveIt); on the real arm the fingers
   would stay at 0 because nobody publishes gripper_controller.
 
   The gripper's own frame has its fingers along +y, so the mount joint turns it +90 deg about x

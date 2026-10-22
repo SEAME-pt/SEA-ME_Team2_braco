@@ -246,7 +246,6 @@ RUN apt-get update \
         ros-${ROS_DISTRO}-rqt-controller-manager \
         ros-${ROS_DISTRO}-foxglove-bridge \
         ros-${ROS_DISTRO}-turtlesim \
-        ros-${ROS_DISTRO}-joint-state-publisher-gui \
         liburdfdom-tools \
  && rm -rf /var/lib/apt/lists/*
 
