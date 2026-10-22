@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// temperature_monitor - ROS 2 version of libs/cpp/srcs/temps_lcd.cpp.
+// temperature_monitor - ROS 2 version of mycobot_cpp/srcs/temps_lcd.cpp.
 //
 // Never touches the serial port: it listens to /arm/servo_temperatures from
 // arm_driver, so it keeps running whether or not the joystick is in use.

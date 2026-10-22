@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// joystick_teleop - ROS 2 version of libs/cpp/srcs/joystick_all_joints.cpp.
+// joystick_teleop - ROS 2 version of mycobot_cpp/srcs/joystick_all_joints.cpp.
 //
 // Same mapping, speed modes and safety model (step-ahead jogging: every target
 // is only a few degrees ahead of the real angles), but the arm is reached

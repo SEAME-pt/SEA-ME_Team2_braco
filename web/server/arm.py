@@ -24,7 +24,7 @@ from . import ros
 from .ros_health import level_name
 from .session import ControlError
 
-# Same thresholds as TEMP_WARM_C / TEMP_HOT_C in libs/cpp/includes/mycobot.hpp. Only the mock
+# Same thresholds as TEMP_WARM_C / TEMP_HOT_C in ros2_ws/src/mycobot_cpp/includes/mycobot.hpp. Only the mock
 # uses them: on the real arm the level comes from temperature_monitor (/diagnostics).
 TEMP_WARM_C = 55
 TEMP_HOT_C = 65
@@ -43,7 +43,7 @@ DH = [
     (0, 45.6, 0, 0),
 ]
 
-# Fixed poses, same as ZERO_ANGLES / PARK_ANGLES in libs/cpp/includes/mycobot.hpp
+# Fixed poses, same as ZERO_ANGLES / PARK_ANGLES in ros2_ws/src/mycobot_cpp/includes/mycobot.hpp
 # (J3 -148: just inside the J3 limit)
 POSES = {
     "park": [0, 131, -148, 146, 4.5, 0],

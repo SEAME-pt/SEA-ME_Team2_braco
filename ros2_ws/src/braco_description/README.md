@@ -11,7 +11,7 @@ Planned content:
 | `meshes/` | Visual and collision meshes |
 | `rviz/` | `braco.rviz`, the view used by `braco_bringup` |
 
-Rules for the model: joint limits match `JOINT_LIMITS` in `libs/cpp/includes/mycobot.hpp`; joint names are the
+Rules for the model: joint limits match `JOINT_LIMITS` in `ros2_ws/src/mycobot_cpp/includes/mycobot.hpp`; joint names are the
 ones `/joint_states` uses on the real arm and in simulation (one interface for both, #37). When the files are
 added, install them from `CMakeLists.txt`:
 

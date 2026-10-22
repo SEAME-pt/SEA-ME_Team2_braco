@@ -1,4 +1,4 @@
-// Arm reference data, copied from libs/cpp/includes/mycobot.hpp and
+// Arm reference data, copied from ros2_ws/src/mycobot_cpp/includes/mycobot.hpp and
 // docs/protocol_commands.md. Keep in sync when those change.
 
 export const JOINTS = ["J1", "J2", "J3", "J4", "J5", "J6"];

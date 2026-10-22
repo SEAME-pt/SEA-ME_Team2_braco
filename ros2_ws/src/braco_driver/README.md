@@ -1,6 +1,6 @@
 # braco_driver
 
-The nodes that sit next to the hardware of the real arm. Built on `mycobot_cpp` (`libs/cpp`).
+The nodes that sit next to the hardware of the real arm. Built on `mycobot_cpp` (`../mycobot_cpp`).
 
 ## arm_driver
 

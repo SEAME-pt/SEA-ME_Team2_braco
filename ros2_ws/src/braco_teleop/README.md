@@ -29,6 +29,6 @@ it anyway. Letting go does not release it: `arm_driver` frees it 5 s after the l
 the control never sends STOP, so unplugging it does not cut somebody else's move.
 
 The jogging logic (dead zone, speed modes, slow-down near the soft limits, homing steps, the held button) is in
-`libs/cpp/includes/teleop_logic.hpp` (shared with the stand-alone `joystick_all_joints`), without ROS, and tested by `test/test_teleop_logic.cpp` (`make test`).
+`ros2_ws/src/mycobot_cpp/includes/teleop_logic.hpp` (shared with the stand-alone `joystick_all_joints`), without ROS, and tested by `test/test_teleop_logic.cpp` (`make test`).
 
 Starts with the whole system (`make up`); by hand: `ros2 run braco_teleop joystick_teleop`.

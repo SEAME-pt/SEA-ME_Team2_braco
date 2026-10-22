@@ -61,7 +61,6 @@ x-system-env: &system-env
 # The bind mounts of the system containers (dev lists its own, with comments).
 x-volumes:
   - &vol-ws ../ros2_ws:/ws
-  - &vol-libs ../libs:/opt/seame/libs:ro
   - &vol-repo ..:/opt/braco:ro             # the braco web page (web/) and the docs it shows
   - &vol-logs ros-logs:/home/dev/.ros
 
@@ -90,7 +89,6 @@ services:
       - ros-logs:/home/dev/.ros
       - ./tests:/opt/seame/tests:ro        # make net-test etc.; edit on the host, no rebuild
       - ..:/opt/braco:ro                   # the repository (web page and docs), as in the system containers
-      - ../libs:/opt/seame/libs:ro         # libs/cpp (mycobot_cpp); colcon finds it via make build
 
   # ---------------------------------------------------------------------------------------
   # real - the system on the Jetson: ONE container, everything under ROS 2 (make up). No build of its own: it uses
@@ -128,7 +126,6 @@ services:
       - "c 13:* rmw"
     volumes:
       - *vol-ws
-      - *vol-libs
       - *vol-repo
       - *vol-logs
       - /dev/input:/dev/input
@@ -148,7 +145,6 @@ services:
     command: ["/ws/install/braco_bringup/lib/braco_bringup/arm_routine.sh"]
     volumes:
       - *vol-ws
-      - *vol-libs
       - *vol-repo
       - *vol-logs
       - /tmp/.X11-unix:/tmp/.X11-unix:rw

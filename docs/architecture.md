@@ -54,7 +54,7 @@ figures. **Both files are kept in sync**: a change to one goes to the other in t
 - **Same interface for real and simulated.** Everything above the driver uses `/joint_states` and
   `braco_interfaces`, so the mission and planning layers run unchanged on both (#37).
 - **Logic without ROS where possible.** Serial protocol, joystick, LCD and teleop logic live in `mycobot_cpp`
-  (`libs/cpp`); the control owner and the auto-rest decision are plain headers in `braco_driver/include`. All
+  (`ros2_ws/src/mycobot_cpp`); the control owner and the auto-rest decision are plain headers in `braco_driver/include`. All
   unit-tested without a ROS graph.
 
 ---
@@ -182,13 +182,13 @@ watchdog stops the arm.
 
 ## 5. Packages and folders
 
-colcon builds two base paths together: `ros2_ws/src` and `libs` (`make build` passes
-`--base-paths src /opt/seame/libs`; flags in [colcon-defaults.yaml](../docker/config/colcon-defaults.yaml)). Every
+colcon builds one workspace, `ros2_ws/src` (mounted at `/ws` in every container; `make build` passes
+`--base-paths src`; flags in [colcon-defaults.yaml](../docker/config/colcon-defaults.yaml)). Every
 package has its own README with its topics, parameters and how to run it by hand.
 
 | Package | Kind | Role | Status |
 |---|---|---|---|
-| [`mycobot_cpp`](../libs/cpp) | C++ library | myCobot 280 serial driver, joint limits and poses (`mycobot.hpp`), joystick, LCD1602, teleop logic; also the stand-alone tools (no ROS) | done |
+| [`mycobot_cpp`](../ros2_ws/src/mycobot_cpp) | C++ library | myCobot 280 serial driver, joint limits and poses (`mycobot.hpp`), joystick, LCD1602, teleop logic; also the stand-alone tools (no ROS) | done |
 | [`braco_interfaces`](../ros2_ws/src/braco_interfaces/README.md) | Interfaces | `ArmCommand`, `JointTarget`, `ServoTemperatures`, `ServoVoltages`, `TakeControl` | done |
 | [`braco_driver`](../ros2_ws/src/braco_driver/README.md) | Nodes | `arm_driver` (owns the port and the control), `temperature_monitor` (LCD, `/diagnostics`, rest on overheat) | done |
 | [`braco_teleop`](../ros2_ws/src/braco_teleop/README.md) | Node | `joystick_teleop`: jogs the arm through `arm_driver` | done |
@@ -203,7 +203,11 @@ package has its own README with its topics, parameters and how to run it by hand
 SEA-ME_Team2_braco/
 ├── Makefile                  # the one entry point
 ├── mk/                       # config system arm dev setup net ci
-├── ros2_ws/src/
+├── ros2_ws/src/              # ONE colcon workspace: everything that gets built
+│   ├── mycobot_cpp/          # no ROS: serial protocol, joystick, LCD, teleop logic
+│   │   ├── includes/  mycobot.hpp  joystick.hpp  lcd_display.hpp
+│   │   │              display.hpp  teleop_logic.hpp
+│   │   └── srcs/      library + stand-alone tools (zero, park, pid_tool, temps_lcd…)
 │   ├── braco_interfaces/
 │   │   ├── msg/  ArmCommand  JointTarget  ServoTemperatures  ServoVoltages
 │   │   └── srv/  TakeControl
@@ -222,10 +226,6 @@ SEA-ME_Team2_braco/
 │   ├── braco_description/      # placeholder #25
 │   ├── braco_moveit_config/    # placeholder #40
 │   └── braco_mission/          # placeholder #43
-├── libs/cpp/                 # mycobot_cpp, no ROS
-│   ├── includes/  mycobot.hpp  joystick.hpp  lcd_display.hpp
-│   │              display.hpp  teleop_logic.hpp
-│   └── srcs/      library + tools (zero, park, pid_tool, temps_lcd…)
 ├── web/                      # the braco page, a ROS 2 client
 │   ├── server/   app.py  arm.py  ros.py  session.py …
 │   ├── static/
@@ -239,9 +239,11 @@ SEA-ME_Team2_braco/
 │   ├── architecture.html  architecture.md   # this document, two formats
 │   ├── ADR-000N-*.md  safety.md  protocol_commands.md
 │   └── arm-rest-mode.md  dev-setup.md  ROS2/  inventory/
-├── tests/                    # host hello-world, used by make ci
-└── playground/               # prototypes, never built
+└── .github/  .githooks/       # CI workflow, PR template, commit-msg hook
 ```
+
+The root holds only the five folders above and the `Makefile`: everything colcon builds is in `ros2_ws/src`, everything
+else has one generic folder.
 
 ### Naming rules
 
@@ -249,9 +251,10 @@ SEA-ME_Team2_braco/
   avoids collisions with ROS packages and marks what belongs to the project.
 - **One name per thing.** File, executable and node share the name: `arm_driver.cpp` runs as `arm_driver`. Topics
   and services of the arm live under `/arm/*`.
-- **Outside ROS, generic folders:** `web`, `libs`, `docker`, `docs`, `mk`. Anyone opening the repo understands them
+- **Outside ROS, generic folders:** `web`, `docker`, `docs`, `mk`. Anyone opening the repo understands them
   without a legend.
-- **`mycobot_cpp` keeps its name.** The library is the robot's protocol, not the product.
+- **`mycobot_cpp` keeps its name.** The library is the robot's protocol, not the product. It is a colcon package of
+  the workspace like the others, but depends on nothing from ROS.
 - **Infrastructure carries the braco brand:** compose project `braco`, images `braco-image/pc` and
   `braco-image/jetson`, systemd unit `braco.service`.
 
@@ -372,7 +375,7 @@ The **wiring** (devices) comes from the launch arguments, filled by `docker/comp
 |---|---|
 | `make shell` | Shell in `dev` with ROS sourced |
 | `make run CMD='…'` | Run a command in `dev` |
-| `make build` | colcon build of `ros2_ws/src` and `libs` |
+| `make build` | colcon build of `ros2_ws/src` |
 | `make test` | colcon test and the results (PC only) |
 | `make web` | The page with mock data on :8080, no ROS, no Docker |
 | `make clean` | Delete build/ install/ log/ and `~/.ros/log` |
@@ -400,7 +403,7 @@ The **wiring** (devices) comes from the launch arguments, filled by `docker/comp
 
 | Command | What it does |
 |---|---|
-| `make ci` | The `host` job: checks, lint, page tests |
+| `make ci` | The `host` job: lint, page tests |
 | `make ci-ros` | The `ros` job: rosdep, build, test in a clean image |
 | `make ci-image` | Build that job's image |
 | `make lint` | Compose files, shellcheck, hadolint |
@@ -483,7 +486,7 @@ runs on the real arm and in simulation.
 ## 11. Build and test
 
 ```bash
-make build    # colcon build of ros2_ws/src and libs, in the dev container
+make build    # colcon build of ros2_ws/src, in the dev container
 make test     # colcon test: gtest (teleop logic, control owner, auto rest) and ament lint (PC only)
 make restart  # run what was just built
 make ci       # the `host` CI job: lint and the web page tests, no ROS
@@ -514,19 +517,19 @@ PR that closes or opens a gap.
 | **braco layout** | `ros2_ws/src` with `braco_interfaces`, `braco_driver`, `braco_teleop`, `braco_bringup`; one launch and one `braco.yaml` |
 | **braco infrastructure** | `docker/Dockerfile`, `compose.yml` (project `braco`), `braco-image/*`, `braco.service` |
 | **One Makefile** | Split in `mk/`, idempotent `make up`, ~30 public commands |
+| **Lean repository root** | `docker`, `docs`, `mk`, `ros2_ws`, `web` and the `Makefile`; `mycobot_cpp` in `ros2_ws/src` (one colcon base path, no extra mount); `tests/`, `playground/` and the root `requirements.txt` removed |
 | **Jetson guards** | `doctor` checks, ccache limit, ROS log cleanup, `status` with `docker stats` and `tegrastats` |
 
 ### Differs from the target (accepted for now)
 
 | Target | Today | Why / next step |
 |---|---|---|
-| `libs/mycobot_cpp/{include,src,tools}`, CMake only | `libs/cpp/{includes,srcs}` with a Makefile next to CMake | Rename not done yet; low value until the library changes |
-| `teleop_logic.hpp` in `braco_teleop/include/` | in `libs/cpp/includes/` | Kept ROS-free in the library; the test lives in `braco_teleop/test/` |
+| `mycobot_cpp/{include,src,tools}`, CMake only | `ros2_ws/src/mycobot_cpp/{includes,srcs}` with a Makefile next to CMake | Folder rename not done yet; low value until the library changes |
+| `teleop_logic.hpp` in `braco_teleop/include/` | in `mycobot_cpp/includes/` | Kept ROS-free in the library; the test lives in `braco_teleop/test/` |
 | `braco_moveit` | `braco_moveit_config` | MoveIt's own convention; decide when #40 starts |
 | zero / park / arm_moves as Python scripts | C++ programs in `braco_bringup/src/` | They reuse the `mycobot_cpp` poses and limits |
 | ADRs in `docs/adr/NNNN-*.md` | `docs/ADR-NNNN-*.md` | The page's Docs tab groups them by this prefix |
 | `examples/ros2_basics_*` and `make demos` | removed | The learning demos are no longer part of the system |
-| `tests/` removed | still there | `make ci` still builds its host-side hello-world |
 | The page as an `ExecuteProcess` inside the launch | started by `arm_routine.sh` next to the launch | Optional; a matter of taste, not of correctness |
 
 ### Pending
@@ -546,7 +549,7 @@ PR that closes or opens a gap.
 
 ### Adding a package
 
-1. Name it `braco_<role>` and put it in `ros2_ws/src`. Code with no ROS dependency goes in `libs/cpp`.
+1. Name it `braco_<role>` and put it in `ros2_ws/src`. Code with no ROS dependency goes in `mycobot_cpp`.
 2. `package.xml` format 3, Apache-2.0, maintainer set; `ament_lint_auto` as a test dependency.
 3. A `README.md` with what it does, its topics/services/parameters and how to run it by hand.
 4. Needed on the real arm? `exec_depend` of `braco_bringup`, started from `braco.launch.py` under `sim:=false`.

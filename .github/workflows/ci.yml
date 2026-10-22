@@ -1,8 +1,8 @@
 # CI for every PR and every push to main (issue #16). Both jobs call the Makefile, so a failure can be
 # reproduced locally with the same command:
 #
-#   host  make ci        (host checks, lint, web page tests; no robot, no docker image)
-#   ros   make ci-ros    (rosdep, colcon build, colcon test of ros2_ws/src + libs)
+#   host  make ci        (lint, web page tests; no robot, no docker image)
+#   ros   make ci-ros    (rosdep, colcon build, colcon test of ros2_ws/src)
 #
 # The Jetson (arm64) image is not built here: a QEMU build is too slow, use make jetson-image by hand.
 name: CI
@@ -31,11 +31,9 @@ jobs:
       - id: py
         uses: actions/setup-python@v6
         with:
-          python-version-file: .python-version
+          python-version: "3.11"
           cache: pip
-          cache-dependency-path: |
-            requirements.txt
-            web/requirements*.txt
+          cache-dependency-path: web/requirements*.txt
 
       # shellcheck and hadolint need no install step: without a local binary, make lint runs the images pinned in
       # SHELLCHECK_IMAGE and HADOLINT_IMAGE (Makefile) through docker.
