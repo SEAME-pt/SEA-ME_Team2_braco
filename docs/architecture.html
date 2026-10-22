@@ -215,7 +215,7 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
       <div><b>One client moves the arm at a time.</b> The page, the joystick, zero/park and the mission take the control from <code>arm_driver</code> before moving; motion from anyone else is ignored, STOP never is (<a href="ADR-0002-controle-unico.md">ADR-0002</a>).</div>
       <div><b>One source for each fact.</b> The thermal level is computed once, by <code>temperature_monitor</code>, and published on <code>/diagnostics</code>; the page shows it and does not recompute it. The control owner is kept once, by <code>arm_driver</code>.</div>
       <div><b>Same interface for real and simulated.</b> Everything above the driver uses <code>/joint_states</code> and <code>braco_interfaces</code>, so the mission and planning layers run unchanged on both (#37).</div>
-      <div><b>Logic without ROS where possible.</b> Serial protocol, joystick, LCD and teleop logic live in <code>mycobot_cpp</code> (<code>libs/cpp</code>); the control owner and the auto-rest decision are plain headers in <code>braco_driver/include</code>. All unit-tested without a ROS graph.</div>
+      <div><b>Logic without ROS where possible.</b> Serial protocol, joystick, LCD and teleop logic live in <code>mycobot_cpp</code> (<code>ros2_ws/src/mycobot_cpp</code>); the control owner and the auto-rest decision are plain headers in <code>braco_driver/include</code>. All unit-tested without a ROS graph.</div>
     </div>
   </section>
 
@@ -446,12 +446,12 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
   <!-- 5 -->
   <section id="s5">
     <div class="sechead"><span class="secnum">5</span><h2>Packages and folders</h2></div>
-    <p>colcon builds two base paths together: <code>ros2_ws/src</code> and <code>libs</code> (<code>make build</code> passes <code>--base-paths src /opt/seame/libs</code>; flags in <a href="../docker/config/colcon-defaults.yaml">colcon-defaults.yaml</a>). Every package has its own README with its topics, parameters and how to run it by hand.</p>
+    <p>colcon builds one workspace, <code>ros2_ws/src</code> (mounted at <code>/ws</code> in every container; <code>make build</code> passes <code>--base-paths src</code>; flags in <a href="../docker/config/colcon-defaults.yaml">colcon-defaults.yaml</a>). Every package has its own README with its topics, parameters and how to run it by hand.</p>
     <div class="tablewrap">
       <table>
         <thead><tr><th>Package</th><th>Kind</th><th>Role</th><th>Status</th></tr></thead>
         <tbody>
-          <tr><td><a href="../libs/cpp"><code>mycobot_cpp</code></a></td><td>C++ library</td><td>myCobot 280 serial driver, joint limits and poses (<code>mycobot.hpp</code>), joystick, LCD1602, teleop logic; also the stand-alone tools (no ROS)</td><td><span class="pill p-ok">done</span></td></tr>
+          <tr><td><a href="../ros2_ws/src/mycobot_cpp"><code>mycobot_cpp</code></a></td><td>C++ library</td><td>myCobot 280 serial driver, joint limits and poses (<code>mycobot.hpp</code>), joystick, LCD1602, teleop logic; also the stand-alone tools (no ROS)</td><td><span class="pill p-ok">done</span></td></tr>
           <tr><td><a href="../ros2_ws/src/braco_interfaces/README.md"><code>braco_interfaces</code></a></td><td>Interfaces</td><td><code>ArmCommand</code>, <code>JointTarget</code>, <code>ServoTemperatures</code>, <code>ServoVoltages</code>, <code>TakeControl</code></td><td><span class="pill p-ok">done</span></td></tr>
           <tr><td><a href="../ros2_ws/src/braco_driver/README.md"><code>braco_driver</code></a></td><td>Nodes</td><td><code>arm_driver</code> (owns the port and the control), <code>temperature_monitor</code> (LCD, <code>/diagnostics</code>, rest on overheat)</td><td><span class="pill p-ok">done</span></td></tr>
           <tr><td><a href="../ros2_ws/src/braco_teleop/README.md"><code>braco_teleop</code></a></td><td>Node</td><td><code>joystick_teleop</code>: jogs the arm through <code>arm_driver</code></td><td><span class="pill p-ok">done</span></td></tr>
@@ -468,7 +468,11 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
 <pre>SEA-ME_Team2_braco/
 ├── Makefile                  <span class="c"># the one entry point</span>
 ├── mk/                       <span class="c"># config system arm dev setup net ci</span>
-├── ros2_ws/src/
+├── ros2_ws/src/              <span class="c"># ONE colcon workspace</span>
+│   ├── <span class="p">mycobot_cpp/</span>          <span class="c"># no ROS</span>
+│   │   ├── includes/  mycobot.hpp  joystick.hpp  lcd_display.hpp
+│   │   │              display.hpp  teleop_logic.hpp
+│   │   └── srcs/      library + tools (zero, park, pid_tool…)
 │   ├── <span class="p">braco_interfaces/</span>
 │   │   ├── msg/  ArmCommand  JointTarget  ServoTemperatures  ServoVoltages
 │   │   └── srv/  TakeControl
@@ -487,10 +491,6 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
 │   ├── <span class="n">braco_description/</span>      <span class="c"># placeholder #25</span>
 │   ├── <span class="n">braco_moveit_config/</span>    <span class="c"># placeholder #40</span>
 │   └── <span class="n">braco_mission/</span>          <span class="c"># placeholder #43</span>
-├── libs/cpp/                 <span class="c"># mycobot_cpp, no ROS</span>
-│   ├── includes/  mycobot.hpp  joystick.hpp  lcd_display.hpp
-│   │              display.hpp  teleop_logic.hpp
-│   └── srcs/      library + tools (zero, park, pid_tool, temps_lcd…)
 ├── web/                      <span class="c"># the braco page, a ROS 2 client</span>
 │   ├── server/   app.py  arm.py  ros.py  session.py …
 │   ├── static/
@@ -504,13 +504,12 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
 │   ├── architecture.html  architecture.md   <span class="c"># this page, two formats</span>
 │   ├── ADR-000N-*.md  safety.md  protocol_commands.md
 │   └── arm-rest-mode.md  dev-setup.md  ROS2/  inventory/
-├── tests/                    <span class="c"># host hello-world, used by make ci</span>
-└── playground/               <span class="c"># prototypes, never built</span></pre>
+└── .github/  .githooks/       <span class="c"># CI, PR template, commit hook</span></pre>
         <div class="rules">
           <div class="rule"><h3>Package = braco_ + role</h3><p>One word after the prefix: <code>driver</code>, <code>teleop</code>, <code>mission</code>, <code>bringup</code>. The prefix avoids collisions with ROS packages and marks what belongs to the project.</p></div>
           <div class="rule"><h3>One name per thing</h3><p>File, executable and node share the name: <code>arm_driver.cpp</code> runs as <code>arm_driver</code>. Topics and services of the arm live under <code>/arm/*</code>.</p></div>
-          <div class="rule"><h3>Outside ROS, generic folders</h3><p><code>web</code>, <code>libs</code>, <code>docker</code>, <code>docs</code>, <code>mk</code>. Anyone opening the repo understands them without a legend.</p></div>
-          <div class="rule"><h3>mycobot_cpp keeps its name</h3><p>The library is the robot's protocol, not the product.</p></div>
+          <div class="rule"><h3>Outside ROS, generic folders</h3><p><code>web</code>, <code>docker</code>, <code>docs</code>, <code>mk</code>. Anyone opening the repo understands them without a legend. The root holds only these, <code>ros2_ws</code> and the <code>Makefile</code>.</p></div>
+          <div class="rule"><h3>mycobot_cpp keeps its name</h3><p>The library is the robot's protocol, not the product. It is a colcon package of the workspace like the others, but depends on nothing from ROS.</p></div>
           <div class="rule"><h3>Infrastructure carries the braco brand</h3><p>Compose project <code>braco</code>, images <code>braco-image/pc</code> and <code>braco-image/jetson</code>, systemd unit <code>braco.service</code>.</p></div>
         </div>
       </div>
@@ -674,7 +673,7 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
         <ul class="cmds">
           <li><code>make shell</code><span>Shell in <code>dev</code> with ROS sourced.</span></li>
           <li><code>make run CMD='…'</code><span>Run a command in <code>dev</code>.</span></li>
-          <li><code>make build</code><span>colcon build of <code>ros2_ws/src</code> and <code>libs</code>.</span></li>
+          <li><code>make build</code><span>colcon build of <code>ros2_ws/src</code>.</span></li>
           <li><code>make test</code><span>colcon test and the results (PC only).</span></li>
           <li><code>make web</code><span>The page with mock data on :8080, no ROS, no Docker.</span></li>
           <li><code>make clean</code><span>Delete build/ install/ log/ and <code>~/.ros/log</code>.</span></li>
@@ -702,7 +701,7 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
       <div class="grp">
         <div class="grp-head"><h3>CI</h3><span>mk/ci.mk · same as GitHub</span></div>
         <ul class="cmds">
-          <li><code>make ci</code><span>The <code>host</code> job: checks, lint, page tests.</span></li>
+          <li><code>make ci</code><span>The <code>host</code> job: lint, page tests.</span></li>
           <li><code>make ci-ros</code><span>The <code>ros</code> job: rosdep, build, test in a clean image.</span></li>
           <li><code>make ci-image</code><span>Build that job's image.</span></li>
           <li><code>make lint</code><span>Compose files, shellcheck, hadolint.</span></li>
@@ -847,7 +846,7 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
   <!-- 11 -->
   <section id="s11">
     <div class="sechead"><span class="secnum">11</span><h2>Build and test</h2></div>
-<pre class="code"><span class="k">make build</span>    <span class="c"># colcon build of ros2_ws/src and libs, in the dev container</span>
+<pre class="code"><span class="k">make build</span>    <span class="c"># colcon build of ros2_ws/src, in the dev container</span>
 <span class="k">make test</span>     <span class="c"># colcon test: gtest (teleop logic, control owner, auto rest) and ament lint (PC only)</span>
 <span class="k">make restart</span>  <span class="c"># run what was just built</span>
 <span class="k">make ci</span>       <span class="c"># the `host` CI job: lint and the web page tests, no ROS</span>
@@ -874,6 +873,7 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
       <div><b>braco layout.</b> <code>ros2_ws/src</code> with <code>braco_interfaces</code>, <code>braco_driver</code>, <code>braco_teleop</code>, <code>braco_bringup</code>; one launch and one <code>braco.yaml</code>.</div>
       <div><b>braco infrastructure.</b> <code>docker/Dockerfile</code>, <code>compose.yml</code> (project <code>braco</code>), <code>braco-image/*</code>, <code>braco.service</code>.</div>
       <div><b>One Makefile.</b> Split in <code>mk/</code>, idempotent <code>make up</code>, ~30 public commands.</div>
+      <div><b>Lean repository root.</b> <code>docker</code>, <code>docs</code>, <code>mk</code>, <code>ros2_ws</code>, <code>web</code> and the <code>Makefile</code>; <code>mycobot_cpp</code> in <code>ros2_ws/src</code> (one colcon base path, no extra mount); <code>tests/</code>, <code>playground/</code> and the root <code>requirements.txt</code> removed.</div>
       <div><b>Jetson guards.</b> <code>doctor</code> checks, ccache limit, ROS log cleanup, <code>status</code> with <code>docker stats</code> and <code>tegrastats</code>.</div>
     </div>
 
@@ -882,13 +882,12 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
       <table>
         <thead><tr><th>Target</th><th>Today</th><th>Why / next step</th></tr></thead>
         <tbody>
-          <tr><td><code>libs/mycobot_cpp/{include,src,tools}</code>, CMake only</td><td><code>libs/cpp/{includes,srcs}</code> with a Makefile next to CMake</td><td>Rename not done yet; low value until the library changes.</td></tr>
-          <tr><td><code>teleop_logic.hpp</code> in <code>braco_teleop/include/</code></td><td>in <code>libs/cpp/includes/</code></td><td>Kept ROS-free in the library; the test lives in <code>braco_teleop/test/</code>.</td></tr>
+          <tr><td><code>mycobot_cpp/{include,src,tools}</code>, CMake only</td><td><code>ros2_ws/src/mycobot_cpp/{includes,srcs}</code> with a Makefile next to CMake</td><td>Folder rename not done yet; low value until the library changes.</td></tr>
+          <tr><td><code>teleop_logic.hpp</code> in <code>braco_teleop/include/</code></td><td>in <code>mycobot_cpp/includes/</code></td><td>Kept ROS-free in the library; the test lives in <code>braco_teleop/test/</code>.</td></tr>
           <tr><td><code>braco_moveit</code></td><td><code>braco_moveit_config</code></td><td>MoveIt's own convention; decide when #40 starts.</td></tr>
           <tr><td>zero / park / arm_moves as Python scripts</td><td>C++ programs in <code>braco_bringup/src/</code></td><td>They reuse the <code>mycobot_cpp</code> poses and limits.</td></tr>
           <tr><td>ADRs in <code>docs/adr/NNNN-*.md</code></td><td><code>docs/ADR-NNNN-*.md</code></td><td>The page's Docs tab groups them by this prefix.</td></tr>
           <tr><td><code>examples/ros2_basics_*</code> and <code>make demos</code></td><td>removed</td><td>The learning demos are no longer part of the system.</td></tr>
-          <tr><td><code>tests/</code> removed</td><td>still there</td><td><code>make ci</code> still builds its host-side hello-world.</td></tr>
           <tr><td>The page as an <code>ExecuteProcess</code> inside the launch</td><td>started by <code>arm_routine.sh</code> next to the launch</td><td>Optional; a matter of taste, not of correctness.</td></tr>
         </tbody>
       </table>
@@ -917,7 +916,7 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
       <div class="sc">
         <h3>Adding a package</h3>
         <ol>
-          <li><span>Name it <code>braco_&lt;role&gt;</code> and put it in <code>ros2_ws/src</code>. Code with no ROS dependency goes in <code>libs/cpp</code>.</span></li>
+          <li><span>Name it <code>braco_&lt;role&gt;</code> and put it in <code>ros2_ws/src</code>. Code with no ROS dependency goes in <code>mycobot_cpp</code>.</span></li>
           <li><span><code>package.xml</code> format 3, Apache-2.0, maintainer set; <code>ament_lint_auto</code> as a test dependency.</span></li>
           <li><span>A <code>README.md</code> with what it does, its topics/services/parameters and how to run it by hand.</span></li>
           <li><span>Needed on the real arm? <code>exec_depend</code> of <code>braco_bringup</code>, started from <code>braco.launch.py</code> under <code>sim:=false</code>. Simulation or planning only? Keep it out of <code>braco_bringup</code>.</span></li>

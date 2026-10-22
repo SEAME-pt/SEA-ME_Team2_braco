@@ -14,7 +14,7 @@
 
 // park - shutdown routine: fold the arm into the park pose, then release all joints.
 //
-// ROS 2 version of libs/cpp/srcs/park.cpp: goes through arm_driver instead of opening the
+// ROS 2 version of mycobot_cpp/srcs/park.cpp: goes through arm_driver instead of opening the
 // serial port. Same pose (mycobot::PARK_ANGLES) and speed. Run by hand with `make park`
 // or before `make down PARK=1`.
 

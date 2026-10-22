@@ -14,7 +14,7 @@
 
 // ArmMoves - small client of arm_driver for zero and park (C++ version of the old arm_moves.py).
 //
-// The programs cannot open /dev/ttyTHS1 like libs/cpp/srcs/zero.cpp and park.cpp do: arm_driver
+// The programs cannot open /dev/ttyTHS1 like mycobot_cpp/srcs/zero.cpp and park.cpp do: arm_driver
 // owns the port. Instead they:
 //   * wait for arm_driver (its /joint_states and services),
 //   * take the control as "script", forced (a person ran make zero / park on purpose: the web

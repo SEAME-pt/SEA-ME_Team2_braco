@@ -36,7 +36,7 @@ function referenceHTML() {
   return `
     <div class="grid cols-2" style="margin-top:16px">
       <section class="card span-2">
-        <h2>Protocol commands <span class="muted small" style="text-transform:none;letter-spacing:0">libs/cpp/includes/mycobot.hpp · pymycobot</span></h2>
+        <h2>Protocol commands <span class="muted small" style="text-transform:none;letter-spacing:0">ros2_ws/src/mycobot_cpp/includes/mycobot.hpp · pymycobot</span></h2>
         <div class="table-wrap"><table>
           <thead><tr><th>Code</th><th>Name</th><th>Python</th><th>C++</th><th>Description</th><th></th></tr></thead>
           <tbody>${COMMANDS.map((c) => `

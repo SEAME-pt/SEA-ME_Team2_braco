@@ -14,7 +14,7 @@
 
 // zero - boot routine: send the arm to the zero pose (all joints at 0 degrees).
 //
-// ROS 2 version of libs/cpp/srcs/zero.cpp: goes through arm_driver instead of opening the
+// ROS 2 version of mycobot_cpp/srcs/zero.cpp: goes through arm_driver instead of opening the
 // serial port. Same pose (mycobot::ZERO_ANGLES) and speed. Run by hand with `make zero`.
 
 #include "braco_bringup/arm_moves.hpp"

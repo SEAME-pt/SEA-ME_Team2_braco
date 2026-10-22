@@ -4,7 +4,7 @@
 #   1. docker/.env          created if missing (make setup does the same)
 #   2. host checks          only problems are printed (make doctor shows everything)
 #   3. image                built only if missing (make image rebuilds it)
-#   4. colcon build         only when a file under ros2_ws/src or libs changed since the last build
+#   4. colcon build         only when a file under ros2_ws/src changed since the last build
 #   5. start                the system (`real` or `sim`, plus `dev` on the PC); restarted if it was running and step 4 rebuilt
 #   6. wait                 until the page's /api/status says connected (UP_TIMEOUT seconds)
 #   7. print the page URL
@@ -15,8 +15,8 @@ XHOST      ?= 1
 PARK       ?= 0
 
 # Sources colcon builds from (git's view: tracked and new files, minus .gitignore; plain find outside a git checkout).
-WS_SOURCES  := $(wildcard $(shell git ls-files -co --exclude-standard $(WS_SRC) $(LIBS_DIR) 2>/dev/null \
-                 || find $(WS_SRC) $(LIBS_DIR) -type f ! -name '*.pyc'))
+WS_SOURCES  := $(wildcard $(shell git ls-files -co --exclude-standard $(WS_SRC) 2>/dev/null \
+                 || find $(WS_SRC) -type f ! -name '*.pyc'))
 # Written after a successful colcon build; colcon's build/ is the right place (make clean removes both).
 BUILD_STAMP := $(WS_DIR)/build/.braco-built
 # Left by a build that ran while the system was up, so `up` knows to restart it.

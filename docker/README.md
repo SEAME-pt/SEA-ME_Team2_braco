@@ -57,7 +57,7 @@ creates a missing bind-mount folder itself it can end up owned by root, and then
 Created by `make` when needed, never shipped: `.env`, `ros2_ws/bags`.
 
 There is a single `Makefile`, at the **repo root**, split into `mk/*.mk`: run every `make` command from there. It
-passes `--project-directory docker` to `docker compose`, so `.env`, `../ros2_ws` and `../libs` resolve exactly as
+passes `--project-directory docker` to `docker compose`, so `.env` and `../ros2_ws` resolve exactly as
 below. Every path it uses is defined in one block of `mk/config.mk`, so moving a file means editing one line there.
 `make doctor` checks that all project files are present, and `make lint` validates the compose files, runs shellcheck
 on `docker/scripts/` and `docker/tests/` and hadolint on the Dockerfile (each a local binary, or else its pinned image
@@ -84,7 +84,7 @@ cp .env.example .env                    # set COMPOSE_PROFILES=pc|jetson and USE
 mkdir -p ../ros2_ws/src ../ros2_ws/bags # as YOUR user, so Docker does not create them as root
 docker compose build dev                # the machine's image
 docker compose up -d dev
-docker compose exec dev ros_entrypoint.sh colcon build --base-paths src /opt/seame/libs
+docker compose exec dev ros_entrypoint.sh colcon build --base-paths src
 docker compose up -d sim                # or real on the Jetson
 docker compose exec dev bash
 ```
@@ -109,7 +109,7 @@ skips the entrypoint, so ROS is **not** sourced - prefix it with `ros_entrypoint
 
 - `make up GPU=nvidia` (or `GPU=dri`) adds `compose/nvidia.yml` or `compose/dri.yml` for `dev` and `sim` (PC only);
   `COMPOSE_FILE` in `.env` does the same permanently.
-- `make build` always runs colcon; `make up` only when something under `ros2_ws/src` or `libs` changed
+- `make build` always runs colcon; `make up` only when something under `ros2_ws/src` changed
   (on the Jetson, only the packages of the real system: see below).
   After `make build`, `make restart` (or the next `make up`) runs the new build.
 - `make clean` deletes colcon's `build/ install/ log/` and the ROS logs (`~/.ros/log` on the host and in the
@@ -183,16 +183,17 @@ entrypoint: it starts `ros2 launch braco_bringup braco.launch.py sim:=false` and
 the arm at start or stop:
 
 ```
-arm_driver           ROS 2 node   the ONLY process that opens /dev/ttyTHS1 (libs/cpp MyCobot280)
-                                  pub /joint_states (~20 Hz), /arm/servo_temperatures (every 2 s)
+arm_driver           ROS 2 node   the ONLY process that opens /dev/ttyTHS1 (mycobot_cpp MyCobot280)
+                                  pub /joint_states (~20 Hz), /arm/servo_temperatures and
+                                  /arm/servo_voltages (every 2 s)
                                   sub /arm/command (STOP | JOINTS | ALL_ANGLES from the control owner), /arm/led
                                   srv /arm/power_on, /arm/release_servos, /arm/set_gripper
                                   srv /arm/set_read_only, pub /arm/read_only (rest mode, see below)
                                   srv /arm/take_control, pub /arm/control_owner (one client moves the arm)
                                   not respawned: when it exits the launch shuts down and the container stops
-temperature_monitor  ROS 2 node   temperatures -> /diagnostics + LCD1602 (port of libs/cpp temps_lcd), rest mode
+temperature_monitor  ROS 2 node   temperatures -> /diagnostics + LCD1602 (port of mycobot_cpp temps_lcd), rest mode
                                   at 65 °C; respawned
-joystick_teleop      ROS 2 node   joystick -> /arm/command (port of libs/cpp joystick_all_joints); respawned
+joystick_teleop      ROS 2 node   joystick -> /arm/command (port of mycobot_cpp joystick_all_joints); respawned
 braco web page       uvicorn      http://<jetson>:8000 (WEB_PORT), ARM_SOURCE=ros: a plain client of the topics/services above
 arm_routine.sh       entrypoint   start: the launch + the page / stop: the page, then the launch (no zero, no park)
 ```
@@ -223,8 +224,8 @@ Launch arguments: `port`, `baud`, `lcd_bus`, `device` (filled from `.env`). Use 
   read-only at `/opt/braco` and `arm_routine.sh` starts uvicorn there (one process, `--workers 1`). It moves the arm
   only through `/arm/command` (bounded steps resent every 100 ms, so the 300 ms watchdog stops the arm if the page
   dies) and the driver's services. If the page crashes only a log line is printed; the arm keeps running.
-- The C++ library in `../libs/cpp` is mounted read-only at `/opt/seame/libs` and built by colcon as `mycobot_cpp`;
-  its own `Makefile` still builds the stand-alone programs.
+- The C++ library `mycobot_cpp` is a package of the workspace (`ros2_ws/src/mycobot_cpp`), built by colcon with the
+  others; its own `Makefile` still builds the stand-alone programs.
 
 ```bash
 make up                                  # build if needed, start real, wait for the arm, print the URL
