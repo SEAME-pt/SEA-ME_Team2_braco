@@ -13,7 +13,7 @@ GROUPS = [
     ("Getting started", lambda p: p in ("README.md", "docs/dev-setup.md")),
     ("Safety", lambda p: p == "docs/safety.md"),
     ("Technical reference", lambda p: p == "docs/protocol_commands.md"),
-    ("Architecture and decisions", lambda p: p == "docs/architecture.html" or p.startswith("docs/ADR-")),
+    ("Architecture and decisions", lambda p: p in ("docs/architecture.html", "docs/architecture.md") or p.startswith("docs/ADR-")),
     ("Inventory", lambda p: p.startswith("docs/inventory/")),
     ("Web page (braco)", lambda p: p.startswith("web/")),
     ("Docker and ROS 2", lambda p: p.startswith(("docker/", "ros2_ws/"))),

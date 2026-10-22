@@ -174,9 +174,9 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
   <header>
     <div class="eyebrow">SEA:ME Team 2 · braco · official architecture</div>
     <h1>braco architecture</h1>
-    <p class="lede">How the braco software is split into ROS 2 packages, which process owns what, how the pieces talk to each other on the real arm (Jetson Nano) and in simulation (PC), where each file lives, how the system is started and what it costs on the Jetson. This page describes what is <b>implemented today</b>.</p>
+    <p class="lede">How the braco software is split into ROS 2 packages, which process owns what, how the pieces talk to each other on the real arm (Jetson Nano) and in simulation (PC), where each file lives, how the system is started and what it costs on the Jetson. This page describes what is <b>implemented today</b>. The same content in Markdown: <a href="architecture.md">architecture.md</a>; <b>both files are kept in sync</b>.</p>
     <div class="meta">
-      <span>Last checked against the code: 2026-10-21</span>
+      <span>Last checked against the code: 2026-10-22</span>
       <span>Started as <a href="https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/30">issue #30</a></span>
       <span><a href="ADR-0001-ros2-in-docker-on-jetson-nano.md">ADR-0001</a> · <a href="ADR-0002-controle-unico.md">ADR-0002</a> · <a href="ADR-0003-repouso-por-temperatura.md">ADR-0003</a></span>
     </div>
@@ -245,7 +245,8 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
         <text x="270" y="70" class="t-m">/joint_states</text>
         <text x="270" y="87" class="t-m">/arm/servo_temperatures</text>
         <text x="270" y="104" class="t-m">/arm/read_only</text>
-        <text x="270" y="121" class="t-m">/arm/control_owner</text>
+        <text x="270" y="121" class="t-m">/arm/servo_voltages</text>
+        <text x="270" y="138" class="t-m">/arm/control_owner</text>
 
         <text x="460" y="50" class="t-l">RECEIVES</text>
         <text x="460" y="70" class="t-m">/arm/command</text>
@@ -363,7 +364,7 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
       <div class="sc">
         <h3>A servo gets hot</h3>
         <ol>
-          <li><span><code>arm_driver</code> publishes <code>/arm/servo_temperatures</code> every 2 s, also in rest mode.</span></li>
+          <li><span><code>arm_driver</code> publishes <code>/arm/servo_temperatures</code> (and <code>/arm/servo_voltages</code>) every 2 s, also in rest mode.</span></li>
           <li><span><code>temperature_monitor</code> classifies normal (up to 54 °C), warm (55–64 °C) or hot (65 °C or more), publishes <code>/diagnostics</code> and shows it on the LCD.</span></li>
           <li><span>At hot it calls <code>set_read_only(true)</code> once per hot episode. <code>arm_driver</code> drops the pending motion and refuses motion, gripper and power on, but keeps reading.</span></li>
           <li><span>The page shows the level from <code>/diagnostics</code>. When the arm has cooled down, someone runs <code>make resume</code> (<a href="arm-rest-mode.md">arm-rest-mode.md</a>).</span></li>
@@ -383,6 +384,7 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
           <tr><td><code>/arm/command</code></td><td><code>braco_interfaces/ArmCommand</code> (with <code>source</code>)</td><td>teleop, page, zero/park</td><td><code>arm_driver</code> (the owner's motion, anyone's STOP)</td></tr>
           <tr><td><code>/arm/led</code></td><td><code>std_msgs/ColorRGBA</code></td><td>teleop, page</td><td><code>arm_driver</code></td></tr>
           <tr><td><code>/arm/servo_temperatures</code></td><td><code>braco_interfaces/ServoTemperatures</code>, every 2 s</td><td><code>arm_driver</code></td><td><code>temperature_monitor</code>, page</td></tr>
+          <tr><td><code>/arm/servo_voltages</code></td><td><code>braco_interfaces/ServoVoltages</code> (V per joint, <code>valid</code>), every 2 s</td><td><code>arm_driver</code></td><td>page (panel and history chart)</td></tr>
           <tr><td><code>/arm/read_only</code></td><td><code>std_msgs/Bool</code>, latched</td><td><code>arm_driver</code></td><td>page</td></tr>
           <tr><td><code>/arm/control_owner</code></td><td><code>std_msgs/String</code>, latched (<code>""</code> = free)</td><td><code>arm_driver</code></td><td>teleop, page</td></tr>
           <tr><td><code>/diagnostics</code></td><td><code>diagnostic_msgs/DiagnosticArray</code></td><td><code>temperature_monitor</code></td><td>page (levels, ROS health)</td></tr>
@@ -450,7 +452,7 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
         <thead><tr><th>Package</th><th>Kind</th><th>Role</th><th>Status</th></tr></thead>
         <tbody>
           <tr><td><a href="../libs/cpp"><code>mycobot_cpp</code></a></td><td>C++ library</td><td>myCobot 280 serial driver, joint limits and poses (<code>mycobot.hpp</code>), joystick, LCD1602, teleop logic; also the stand-alone tools (no ROS)</td><td><span class="pill p-ok">done</span></td></tr>
-          <tr><td><a href="../ros2_ws/src/braco_interfaces/README.md"><code>braco_interfaces</code></a></td><td>Interfaces</td><td><code>ArmCommand</code>, <code>JointTarget</code>, <code>ServoTemperatures</code>, <code>TakeControl</code></td><td><span class="pill p-ok">done</span></td></tr>
+          <tr><td><a href="../ros2_ws/src/braco_interfaces/README.md"><code>braco_interfaces</code></a></td><td>Interfaces</td><td><code>ArmCommand</code>, <code>JointTarget</code>, <code>ServoTemperatures</code>, <code>ServoVoltages</code>, <code>TakeControl</code></td><td><span class="pill p-ok">done</span></td></tr>
           <tr><td><a href="../ros2_ws/src/braco_driver/README.md"><code>braco_driver</code></a></td><td>Nodes</td><td><code>arm_driver</code> (owns the port and the control), <code>temperature_monitor</code> (LCD, <code>/diagnostics</code>, rest on overheat)</td><td><span class="pill p-ok">done</span></td></tr>
           <tr><td><a href="../ros2_ws/src/braco_teleop/README.md"><code>braco_teleop</code></a></td><td>Node</td><td><code>joystick_teleop</code>: jogs the arm through <code>arm_driver</code></td><td><span class="pill p-ok">done</span></td></tr>
           <tr><td><a href="../ros2_ws/src/braco_bringup/README.md"><code>braco_bringup</code></a></td><td>Launch + config</td><td><code>braco.launch.py</code>, <code>braco.yaml</code>, the container entrypoint, <code>zero</code> / <code>park</code></td><td><span class="pill p-ok">done</span> <code>sim:=true</code> reserved</td></tr>
@@ -468,7 +470,7 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
 ├── mk/                       <span class="c"># config system arm dev setup net ci</span>
 ├── ros2_ws/src/
 │   ├── <span class="p">braco_interfaces/</span>
-│   │   ├── msg/  ArmCommand  JointTarget  ServoTemperatures
+│   │   ├── msg/  ArmCommand  JointTarget  ServoTemperatures  ServoVoltages
 │   │   └── srv/  TakeControl
 │   ├── <span class="p">braco_driver/</span>
 │   │   ├── src/  arm_driver.cpp  temperature_monitor.cpp
@@ -499,7 +501,7 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
 │   ├── config/  scripts/  tests/
 │   └── systemd/  braco.service
 ├── docs/
-│   ├── architecture.html     <span class="c"># this page</span>
+│   ├── architecture.html  architecture.md   <span class="c"># this page, two formats</span>
 │   ├── ADR-000N-*.md  safety.md  protocol_commands.md
 │   └── arm-rest-mode.md  dev-setup.md  ROS2/  inventory/
 ├── tests/                    <span class="c"># host hello-world, used by make ci</span>
@@ -623,7 +625,7 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
         <thead><tr><th>Node</th><th>Parameter</th><th>Value</th><th>Meaning</th></tr></thead>
         <tbody>
           <tr><td rowspan="6"><code>arm_driver</code></td><td><code>state_rate_hz</code></td><td class="num">20.0</td><td><code>/joint_states</code> rate</td></tr>
-          <tr><td><code>temp_period_s</code></td><td class="num">2.0</td><td>servo temperature read period</td></tr>
+          <tr><td><code>temp_period_s</code></td><td class="num">2.0</td><td>servo temperature and voltage read period</td></tr>
           <tr><td><code>command_timeout_ms</code></td><td class="num">300</td><td>watchdog</td></tr>
           <tr><td><code>gripper_speed</code></td><td class="num">50</td><td>1..100</td></tr>
           <tr><td><code>read_only</code></td><td class="num">false</td><td>start in rest mode</td></tr>
@@ -782,7 +784,7 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
       <table>
         <thead><tr><th>Process</th><th>RAM</th><th>Avg CPU (1 core = 100%)</th><th>What weighs</th></tr></thead>
         <tbody>
-          <tr><td><code>arm_driver</code></td><td class="num">15–25 MB</td><td class="num">4–8%</td><td>Serial loop with 10 ms pauses, angles at 20 Hz, temperatures every 2 s; mostly waiting on the UART.</td></tr>
+          <tr><td><code>arm_driver</code></td><td class="num">15–25 MB</td><td class="num">4–8%</td><td>Serial loop with 10 ms pauses, angles at 20 Hz, temperatures and voltages every 2 s; mostly waiting on the UART.</td></tr>
           <tr><td><code>temperature_monitor</code></td><td class="num">10–20 MB</td><td class="num">&lt;1%</td><td>One message every 2 s and one I2C write to the LCD.</td></tr>
           <tr><td><code>joystick_teleop</code></td><td class="num">10–20 MB</td><td class="num">1–3%</td><td>50 Hz timer; publishes only while a stick is off-centre.</td></tr>
           <tr><td><code>ros2 launch</code> (Python)</td><td class="num">50–70 MB</td><td class="num">&lt;1%</td><td>Only supervises its children.</td></tr>
@@ -923,7 +925,7 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
         </ol>
       </div>
     </div>
-    <div class="subhead">Keeping this page current: in the same PR as the code change</div>
+    <div class="subhead">Keeping this page current: in the same PR as the code change, in both architecture.html and architecture.md</div>
     <div class="tablewrap">
       <table>
         <thead><tr><th>You changed</th><th>Update</th></tr></thead>
