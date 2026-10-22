@@ -15,6 +15,7 @@ arm (zero pose, joint directions, forward kinematics) and the open measurements 
 | `meshes/` | Visual and collision meshes of Elephant Robotics (`LICENSE.elephantrobotics`) |
 | `launch/gazebo.launch.py` | Gazebo (gz sim) with the model holding its pose, plus the controllers |
 | `scripts/move_arm_example.py` | Example node: moves the Gazebo arm with the `follow_joint_trajectory` action |
+| `scripts/park.py` | Moves the Gazebo arm to the park pose (`PARK_ANGLES` of `mycobot.hpp`) |
 | `test/test_urdf.py` | Keeps the URDF and the code in sync |
 
 `gazebo.launch.py` is a quick viewer: the model in Gazebo, moved through `/arm_controller/joint_trajectory`.
@@ -33,6 +34,8 @@ ros2 topic pub --once /arm_controller/joint_trajectory trajectory_msgs/msg/Joint
 
 # example of code driving the Gazebo arm (Gazebo running, another shell)
 ros2 run braco_description move_arm_example.py
+# the Gazebo arm to the park pose
+ros2 run braco_description park.py
 
 # fingers with the vendor linkage (one slider): gripper_actuated:=true
 # check the model by hand
