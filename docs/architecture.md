@@ -197,7 +197,7 @@ package has its own README with its topics, parameters and how to run it by hand
 
 | Package | Kind | Role | Status |
 |---|---|---|---|
-| [`mycobot_cpp`](../ros2_ws/src/mycobot_cpp) | C++ library | myCobot 280 serial driver, joint limits and poses (`mycobot.hpp`), joystick, LCD1602, teleop logic; also the stand-alone tools (no ROS) | done |
+| [`mycobot_cpp`](../ros2_ws/src/mycobot_cpp/README.md) | C++ library | myCobot 280 serial driver, joint limits and poses (`mycobot.hpp`), joystick, LCD1602, teleop logic; also the stand-alone tools (no ROS) | done |
 | [`braco_interfaces`](../ros2_ws/src/braco_interfaces/README.md) | Interfaces | `ArmCommand`, `JointTarget`, `ServoTemperatures`, `ServoVoltages`, `TakeControl` | done |
 | [`braco_driver`](../ros2_ws/src/braco_driver/README.md) | Nodes | `arm_driver` (owns the port and the control), `temperature_monitor` (LCD, `/diagnostics`, rest on overheat) | done |
 | [`braco_teleop`](../ros2_ws/src/braco_teleop/README.md) | Node | `joystick_teleop`: jogs the arm through `arm_driver` | done |
@@ -238,6 +238,7 @@ SEA-ME_Team2_braco/
 │   ├── braco_description/      # placeholder #25
 │   ├── braco_moveit_config/    # placeholder #40
 │   └── braco_mission/          # placeholder #43
+├── scripts/  bench.sh        # bench test of control and auto-rest (make bench)
 ├── web/                      # the braco page, a ROS 2 client
 │   ├── server/   app.py  arm.py  camera.py  ros.py  session.py …
 │   ├── static/
@@ -254,7 +255,7 @@ SEA-ME_Team2_braco/
 └── .github/  .githooks/       # CI workflow, PR template, commit-msg hook
 ```
 
-The root holds only the five folders above and the `Makefile`: everything colcon builds is in `ros2_ws/src`, everything
+The root holds only the six folders above and the `Makefile`: everything colcon builds is in `ros2_ws/src`, everything
 else has one generic folder.
 
 ### Naming rules
@@ -263,7 +264,7 @@ else has one generic folder.
   avoids collisions with ROS packages and marks what belongs to the project.
 - **One name per thing.** File, executable and node share the name: `arm_driver.cpp` runs as `arm_driver`. Topics
   and services of the arm live under `/arm/*`.
-- **Outside ROS, generic folders:** `web`, `docker`, `docs`, `mk`. Anyone opening the repo understands them
+- **Outside ROS, generic folders:** `web`, `docker`, `docs`, `mk`, `scripts`. Anyone opening the repo understands them
   without a legend.
 - **`mycobot_cpp` keeps its name.** The library is the robot's protocol, not the product. It is a colcon package of
   the workspace like the others, but depends on nothing from ROS.
@@ -534,10 +535,10 @@ PR that closes or opens a gap.
 | **Clients follow the owner** | Page lease = control `web`; joystick takes it free or forced (button 8 for 1 s), `power_on` only as owner; zero/park force and release |
 | **One thermal authority** | `temperature_monitor` publishes the level on `/diagnostics`; the page reads it |
 | **Rest on overheat** | Once per hot episode, manual resume ([ADR-0003](ADR-0003-repouso-por-temperatura.md)) |
-| **braco layout** | `ros2_ws/src` with `braco_interfaces`, `braco_driver`, `braco_teleop`, `braco_bringup`; one launch and one `braco.yaml` |
+| **braco layout** | `ros2_ws/src` with `braco_interfaces`, `braco_driver`, `braco_teleop`, `braco_camera`, `braco_bringup`; one launch and one `braco.yaml`; a README in every package, `mycobot_cpp` included |
 | **braco infrastructure** | `docker/Dockerfile`, `compose.yml` (project `braco`), `braco-image/*`, `braco.service` |
 | **One Makefile** | Split in `mk/`, idempotent `make up`, ~30 public commands |
-| **Lean repository root** | `docker`, `docs`, `mk`, `ros2_ws`, `web` and the `Makefile`; `mycobot_cpp` in `ros2_ws/src` (one colcon base path, no extra mount); `tests/`, `playground/` and the root `requirements.txt` removed |
+| **Lean repository root** | `docker`, `docs`, `mk`, `ros2_ws`, `scripts` (operator scripts run by `make`), `web` and the `Makefile`; `mycobot_cpp` in `ros2_ws/src` (one colcon base path, no extra mount); `tests/`, `playground/` and the root `requirements.txt` removed |
 | **Jetson guards** | `doctor` checks, ccache limit, ROS log cleanup, `status` with `docker stats` and `tegrastats` |
 
 ### Differs from the target (accepted for now)

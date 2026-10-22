@@ -464,7 +464,7 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
       <table>
         <thead><tr><th>Package</th><th>Kind</th><th>Role</th><th>Status</th></tr></thead>
         <tbody>
-          <tr><td><a href="../ros2_ws/src/mycobot_cpp"><code>mycobot_cpp</code></a></td><td>C++ library</td><td>myCobot 280 serial driver, joint limits and poses (<code>mycobot.hpp</code>), joystick, LCD1602, teleop logic; also the stand-alone tools (no ROS)</td><td><span class="pill p-ok">done</span></td></tr>
+          <tr><td><a href="../ros2_ws/src/mycobot_cpp/README.md"><code>mycobot_cpp</code></a></td><td>C++ library</td><td>myCobot 280 serial driver, joint limits and poses (<code>mycobot.hpp</code>), joystick, LCD1602, teleop logic; also the stand-alone tools (no ROS)</td><td><span class="pill p-ok">done</span></td></tr>
           <tr><td><a href="../ros2_ws/src/braco_interfaces/README.md"><code>braco_interfaces</code></a></td><td>Interfaces</td><td><code>ArmCommand</code>, <code>JointTarget</code>, <code>ServoTemperatures</code>, <code>ServoVoltages</code>, <code>TakeControl</code></td><td><span class="pill p-ok">done</span></td></tr>
           <tr><td><a href="../ros2_ws/src/braco_driver/README.md"><code>braco_driver</code></a></td><td>Nodes</td><td><code>arm_driver</code> (owns the port and the control), <code>temperature_monitor</code> (LCD, <code>/diagnostics</code>, rest on overheat)</td><td><span class="pill p-ok">done</span></td></tr>
           <tr><td><a href="../ros2_ws/src/braco_teleop/README.md"><code>braco_teleop</code></a></td><td>Node</td><td><code>joystick_teleop</code>: jogs the arm through <code>arm_driver</code></td><td><span class="pill p-ok">done</span></td></tr>
@@ -507,6 +507,7 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
 │   ├── <span class="n">braco_description/</span>      <span class="c"># placeholder #25</span>
 │   ├── <span class="n">braco_moveit_config/</span>    <span class="c"># placeholder #40</span>
 │   └── <span class="n">braco_mission/</span>          <span class="c"># placeholder #43</span>
+├── scripts/  bench.sh        <span class="c"># bench test (make bench)</span>
 ├── web/                      <span class="c"># the braco page, a ROS 2 client</span>
 │   ├── server/   app.py  arm.py  camera.py  ros.py  session.py …
 │   ├── static/
@@ -524,7 +525,7 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
         <div class="rules">
           <div class="rule"><h3>Package = braco_ + role</h3><p>One word after the prefix: <code>driver</code>, <code>teleop</code>, <code>mission</code>, <code>bringup</code>. The prefix avoids collisions with ROS packages and marks what belongs to the project.</p></div>
           <div class="rule"><h3>One name per thing</h3><p>File, executable and node share the name: <code>arm_driver.cpp</code> runs as <code>arm_driver</code>. Topics and services of the arm live under <code>/arm/*</code>.</p></div>
-          <div class="rule"><h3>Outside ROS, generic folders</h3><p><code>web</code>, <code>docker</code>, <code>docs</code>, <code>mk</code>. Anyone opening the repo understands them without a legend. The root holds only these, <code>ros2_ws</code> and the <code>Makefile</code>.</p></div>
+          <div class="rule"><h3>Outside ROS, generic folders</h3><p><code>web</code>, <code>docker</code>, <code>docs</code>, <code>mk</code>, <code>scripts</code>. Anyone opening the repo understands them without a legend. The root holds only these, <code>ros2_ws</code> and the <code>Makefile</code>.</p></div>
           <div class="rule"><h3>mycobot_cpp keeps its name</h3><p>The library is the robot's protocol, not the product. It is a colcon package of the workspace like the others, but depends on nothing from ROS.</p></div>
           <div class="rule"><h3>Infrastructure carries the braco brand</h3><p>Compose project <code>braco</code>, images <code>braco-image/pc</code> and <code>braco-image/jetson</code>, systemd unit <code>braco.service</code>.</p></div>
         </div>
@@ -894,10 +895,10 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
       <div><b>Clients follow the owner.</b> Page lease = control <code>web</code>; joystick takes it free or forced (button 8 for 1 s), <code>power_on</code> only as owner; zero/park force and release.</div>
       <div><b>One thermal authority.</b> <code>temperature_monitor</code> publishes the level on <code>/diagnostics</code>; the page reads it.</div>
       <div><b>Rest on overheat.</b> Once per hot episode, manual resume (<a href="ADR-0003-repouso-por-temperatura.md">ADR-0003</a>).</div>
-      <div><b>braco layout.</b> <code>ros2_ws/src</code> with <code>braco_interfaces</code>, <code>braco_driver</code>, <code>braco_teleop</code>, <code>braco_bringup</code>; one launch and one <code>braco.yaml</code>.</div>
+      <div><b>braco layout.</b> <code>ros2_ws/src</code> with <code>braco_interfaces</code>, <code>braco_driver</code>, <code>braco_teleop</code>, <code>braco_camera</code>, <code>braco_bringup</code>; one launch and one <code>braco.yaml</code>; a README in every package, <code>mycobot_cpp</code> included.</div>
       <div><b>braco infrastructure.</b> <code>docker/Dockerfile</code>, <code>compose.yml</code> (project <code>braco</code>), <code>braco-image/*</code>, <code>braco.service</code>.</div>
       <div><b>One Makefile.</b> Split in <code>mk/</code>, idempotent <code>make up</code>, ~30 public commands.</div>
-      <div><b>Lean repository root.</b> <code>docker</code>, <code>docs</code>, <code>mk</code>, <code>ros2_ws</code>, <code>web</code> and the <code>Makefile</code>; <code>mycobot_cpp</code> in <code>ros2_ws/src</code> (one colcon base path, no extra mount); <code>tests/</code>, <code>playground/</code> and the root <code>requirements.txt</code> removed.</div>
+      <div><b>Lean repository root.</b> <code>docker</code>, <code>docs</code>, <code>mk</code>, <code>ros2_ws</code>, <code>scripts</code> (operator scripts run by <code>make</code>), <code>web</code> and the <code>Makefile</code>; <code>mycobot_cpp</code> in <code>ros2_ws/src</code> (one colcon base path, no extra mount); <code>tests/</code>, <code>playground/</code> and the root <code>requirements.txt</code> removed.</div>
       <div><b>Jetson guards.</b> <code>doctor</code> checks, ccache limit, ROS log cleanup, <code>status</code> with <code>docker stats</code> and <code>tegrastats</code>.</div>
     </div>
 
