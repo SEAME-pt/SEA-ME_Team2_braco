@@ -44,15 +44,20 @@ The joint origins and the mesh offsets are the vendor's, unchanged.
 ## Frame tree
 
 ```
-world -> base_link -> link1 -> link2 -> link3 -> link4 -> link5 -> link6 -> tool0
-                                                                              |-- tcp
-                                                                              |-- camera_mount -> camera_link -> camera_optical_frame
-                                                                              `-- gripper_base -> gripper_left2 / gripper_right2
-                                                                                                  gripper_left3 -> gripper_left1
-                                                                                                  gripper_right3 -> gripper_right1
+world -> g_base -> base_link -> link1 -> link2 -> link3 -> link4 -> link5 -> link6 -> tool0
+                                                                                        |-- tcp
+                                                                                        |-- camera_mount -> camera_link -> camera_optical_frame
+                                                                                        `-- gripper_base -> gripper_left2 / gripper_right2
+                                                                                                            gripper_left3 -> gripper_left1
+                                                                                                            gripper_right3 -> gripper_right1
 ```
 
-- `world`: the table surface. `base_link` is `base_height` = 0.140 m above it (from `BASE_HEIGHT_MM` in `mycobot.hpp`).
+- `world`: the table surface.
+- `g_base`: the G-shape base, a 150 x 110 mm plate clamped to the table with its black grip. Mesh from the vendor
+  (`mycobot_280_pi/G_base.dae`), turned 90° so its long side runs along y like the Jetson casing; collision is a box
+  of the same size.
+- `base_link`: the bottom of the Jetson casing, on top of the plate: `g_base_height` = 0.032 m above the table
+  (the plate thickness in the vendor mesh). **To measure** with calipers.
 - `tool0`: the flange, z axis pointing out of it (REP-103), same as `link6`.
 - `tcp`: on the z axis of `tool0`, at `tcp_length` = 0.130 m (from `TOOL_LENGTH_MM`: flange to the tip of the closed
   gripper with camera). **Placeholder**: measure to the middle of the fingertips.
@@ -94,7 +99,7 @@ With every joint at 0, the model's kinematics give (frame `world`, in mm):
 
 | Frame | x | y | z |
 |---|---|---|---|
-| `tool0` (flange) | 45.6 | -64.6 | 576.1 (436.1 above `base_link`) |
+| `tool0` (flange) | 45.6 | -64.6 | 468.1 (436.1 above `base_link`) |
 
 The z axis of `tool0` points to **world +x** (horizontal, forward): the flange faces forward in the zero pose. The model
 is the prediction; it still has to be checked against the real arm (below).
@@ -108,7 +113,7 @@ Tick them here as they are measured and update the URDF and the tables above.
 - [ ] **Effort**: servo stall torque (datasheet), marked as an approximation.
 - [ ] **Masses**: weigh the gripper and the camera + flange; arm masses (vendor, or the total split). Update
   `base_mass`, `link_mass`, `gripper_base_mass`.
-- [ ] **Offsets** with calipers (photograph the measurements): `base_height` (and G-base), `camera_xyz`/`camera_rpy`, `tcp_length`.
+- [ ] **Offsets** with calipers (photograph the measurements): `g_base_height` (table to the bottom of the casing), `camera_xyz`/`camera_rpy`, `tcp_length`.
 - [ ] **Zero pose**: `make zero` on the Jetson; on the PC, Gazebo with all joints at 0 (the default when it starts).
   Side-by-side photos (Gazebo vs. real arm) from the same viewpoint.
   If the model's zero does not look like the arm's (±pi/2 rotations in the origins), fix the origins and update `ZERO_TOOL0`
@@ -134,4 +139,7 @@ Tick them here as they are measured and update the URDF and the tables above.
 - Gripper not actuated: the driver does not publish the finger state. With `gripper_actuated:=false` they stay fixed open.
 - Inertias, velocities and efforts are estimates (tables above) until they are measured.
 - Collision = the vendor mesh itself (heavy). Worth simplifying later for MoveIt/Gazebo.
-- `world -> base_link` assumes the arm sits on the table at 0.140 m; adjust if it is mounted on another base.
+- `world -> g_base -> base_link` assumes the arm stands on the G-base plate on the table; adjust if it is mounted on another base.
+- `BASE_HEIGHT_MM` = 140 in `libs/cpp/includes/mycobot.hpp` (used by `minHeightMm()`, the table-clearance check) does not
+  match the model: with the G-base, the C++ base frame (26 mm above the bottom of the casing, `JOINT_ORIGINS` J1 =
+  0.13156 vs. 0.15756 in the URDF) is about 58 mm above the table. Measure, then fix one or the other.
