@@ -110,6 +110,7 @@ export function render(root) {
       </div>
       <div class="filters" id="a-badges"></div>
     </div>
+    <div id="a-error"></div>
     <div class="arm-top">
       <section class="card viewer" id="a-viewer">
         <div class="overlay" id="a-overlay"></div>
