@@ -79,7 +79,7 @@ on the real arm they come from `/diagnostics`, so there is one definition of
 
 * `test/test_control.cpp` (gtest): rest once per episode, a new episode after
   cooling below 65 °C, retry after a failed request
-* Bench (Jetson): a simulated hot servo (a fake `ServoTemperatures`, or a lower
+* Bench (Jetson, `make bench`, step 5): a simulated hot servo (a fake `ServoTemperatures`, or a lower
   limit) → rest mode on, LCD warns, `make resume` → motion accepted again
 
 ## Pros and Cons of the Options

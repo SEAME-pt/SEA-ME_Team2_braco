@@ -112,7 +112,7 @@ ever seen on the bench.
 * `web/tests/test_session.py`, `test_ros_arm.py`, `test_server.py`: the lease asks
   the driver, 409 while the joystick has it, keep-alive, the lease ends when the
   control is forced away, the page sends no STOP after losing it
-* Bench (Jetson, `make up`): page moving + stick ignored; hold button 8 → the
+* Bench (Jetson, `make up`, then `make bench`, which automates the owner checks and asks for the hand tests): page moving + stick ignored; hold button 8 → the
   joystick takes over and the page shows it and answers 409; let go 5 s → free;
   STOP from the page with the joystick in control; `make zero` / `make park` with the joystick connected
 
