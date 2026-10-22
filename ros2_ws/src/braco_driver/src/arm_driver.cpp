@@ -20,6 +20,7 @@
 //
 //   pub  /joint_states               sensor_msgs/JointState (radians)
 //   pub  /arm/servo_temperatures     braco_interfaces/ServoTemperatures
+//   pub  /arm/servo_voltages         braco_interfaces/ServoVoltages
 //   sub  /arm/command                braco_interfaces/ArmCommand (latest wins)
 //   sub  /arm/led                    std_msgs/ColorRGBA (0..1 per channel)
 //   srv  /arm/power_on               std_srvs/Trigger
@@ -46,7 +47,7 @@
 //   1. a requested stop (drops everything pending)
 //   2. one pending motion command, then COMMAND_GAP (as the C++ programs do)
 //   3. read the angles and publish /joint_states
-//   4. every temp_period_s read the servo temperatures and publish them
+//   4. every temp_period_s read the servo temperatures and voltages and publish them
 //   5. watchdog: no new motion command for command_timeout_ms after the arm was
 //      told to move -> stop once. Together with the step-ahead targets of the
 //      teleop node this bounds how far the arm coasts if a client dies.
@@ -70,6 +71,7 @@
 #include "rclcpp/rclcpp.hpp"
 #include "braco_interfaces/msg/arm_command.hpp"
 #include "braco_interfaces/msg/servo_temperatures.hpp"
+#include "braco_interfaces/msg/servo_voltages.hpp"
 #include "braco_interfaces/srv/take_control.hpp"
 #include "sensor_msgs/msg/joint_state.hpp"
 #include "std_msgs/msg/bool.hpp"
@@ -81,6 +83,7 @@
 using namespace std::chrono_literals;
 using braco_interfaces::msg::ArmCommand;
 using braco_interfaces::msg::ServoTemperatures;
+using braco_interfaces::msg::ServoVoltages;
 using braco_interfaces::srv::TakeControl;
 
 namespace
@@ -128,6 +131,7 @@ public:
 
     joint_pub_ = create_publisher<sensor_msgs::msg::JointState>("joint_states", 10);
     temp_pub_ = create_publisher<ServoTemperatures>("arm/servo_temperatures", 10);
+    volt_pub_ = create_publisher<ServoVoltages>("arm/servo_voltages", 10);
 
     read_only_pub_ = create_publisher<std_msgs::msg::Bool>(
       "arm/read_only", rclcpp::QoS(1).transient_local());
@@ -400,6 +404,7 @@ private:
         }
         if (now >= next_temp) {
           publishTemps();
+          publishVoltages();
           next_temp = now + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
             temp_period_);
         }
@@ -498,6 +503,24 @@ private:
     temp_pub_->publish(msg);
   }
 
+  void publishVoltages()
+  {
+    std::optional<mycobot::ServoVolts> volts;
+    {
+      std::lock_guard<std::mutex> lock(serial_mutex_);
+      volts = mc_->getVoltages();
+    }
+    ServoVoltages msg;
+    msg.header.stamp = now();
+    msg.valid = volts.has_value();
+    if (volts) {
+      std::copy(volts->begin(), volts->end(), msg.volts.begin());
+    } else {
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 10000, "no answer to voltage read");
+    }
+    volt_pub_->publish(msg);
+  }
+
   void checkWatchdog()
   {
     bool expired = false;
@@ -543,6 +566,7 @@ private:
 
   rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr joint_pub_;
   rclcpp::Publisher<ServoTemperatures>::SharedPtr temp_pub_;
+  rclcpp::Publisher<ServoVoltages>::SharedPtr volt_pub_;
   rclcpp::Subscription<ArmCommand>::SharedPtr command_sub_;
   rclcpp::Subscription<std_msgs::msg::ColorRGBA>::SharedPtr led_sub_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr power_srv_;

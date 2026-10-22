@@ -45,5 +45,6 @@ export const COMMANDS = [
   { code: "0x53", name: "GET_SERVO_DATA", py: "mc.get_servo_data(j, addr)", cpp: "getPid(j)", desc: "Reads servo data" },
   { code: "0x66", name: "SET_GRIPPER_STATE", py: "mc.set_gripper_state(st, s)", cpp: "setGripperState(st, s)", desc: "0 = open, 1 = close", write: true },
   { code: "0x6A", name: "SET_COLOR", py: "mc.set_color(r, g, b)", cpp: "setColor(r, g, b)", desc: "Atom LED", write: true },
+  { code: "0xE3", name: "GET_SERVO_VOLTAGES", py: "mc.get_servo_voltages()", cpp: "getVoltages()", desc: "Supply voltage of each servo (0.1 V steps)" },
   { code: "0xE5", name: "GET_SERVO_TEMPS", py: "mc.get_servo_temps()", cpp: "getTemps()", desc: "Temperature of each servo (°C)" },
 ];

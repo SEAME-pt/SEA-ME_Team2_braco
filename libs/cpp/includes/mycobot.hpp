@@ -102,6 +102,7 @@ constexpr uint8_t GET_SERVO_DATA = 0x53;
 
 // Servo status (read-only). VERIFY against pymycobot:
 //   grep -nE "SERVO_TEMPS" ~/.local/lib/python3.8/site-packages/pymycobot/common.py
+constexpr uint8_t GET_SERVO_VOLTAGES = 0xE3;   // pymycobot ProtocolCode.GET_SERVO_VOLTAGES
 constexpr uint8_t GET_SERVO_TEMPS = 0xE5;
 }  // namespace protocol
 
@@ -122,6 +123,10 @@ using PidSet = std::array<Pid, 6>;   // index 0 = J1 ... 5 = J6
 
 // ---- Servo temperatures --------------------------------------------------------
 using ServoTemps = std::array<int, 6>;   // J1..J6 servo temperature in deg C
+using ServoVolts = std::array<double, 6>;   // J1..J6 servo supply voltage in V
+
+// The arm reports each voltage as one byte in steps of 0.1 V (pymycobot: "volts < 24 V").
+constexpr double VOLTAGE_STEP_V = 0.1;
 
 // The servos protect themselves from overheating at around 70 deg C; these
 // thresholds warn well before that.
@@ -224,6 +229,10 @@ public:
     // Temperature of each joint's servo in deg C. Reading changes nothing.
     // nullopt if the arm does not answer or the reply has an unknown format.
     std::optional<ServoTemps> getTemps(int retries = 3);
+
+    // Supply voltage of each joint's servo in V. Reading changes nothing.
+    // nullopt if the arm does not answer or the reply has an unknown format.
+    std::optional<ServoVolts> getVoltages(int retries = 3);
 
     // getTemps() plus the check against TEMP_WARM_C / TEMP_HOT_C.
     std::optional<TempCheck> checkTemps(int retries = 3);

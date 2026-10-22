@@ -323,6 +323,13 @@ def test_no_timeout_stop_without_the_control(ros_arm, monkeypatch):
 
 # ---- poses, rest, wake ------------------------------------------------------------------
 
+def test_servo_voltages_come_from_the_driver(ros_arm):
+    ros_arm._on_volts(FakeMsg(volts=[12.04, 11.9, 12.0, 11.8, 12.1, 12.0], valid=True))
+    assert ros_arm.snapshot()["volts"] == [12.0, 11.9, 12.0, 11.8, 12.1, 12.0]
+    ros_arm._on_volts(FakeMsg(volts=[0.0] * 6, valid=False))
+    assert ros_arm.snapshot()["volts"] is None
+
+
 def test_park_releases_the_servos_and_rests_on_arrival(ros_arm, monkeypatch):
     monkeypatch.setattr(arm, "ROS_PARK_SETTLE_S", 0.05)
     feeder = ros_arm.feed([0] * 6)
