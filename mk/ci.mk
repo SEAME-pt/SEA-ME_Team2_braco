@@ -1,6 +1,6 @@
 # mk/ci.mk - what .github/workflows/ci.yml runs, reproducible here: ci ci-ros lint.
 #
-#   host job   make ci       host checks (venv, imports, C++ hello-world build), lint, web page tests
+#   host job   make ci       host checks (venv, imports, C++ hello-world build), format check, lint, web page tests
 #   ros job    make ci-ros   rosdep, colcon build and colcon test of ros2_ws/src + libs (make ci-image builds its image)
 #
 # No robot and no display needed.
@@ -41,7 +41,7 @@ format format-check: export PATH := $(CURDIR)/$(VENV)/bin:$(PATH)
 
 ##@ CI (.github/workflows/ci.yml)
 
-ci: _host-check lint $(VENV)/.web-test-installed ## The `host` CI job: host checks, lint, web page tests
+ci: _host-check format-check lint $(VENV)/.web-test-installed ## The `host` CI job: host checks, format check, lint, web page tests
 	$(VENV)/bin/python -m pytest web/tests -q
 
 ci-image: ## Build the `ros` CI job's image (Dockerfile stage CI_TARGET=base) as CI_IMAGE, for your UID/GID
