@@ -1,4 +1,4 @@
-// Documentation browser: Markdown files from docs/ rendered with marked.
+// Documentation browser: Markdown files rendered with marked, HTML pages from docs/ in an iframe.
 
 import { esc, getJSON } from "../util.js";
 
@@ -11,7 +11,7 @@ function resolveLink(href, current) {
   if (/^[a-z]+:|^#|^\//i.test(href)) return null;
   const url = new URL(href, `http://x/${current}`);
   const path = url.pathname.slice(1);
-  return path.endsWith(".md") ? `#/docs/${path}` : null;
+  return /\.(md|html)$/.test(path) ? `#/docs/${path}` : null;
 }
 
 function renderList(filter = "") {
@@ -38,16 +38,12 @@ async function show(path) {
   try {
     const res = await fetch(`/api/docs/${state.current}`);
     if (!res.ok) throw new Error(res.status === 404 ? "Document not found." : res.statusText);
+    if (state.current.endsWith(".html")) return showHtml(box, await res.text());
     // Inline LaTeX like $0^\circ$ has no renderer here: show plain text
     const md = (await res.text()).replace(/\$([^$\n]*[\\^][^$\n]*)\$/g, (_, m) =>
       m.replace(/\^\\circ/g, "°").replace(/\\(times|cdot)/g, "×").replace(/\\([a-zA-Z]+)/g, "$1"));
     const html = window.marked ? window.marked.parse(md) : `<pre>${esc(md)}</pre>`;
-    const github = `https://github.com/SEAME-pt/SEA-ME_Team2_braco/blob/main/${state.current}`;
-    box.innerHTML = `
-      <div class="doc-meta">
-        <span class="mono">${esc(state.current)}</span>
-        <a href="${github}" target="_blank" rel="noopener">view on GitHub ↗</a>
-      </div>
+    box.innerHTML = `${docMeta()}
       <article>${html}</article>`;
     box.querySelectorAll("a[href]").forEach((a) => {
       const to = resolveLink(a.getAttribute("href"), state.current);
@@ -61,10 +57,54 @@ async function show(path) {
   }
 }
 
+function docMeta() {
+  const github = `https://github.com/SEAME-pt/SEA-ME_Team2_braco/blob/main/${state.current}`;
+  return `
+      <div class="doc-meta">
+        <span class="mono">${esc(state.current)}</span>
+        <a href="${github}" target="_blank" rel="noopener">view on GitHub ↗</a>
+      </div>`;
+}
+
+// A full HTML page (its own styles and figures) shown as is, grown to its content height
+function showHtml(box, html) {
+  box.innerHTML = `${docMeta()}<iframe class="doc-frame" title="${esc(state.current)}"></iframe>`;
+  const frame = box.querySelector("iframe");
+  const fit = () => { frame.style.height = `${frame.contentDocument.documentElement.scrollHeight}px`; };
+  frame.addEventListener("load", () => {
+    const doc = frame.contentDocument;
+    doc.querySelectorAll("a[href]").forEach((a) => {
+      const href = a.getAttribute("href");
+      const to = resolveLink(href, state.current);
+      if (to) { a.setAttribute("href", to); a.target = "_top"; }
+      else if (/^https?:/.test(href)) a.target = "_blank";
+      else if (href.startsWith("#")) {
+        // the frame never scrolls: scroll the app to the anchor instead
+        a.addEventListener("click", (e) => {
+          const el = doc.getElementById(href.slice(1));
+          if (!el) return;
+          e.preventDefault();
+          window.scrollTo({ top: frame.getBoundingClientRect().top + window.scrollY + el.offsetTop, behavior: "smooth" });
+        });
+      } else if (!/^[a-z]+:|^\//i.test(href)) {
+        // other repo files (code, folders): on GitHub, since the frame has no base URL
+        const path = new URL(href, `http://x/${state.current}`).pathname.slice(1);
+        a.href = `https://github.com/SEAME-pt/SEA-ME_Team2_braco/blob/main/${path}`;
+        a.target = "_blank";
+      }
+    });
+    fit();
+    doc.fonts?.ready.then(fit);
+    new ResizeObserver(fit).observe(doc.documentElement);
+  });
+  frame.srcdoc = html;
+  window.scrollTo(0, 0);
+}
+
 export function render(root, path) {
   root.innerHTML = `
     <div class="page-head">
-      <div><h1>Docs</h1><p>Every Markdown file in the repository, grouped by topic, always as in the current branch</p></div>
+      <div><h1>Docs</h1><p>Every Markdown file in the repository and the HTML pages in docs/, grouped by topic, always as in the current branch</p></div>
     </div>
     <div class="docs">
       <nav class="card doc-list">

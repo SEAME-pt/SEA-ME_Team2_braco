@@ -11,7 +11,7 @@ informed: all
 ## Context and Problem Statement
 
 `arm_driver` is the only process that opens the myCobot 280 serial port
-([architecture](architecture.md), principle 1). Everything else reaches the arm
+([architecture](architecture.html), principle 1). Everything else reaches the arm
 through `/arm/command` and the `/arm/*` services: the web page, the joystick
 (`joystick_teleop`), the zero/park programs (`make zero`, `make park`) and, later,
 the mission layer.
