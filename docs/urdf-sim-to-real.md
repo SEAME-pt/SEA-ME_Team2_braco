@@ -7,13 +7,14 @@ measured on the hardware** (section "Open items"). Nothing below marked "to meas
 ## How to use
 
 ```bash
-# PC (pc-dev container, with X11): simulation only, with sliders
-ros2 launch braco_description display.launch.py
+# PC (pc-dev container, with X11): the model in Gazebo, holding its pose (gui:=false: server only)
+ros2 launch braco_description gazebo.launch.py
 
-# PC following the real arm: the Jetson runs `make up` and publishes /joint_states over DDS
-ros2 launch braco_description display.launch.py use_gui:=false
+# Put the simulated arm at given joint angles (radians, reached in 2 s)
+ros2 topic pub --once /arm_controller/joint_trajectory trajectory_msgs/msg/JointTrajectory \
+  "{joint_names: [joint1, joint2, joint3, joint4, joint5, joint6],
+    points: [{positions: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0], time_from_start: {sec: 2}}]}"
 
-# Gripper with the finger linkage (one slider): gripper_actuated:=true
 # Check the model without ROS running:
 xacro urdf/braco.urdf.xacro > /tmp/braco.urdf && check_urdf /tmp/braco.urdf
 ```
@@ -25,12 +26,12 @@ URDF, if a joint name leaves `joint1..joint6`, if a link with geometry has no po
 ## Origin of the model and what was changed
 
 Base: [elephantrobotics/mycobot_ros2](https://github.com/elephantrobotics/mycobot_ros2), branch `humble`: `mycobot_description`,
-variant `mycobot_280_jn` + `adaptive_gripper` for the model, and `mycobot_280/mycobot_280jn` for RViz and the launch structure
+variant `mycobot_280_jn` + `adaptive_gripper` for the model
 (BSD-2-Clause license, copied to `meshes/LICENSE.elephantrobotics`; the `.dae` meshes are the vendor's, ~26 MB).
 
 | Change | Reason |
 |---|---|
-| Joints renamed from `joint2_to_joint1 ... joint6output_to_joint6` to `joint1..joint6` | `arm_driver` publishes `/joint_states` with `joint1..joint6`. With different names `robot_state_publisher` ignores the states **without any error** and the model stays frozen in RViz. |
+| Joints renamed from `joint2_to_joint1 ... joint6output_to_joint6` to `joint1..joint6` | `arm_driver` publishes `/joint_states` with `joint1..joint6`. With different names `robot_state_publisher` ignores the states **without any error** and the model never moves. |
 | Links renamed to `base_link`, `link1..link6` | The vendor also names the links `joint1..joint6` (easy to confuse with the joints). |
 | Vendor XML error fixed (`lower = "-2.932"1`) | The original file does not even parse. |
 | Limits taken from `JOINT_LIMITS` in `libs/cpp/includes/mycobot.hpp` | `<limit>` = `JOINT_LIMITS` (the firmware limit minus 1-2°, the same one `sendAngles` applies). There is only one set of limits in the code, so there is no `<safety_controller>`. |
@@ -108,22 +109,25 @@ Tick them here as they are measured and update the URDF and the tables above.
 - [ ] **Masses**: weigh the gripper and the camera + flange; arm masses (vendor, or the total split). Update
   `base_mass`, `link_mass`, `gripper_base_mass`.
 - [ ] **Offsets** with calipers (photograph the measurements): `base_height` (and G-base), `camera_xyz`/`camera_rpy`, `tcp_length`.
-- [ ] **Zero pose**: `make zero` on the Jetson, RViz on the PC with `use_gui:=false`. Side-by-side photos (model vs. real arm).
+- [ ] **Zero pose**: `make zero` on the Jetson; on the PC, Gazebo with all joints at 0 (the default when it starts).
+  Side-by-side photos (Gazebo vs. real arm) from the same viewpoint.
   If the model's zero does not look like the arm's (±pi/2 rotations in the origins), fix the origins and update `ZERO_TOOL0`
   in `test/test_urdf.py`.
-- [ ] **Sign of each joint**: command +30° on each one; does RViz move the same joint in the same direction?
+- [ ] **Sign of each joint**: command +30° (0.5236 rad) on one joint, on the real arm and in Gazebo; does Gazebo move
+  the same joint in the same direction?
 
   | Joint | Same joint? | Same direction? | Note |
   |---|---|---|---|
   | joint1..joint6 | | | |
 
-- [ ] **FK vs. `get_coords()`**: `ros2 run tf2_ros tf2_echo base_link tool0` against `mc.get_coords()` (X, Y, Z within a few mm).
+- [ ] **FK vs. `get_coords()`**: put Gazebo at the real arm's angles, then `ros2 run tf2_ros tf2_echo base_link tool0`
+  against `mc.get_coords()` on the real arm (X, Y, Z within a few mm).
 
   | Pose | Model FK (mm) | `get_coords()` (mm) | Error (mm) |
   |---|---|---|---|
   | zero | 45.6 / -64.6 / 436.1 | | |
 
-- [ ] `ros2 run tf2_tools view_frames` with the real arm on, and attach the PDF.
+- [ ] `ros2 run tf2_tools view_frames` with Gazebo running, and attach the PDF.
 
 ## Known gaps
 

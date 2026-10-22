@@ -13,8 +13,8 @@
 
   Arguments:
     gripper_actuated  false (default): fingers fixed open, the real driver publishes no gripper state
-                      true: vendor finger linkage with one slider (for RViz sliders, later Gazebo)
-    gazebo            false (default): plain model (real arm, RViz)
+                      true: vendor finger linkage (one master joint + five mimic joints)
+    gazebo            false (default): plain model (real arm)
                       true: add the gz_ros2_control system (braco.gazebo.xacro, launch/gazebo.launch.py)
 -->
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="braco">
