@@ -67,9 +67,7 @@ TerminalDisplay::TerminalDisplay(bool enabled, std::chrono::milliseconds refresh
 
 TerminalDisplay::~TerminalDisplay()
 {
-  if (active_) {
-    writeAll(std::string(RESET) + CURSOR_SHOW + ALT_SCREEN_OFF);
-  }
+  if (active_) { writeAll(std::string(RESET) + CURSOR_SHOW + ALT_SCREEN_OFF); }
 }
 
 void TerminalDisplay::addMessage(const std::string & text) noexcept
@@ -117,9 +115,8 @@ void TerminalDisplay::render(const Status & s)
   line();
 
   // Speed mode
-  std::snprintf(
-    buf, sizeof(buf), "  %-7s  cap %3d %%   max coast %2.0f deg", s.modeName.c_str(), s.speedCap,
-    s.maxCoast);
+  std::snprintf(buf, sizeof(buf), "  %-7s  cap %3d %%   max coast %2.0f deg", s.modeName.c_str(),
+                s.speedCap, s.maxCoast);
   line(" Speed  " + swatch(s.r, s.g, s.b) + buf);
 
   // Arm state
@@ -176,9 +173,8 @@ void TerminalDisplay::render(const Status & s)
     }
   }
   line();
-  line(
-    std::string(DIM) +
-    " Sticks/D-pad/L1/R1 jog | A/B gripper | X home | Button 9 speed | Ctrl+C quit" + RESET);
+  line(std::string(DIM) +
+       " Sticks/D-pad/L1/R1 jog | A/B gripper | X home | Button 9 speed | Ctrl+C quit" + RESET);
 
   out += CLEAR_BELOW;
   writeAll(out);

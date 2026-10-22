@@ -55,13 +55,7 @@ JOYSTICK_DEVICE = '/dev/input/js0'
 # bumper_speed: fixed J6 speed for L1/R1 (lower = less reaction torque on J4/J5)
 # color:        Atom LED colour (R, G, B)
 SPEED_MODES = [
-    {
-        'name': 'slow',
-        'max_speed': 12,
-        'lead_max': 5.0,
-        'bumper_speed': 10,
-        'color': (0, 0, 255),
-    },
+    {'name': 'slow', 'max_speed': 12, 'lead_max': 5.0, 'bumper_speed': 10, 'color': (0, 0, 255)},
     {
         'name': 'medium',
         'max_speed': 30,

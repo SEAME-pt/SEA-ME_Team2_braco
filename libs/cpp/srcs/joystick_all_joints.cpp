@@ -228,9 +228,8 @@ double stickRatio(int raw)
 // Map a 0..1 command ratio to (speed, lead) for the given mode.
 Motion motionForRatio(double ratio, const SpeedMode & mode, int direction)
 {
-  return {
-    direction, MIN_SPEED + ratio * (mode.maxSpeed - MIN_SPEED),
-    LEAD_MIN_DEG + ratio * (mode.leadMax - LEAD_MIN_DEG)};
+  return {direction, MIN_SPEED + ratio * (mode.maxSpeed - MIN_SPEED),
+          LEAD_MIN_DEG + ratio * (mode.leadMax - LEAD_MIN_DEG)};
 }
 
 // Ratio that yields the mode's fixed J6 bumper speed.
@@ -242,8 +241,8 @@ double bumperRatio(const SpeedMode & mode)
 
 // Scale speed and lead by the distance left to the limit we move toward.
 // Returns nothing if the joint is already at the limit.
-std::optional<Shaped> shapeNearLimit(
-  const mycobot::JointLimit & lim, double angle, int direction, double speed, double lead)
+std::optional<Shaped> shapeNearLimit(const mycobot::JointLimit & lim, double angle, int direction,
+                                     double speed, double lead)
 {
   const double remaining = direction > 0 ? (lim.max - angle) : (angle - lim.min);
   if (remaining <= AT_LIMIT_DEG) return std::nullopt;
@@ -256,9 +255,8 @@ std::optional<Shaped> shapeNearLimit(
 }
 
 // Desired motion per joint. Axes in `blocked` never produce motion.
-Wanted wantedMotion(
-  const std::map<int, int> & axisState, const std::map<int, int> & buttonState,
-  const SpeedMode & mode, const std::set<int> & blocked)
+Wanted wantedMotion(const std::map<int, int> & axisState, const std::map<int, int> & buttonState,
+                    const SpeedMode & mode, const std::set<int> & blocked)
 {
   Wanted wanted;
 
@@ -294,8 +292,8 @@ void setLed(mycobot::MyCobot280 & mc, const SpeedMode & mode)
 
 void printMode(const char * prefix, const SpeedMode & mode)
 {
-  std::printf(
-    "%s%s (cap %d %%, max coast %.0f deg)\n", prefix, mode.name, mode.maxSpeed, mode.leadMax);
+  std::printf("%s%s (cap %d %%, max coast %.0f deg)\n", prefix, mode.name, mode.maxSpeed,
+              mode.leadMax);
 }
 
 // ---- Main control loop -----------------------------------------------------
@@ -383,9 +381,8 @@ void controlLoop(input::Joystick & js, mycobot::MyCobot280 & mc, bool debug)
           speedBtnMs = tMs;
           // Block axes that moved just before button 9 fired
           for (const auto & [axis, axisMs] : axisChangedMs) {
-            if (
-              tMs - axisMs <= SPEED_BUTTON_GUARD_MS &&
-              std::abs(valueOr0(axisState, axis)) > AXIS_DEADZONE) {
+            if (tMs - axisMs <= SPEED_BUTTON_GUARD_MS &&
+                std::abs(valueOr0(axisState, axis)) > AXIS_DEADZONE) {
               blockedAxes.insert(axis);
             }
           }
@@ -507,14 +504,12 @@ void controlLoop(input::Joystick & js, mycobot::MyCobot280 & mc, bool debug)
     for (const auto & [joint, motion] : wanted) moving.insert(joint);
 
     std::set<int> released;
-    std::set_difference(
-      active.begin(), active.end(), moving.begin(), moving.end(),
-      std::inserter(released, released.begin()));
+    std::set_difference(active.begin(), active.end(), moving.begin(), moving.end(),
+                        std::inserter(released, released.begin()));
 
     std::set<int> stillReported;
-    std::set_intersection(
-      limitReported.begin(), limitReported.end(), moving.begin(), moving.end(),
-      std::inserter(stillReported, stillReported.begin()));
+    std::set_intersection(limitReported.begin(), limitReported.end(), moving.begin(), moving.end(),
+                          std::inserter(stillReported, stillReported.begin()));
     limitReported = stillReported;
 
     // 6a. Latch idle joints (at session start or on release)
@@ -540,9 +535,7 @@ void controlLoop(input::Joystick & js, mycobot::MyCobot280 & mc, bool debug)
       auto it = lastHoldSend.find(j);
       const double lastSend = it == lastHoldSend.end() ? 0.0 : it->second;
       if (std::abs(drift) > HOLD_TOLERANCE_DEG && now - lastSend >= HOLD_RESEND_PERIOD) {
-        if (debug) {
-          std::printf("hold J%d: drift %+.1f, back to %.1f\n", j, drift, held);
-        }
+        if (debug) { std::printf("hold J%d: drift %+.1f, back to %.1f\n", j, drift, held); }
         mc.sendAngle(j, round1(held), HOLD_SPEED);
         lastHoldSend[j] = now;
         pause(COMMAND_GAP);
@@ -552,8 +545,8 @@ void controlLoop(input::Joystick & js, mycobot::MyCobot280 & mc, bool debug)
     // 6d. Moving joints: proportional speed, slowed near limits
     for (const auto & [joint, motion] : wanted) {
       const double angle = angles[joint - 1];
-      const auto shaped = shapeNearLimit(
-        mycobot::JOINT_LIMITS[joint - 1], angle, motion.direction, motion.speed, motion.lead);
+      const auto shaped = shapeNearLimit(mycobot::JOINT_LIMITS[joint - 1], angle, motion.direction,
+                                         motion.speed, motion.lead);
       if (!shaped) {
         if (!limitReported.count(joint)) {
           std::printf(">>> J%d at limit\n", joint);
@@ -569,9 +562,7 @@ void controlLoop(input::Joystick & js, mycobot::MyCobot280 & mc, bool debug)
       pause(COMMAND_GAP);
     }
 
-    if (moving != active) {
-      std::printf(">>> jogging joints %s\n", fmtJoints(moving).c_str());
-    }
+    if (moving != active) { std::printf(">>> jogging joints %s\n", fmtJoints(moving).c_str()); }
     active = moving;
     pause(LOOP_PERIOD);
   }

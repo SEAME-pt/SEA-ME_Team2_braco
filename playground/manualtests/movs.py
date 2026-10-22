@@ -12,13 +12,7 @@ POSES = {
     'left': [90, 30, -60, 30, 0, 0],
 }
 
-SEQUENCE = [
-    ('home', 25),
-    ('transit', 50),
-    ('left', 50),
-    ('transit', 50),
-    ('home', 25),
-]
+SEQUENCE = [('home', 25), ('transit', 50), ('left', 50), ('transit', 50), ('home', 25)]
 
 
 def move_and_wait(angles, speed, timeout=10.0):

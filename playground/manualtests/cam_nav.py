@@ -119,13 +119,7 @@ def detection_loop(model, class_ids):
         if elapsed > 0:
             fps = 0.9 * fps + 0.1 * (1.0 / elapsed)
         cv2.putText(
-            annotated,
-            f'{fps:.1f} FPS',
-            (10, 25),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.7,
-            (0, 255, 0),
-            2,
+            annotated, f'{fps:.1f} FPS', (10, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2
         )
 
         ok, jpg = cv2.imencode('.jpg', annotated, [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY])

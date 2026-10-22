@@ -64,9 +64,8 @@ std::string center(const std::string & text)
 std::string angleRow(const std::array<double, 6> & a, int first)
 {
   char buf[32];
-  std::snprintf(
-    buf, sizeof(buf), "%5ld%5ld%5ld", std::lround(a[first]), std::lround(a[first + 1]),
-    std::lround(a[first + 2]));
+  std::snprintf(buf, sizeof(buf), "%5ld%5ld%5ld", std::lround(a[first]), std::lround(a[first + 1]),
+                std::lround(a[first + 2]));
   return buf;
 }
 
@@ -75,9 +74,8 @@ std::string tempRow(const std::array<int, 6> & t, int first)
 {
   auto c = [](int v) { return v < 0 ? 0 : (v > 99 ? 99 : v); };  // keep 2 digits
   char buf[80];  // large enough for any int, so no truncation warnings
-  std::snprintf(
-    buf, sizeof(buf), "%d:%2d  %d:%2d  %d:%2d", first + 1, c(t[first]), first + 2, c(t[first + 1]),
-    first + 3, c(t[first + 2]));
+  std::snprintf(buf, sizeof(buf), "%d:%2d  %d:%2d  %d:%2d", first + 1, c(t[first]), first + 2,
+                c(t[first + 1]), first + 3, c(t[first + 2]));
   return buf;
 }
 
@@ -147,8 +145,8 @@ std::array<std::string, 2> LcdDisplay::linesFor(const Status & s)
   if (!s.feedbackOk) return {fit("NO FEEDBACK"), fit("check arm power")};
   if (s.hotJoint >= 1 && s.hotJoint <= 6 && s.temps) {
     const int t = (*s.temps)[s.hotJoint - 1];
-    return {
-      fit("SERVO HOT! J" + std::to_string(s.hotJoint)), fit(std::to_string(t) + " C - rest arm")};
+    return {fit("SERVO HOT! J" + std::to_string(s.hotJoint)),
+            fit(std::to_string(t) + " C - rest arm")};
   }
   if (s.homing) return {fit("ARM MOVING..."), fit(center("HOMING ALL"))};
   if (!joints.empty()) return {fit("ARM MOVING..."), fit(center(joints))};
@@ -201,9 +199,8 @@ bool LcdDisplay::updateLine(int row, const std::string & text)
 bool LcdDisplay::setBacklight(uint8_t r, uint8_t g, uint8_t b)
 {
   if (backlight_[0] == r && backlight_[1] == g && backlight_[2] == b) return true;
-  if (
-    writeReg(RGB_ADDR, REG_RED, r) && writeReg(RGB_ADDR, REG_GREEN, g) &&
-    writeReg(RGB_ADDR, REG_BLUE, b)) {
+  if (writeReg(RGB_ADDR, REG_RED, r) && writeReg(RGB_ADDR, REG_GREEN, g) &&
+      writeReg(RGB_ADDR, REG_BLUE, b)) {
     backlight_ = {r, g, b};
     return true;
   }

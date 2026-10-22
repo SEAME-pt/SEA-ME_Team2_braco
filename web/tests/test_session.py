@@ -43,12 +43,7 @@ def test_clean_name():
 
 def test_presence_and_welcome(hub):
     welcome = hub.connect('a', 'Ana', '10.0.0.1', object())
-    assert welcome[0] == {
-        'type': 'welcome',
-        'you': 'a',
-        'name': 'Ana',
-        'idle_timeout': 60,
-    }
+    assert welcome[0] == {'type': 'welcome', 'you': 'a', 'name': 'Ana', 'idle_timeout': 60}
     join(hub, 'b', 'Bruno')
     names = [c['name'] for c in hub.presence()]
     assert names == ['Ana', 'Bruno']

@@ -23,11 +23,7 @@ _lock = threading.Lock()
 
 def _get(url):
     req = urllib.request.Request(
-        url,
-        headers={
-            'Accept': 'application/vnd.github+json',
-            'User-Agent': 'braco-dashboard',
-        },
+        url, headers={'Accept': 'application/vnd.github+json', 'User-Agent': 'braco-dashboard'}
     )
     token = os.environ.get('GITHUB_TOKEN')
     if token:

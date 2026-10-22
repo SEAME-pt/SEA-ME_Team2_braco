@@ -90,9 +90,8 @@ int main()
     // 2. Arm: throws if the serial port cannot be opened
     mycobot::MyCobot280 mc;
     std::this_thread::sleep_for(std::chrono::seconds(1));
-    std::printf(
-      "Reading servo temperatures every %lld s. Ctrl+C quits.\n\n",
-      static_cast<long long>(TEMP_PERIOD.count()));
+    std::printf("Reading servo temperatures every %lld s. Ctrl+C quits.\n\n",
+                static_cast<long long>(TEMP_PERIOD.count()));
 
     ui::Status status;  // everything the LCD shows
     setColour(status, mycobot::TempLevel::Normal);

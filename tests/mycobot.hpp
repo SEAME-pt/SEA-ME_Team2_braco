@@ -155,16 +155,15 @@ public:
 
     // Protocol packet: [0xFE, 0xFE, LEN=6, 0x21, JOINT, VAL_H, VAL_L, SPEED, 0xFA]
     int16_t raw_val = static_cast<int16_t>(angle * 100.0f);
-    std::vector<uint8_t> frame = {
-      HEADER,
-      HEADER,
-      6,
-      CMD_SEND_ANGLE,
-      static_cast<uint8_t>(joint_id),
-      static_cast<uint8_t>((raw_val >> 8) & 0xFF),
-      static_cast<uint8_t>(raw_val & 0xFF),
-      static_cast<uint8_t>(speed & 0xFF),
-      FOOTER};
+    std::vector<uint8_t> frame = {HEADER,
+                                  HEADER,
+                                  6,
+                                  CMD_SEND_ANGLE,
+                                  static_cast<uint8_t>(joint_id),
+                                  static_cast<uint8_t>((raw_val >> 8) & 0xFF),
+                                  static_cast<uint8_t>(raw_val & 0xFF),
+                                  static_cast<uint8_t>(speed & 0xFF),
+                                  FOOTER};
 
     write_bytes(frame);
   }
