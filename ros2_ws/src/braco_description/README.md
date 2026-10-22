@@ -14,6 +14,7 @@ arm (zero pose, joint directions, forward kinematics) and the open measurements 
 | `config/gazebo_controllers.yaml` | `joint_state_broadcaster` + `arm_controller` (joint trajectory) for Gazebo |
 | `meshes/` | Visual and collision meshes of Elephant Robotics (`LICENSE.elephantrobotics`) |
 | `launch/gazebo.launch.py` | Gazebo (gz sim) with the model holding its pose, plus the controllers |
+| `scripts/move_arm_example.py` | Example node: moves the Gazebo arm with the `follow_joint_trajectory` action |
 | `test/test_urdf.py` | Keeps the URDF and the code in sync |
 
 `gazebo.launch.py` is a quick viewer: the model in Gazebo, moved through `/arm_controller/joint_trajectory`.
@@ -29,6 +30,9 @@ ros2 launch braco_description gazebo.launch.py
 ros2 topic pub --once /arm_controller/joint_trajectory trajectory_msgs/msg/JointTrajectory \
   "{joint_names: [joint1, joint2, joint3, joint4, joint5, joint6],
     points: [{positions: [0.5, 0.3, -0.3, 0.0, 0.0, 0.0], time_from_start: {sec: 2}}]}"
+
+# example of code driving the Gazebo arm (Gazebo running, another shell)
+ros2 run braco_description move_arm_example.py
 
 # fingers with the vendor linkage (one slider): gripper_actuated:=true
 # check the model by hand
