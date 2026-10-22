@@ -58,8 +58,15 @@ and the driver already has the rest mode it needs.
 * **Back:** never automatic. A person runs `make resume` (or Wake up on the page)
   when the arm has cooled down. Resuming during the same episode is allowed and
   not overruled: it is how a hot arm is parked on purpose.
-* **Switch:** parameter `auto_rest_on_hot` (default `true`) in
-  `braco_bringup/config/braco.yaml`.
+* **What it does:** it runs `park` (`ros2 run braco_bringup park`, a child process): the arm
+  folds, the servos are released and rest mode is on. A hot arm that was only held still
+  (rest mode alone keeps the joints energised, holding the pose) does not cool; releasing
+  the joints does. `park` takes the control by force, so it wins over the page and the
+  joystick. If `park` cannot start or exits with an error, the monitor falls back to
+  `/arm/set_read_only true`, so the arm is never left without protection.
+* **Switch:** parameter `auto_rest_on_hot` (default `true`) turns the reaction off;
+  `park_on_hot` (default `true`) chooses park over rest mode only; `park_command` is the
+  command line to run. All in `braco_bringup/config/braco.yaml`.
 
 The page no longer computes temperature levels from its own copy of the limits:
 on the real arm they come from `/diagnostics`, so there is one definition of
@@ -70,8 +77,9 @@ on the real arm they come from `/diagnostics`, so there is one definition of
 * Good, because a hot servo stops being loaded without anybody watching
 * Good, because rest mode was already there and keeps the temperatures coming, so cooling is watched
 * Good, because the person decides when to resume, and is not overruled while they handle the arm
-* Bad, because a move in progress is cut at 65 °C, wherever the arm is (it holds
-  its position; it does not drop)
+* Good, because the servos are released and can cool, even if the arm was standing still
+* Bad, because a move in progress is replaced by the park move at 65 °C (a hot servo moves
+  once more, to the park pose, instead of holding where it was)
 * Bad, because it depends on `temperature_monitor` running (it is respawned by
   the launch). The servos' own protection remains the last line
 
@@ -80,7 +88,7 @@ on the real arm they come from `/diagnostics`, so there is one definition of
 * `test/test_control.cpp` (gtest): rest once per episode, a new episode after
   cooling below 65 °C, retry after a failed request
 * Bench (Jetson, `make bench`, step 5): a simulated hot servo (a fake `ServoTemperatures`, or a lower
-  limit) → rest mode on, LCD warns, `make resume` → motion accepted again
+  limit) → the arm parks, the joints are released, rest mode on, LCD warns, `make resume` → motion accepted again
 
 ## Pros and Cons of the Options
 

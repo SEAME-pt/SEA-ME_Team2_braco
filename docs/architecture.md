@@ -335,6 +335,7 @@ The **wiring** (devices) comes from the launch arguments, filled by `docker/comp
 | | `control_idle_s` | 5.0 | the owner loses the control after this long without motion |
 | `temperature_monitor` | `stale_timeout_s` | 5.0 | no temperatures for this long: "no feedback" on the LCD |
 | | `auto_rest_on_hot` | true | a servo at 65 °C puts the arm to rest, once per episode |
+| | `park_on_hot` | true | ... by running park (fold, release the joints); false: rest mode only |
 | `joystick_teleop` | `state_timeout_ms` | 150 | older `/joint_states`: no jogging |
 | | `debug` | false | log every joystick event |
 | | `force_button`, `force_hold_s` | 8, 1.0 | hold to take the control from another owner |

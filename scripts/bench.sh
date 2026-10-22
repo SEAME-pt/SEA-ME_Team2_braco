@@ -121,16 +121,30 @@ else
   record FAIL "page killed mid-move: watchdog stops the arm"
 fi
 
-say "5. Simulated HOT servo (${HOT_C} C) puts the arm to rest"
-ros service call /arm/set_read_only std_srvs/srv/SetBool "{data: false}" >/dev/null
-$EXEC timeout 8 ros2 topic pub -r 10 /arm/servo_temperatures braco_interfaces/msg/ServoTemperatures \
-  "{celsius: [30, 30, 30, $HOT_C, 30, 30], valid: true}" >/dev/null 2>&1 &
-FAKE_PID=$!
-sleep 6
-if [[ $(read_only) == True ]]; then record PASS "HOT: rest mode on"; else record FAIL "HOT: rest mode on"; fi
-kill "$FAKE_PID" 2>/dev/null
-unset FAKE_PID
-sleep 5
+say "5. Simulated HOT servo (${HOT_C} C): the arm parks, releases the joints and rests"
+if ask "The arm will fold to the park pose by itself. Is the area clear?"; then
+  ros service call /arm/set_read_only std_srvs/srv/SetBool "{data: false}" >/dev/null
+  $EXEC timeout 45 ros2 topic pub -r 10 /arm/servo_temperatures braco_interfaces/msg/ServoTemperatures \
+    "{celsius: [30, 30, 30, $HOT_C, 30, 30], valid: true}" >/dev/null 2>&1 &
+  FAKE_PID=$!
+  rest=""
+  for _ in $(seq 1 40); do  # park: take control, move (up to 20 s), release, rest
+    sleep 1
+    rest=$(read_only)
+    [[ $rest == True ]] && break
+  done
+  if [[ $rest == True ]]; then record PASS "HOT: park finished, rest mode on"; else record FAIL "HOT: rest mode did not come on"; fi
+  if ask "Did the arm fold to the park pose and are the joints now free (can be moved by hand)?"; then
+    record PASS "HOT: arm parked and joints released"
+  else
+    record FAIL "HOT: arm parked and joints released"
+  fi
+  kill "$FAKE_PID" 2>/dev/null
+  unset FAKE_PID
+  sleep 5
+else
+  record SKIP "HOT: park and rest (operator did not confirm the area)"
+fi
 
 say "6. make resume leaves rest mode, motion accepted again"
 ros service call /arm/set_read_only std_srvs/srv/SetBool "{data: false}" >/dev/null

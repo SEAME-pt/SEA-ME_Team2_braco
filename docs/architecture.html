@@ -631,6 +631,7 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
           <tr><td><code>control_idle_s</code></td><td class="num">5.0</td><td>the owner loses the control after this long without motion</td></tr>
           <tr><td rowspan="2"><code>temperature_monitor</code></td><td><code>stale_timeout_s</code></td><td class="num">5.0</td><td>no temperatures for this long: "no feedback" on the LCD</td></tr>
           <tr><td><code>auto_rest_on_hot</code></td><td class="num">true</td><td>a servo at 65 °C puts the arm to rest, once per episode</td></tr>
+          <tr><td><code>park_on_hot</code></td><td class="num">true</td><td>... by running park (fold, release the joints); false: rest mode only</td></tr>
           <tr><td rowspan="3"><code>joystick_teleop</code></td><td><code>state_timeout_ms</code></td><td class="num">150</td><td>older <code>/joint_states</code>: no jogging</td></tr>
           <tr><td><code>debug</code></td><td class="num">false</td><td>log every joystick event</td></tr>
           <tr><td><code>force_button</code>, <code>force_hold_s</code></td><td class="num">8, 1.0</td><td>hold to take the control from another owner</td></tr>
