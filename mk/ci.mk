@@ -1,7 +1,7 @@
 # mk/ci.mk - what .github/workflows/ci.yml runs, reproducible here: ci ci-ros lint.
 #
-#   host job   make ci       host checks (venv, imports, C++ hello-world build), lint, web page tests
-#   ros job    make ci-ros   rosdep, colcon build and colcon test of ros2_ws/src + libs (make ci-image builds its image)
+#   host job   make ci       lint, web page tests
+#   ros job    make ci-ros   rosdep, colcon build and colcon test of ros2_ws/src (make ci-image builds its image)
 #
 # No robot and no display needed.
 
@@ -30,11 +30,11 @@ SHELLCHECK_FILES := $(SCRIPTS_DIR)/*.sh $(TESTS_DIR)/*.sh
 HADOLINT_IMAGE   := hadolint/hadolint:v2.12.0
 HADOLINT_FLAGS   := $(addprefix --ignore ,DL3008 DL3013 DL3059 DL3006 DL3042 DL3045 SC1091 SC2086 SC2016)
 
-.PHONY: ci ci-image ci-ros lint _host-check
+.PHONY: ci ci-image ci-ros lint
 
 ##@ CI (.github/workflows/ci.yml)
 
-ci: _host-check lint $(VENV)/.web-test-installed ## The `host` CI job: host checks, lint, web page tests
+ci: lint $(VENV)/.web-test-installed ## The `host` CI job: lint, web page tests
 	$(VENV)/bin/python -m pytest web/tests -q
 
 ci-image: ## Build the `ros` CI job's image (Dockerfile stage CI_TARGET=base) as CI_IMAGE, for your UID/GID
@@ -44,7 +44,7 @@ ci-image: ## Build the `ros` CI job's image (Dockerfile stage CI_TARGET=base) as
 ci-ros: ## The `ros` CI job: rosdep + colcon build + colcon test in a throw-away container (CI_IMAGE built if missing)
 	@docker image inspect $(CI_IMAGE) >/dev/null 2>&1 || $(MAKE) --no-print-directory ci-image
 	docker run --rm -e CCACHE_DIR=/ws/.ccache -e CCACHE_MAXSIZE=500M -v $(CURDIR)/$(WS_DIR):/ws \
-	    -v $(CURDIR)/$(LIBS_DIR):$(CONTAINER_LIBS):ro $(CI_IMAGE) bash -c '$(CI_ROS_SH)'
+	    $(CI_IMAGE) bash -c '$(CI_ROS_SH)'
 
 lint: $(ENV_FILE) ## Compose files (both machines, GPU overrides), shellcheck and hadolint (binaries or their docker images)
 	@echo "== compose =="
@@ -61,18 +61,3 @@ lint: $(ENV_FILE) ## Compose files (both machines, GPU overrides), shellcheck an
 	else \
 	  { docker image inspect $(HADOLINT_IMAGE) >/dev/null 2>&1 || docker pull -q $(HADOLINT_IMAGE) >/dev/null; } && \
 	  docker run --rm -i $(HADOLINT_IMAGE) hadolint $(HADOLINT_FLAGS) - < $(DOCKERFILE) && echo "  hadolint ($(HADOLINT_IMAGE)): clean"; fi
-
-# Hardware-free checks on the host: the venv from requirements.txt, imports, the C++ hello-world build.
-_host-check: $(VENV)/.installed
-	$(VENV)/bin/python -c 'import ast; ast.parse(open("tests/hello_world.py").read())'
-	$(VENV)/bin/python -c 'import numpy, pymycobot, serial'
-	cmake -S $(CPP_DIR) -B $(CPP_BUILD)
-	cmake --build $(CPP_BUILD)
-
-$(VENV)/.installed: requirements.txt .python-version
-	@$(PYTHON) -c 'import sys; v="%d.%d" % sys.version_info[:2]; sys.exit(0 if v == "$(PY_VERSION)" else "need Python $(PY_VERSION), $(PYTHON) is " + v + " (install it, e.g. uv python install $(PY_VERSION), or set PYTHON=/path/to/python$(PY_VERSION))")'
-	rm -rf $(VENV)
-	$(PYTHON) -m venv $(VENV)
-	$(PIP) install --upgrade pip
-	$(PIP) install -r requirements.txt
-	touch $@

@@ -1,12 +1,15 @@
 """Arm sources for the braco web page: telemetry plus a small set of commands.
 
-    RosArm     the real arm through arm_driver (ROS 2), the normal case on the Jetson
+    RosArm     the real arm through arm_driver (ROS 2), the only way to the real arm
     GazeboArm  the arm simulated in Gazebo (ROS 2, PC only)
-    ArmSource  the real arm straight through pymycobot (fallback when no real container runs)
     MockArm    synthetic data, for developing the page without the arm
+
+The page never opens the serial port: arm_driver owns it (docs/architecture.html).
 
 All of them expose start(), snapshot(), stop_motion(), go_to_pose(), move_joint()
 and wake_up() (leave rest, servos on, no movement); RosArm and MockArm also set_rest(), set_gripper() and set_led().
+take_control() / release_control() follow the page's control lease: RosArm asks arm_driver
+for the control (docs/ADR-0002-controle-unico.md), the others have nobody to ask.
 snapshot()["capabilities"] tells the page which of these a source supports.
 Commands only come from explicit actions on the page; nothing here powers the
 servos or moves the arm by itself, and no setting is written.
@@ -18,11 +21,11 @@ import threading
 import time
 
 from . import ros
+from .ros_health import level_name
+from .session import ControlError
 
-DEFAULT_PORT = "/dev/ttyTHS1"
-DEFAULT_BAUD = 1000000
-
-# Same thresholds as TEMP_WARM_C / TEMP_HOT_C in libs/cpp/includes/mycobot.hpp
+# Same thresholds as TEMP_WARM_C / TEMP_HOT_C in ros2_ws/src/mycobot_cpp/includes/mycobot.hpp. Only the mock
+# uses them: on the real arm the level comes from temperature_monitor (/diagnostics).
 TEMP_WARM_C = 55
 TEMP_HOT_C = 65
 
@@ -40,7 +43,7 @@ DH = [
     (0, 45.6, 0, 0),
 ]
 
-# Fixed poses, same as ZERO_ANGLES / PARK_ANGLES in libs/cpp/includes/mycobot.hpp
+# Fixed poses, same as ZERO_ANGLES / PARK_ANGLES in ros2_ws/src/mycobot_cpp/includes/mycobot.hpp
 # (J3 -148: just inside the J3 limit)
 POSES = {
     "park": [0, 131, -148, 146, 4.5, 0],
@@ -67,8 +70,13 @@ ROS_STEP_DEG = 15.0
 ROS_RESEND_S = 0.1
 ROS_TOLERANCE_DEG = 2.0
 ROS_MOVE_TIMEOUT = 20.0
+ROS_PARK_SETTLE_S = 0.5   # same pause as `make park` before it releases the servos
 ROS_STATE_TIMEOUT = 0.5   # older /joint_states = no feedback for a move
 ROS_STALE_AFTER = 2.0     # seconds without /joint_states before the page shows "disconnected"
+ROS_SOURCE = "web"        # ArmCommand.source and the control owner name of the page
+# /diagnostics from temperature_monitor: "mycobot: J<n> servo temperature", level -> temp level
+DIAG_TEMP_NAME = "mycobot: J{} servo temperature"
+DIAG_TEMP_LEVELS = {"ok": "normal", "warn": "warm", "error": "hot"}
 
 ANGLE_PERIOD = 0.2   # 5 Hz
 STATE_PERIOD = 1.0   # power / moving
@@ -92,27 +100,6 @@ def temp_level(celsius):
     if celsius >= TEMP_WARM_C:
         return "warm"
     return "normal"
-
-
-def read_value(getter, retries=5):
-    """Call getter() until it returns a list of 6 numbers, or give up.
-
-    Same pattern as playground/get_angles.py: pymycobot sometimes returns
-    -1 or None when a reply is missed.
-    """
-    for _ in range(retries):
-        value = getter()
-        if isinstance(value, list) and len(value) == 6:
-            return value
-        time.sleep(0.05)
-    return None
-
-
-def as_bool(value):
-    """pymycobot returns 1 / 0 / -1 for yes / no / no reply."""
-    if value in (0, 1):
-        return bool(value)
-    return None
 
 
 def dh_coords(angles):
@@ -143,11 +130,13 @@ class _Base:
             "coords": None,
             "temps": None,
             "temp_levels": None,
+            "volts": None,      # servo supply voltage per joint, V
             "power_on": None,
             "resting": False,   # rest mode (motion refused): set by set_rest(), cleared by wake_up()
             "moving": None,
             "gripper": None,    # "open" | "closed" | None (unknown), last commanded
             "led": None,        # [r, g, b] 0-255, last commanded
+            "control_owner": None,   # arm_driver's control owner ("web", "joystick", ...; "" free)
             "notice": None,     # {"t", "text"}: something the operators should know (move timed out...)
             "capabilities": list(self.CAPABILITIES),
             "updated": None,
@@ -170,130 +159,11 @@ class _Base:
         levels = [temp_level(t) for t in temps] if temps else None
         self._update(temps=temps, temp_levels=levels)
 
+    def take_control(self):
+        """The page's lease was taken (or is still held). Nobody else to ask here."""
 
-class ArmSource(_Base):
-    def __init__(self, port=DEFAULT_PORT, baud=DEFAULT_BAUD):
-        super().__init__()
-        self.port = port
-        self.baud = baud
-        self._mc = None
-        self._serial = threading.Lock()   # pymycobot is not thread-safe
-
-    def start(self):
-        self._thread = threading.Thread(target=self._run, daemon=True)
-        self._thread.start()
-
-    def close(self):
-        super().close()
-        thread = getattr(self, "_thread", None)
-        if thread is not None:
-            thread.join(timeout=5)
-
-    def _connect(self):
-        # Newer pymycobot versions provide MyCobot280; older ones only have MyCobot.
-        try:
-            from pymycobot import MyCobot280 as MyCobot
-        except ImportError:
-            from pymycobot.mycobot import MyCobot
-        self._mc = MyCobot(self.port, self.baud)
-        time.sleep(0.5)
-
-    def _run(self):
-        last_state = last_temp = 0.0
-        while not self._closed.is_set():
-            if self._mc is None:
-                try:
-                    self._connect()
-                    self._update(connected=True, error=None)
-                except Exception as e:   # port busy, missing, no permission
-                    self._update(connected=False, error=str(e))
-                    self._closed.wait(3)
-                    continue
-
-            try:
-                # A missed reply costs pymycobot ~1.5 s, so keep retries low and
-                # skip the other reads while the arm is not answering.
-                angles = read_value(lambda: self._call(self._mc.get_angles), retries=2)
-                if angles is None:
-                    self._update(angles=None, coords=None, connected=False,
-                                 error="no reply from the arm")
-                    self._closed.wait(ANGLE_PERIOD)
-                    continue
-                coords = read_value(lambda: self._call(self._mc.get_coords), retries=1)
-                self._update(angles=angles, coords=coords, connected=True, error=None)
-
-                now = time.time()
-                if now - last_state >= STATE_PERIOD:
-                    last_state = now
-                    power = as_bool(self._call(self._mc.is_power_on))
-                    moving = as_bool(self._call(self._mc.is_moving))
-                    self._update(power_on=power, moving=moving)
-
-                if now - last_temp >= TEMP_PERIOD:
-                    last_temp = now
-                    self._set_temps(self._read_temps())
-            except Exception as e:   # serial unplugged mid-run
-                self._update(connected=False, error=str(e))
-                self._mc = None
-                self._closed.wait(1)
-                continue
-
-            self._closed.wait(ANGLE_PERIOD)
-        self._close_port()
-
-    def _close_port(self):
-        port = getattr(self._mc, "_serial_port", None)
-        if port is not None:
-            with self._serial:
-                port.close()
-        self._mc = None
-
-    def _call(self, fn):
-        """One serial request. The lock is held per request, so stop_motion()
-        never waits for more than the request in progress."""
-        with self._serial:
-            return fn()
-
-    def _read_temps(self):
-        getter = getattr(self._mc, "get_servo_temps", None)
-        if getter is None:
-            return None
-        value = self._call(getter)
-        if isinstance(value, list) and len(value) >= 6:
-            return [int(round(t)) for t in value[:6]]
-        return None
-
-    def stop_motion(self):
-        if self._mc is None:
-            raise RuntimeError("arm not connected")
-        with self._serial:
-            self._mc.stop()
-
-    def go_to_pose(self, name, speed=POSE_SPEED):
-        if name not in POSES:
-            raise ValueError("unknown pose: " + name)
-        if self._mc is None:
-            raise RuntimeError("arm not connected")
-        check_awake(self.snapshot()["resting"])
-        with self._serial:
-            self._mc.send_angles(POSES[name], speed)
-
-    def move_joint(self, index, angle, speed=POSE_SPEED):
-        """Move one joint (0-based index); the others are not commanded."""
-        if self._mc is None:
-            raise RuntimeError("arm not connected")
-        check_awake(self.snapshot()["resting"])
-        with self._serial:
-            self._mc.send_angle(index + 1, angle, speed)
-
-    def wake_up(self):
-        """Power the servos on. The arm stays where it is: nothing moves."""
-        if self._mc is None:
-            raise RuntimeError("arm not connected")
-        with self._serial:
-            self._mc.power_on()
-        time.sleep(0.3)
-        self._update(power_on=True, resting=False)
+    def release_control(self):
+        """The page's lease ended."""
 
 
 class MockArm(_Base):
@@ -305,6 +175,7 @@ class MockArm(_Base):
         super().__init__()
         self._t0 = time.time()
         self._temps = [32.0, 35.0, 36.0, 38.0, 34.0, 31.0]
+        self._volts = [12.0] * 6
         self._stopped_until = 0.0
         self._frozen = None
         self._pose = None   # (angles, started_at, from_angles) while holding a pose
@@ -343,6 +214,10 @@ class MockArm(_Base):
                     drift = random.uniform(-0.3, 0.9) if moving else random.uniform(-0.8, 0.1)
                     self._temps[i] = min(72.0, max(28.0, self._temps[i] + drift))
                 self._set_temps([int(round(t)) for t in self._temps])
+                # the supply sags a little while the joints move
+                self._volts = [round(12.0 - (random.uniform(0.2, 0.9) if moving else random.uniform(0.0, 0.2)), 1)
+                               for _ in range(6)]
+                self._update(volts=self._volts)
 
             self._closed.wait(ANGLE_PERIOD)
 
@@ -513,10 +388,15 @@ class RosArm(_Base):
         pub  /arm/led                 Atom LED colour
         srv  /arm/power_on, /arm/release_servos, /arm/set_gripper, /arm/set_read_only
 
+        sub  /arm/control_owner       who may move the arm (latched)
+        sub  /diagnostics             temperature levels, from temperature_monitor
+        srv  /arm/take_control        while the page's lease is held (source "web")
+
     A move runs in a worker thread that resends bounded steps until the arm is
     within ROS_TOLERANCE_DEG of the target, exactly like ArmMoves::moveTo(). A
-    newer command or STOP cancels it; if the web server dies, the driver's
-    300 ms watchdog stops the arm.
+    newer command or STOP cancels it, and so does losing the control (the joystick
+    forced it); if the web server dies, the driver's 300 ms watchdog stops the arm.
+    on_control_lost(owner) is called (from a ROS thread) when another client takes it.
     """
 
     CAPABILITIES = ("stop", "poses", "joints", "wake", "rest", "gripper", "led")
@@ -532,6 +412,7 @@ class RosArm(_Base):
         self._last_move = 0.0
         self._motion = 0   # bumped by every command; a worker stops when it changes
         self._motion_lock = threading.Lock()
+        self.on_control_lost = None
         self._update(source="ros", connected=False, error="waiting for arm_driver (/joint_states)")
 
     # ---- setup ----------------------------------------------------------------
@@ -553,22 +434,27 @@ class RosArm(_Base):
             self._update(connected=False, error=self._bridge.error)
             return
         try:
-            from braco_interfaces.msg import ArmCommand, ServoTemperatures
+            from braco_interfaces.msg import ArmCommand, ServoTemperatures, ServoVoltages
+            from braco_interfaces.srv import TakeControl
         except ImportError as e:
             self._update(connected=False,
                          error="braco_interfaces not found, build and source the workspace ({})".format(e))
             return
+        from diagnostic_msgs.msg import DiagnosticArray
         from rclpy.qos import DurabilityPolicy, QoSProfile
         from sensor_msgs.msg import JointState
-        from std_msgs.msg import Bool, ColorRGBA
+        from std_msgs.msg import Bool, ColorRGBA, String
         from std_srvs.srv import SetBool, Trigger
 
         self._types = {"ArmCommand": ArmCommand, "ColorRGBA": ColorRGBA,
-                       "SetBool": SetBool, "Trigger": Trigger}
+                       "SetBool": SetBool, "Trigger": Trigger, "TakeControl": TakeControl}
         node.create_subscription(JointState, "/joint_states", self._on_joint_state, 10)
         node.create_subscription(ServoTemperatures, "/arm/servo_temperatures", self._on_temps, 10)
+        node.create_subscription(ServoVoltages, "/arm/servo_voltages", self._on_volts, 10)
+        node.create_subscription(DiagnosticArray, "/diagnostics", self._on_diagnostics, 10)
         latched = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
         node.create_subscription(Bool, "/arm/read_only", self._on_read_only, latched)
+        node.create_subscription(String, "/arm/control_owner", self._on_control_owner, latched)
         self._cmd_pub = node.create_publisher(ArmCommand, "/arm/command", 10)
         self._led_pub = node.create_publisher(ColorRGBA, "/arm/led", 10)
         self._clients = {
@@ -576,6 +462,7 @@ class RosArm(_Base):
             "release_servos": node.create_client(Trigger, "/arm/release_servos"),
             "set_gripper": node.create_client(SetBool, "/arm/set_gripper"),
             "set_read_only": node.create_client(SetBool, "/arm/set_read_only"),
+            "take_control": node.create_client(TakeControl, "/arm/take_control"),
         }
 
     # ---- telemetry --------------------------------------------------------------
@@ -599,10 +486,36 @@ class RosArm(_Base):
                      moving=now - self._last_move < 0.5)
 
     def _on_temps(self, msg):
-        self._set_temps([int(c) for c in msg.celsius] if msg.valid else None)
+        # The levels come from /diagnostics (temperature_monitor), not from a copy of the limits
+        self._update(temps=[int(c) for c in msg.celsius] if msg.valid else None)
+
+    def _on_volts(self, msg):
+        self._update(volts=[round(float(v), 1) for v in msg.volts] if msg.valid else None)
+
+    def _on_diagnostics(self, msg):
+        levels = list(self.snapshot()["temp_levels"] or [None] * 6)
+        seen = False
+        for status in msg.status:
+            if status.name == "mycobot: servo temperatures":   # STALE: no data at all
+                self._update(temp_levels=None)
+                return
+            for j in range(6):
+                if status.name == DIAG_TEMP_NAME.format(j + 1):
+                    levels[j] = DIAG_TEMP_LEVELS.get(level_name(status.level))
+                    seen = True
+        if seen:
+            self._update(temp_levels=levels)
 
     def _on_read_only(self, msg):
         self._update(resting=bool(msg.data))
+
+    def _on_control_owner(self, msg):
+        owner = str(msg.data)
+        self._update(control_owner=owner)
+        if owner != ROS_SOURCE:
+            self._cancel()   # a running move stops streaming (no STOP: it is not ours to send)
+            if owner and self.on_control_lost is not None:
+                self.on_control_lost(owner)
 
     def _watch(self):
         while not self._closed.wait(0.2):
@@ -638,31 +551,48 @@ class RosArm(_Base):
     def _publish_angles(self, angles, speed):
         ArmCommand = self._types["ArmCommand"]
         self._cmd_pub.publish(ArmCommand(type=ArmCommand.ALL_ANGLES, angles_deg=[float(a) for a in angles],
-                                         speed=int(speed)))
+                                         speed=int(speed), source=ROS_SOURCE))
 
     def _publish_stop(self):
         ArmCommand = self._types["ArmCommand"]
-        self._cmd_pub.publish(ArmCommand(type=ArmCommand.STOP))
+        self._cmd_pub.publish(ArmCommand(type=ArmCommand.STOP, source=ROS_SOURCE))
+
+    def _has_control(self):
+        return self.snapshot()["control_owner"] == ROS_SOURCE
 
     def _cancel(self):
         with self._motion_lock:
             self._motion += 1
             return self._motion
 
-    def _start_move(self, target, speed):
-        """Stream `target` in a worker thread."""
+    def _start_move(self, target, speed, on_arrival=None):
+        """Stream `target` in a worker thread; on_arrival() runs there once it is reached."""
         token = self._cancel()
-        threading.Thread(target=self._stream, args=(token, list(target), speed),
+        threading.Thread(target=self._stream, args=(token, list(target), speed, on_arrival),
                          daemon=True).start()
         return token
 
-    def _stream(self, token, target, speed):
+    def _park_finish(self, token):
+        """Like `make park`: let the arm settle, release the servos, then enter rest mode."""
+        if self._closed.wait(ROS_PARK_SETTLE_S) or token != self._motion or not self._has_control():
+            return   # STOP, a newer command or a lost control: do not release a moving arm
+        try:
+            self._service("release_servos")
+            self._update(power_on=False)
+            self._service("set_read_only", True)
+            self._update(resting=True)
+        except Exception as e:
+            self._notice("park: the arm arrived but the servos were not released ({})".format(e))
+
+    def _stream(self, token, target, speed, on_arrival=None):
         end = time.monotonic() + ROS_MOVE_TIMEOUT
         while token == self._motion and not self._closed.is_set():
             angles = self._fresh_angles()
             if angles is not None:
                 deviation = max(abs(a - p) for a, p in zip(angles, target))
                 if deviation <= ROS_TOLERANCE_DEG:
+                    if on_arrival is not None:
+                        on_arrival(token)
                     return
                 # Same fraction for every joint, so they all arrive together
                 scale = min(1.0, ROS_STEP_DEG / deviation)
@@ -671,9 +601,33 @@ class RosArm(_Base):
             if time.monotonic() >= end:
                 break
             self._closed.wait(ROS_RESEND_S)
-        if token == self._motion and not self._closed.is_set():
+        if token == self._motion and not self._closed.is_set() and self._has_control():
             self._publish_stop()
             self._notice("target not reached in {:.0f} s (or no feedback): arm stopped".format(ROS_MOVE_TIMEOUT))
+
+    # ---- control owner ----------------------------------------------------------------
+
+    def _control_call(self, release=False):
+        self._ready()
+        TakeControl = self._types["TakeControl"]
+        request = TakeControl.Request(source=ROS_SOURCE, force=False, release=release)
+        return self._bridge.call(self._clients["take_control"], request)
+
+    def take_control(self):
+        """Become arm_driver's control owner, or renew it. ControlError if another client has it."""
+        result = self._control_call()
+        self._update(control_owner=result.owner)
+        if not result.success:
+            raise ControlError(result.message or "the arm is controlled by " + result.owner)
+
+    def release_control(self):
+        """Give the control back; best effort (arm_driver frees it after control_idle_s anyway)."""
+        self._cancel()
+        try:
+            result = self._control_call(release=True)
+            self._update(control_owner=result.owner)
+        except Exception as e:   # driver gone or not ready: nothing to give back
+            print("braco: release control: {}".format(e))
 
     # ---- commands -------------------------------------------------------------------
 
@@ -692,7 +646,7 @@ class RosArm(_Base):
         if name not in POSES:
             raise ValueError("unknown pose: " + name)
         self._check_can_move()
-        self._start_move(POSES[name], speed)
+        self._start_move(POSES[name], speed, self._park_finish if name == "park" else None)
 
     def move_joint(self, index, angle, speed=POSE_SPEED):
         self._check_can_move()

@@ -1,6 +1,6 @@
 # Tuning parameters of the braco nodes on the real arm (braco.launch.py sim:=false).
 # The values are the nodes' own defaults, written down in one place. The wiring (port, baud,
-# lcd_bus, device) is not set here: braco.launch.py takes it from its launch arguments.
+# lcd_bus, device, camera) is not set here: braco.launch.py takes it from its launch arguments.
 
 arm_driver:
   ros__parameters:
@@ -9,12 +9,26 @@ arm_driver:
     command_timeout_ms: 300   # watchdog: stop the arm when motion commands stop for this long
     gripper_speed: 50         # 1..100
     read_only: false          # start in rest mode
+    control_idle_s: 5.0       # the control owner loses it after this long without motion
 
 temperature_monitor:
   ros__parameters:
     stale_timeout_s: 5.0      # no temperatures for this long: "no feedback" on the LCD
+    auto_rest_on_hot: true    # a servo at TEMP_HOT_C (65 C) puts the arm to rest, once per episode
+    park_on_hot: true         # ... by running park (fold, release the joints); false: rest mode only
+    # park_command: [ros2, run, braco_bringup, park]   # what park_on_hot runs
 
 joystick_teleop:
   ros__parameters:
     state_timeout_ms: 150     # older /joint_states: no jogging
     debug: false              # log every joystick event
+    force_button: 8           # hold it to take the control from another owner (the web page)
+    force_hold_s: 1.0         # ... for this long
+
+camera:
+  ros__parameters:
+    width: 640                # asked of the camera, which may pick the closest it has
+    height: 480
+    fps: 15.0                 # the most it publishes on /camera/image_raw/compressed
+    jpeg_quality: 80          # only for cameras without MJPG (MJPG frames are sent as they come)
+    reopen_s: 2.0             # without a camera: try again this often

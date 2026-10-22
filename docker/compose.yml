@@ -61,7 +61,6 @@ x-system-env: &system-env
 # The bind mounts of the system containers (dev lists its own, with comments).
 x-volumes:
   - &vol-ws ../ros2_ws:/ws
-  - &vol-libs ../libs:/opt/seame/libs:ro
   - &vol-repo ..:/opt/braco:ro             # the braco web page (web/) and the docs it shows
   - &vol-logs ros-logs:/home/dev/.ros
 
@@ -90,7 +89,6 @@ services:
       - ros-logs:/home/dev/.ros
       - ./tests:/opt/seame/tests:ro        # make net-test etc.; edit on the host, no rebuild
       - ..:/opt/braco:ro                   # the repository (web page and docs), as in the system containers
-      - ../libs:/opt/seame/libs:ro         # libs/cpp (mycobot_cpp); colcon finds it via make build
 
   # ---------------------------------------------------------------------------------------
   # real - the system on the Jetson: ONE container, everything under ROS 2 (make up). No build of its own: it uses
@@ -99,6 +97,7 @@ services:
   #                        itself, so restarting it is safe
   #   temperature_monitor  servo temperatures -> /diagnostics + LCD1602
   #   joystick_teleop      joystick control; waits for the joystick and survives unplugging
+  #   camera               the eye-in-hand USB camera -> /camera/image_raw/compressed; waits for it
   #   braco web page       uvicorn on WEB_PORT (default 8000), talks to the arm only through ROS 2
   # The arm is not moved when the container starts or stops: zero/park are manual (make zero / park, make down PARK=1).
   # ---------------------------------------------------------------------------------------
@@ -111,11 +110,13 @@ services:
       SIM: "false"
     command: ["/ws/install/braco_bringup/lib/braco_bringup/arm_routine.sh",
               "port:=${MYCOBOT_PORT:-/dev/ttyTHS1}", "baud:=${MYCOBOT_BAUD:-1000000}",
-              "lcd_bus:=${LCD_I2C_BUS:-/dev/i2c-0}", "device:=${JOYSTICK_DEVICE:-/dev/input/js0}"]
+              "lcd_bus:=${LCD_I2C_BUS:-/dev/i2c-0}", "device:=${JOYSTICK_DEVICE:-/dev/input/js0}",
+              "camera:=/run/hostdev/${CAMERA_DEVICE:-video0}"]
     group_add:
       - "${DIALOUT_GID:-20}"
       - "${I2C_GID:-65534}"                 # set by make setup; fallback: nogroup (harmless; the two
       - "${INPUT_GID:-${USER_GID:-1000}}"   #   fallbacks differ because compose refuses duplicates)
+      - "${VIDEO_GID:-44}"                  # the camera
     devices:
       - ${MYCOBOT_PORT:-/dev/ttyTHS1}:${MYCOBOT_PORT:-/dev/ttyTHS1}:rwm
       - ${LCD_I2C_BUS:-/dev/i2c-0}:${LCD_I2C_BUS:-/dev/i2c-0}:rw
@@ -124,14 +125,18 @@ services:
       # - /dev/gpiochip0:/dev/gpiochip0
     # The whole /dev/input plus a cgroup rule for joystick/event devices (major 13), so the
     # controller can be plugged in after the container started, or unplugged and replugged.
+    # The camera the same way (V4L2, major 81), but its node is directly in /dev: the host's /dev is mounted
+    # at /run/hostdev, where the camera node opens it (CAMERA_DEVICE). The cgroup rules still decide which
+    # devices can be opened, so this exposes nothing else.
     device_cgroup_rules:
       - "c 13:* rmw"
+      - "c 81:* rmw"
     volumes:
       - *vol-ws
-      - *vol-libs
       - *vol-repo
       - *vol-logs
       - /dev/input:/dev/input
+      - /dev:/run/hostdev
 
   # ---------------------------------------------------------------------------------------
   # sim - the system on the PC: the same launch with sim:=true (the Gazebo arm, issues #34/#25) and the web page
@@ -148,7 +153,6 @@ services:
     command: ["/ws/install/braco_bringup/lib/braco_bringup/arm_routine.sh"]
     volumes:
       - *vol-ws
-      - *vol-libs
       - *vol-repo
       - *vol-logs
       - /tmp/.X11-unix:/tmp/.X11-unix:rw

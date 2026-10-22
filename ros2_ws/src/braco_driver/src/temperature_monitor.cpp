@@ -12,29 +12,43 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// temperature_monitor - ROS 2 version of libs/cpp/srcs/temps_lcd.cpp.
+// temperature_monitor - ROS 2 version of mycobot_cpp/srcs/temps_lcd.cpp.
 //
 // Never touches the serial port: it listens to /arm/servo_temperatures from
 // arm_driver, so it keeps running whether or not the joystick is in use.
 //
 //   sub  /arm/servo_temperatures   braco_interfaces/ServoTemperatures
 //   pub  /diagnostics              diagnostic_msgs/DiagnosticArray (one status per joint)
+//   cli  /arm/set_read_only        rest mode on, when a servo gets hot
 //   LCD1602 on I2C, same screens and colours as temps_lcd:
 //     |1:31  2:33  3:35|      normal (green), warm (yellow)
 //     |4:41  5:38  6:30|
-//     |SERVO HOT! J4   |      a servo at TEMP_HOT_C or above (red)
-//     |66 C - rest arm |
+//     |REST: SERVO HOT |      a servo at TEMP_HOT_C or above (red): the arm was put to rest
+//     |J4 66 C cooling |      (|SERVO HOT! J4| / |66 C - rest arm| with auto_rest_on_hot false)
 //   With no fresh data for stale_timeout_s the LCD shows "NO FEEDBACK".
+//
+// Auto rest (docs/ADR-0003-repouso-por-temperatura.md): the first hot reading of an episode runs
+// park (fold the arm, release the joints so the servos cool, rest mode on), once; the episode
+// ends when every joint is below TEMP_HOT_C. With park_on_hot false, or if park cannot run or
+// fails, it only calls /arm/set_read_only true. Leaving rest is manual (make resume): the
+// monitor never does it.
+
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
 #include <chrono>
 #include <memory>
 #include <string>
+#include <vector>
 
+#include "braco_driver/auto_rest.hpp"
 #include "diagnostic_msgs/msg/diagnostic_array.hpp"
 #include "lcd_display.hpp"
 #include "mycobot.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "braco_interfaces/msg/servo_temperatures.hpp"
+#include "std_srvs/srv/set_bool.hpp"
 
 using namespace std::chrono_literals;
 using diagnostic_msgs::msg::DiagnosticStatus;
@@ -81,6 +95,10 @@ public:
   {
     stale_timeout_ = std::chrono::duration<double>(
       declare_parameter<double>("stale_timeout_s", 5.0));
+    auto_rest_on_hot_ = declare_parameter<bool>("auto_rest_on_hot", true);
+    park_on_hot_ = declare_parameter<bool>("park_on_hot", true);
+    park_command_ = declare_parameter<std::vector<std::string>>(
+      "park_command", {"ros2", "run", "braco_bringup", "park"});
 
     if (!lcd_.ok()) {
       RCLCPP_WARN(
@@ -92,6 +110,7 @@ public:
     lcd_.show(status_, true);
 
     diag_pub_ = create_publisher<diagnostic_msgs::msg::DiagnosticArray>("diagnostics", 10);
+    rest_client_ = create_client<std_srvs::srv::SetBool>("arm/set_read_only");
     temp_sub_ = create_subscription<ServoTemperatures>(
       "arm/servo_temperatures", 10,
       [this](ServoTemperatures::ConstSharedPtr msg) {onTemps(*msg);});
@@ -117,9 +136,14 @@ private:
     const auto level = check.level;
     const int hottest = check.hottestJoint - 1;
 
+    if (auto_rest_on_hot_ && auto_rest_.update(level)) {
+      requestRest(hottest + 1, temps[hottest]);
+    }
+
     status_.feedbackOk = true;
     status_.temps = temps;
     status_.hotJoint = (level == mycobot::TempLevel::Hot) ? hottest + 1 : 0;
+    status_.autoRest = status_.hotJoint != 0 && auto_rest_.active();
     setColour(status_, level);
     lcd_.show(status_, true);
 
@@ -143,7 +167,7 @@ private:
     if (level != last_level_ || !had_data_) {
       if (level == mycobot::TempLevel::Hot) {
         RCLCPP_ERROR(
-          get_logger(), "servo J%d is HOT (%d C) - let the arm rest",
+          get_logger(), "servo J%d is HOT (%d C)",
           hottest + 1, temps[hottest]);
       } else if (level == mycobot::TempLevel::Warm) {
         RCLCPP_WARN(get_logger(), "servo J%d is warm (%d C)", hottest + 1, temps[hottest]);
@@ -155,8 +179,86 @@ private:
     had_data_ = true;
   }
 
+  // The arm is hot: park it (the park program folds it, releases the joints and enters rest
+  // mode). If park cannot run, only rest mode is set.
+  void requestRest(int joint, int celsius)
+  {
+    if (park_on_hot_ && !park_command_.empty()) {
+      hot_joint_ = joint;
+      hot_celsius_ = celsius;
+      RCLCPP_ERROR(
+        get_logger(), "servo J%d is HOT (%d C): parking the arm and releasing the joints "
+        "(make resume to leave rest)", joint, celsius);
+      if (startPark()) {return;}
+      RCLCPP_ERROR(get_logger(), "park could not start: falling back to rest mode only");
+    }
+    requestRestMode(joint, celsius);
+  }
+
+  // Run the park program as a child process. False if it could not be started.
+  bool startPark()
+  {
+    if (park_pid_ > 0) {return true;}   // one is already running
+    std::vector<char *> argv;
+    for (auto & arg : park_command_) {argv.push_back(arg.data());}
+    argv.push_back(nullptr);
+    const pid_t pid = fork();
+    if (pid < 0) {return false;}
+    if (pid == 0) {
+      execvp(argv[0], argv.data());
+      _exit(127);   // exec failed
+    }
+    park_pid_ = pid;
+    return true;
+  }
+
+  // Called every second: has the park program ended? Then rest mode is requested (also when
+  // park failed), so the arm always ends in rest mode.
+  void checkPark()
+  {
+    if (park_pid_ <= 0) {return;}
+    int status = 0;
+    if (waitpid(park_pid_, &status, WNOHANG) != park_pid_) {return;}
+    park_pid_ = -1;
+    if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
+      // park enters rest mode itself; asking again is harmless and makes the order certain:
+      // park first, rest mode after, whatever park did at its end
+      RCLCPP_INFO(get_logger(), "park finished: joints released, confirming rest mode");
+      requestRestMode(hot_joint_, hot_celsius_);
+      return;
+    }
+    RCLCPP_ERROR(get_logger(), "park failed (status %d): putting the arm to rest", status);
+    requestRestMode(hot_joint_, hot_celsius_);
+  }
+
+  // Rest mode only (arm_driver stops the arm and refuses motion until make resume).
+  void requestRestMode(int joint, int celsius)
+  {
+    if (!rest_client_->service_is_ready()) {
+      RCLCPP_ERROR(
+        get_logger(), "servo J%d is HOT (%d C) but arm_driver is not reachable: "
+        "cannot put the arm to rest", joint, celsius);
+      auto_rest_.retry();
+      return;
+    }
+    RCLCPP_ERROR(
+      get_logger(), "servo J%d is HOT (%d C): putting the arm to rest (make resume to leave it)",
+      joint, celsius);
+    auto request = std::make_shared<std_srvs::srv::SetBool::Request>();
+    request->data = true;
+    rest_client_->async_send_request(
+      request, [this](rclcpp::Client<std_srvs::srv::SetBool>::SharedFuture future) {
+        const auto result = future.get();
+        if (!result->success) {
+          RCLCPP_ERROR(get_logger(), "rest mode not set: %s", result->message.c_str());
+          auto_rest_.retry();
+        }
+      });
+  }
+
   void checkStale()
   {
+    checkPark();
     if (std::chrono::steady_clock::now() - last_msg_ > stale_timeout_) {
       showNoFeedback("no temperatures from arm_driver - is it running?");
     }
@@ -193,8 +295,16 @@ private:
   mycobot::TempLevel last_level_ = mycobot::TempLevel::Normal;
   bool had_data_ = false;
   bool warned_ = false;
+  bool auto_rest_on_hot_ = true;
+  bool park_on_hot_ = true;
+  std::vector<std::string> park_command_;
+  pid_t park_pid_ = -1;
+  int hot_joint_ = 0;     // the servo that started the park, for the fallback message
+  int hot_celsius_ = 0;
+  braco_driver::AutoRest auto_rest_;
 
   rclcpp::Publisher<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr diag_pub_;
+  rclcpp::Client<std_srvs::srv::SetBool>::SharedPtr rest_client_;
   rclcpp::Subscription<ServoTemperatures>::SharedPtr temp_sub_;
   rclcpp::TimerBase::SharedPtr stale_timer_;
 };

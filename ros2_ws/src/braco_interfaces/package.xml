@@ -3,7 +3,7 @@
 <package format="3">
   <name>braco_interfaces</name>
   <version>0.0.0</version>
-  <description>Messages of the braco arm: motion commands for arm_driver and servo temperatures</description>
+  <description>Messages and services of the braco arm: motion commands and control ownership for arm_driver, servo temperatures</description>
   <maintainer email="danielximenes164@gmail.com">Daniel Ximenes</maintainer>
   <license>Apache-2.0</license>
 

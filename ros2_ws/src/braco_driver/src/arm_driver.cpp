@@ -20,6 +20,7 @@
 //
 //   pub  /joint_states               sensor_msgs/JointState (radians)
 //   pub  /arm/servo_temperatures     braco_interfaces/ServoTemperatures
+//   pub  /arm/servo_voltages         braco_interfaces/ServoVoltages
 //   sub  /arm/command                braco_interfaces/ArmCommand (latest wins)
 //   sub  /arm/led                    std_msgs/ColorRGBA (0..1 per channel)
 //   srv  /arm/power_on               std_srvs/Trigger
@@ -27,6 +28,16 @@
 //   srv  /arm/set_gripper            std_srvs/SetBool (true = close)
 //   srv  /arm/set_read_only          std_srvs/SetBool (true = rest mode)
 //   pub  /arm/read_only              std_msgs/Bool (latched)
+//   srv  /arm/take_control           braco_interfaces/TakeControl
+//   pub  /arm/control_owner          std_msgs/String (latched, "" = free)
+//
+// Control owner (docs/ADR-0002-controle-unico.md): the web page, the joystick,
+// zero/park and the mission never move the arm at the same time. Motion is obeyed
+// only from the ArmCommand.source that holds the control (ControlLease); STOP always
+// passes, whoever sends it. The owner takes it with /arm/take_control (force takes
+// it from another owner and drops that owner's pending motion) and loses it after
+// control_idle_s without motion. power_on, set_gripper and release_servos carry no
+// source: clients call them only while they own the control.
 //
 // Rest mode (read_only): motion, gripper and power_on are refused, but the
 // serial loop keeps publishing angles and temperatures, so the arm can cool
@@ -36,7 +47,7 @@
 //   1. a requested stop (drops everything pending)
 //   2. one pending motion command, then COMMAND_GAP (as the C++ programs do)
 //   3. read the angles and publish /joint_states
-//   4. every temp_period_s read the servo temperatures and publish them
+//   4. every temp_period_s read the servo temperatures and voltages and publish them
 //   5. watchdog: no new motion command for command_timeout_ms after the arm was
 //      told to move -> stop once. Together with the step-ahead targets of the
 //      teleop node this bounds how far the arm coasts if a client dies.
@@ -55,19 +66,25 @@
 #include <thread>
 #include <utility>
 
+#include "braco_driver/control.hpp"
 #include "mycobot.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "braco_interfaces/msg/arm_command.hpp"
 #include "braco_interfaces/msg/servo_temperatures.hpp"
+#include "braco_interfaces/msg/servo_voltages.hpp"
+#include "braco_interfaces/srv/take_control.hpp"
 #include "sensor_msgs/msg/joint_state.hpp"
 #include "std_msgs/msg/bool.hpp"
 #include "std_msgs/msg/color_rgba.hpp"
+#include "std_msgs/msg/string.hpp"
 #include "std_srvs/srv/set_bool.hpp"
 #include "std_srvs/srv/trigger.hpp"
 
 using namespace std::chrono_literals;
 using braco_interfaces::msg::ArmCommand;
 using braco_interfaces::msg::ServoTemperatures;
+using braco_interfaces::msg::ServoVoltages;
+using braco_interfaces::srv::TakeControl;
 
 namespace
 {
@@ -105,6 +122,8 @@ public:
     command_timeout_ = std::chrono::milliseconds(
       declare_parameter<int>("command_timeout_ms", 300));
     gripper_speed_ = declare_parameter<int>("gripper_speed", 50);
+    control_idle_ = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+      std::chrono::duration<double>(declare_parameter<double>("control_idle_s", 5.0)));
 
     // Throws if the port cannot be opened: main() reports it and exits non-zero.
     mc_ = std::make_unique<mycobot::MyCobot280>(port, static_cast<int>(baud));
@@ -112,6 +131,7 @@ public:
 
     joint_pub_ = create_publisher<sensor_msgs::msg::JointState>("joint_states", 10);
     temp_pub_ = create_publisher<ServoTemperatures>("arm/servo_temperatures", 10);
+    volt_pub_ = create_publisher<ServoVoltages>("arm/servo_voltages", 10);
 
     read_only_pub_ = create_publisher<std_msgs::msg::Bool>(
       "arm/read_only", rclcpp::QoS(1).transient_local());
@@ -124,6 +144,15 @@ public:
         setReadOnly(req->data);
         res->success = true;
         res->message = req->data ? "rest mode on" : "rest mode off";
+      });
+
+    owner_pub_ = create_publisher<std_msgs::msg::String>(
+      "arm/control_owner", rclcpp::QoS(1).transient_local());
+    publishOwner("");
+    take_control_srv_ = create_service<TakeControl>(
+      "arm/take_control",
+      [this](TakeControl::Request::ConstSharedPtr req, TakeControl::Response::SharedPtr res) {
+        onTakeControl(*req, *res);
       });
 
     command_sub_ = create_subscription<ArmCommand>(
@@ -203,6 +232,75 @@ private:
     return true;
   }
 
+  void publishOwner(const std::string & owner)
+  {
+    std_msgs::msg::String msg;
+    msg.data = owner;
+    owner_pub_->publish(msg);
+  }
+
+  void onTakeControl(const TakeControl::Request & req, TakeControl::Response & res)
+  {
+    std::string owner;
+    bool changed = false;
+    {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      if (req.release) {
+        res.success = control_.release(req.source) || control_.owner().empty();
+        res.owner = control_.owner();
+        res.message = res.success ? "control released" :
+          "only the owner (" + control_.owner() + ") can release the control";
+      } else {
+        const auto r = control_.take(req.source, req.force, std::chrono::steady_clock::now());
+        res.success = r.success;
+        res.owner = r.owner;
+        if (!r.success) {
+          res.message = req.source.empty() ? "source must not be empty" :
+            "the arm is controlled by " + r.owner;
+        } else if (!r.previous.empty() && r.previous != r.owner) {
+          // Forced: whatever the previous owner left pending must not run
+          pending_joints_.clear();
+          pending_all_.reset();
+          stop_requested_ = true;
+          res.message = "control taken from " + r.previous;
+        } else {
+          res.message = "control taken";
+        }
+      }
+      owner = control_.owner();
+      changed = owner != last_owner_;
+      last_owner_ = owner;
+      // Under the lock, so the serial thread's idle release cannot publish out of order
+      if (changed) {publishOwner(owner);}
+    }
+    if (changed) {
+      RCLCPP_INFO(
+        get_logger(), "control: %s (%s)",
+        owner.empty() ? "free" : owner.c_str(), res.message.c_str());
+    } else if (!res.success) {
+      RCLCPP_WARN(get_logger(), "take_control from '%s': %s", req.source.c_str(),
+        res.message.c_str());
+    }
+  }
+
+  // The serial thread: free the control after control_idle_s without motion.
+  void expireControl()
+  {
+    std::string dropped;
+    {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      dropped = control_.expireIdle(std::chrono::steady_clock::now(), control_idle_);
+      if (!dropped.empty()) {
+        last_owner_.clear();
+        publishOwner("");
+      }
+    }
+    if (dropped.empty()) {return;}
+    RCLCPP_INFO(
+      get_logger(), "control: free (%s idle for %.1f s)", dropped.c_str(),
+      std::chrono::duration<double>(control_idle_).count());
+  }
+
   void onCommand(const ArmCommand & msg)
   {
     if (read_only_ && msg.type != ArmCommand::STOP) {
@@ -212,6 +310,15 @@ private:
       return;
     }
     std::lock_guard<std::mutex> lock(state_mutex_);
+    if (msg.type != ArmCommand::STOP) {
+      if (!control_.accepts(msg.source)) {
+        RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 2000, "motion from '%s' ignored: control owned by '%s'",
+          msg.source.c_str(), control_.owner().c_str());
+        return;
+      }
+      control_.touch(std::chrono::steady_clock::now());
+    }
     switch (msg.type) {
       case ArmCommand::STOP:
         stop_requested_ = true;
@@ -297,10 +404,12 @@ private:
         }
         if (now >= next_temp) {
           publishTemps();
+          publishVoltages();
           next_temp = now + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
             temp_period_);
         }
         checkWatchdog();
+        expireControl();
 
         if (!sent) {std::this_thread::sleep_for(10ms);}
       } catch (const std::exception & e) {
@@ -394,6 +503,24 @@ private:
     temp_pub_->publish(msg);
   }
 
+  void publishVoltages()
+  {
+    std::optional<mycobot::ServoVolts> volts;
+    {
+      std::lock_guard<std::mutex> lock(serial_mutex_);
+      volts = mc_->getVoltages();
+    }
+    ServoVoltages msg;
+    msg.header.stamp = now();
+    msg.valid = volts.has_value();
+    if (volts) {
+      std::copy(volts->begin(), volts->end(), msg.volts.begin());
+    } else {
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 10000, "no answer to voltage read");
+    }
+    volt_pub_->publish(msg);
+  }
+
   void checkWatchdog()
   {
     bool expired = false;
@@ -431,10 +558,15 @@ private:
   std::chrono::duration<double> state_period_{};
   std::chrono::duration<double> temp_period_{};
   std::chrono::milliseconds command_timeout_{};
+  std::chrono::steady_clock::duration control_idle_{};
   int gripper_speed_ = 50;
+
+  braco_driver::ControlLease control_;   // under state_mutex_
+  std::string last_owner_;               // last value published on arm/control_owner
 
   rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr joint_pub_;
   rclcpp::Publisher<ServoTemperatures>::SharedPtr temp_pub_;
+  rclcpp::Publisher<ServoVoltages>::SharedPtr volt_pub_;
   rclcpp::Subscription<ArmCommand>::SharedPtr command_sub_;
   rclcpp::Subscription<std_msgs::msg::ColorRGBA>::SharedPtr led_sub_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr power_srv_;
@@ -442,6 +574,8 @@ private:
   rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr gripper_srv_;
   rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr read_only_srv_;
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr read_only_pub_;
+  rclcpp::Service<TakeControl>::SharedPtr take_control_srv_;
+  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr owner_pub_;
 };
 
 int main(int argc, char ** argv)

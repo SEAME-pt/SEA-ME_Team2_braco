@@ -19,7 +19,7 @@ run: _image _dev_up ## Run CMD in dev: make run CMD='ros2 topic list'
 	@test -n "$$BRACO_CMD" || { echo "usage: make run CMD='ros2 topic list'" >&2; exit 2; }
 	$(call dev_cmd) bash -c "$$BRACO_CMD"
 
-build: _image _dev_up ## colcon build of ros2_ws/src and libs (COLCON_ARGS=...; make restart to run it)
+build: _image _dev_up ## colcon build of ros2_ws/src (COLCON_ARGS=...; make restart to run it)
 	$(call dev_cmd,$(BUILD_ENV)) $(COLCON)
 	@touch $(BUILD_STAMP) $(REBUILT)
 
@@ -36,10 +36,9 @@ clean: _role ## Delete colcon's build/ install/ log/ and the ROS logs (~/.ros/lo
 	  $(COMPOSE) run --rm --no-deps -T $(DEV) bash -c 'rm -rf "$$HOME/.ros/log"' && echo "cleared ~/.ros/log in the containers"; fi
 
 # ---- host venv for the page (also used by mk/ci.mk) ------------------------------------------
-# web and the web tests only need the web packages, so they also work where requirements.txt (pymycobot, numpy)
-# cannot be installed: the venv prefers $(PYTHON) and falls back to python3.
+# The page and its tests only need web/requirements*.txt (no arm library, no ROS).
 $(VENV)/bin/python:
-	$(or $(shell command -v $(PYTHON) 2>/dev/null),python3) -m venv $(VENV)
+	$(PYTHON) -m venv $(VENV)
 	$(PIP) install --upgrade pip
 
 $(VENV)/.web-installed: $(VENV)/bin/python web/requirements.txt

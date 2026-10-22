@@ -14,7 +14,7 @@
 
 // zero - boot routine: send the arm to the zero pose (all joints at 0 degrees).
 //
-// ROS 2 version of libs/cpp/srcs/zero.cpp: goes through arm_driver instead of opening the
+// ROS 2 version of mycobot_cpp/srcs/zero.cpp: goes through arm_driver instead of opening the
 // serial port. Same pose (mycobot::ZERO_ANGLES) and speed. Run by hand with `make zero`.
 
 #include "braco_bringup/arm_moves.hpp"
@@ -30,7 +30,7 @@ constexpr auto DRIVER_TIMEOUT = 60s;   // at boot arm_driver may still be starti
 
 bool zero(braco_bringup::ArmMoves & arm)
 {
-  if (!arm.waitForDriver(DRIVER_TIMEOUT)) {return false;}
+  if (!arm.waitForDriver(DRIVER_TIMEOUT) || !arm.takeControl()) {return false;}
   // Leave rest mode (set by park), otherwise power_on and the move are refused.
   arm.setRest(false);
   arm.powerOn();   // the joints may still be free from the last park
