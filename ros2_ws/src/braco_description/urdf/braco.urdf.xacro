@@ -55,6 +55,13 @@
   <xacro:property name="camera_xyz" value="0 0 0"/>
   <xacro:property name="camera_rpy" value="0 0 0"/>
 
+  <!-- Flange angle about the joint 6 axis, degrees. The flange's LEGO hole grid on the real arm
+       is turned 45 deg from the vendor model at joint 6 = 0 (compared side by side with the real
+       arm). Turns the flange mesh and tool0, and with tool0 everything on it (gripper, tcp,
+       camera), so the gripper's pins stay in the flange holes. Positions do not change.
+       Checked in Gazebo against the real arm: -45. -->
+  <xacro:property name="flange_yaw" value="-45"/>
+
   <link name="world"/>
 
   <!-- G-base: its frame is on the table, under the arm's axis. The vendor mesh is turned 90 deg
@@ -87,16 +94,17 @@
     <origin xyz="0 0 0" rpy="0 0 0"/>
   </joint>
 
-  <xacro:mycobot_280 parent="g_base">
+  <xacro:mycobot_280 parent="g_base" flange_yaw="${radians(flange_yaw)}">
     <origin xyz="0 0 ${g_base_height}" rpy="0 0 0"/>
   </xacro:mycobot_280>
 
-  <!-- tool0: the flange, z pointing out of it (REP-103 / ROS-Industrial name). Same frame as link6. -->
+  <!-- tool0: the flange, z pointing out of it (REP-103 / ROS-Industrial name). link6 turned by
+       flange_yaw about z, so x and y follow the flange holes. -->
   <link name="tool0"/>
   <joint name="link6_to_tool0" type="fixed">
     <parent link="link6"/>
     <child link="tool0"/>
-    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <origin xyz="0 0 0" rpy="0 0 ${radians(flange_yaw)}"/>
   </joint>
 
   <xacro:adaptive_gripper parent="tool0" actuated="$(arg gripper_actuated)">
