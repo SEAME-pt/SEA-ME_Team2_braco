@@ -245,6 +245,7 @@ tr:last-child td { border-bottom: none; }
 .markdown blockquote p { margin: 4px 0; }
 .markdown img { max-width: 100%; }
 .markdown hr { border: 0; border-top: 1px solid var(--border); margin: 24px 0; }
+.doc-frame { display: block; width: 100%; min-height: 400px; border: 0; border-radius: 6px; }
 .doc-meta { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 18px; font-size: 12px; color: var(--muted); flex-wrap: wrap; }
 
 /* ---- Sprints -------------------------------------------------------------- */

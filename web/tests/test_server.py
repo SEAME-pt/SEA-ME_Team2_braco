@@ -104,6 +104,15 @@ def test_list_docs_includes_repo_docs():
     assert ".github/PULL_REQUEST_TEMPLATE.md" in paths
 
 
+def test_list_docs_includes_html_pages_in_docs():
+    listed = docs.list_docs()
+    arch = next(d for d in listed if d["path"] == "docs/architecture.html")
+    assert arch["title"] == "braco architecture"
+    assert arch["group"] == "Architecture and decisions"
+    assert not any(d["path"].startswith("web/") and d["path"].endswith(".html") for d in listed)
+    assert docs.read_doc("docs/architecture.html").startswith("<!doctype html>")
+
+
 def test_list_docs_skips_caches_and_groups_in_order():
     listed = docs.list_docs()
     assert not any(".pytest_cache" in d["path"] or ".venv" in d["path"] for d in listed)
