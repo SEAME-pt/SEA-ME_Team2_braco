@@ -2,6 +2,7 @@
 
 import * as home from "./views/home.js";
 import * as arm from "./views/arm.js";
+import * as control from "./views/control.js";
 import * as rosView from "./views/ros.js";
 import * as docs from "./views/docs.js";
 import * as sprints from "./views/sprints.js";
@@ -10,8 +11,8 @@ import {
   takeControl, toast,
 } from "./util.js";
 
-const ROUTES = { "": home, arm, ros: rosView, docs, sprints };
-const PAGE_NAMES = { "": "home", arm: "arm", ros: "ROS 2", docs: "docs", sprints: "sprints" };
+const ROUTES = { "": home, arm, control, ros: rosView, docs, sprints };
+const PAGE_NAMES = { "": "home", arm: "arm", control: "control", ros: "ROS 2", docs: "docs", sprints: "sprints" };
 
 // ---- Theme --------------------------------------------------------------------
 

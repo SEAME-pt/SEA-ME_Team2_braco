@@ -7,7 +7,8 @@ is in sync**: who is online, who controls the arm, what each person did, and the
 | Page | What it shows | Where it comes from |
 |---|---|---|
 | **Home** | arm summary, who is on the page, ROS 2 node health, activity log, current sprint, shortcuts | the other pages |
-| **Arm** | 3D model, angles with soft/firmware limits, temperatures, cartesian pose, 60 s history, control (STOP, Park, Zero, wake up, per-joint sliders, gripper, LED, rest mode), activity, protocol table, limits and factory PID | `/ws` + `js/specs.js` |
+| **Arm** | 3D model, angles with soft/firmware limits, temperatures, cartesian pose, 60 s history, activity, protocol table, limits and factory PID | `/ws` + `js/specs.js` |
+| **Control** | the only page that moves the arm: STOP, Park, Zero, wake up, shared speed, per-joint sliders, gripper, LED, rest mode, activity | `/ws` |
 | **ROS 2** | *Health*: arm_driver / temperature_monitor / joystick_teleop up or missing, driver services, `/diagnostics`. *Graph*: every node, topic (with live echo and rate), service and action | the web server's ROS 2 node |
 | **Docs** | every `.md` in the repository, grouped by topic, rendered | `GET /api/docs` |
 | **Sprints** | milestone timeline, countdown, one card per `SPRINT N` issue with its sub-issues, and a page per sprint (`#/sprints/N`) | GitHub API, 5 min cache |
