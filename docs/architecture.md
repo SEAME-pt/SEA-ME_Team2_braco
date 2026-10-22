@@ -42,7 +42,8 @@ figures. **Both files are kept in sync**: a change to one goes to the other in t
   start, stop or crash without touching the port. The page has no direct serial mode. Likewise `camera` is the
   only process that opens the eye-in-hand USB camera; the page (and later vision) subscribes to its frames.
 - **The driver never moves the arm by itself.** Starting or stopping the system does not zero, park or power on the
-  arm; those are explicit commands (`make zero`, `make park`, `make down PARK=1`).
+  arm; those are explicit commands (`make zero`, `make park`, `make down PARK=1`). The one automatic move is the
+  park on overheat, run by `temperature_monitor` ([ADR-0003](ADR-0003-repouso-por-temperatura.md)).
 - **Safety lives next to the hardware.** Joint limits, the table margin, the watchdog, rest mode and the control
   owner are enforced in `arm_driver`, not in its clients: a buggy client cannot bypass them.
 - **Faults are visible.** `arm_driver` is not respawned: if it dies the launch shuts down, `arm_routine.sh` ends and
@@ -91,7 +92,7 @@ figures. **Both files are kept in sync**: a change to one goes to the other in t
  │ SENDS             │ │ unplugged             │ │ SENDS                   │ ┊ SENDS                     ┊
  │  /arm/command,led │ │ SENDS                 │ │  /diagnostics           │ ┊  srv take_control         ┊
  │  srv take_control │ │  /arm/command, /led   │ │  srv set_read_only      │ ┊  FollowJointTrajectory    ┊
- │  srv power_on, …  │ │  srv take_control     │ │   at 65 °C              │ ┊ READS                     ┊
+ │  srv power_on, …  │ │  srv take_control     │ │   at 65 °C (after park) │ ┊ READS                     ┊
  │ READS             │ │  srv set_gripper,     │ │ READS                   │ ┊  /joint_states            ┊
  │  /joint_states    │ │      power_on         │ │  /arm/servo_temperatures│ ┊  /diagnostics             ┊
  │  /control_owner   │ │ READS                 │ │                         │ └┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┘
@@ -133,8 +134,10 @@ watchdog stops the arm.
 1. `arm_driver` publishes `/arm/servo_temperatures` (and `/arm/servo_voltages`) every 2 s, also in rest mode.
 2. `temperature_monitor` classifies normal (up to 54 °C), warm (55–64 °C) or hot (65 °C or more), publishes
    `/diagnostics` and shows it on the LCD.
-3. At hot it calls `set_read_only(true)` once per hot episode. `arm_driver` drops the pending motion and refuses
-   motion, gripper and power on, but keeps reading.
+3. At hot, once per hot episode, it runs `park` (`park_on_hot`): the arm folds, the joints are released so the
+   servos cool, and the arm ends in rest mode, also when park fails. With `park_on_hot: false` it only calls
+   `set_read_only(true)`. In rest mode `arm_driver` drops the pending motion and refuses motion, gripper and power
+   on, but keeps reading.
 4. The page shows the level from `/diagnostics`. When the arm has cooled down, someone runs `make resume`
    ([arm-rest-mode.md](arm-rest-mode.md)).
 
@@ -167,8 +170,8 @@ watchdog stops the arm.
   Angles are clamped to `JOINT_LIMITS` (`mycobot.hpp`); poses that put the wrist or tool below the table margin are
   refused.
 - **Rest mode.** `/arm/set_read_only true`: motion, gripper and power on are refused; angles and temperatures keep
-  being published. `temperature_monitor` enters it by itself when a servo reaches 65 °C, once per hot episode;
-  leaving it is manual (`make resume`). See [arm-rest-mode.md](arm-rest-mode.md) and
+  being published. `temperature_monitor` enters it by itself when a servo reaches 65 °C, once per hot episode,
+  after parking the arm (`park_on_hot`); leaving it is manual (`make resume`). See [arm-rest-mode.md](arm-rest-mode.md) and
   [ADR-0003](ADR-0003-repouso-por-temperatura.md).
 
 ### Who moves the arm ([ADR-0002](ADR-0002-controle-unico.md))
@@ -281,6 +284,9 @@ else has one generic folder.
          ▲          ╲    ╱           ▲                       (planned · simulation and planning only ·
          │ exec_depend ╲╱ exec_depend │                        never a dependency of braco_bringup)
          └──────── braco_bringup ─────┘
+                         │ exec_depend
+                         ▼
+                    braco_camera  (Python, depends only on ROS packages)
 ```
 
 `braco_bringup` lists every package the **real** system needs as an `exec_depend`. The Jetson builds only
@@ -388,6 +394,7 @@ The **wiring** (devices) comes from the launch arguments, filled by `docker/comp
 | `make rest` | Rest mode on: motion refused, still reading |
 | `make resume` | Rest mode off |
 | `make temps` | Print the servo temperatures once |
+| `make bench` | Bench test of control and auto-rest ([scripts/bench.sh](../scripts/bench.sh)); asks before moving the arm, appends to `bench-report.log` |
 
 **Development** · [mk/dev.mk](../mk/dev.mk)
 
