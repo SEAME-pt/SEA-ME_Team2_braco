@@ -14,13 +14,22 @@
   Arguments:
     gripper_actuated  false (default): fingers fixed open, the real driver publishes no gripper state
                       true: vendor finger linkage with one slider (for RViz sliders, later Gazebo)
+    gazebo            false (default): plain model (real arm, RViz)
+                      true: add the gz_ros2_control system (braco.gazebo.xacro, launch/gazebo.launch.py)
 -->
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="braco">
 
   <xacro:arg name="gripper_actuated" default="false"/>
+  <xacro:arg name="gazebo" default="false"/>
 
   <xacro:include filename="$(find braco_description)/urdf/mycobot_280.urdf.xacro"/>
   <xacro:include filename="$(find braco_description)/urdf/adaptive_gripper.xacro"/>
+  <xacro:include filename="$(find braco_description)/urdf/braco.gazebo.xacro"/>
+
+  <xacro:if value="$(arg gazebo)">
+    <xacro:braco_gazebo
+      controllers="$(find braco_description)/config/gazebo_controllers.yaml"/>
+  </xacro:if>
 
   <!-- world: the table surface under the arm. Height of the arm's base over it, in metres.
        Value from BASE_HEIGHT_MM of libs/cpp/includes/mycobot.hpp (table -> arm base, with the

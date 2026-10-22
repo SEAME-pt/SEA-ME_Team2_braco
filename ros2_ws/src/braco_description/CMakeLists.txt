@@ -3,7 +3,7 @@ project(braco_description)
 
 find_package(ament_cmake REQUIRED)
 
-install(DIRECTORY urdf meshes rviz launch DESTINATION share/${PROJECT_NAME})
+install(DIRECTORY urdf meshes rviz launch config DESTINATION share/${PROJECT_NAME})
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)

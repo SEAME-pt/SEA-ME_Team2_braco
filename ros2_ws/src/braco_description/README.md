@@ -10,12 +10,17 @@ arm (zero pose, joint directions, forward kinematics) and the open measurements 
 | `urdf/braco.urdf.xacro` | The whole robot: `world` -> arm -> `tool0` -> gripper, `tcp`, camera frames |
 | `urdf/mycobot_280.urdf.xacro` | The arm (macro): `base_link`, `link1..link6`, `joint1..joint6` |
 | `urdf/adaptive_gripper.xacro` | The gripper (macro), fingers fixed open or with the vendor linkage |
+| `urdf/braco.gazebo.xacro` | `gz_ros2_control` on `joint1..joint6`, added only with `gazebo:=true` |
+| `config/gazebo_controllers.yaml` | `joint_state_broadcaster` + `arm_controller` (joint trajectory) for Gazebo |
 | `meshes/` | Visual and collision meshes of Elephant Robotics (`LICENSE.elephantrobotics`) |
 | `rviz/braco.rviz` | The RViz view |
 | `launch/display.launch.py` | `robot_state_publisher` + RViz (+ sliders) |
+| `launch/gazebo.launch.py` | Gazebo (gz sim) with the model holding its pose, plus the controllers |
 | `test/test_urdf.py` | Keeps the URDF and the code in sync |
 
-The `<ros2_control>` tag (`braco.ros2_control.xacro`) arrives with the Gazebo issue (#37).
+`gazebo.launch.py` is a quick viewer: the model in Gazebo, moved through `/arm_controller/joint_trajectory`.
+The full simulation bringup (`sim:=true` in `braco_bringup`, the web page and teleop driving the simulated arm)
+is issues #34/#37.
 
 ## Use
 
@@ -25,6 +30,13 @@ ros2 launch braco_description display.launch.py
 
 # follow the real arm: the Jetson runs `make up`, /joint_states reaches the PC over DDS
 ros2 launch braco_description display.launch.py use_gui:=false
+
+# Gazebo: the model holding its pose (gui:=false for server only)
+ros2 launch braco_description gazebo.launch.py
+# move it there (radians, reached in 2 s)
+ros2 topic pub --once /arm_controller/joint_trajectory trajectory_msgs/msg/JointTrajectory \
+  "{joint_names: [joint1, joint2, joint3, joint4, joint5, joint6],
+    points: [{positions: [0.5, 0.3, -0.3, 0.0, 0.0, 0.0], time_from_start: {sec: 2}}]}"
 
 # fingers with the vendor linkage (one slider): gripper_actuated:=true
 # check the model by hand
@@ -48,4 +60,6 @@ xacro urdf/braco.urdf.xacro > /tmp/braco.urdf && check_urdf /tmp/braco.urdf
 Adapted from Elephant Robotics' [mycobot_ros2](https://github.com/elephantrobotics/mycobot_ros2) (branch `humble`,
 BSD-2-Clause): `mycobot_description/urdf/mycobot_280_jn` and `adaptive_gripper` for the links, joints and meshes,
 and `mycobot_280/mycobot_280jn` for the RViz config and the launch structure. Changes: joint and link names,
-the vendor's invalid XML fixed, limits from `JOINT_LIMITS`, inertials, collision, gripper options, TF frames.
+the vendor's invalid XML fixed, limits from `JOINT_LIMITS`, inertials, collision, gripper options, TF frames,
+and `meshes/arm/link4.dae` rewritten from COLLADA `<polygons>` to `<triangles>` (same geometry): Gazebo loads
+`<polygons>` as an empty mesh and its physics crashes on the empty collision.
