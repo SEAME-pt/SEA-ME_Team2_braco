@@ -455,3 +455,25 @@ ul.plain { list-style: none; margin: 0; padding: 0; display: flex; flex-directio
   .activity li span { grid-column: 1 / -1; }
   .search { min-width: 0; width: 100%; }
 }
+
+/* ---- history chart ---- */
+.hc-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin-bottom: 10px; }
+.hc-pause { margin-left: auto; padding: 4px 12px; font-size: 12px; }
+.hc-pause.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.hc-wrap { position: relative; }
+.hc-canvas { width: 100%; height: 340px; display: block; cursor: crosshair; touch-action: pan-y; }
+.hc-tip { position: absolute; z-index: 5; pointer-events: none; min-width: 150px; padding: 8px 10px; border-radius: 8px; background: var(--surface); border: 1px solid var(--border); box-shadow: 0 4px 14px rgba(0, 0, 0, .18); font-size: 12px; color: var(--text); }
+.hc-tip[hidden] { display: none; }
+.hc-time { color: var(--muted); margin-bottom: 4px; font-family: var(--mono); }
+.hc-gtitle { margin-top: 4px; font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.hc-row { display: grid; grid-template-columns: 10px 1fr auto; align-items: center; gap: 8px; line-height: 1.5; }
+.hc-row i { width: 10px; height: 3px; border-radius: 2px; }
+.hc-row b { font-family: var(--mono); font-weight: 600; }
+.hc-legend { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin-top: 10px; }
+.hc-chip { display: grid; grid-template-columns: 12px auto 1fr; grid-template-rows: auto auto; align-items: center; column-gap: 8px; text-align: left; padding: 6px 10px; border-radius: 8px; border-left: 4px solid var(--jc); background: var(--surface-2); text-transform: none; letter-spacing: 0; color: var(--text); }
+.hc-chip i { display: none; }
+.hc-chip b { font-size: 12px; }
+.hc-chip > span { justify-self: end; font-size: 13px; }
+.hc-chip small { grid-column: 1 / -1; grid-row: 2; font-size: 11px; }
+.hc-chip.off { opacity: .4; text-decoration: line-through; }
+.hc-note { margin: 8px 0 0; }

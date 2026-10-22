@@ -130,6 +130,7 @@ class _Base:
             "coords": None,
             "temps": None,
             "temp_levels": None,
+            "volts": None,      # servo supply voltage per joint, V
             "power_on": None,
             "resting": False,   # rest mode (motion refused): set by set_rest(), cleared by wake_up()
             "moving": None,
@@ -174,6 +175,7 @@ class MockArm(_Base):
         super().__init__()
         self._t0 = time.time()
         self._temps = [32.0, 35.0, 36.0, 38.0, 34.0, 31.0]
+        self._volts = [12.0] * 6
         self._stopped_until = 0.0
         self._frozen = None
         self._pose = None   # (angles, started_at, from_angles) while holding a pose
@@ -212,6 +214,10 @@ class MockArm(_Base):
                     drift = random.uniform(-0.3, 0.9) if moving else random.uniform(-0.8, 0.1)
                     self._temps[i] = min(72.0, max(28.0, self._temps[i] + drift))
                 self._set_temps([int(round(t)) for t in self._temps])
+                # the supply sags a little while the joints move
+                self._volts = [round(12.0 - (random.uniform(0.2, 0.9) if moving else random.uniform(0.0, 0.2)), 1)
+                               for _ in range(6)]
+                self._update(volts=self._volts)
 
             self._closed.wait(ANGLE_PERIOD)
 
@@ -428,7 +434,7 @@ class RosArm(_Base):
             self._update(connected=False, error=self._bridge.error)
             return
         try:
-            from braco_interfaces.msg import ArmCommand, ServoTemperatures
+            from braco_interfaces.msg import ArmCommand, ServoTemperatures, ServoVoltages
             from braco_interfaces.srv import TakeControl
         except ImportError as e:
             self._update(connected=False,
@@ -444,6 +450,7 @@ class RosArm(_Base):
                        "SetBool": SetBool, "Trigger": Trigger, "TakeControl": TakeControl}
         node.create_subscription(JointState, "/joint_states", self._on_joint_state, 10)
         node.create_subscription(ServoTemperatures, "/arm/servo_temperatures", self._on_temps, 10)
+        node.create_subscription(ServoVoltages, "/arm/servo_voltages", self._on_volts, 10)
         node.create_subscription(DiagnosticArray, "/diagnostics", self._on_diagnostics, 10)
         latched = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
         node.create_subscription(Bool, "/arm/read_only", self._on_read_only, latched)
@@ -481,6 +488,9 @@ class RosArm(_Base):
     def _on_temps(self, msg):
         # The levels come from /diagnostics (temperature_monitor), not from a copy of the limits
         self._update(temps=[int(c) for c in msg.celsius] if msg.valid else None)
+
+    def _on_volts(self, msg):
+        self._update(volts=[round(float(v), 1) for v in msg.volts] if msg.valid else None)
 
     def _on_diagnostics(self, msg):
         levels = list(self.snapshot()["temp_levels"] or [None] * 6)

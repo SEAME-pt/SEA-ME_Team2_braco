@@ -410,6 +410,15 @@ std::optional<ServoTemps> MyCobot280::getTemps(int retries) {
     return temps;
 }
 
+std::optional<ServoVolts> MyCobot280::getVoltages(int retries) {
+    auto data = queryWithData(protocol::GET_SERVO_VOLTAGES, {}, retries);
+    if (!data || data->size() != 6) return std::nullopt;   // one byte per joint, else do not guess
+
+    ServoVolts volts{};
+    for (size_t i = 0; i < 6; ++i) volts[i] = (*data)[i] * VOLTAGE_STEP_V;
+    return volts;
+}
+
 TempLevel MyCobot280::tempLevel(int celsius) {
     if (celsius >= TEMP_HOT_C) return TempLevel::Hot;
     if (celsius >= TEMP_WARM_C) return TempLevel::Warm;
