@@ -40,7 +40,7 @@ até `arm-zero` ou `power_on`).
   `/arm/set_read_only true` uma vez por episódio (até todas as juntas ficarem abaixo de 65 °C) e o LCD mostra
   `REST: SERVO HOT` / `J4 66 C cooling`. A volta é sempre manual (`make resume`); um `make resume` durante o
   mesmo episódio não é desfeito (serve para estacionar um braço quente de propósito). Desligável com o
-  parâmetro `auto_rest_on_hot`. Ver [ADR-0003](ADR-0003-repouso-por-temperatura.md).
+  parâmetro `auto_rest_on_hot`. Nesse momento o monitor executa o `park` (dobra o braço, solta as juntas para esfriar e liga o repouso); se o `park` não puder rodar ou falhar, só liga o repouso. Parâmetros `park_on_hot` e `park_command`. Ver [ADR-0003](ADR-0003-repouso-por-temperatura.md).
 - `zero` e `park` pegam o controle do braço à força (`take_control("script", force=true)`) e devolvem no fim:
   funcionam com o joystick conectado ou a página no controle. Ver [ADR-0002](ADR-0002-controle-unico.md).
 - O `arm_routine.sh` (entrypoint do container `real`) não move o braço ao parar: use `make down PARK=1`, que roda `park` antes de desligar e deixa o braço em rest.

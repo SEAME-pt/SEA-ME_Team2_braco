@@ -27,13 +27,20 @@
 //     |J4 66 C cooling |      (|SERVO HOT! J4| / |66 C - rest arm| with auto_rest_on_hot false)
 //   With no fresh data for stale_timeout_s the LCD shows "NO FEEDBACK".
 //
-// Auto rest (docs/ADR-0003-repouso-por-temperatura.md): the first hot reading of an episode calls
-// /arm/set_read_only true, once; the episode ends when every joint is below TEMP_HOT_C.
-// Leaving rest is manual (make resume): the monitor never does it.
+// Auto rest (docs/ADR-0003-repouso-por-temperatura.md): the first hot reading of an episode runs
+// park (fold the arm, release the joints so the servos cool, rest mode on), once; the episode
+// ends when every joint is below TEMP_HOT_C. With park_on_hot false, or if park cannot run or
+// fails, it only calls /arm/set_read_only true. Leaving rest is manual (make resume): the
+// monitor never does it.
+
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
 #include <chrono>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "braco_driver/auto_rest.hpp"
 #include "diagnostic_msgs/msg/diagnostic_array.hpp"
@@ -89,6 +96,9 @@ public:
     stale_timeout_ = std::chrono::duration<double>(
       declare_parameter<double>("stale_timeout_s", 5.0));
     auto_rest_on_hot_ = declare_parameter<bool>("auto_rest_on_hot", true);
+    park_on_hot_ = declare_parameter<bool>("park_on_hot", true);
+    park_command_ = declare_parameter<std::vector<std::string>>(
+      "park_command", {"ros2", "run", "braco_bringup", "park"});
 
     if (!lcd_.ok()) {
       RCLCPP_WARN(
@@ -169,8 +179,56 @@ private:
     had_data_ = true;
   }
 
-  // Put the arm to rest (arm_driver stops it and refuses motion until make resume).
+  // The arm is hot: park it (the park program folds it, releases the joints and enters rest
+  // mode). If park cannot run, only rest mode is set.
   void requestRest(int joint, int celsius)
+  {
+    if (park_on_hot_ && !park_command_.empty()) {
+      hot_joint_ = joint;
+      hot_celsius_ = celsius;
+      RCLCPP_ERROR(
+        get_logger(), "servo J%d is HOT (%d C): parking the arm and releasing the joints "
+        "(make resume to leave rest)", joint, celsius);
+      if (startPark()) {return;}
+      RCLCPP_ERROR(get_logger(), "park could not start: falling back to rest mode only");
+    }
+    requestRestMode(joint, celsius);
+  }
+
+  // Run the park program as a child process. False if it could not be started.
+  bool startPark()
+  {
+    if (park_pid_ > 0) {return true;}   // one is already running
+    std::vector<char *> argv;
+    for (auto & arg : park_command_) {argv.push_back(arg.data());}
+    argv.push_back(nullptr);
+    const pid_t pid = fork();
+    if (pid < 0) {return false;}
+    if (pid == 0) {
+      execvp(argv[0], argv.data());
+      _exit(127);   // exec failed
+    }
+    park_pid_ = pid;
+    return true;
+  }
+
+  // Called every second: has the park program ended? A failure leaves the arm in rest mode anyway.
+  void checkPark()
+  {
+    if (park_pid_ <= 0) {return;}
+    int status = 0;
+    if (waitpid(park_pid_, &status, WNOHANG) != park_pid_) {return;}
+    park_pid_ = -1;
+    if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
+      RCLCPP_INFO(get_logger(), "park finished: joints released, rest mode on");
+      return;
+    }
+    RCLCPP_ERROR(get_logger(), "park failed (status %d): putting the arm to rest", status);
+    requestRestMode(hot_joint_, hot_celsius_);
+  }
+
+  // Rest mode only (arm_driver stops the arm and refuses motion until make resume).
+  void requestRestMode(int joint, int celsius)
   {
     if (!rest_client_->service_is_ready()) {
       RCLCPP_ERROR(
@@ -196,6 +254,7 @@ private:
 
   void checkStale()
   {
+    checkPark();
     if (std::chrono::steady_clock::now() - last_msg_ > stale_timeout_) {
       showNoFeedback("no temperatures from arm_driver - is it running?");
     }
@@ -233,6 +292,11 @@ private:
   bool had_data_ = false;
   bool warned_ = false;
   bool auto_rest_on_hot_ = true;
+  bool park_on_hot_ = true;
+  std::vector<std::string> park_command_;
+  pid_t park_pid_ = -1;
+  int hot_joint_ = 0;     // the servo that started the park, for the fallback message
+  int hot_celsius_ = 0;
   braco_driver::AutoRest auto_rest_;
 
   rclcpp::Publisher<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr diag_pub_;
