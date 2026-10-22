@@ -1,0 +1,103 @@
+<?xml version="1.0"?>
+<!--
+  Adaptive gripper of the myCobot 280, as a xacro macro. Links and offsets are the vendor's
+  (Elephant Robotics mycobot_ros2, BSD-2-Clause, see ../meshes/LICENSE.elephantrobotics).
+
+  The driver does not publish the gripper state yet (arm_driver /joint_states has joint1..joint6
+  only), so by default every finger joint is FIXED at the open pose. With actuated:=true the
+  vendor's linkage is used instead: one master joint (gripper_controller) and five mimic joints.
+  That is for the sliders in RViz and for later (Gazebo, MoveIt); on the real arm the fingers
+  would stay at 0 because nobody publishes gripper_controller.
+
+  The gripper's own frame has its fingers along +y, so the mount joint turns it +90 deg about x
+  (the vendor used 1.579, about half a degree off: pi/2 here) to make them follow the flange z.
+-->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- UNMEASURED placeholders (weigh the gripper on a scale, see docs/urdf-sim-to-real.md) -->
+  <xacro:property name="gripper_base_mass" value="0.1"/>
+  <xacro:property name="finger_link_mass" value="0.01"/>
+
+  <xacro:macro name="finger_link" params="name mass xyz">
+    <link name="${name}">
+      <visual>
+        <origin xyz="${xyz}" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="package://braco_description/meshes/gripper/${name}.dae"/>
+        </geometry>
+      </visual>
+      <collision>
+        <origin xyz="${xyz}" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="package://braco_description/meshes/gripper/${name}.dae"/>
+        </geometry>
+      </collision>
+      <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <mass value="${mass}"/>
+        <inertia ixx="${mass * 1e-3}" ixy="0" ixz="0" iyy="${mass * 1e-3}" iyz="0"
+                 izz="${mass * 1e-3}"/>
+      </inertial>
+    </link>
+  </xacro:macro>
+
+  <!-- One finger joint: fixed at 0 unless `actuated`; `mimic` = "" for the master joint,
+       "multiplier" for the others (they follow gripper_controller). -->
+  <xacro:macro name="finger_joint" params="name parent child xyz lower upper actuated mimic:=''">
+    <xacro:if value="${actuated}">
+      <joint name="${name}" type="revolute">
+        <parent link="${parent}"/>
+        <child link="${child}"/>
+        <origin xyz="${xyz}" rpy="0 0 0"/>
+        <axis xyz="0 0 1"/>
+        <limit lower="${lower}" upper="${upper}" velocity="1.0" effort="1.0"/>
+        <xacro:if value="${mimic != ''}">
+          <mimic joint="gripper_controller" multiplier="${mimic}" offset="0"/>
+        </xacro:if>
+      </joint>
+    </xacro:if>
+    <xacro:unless value="${actuated}">
+      <joint name="${name}" type="fixed">
+        <parent link="${parent}"/>
+        <child link="${child}"/>
+        <origin xyz="${xyz}" rpy="0 0 0"/>
+      </joint>
+    </xacro:unless>
+  </xacro:macro>
+
+  <xacro:macro name="adaptive_gripper" params="parent actuated:=false *origin">
+    <xacro:finger_link name="gripper_base" mass="${gripper_base_mass}" xyz="0 0 -0.012"/>
+    <xacro:finger_link name="gripper_left1" mass="${finger_link_mass}" xyz="0.039 -0.0133 -0.012"/>
+    <xacro:finger_link name="gripper_left2" mass="${finger_link_mass}" xyz="0.005 -0.0195 -0.012"/>
+    <xacro:finger_link name="gripper_left3" mass="${finger_link_mass}" xyz="0.012 0.0025 -0.012"/>
+    <xacro:finger_link name="gripper_right1" mass="${finger_link_mass}" xyz="-0.039 -0.0133 -0.012"/>
+    <xacro:finger_link name="gripper_right2" mass="${finger_link_mass}" xyz="-0.005 -0.0195 -0.012"/>
+    <xacro:finger_link name="gripper_right3" mass="${finger_link_mass}" xyz="-0.012 0.0025 -0.012"/>
+
+    <joint name="${parent}_to_gripper_base" type="fixed">
+      <parent link="${parent}"/>
+      <child link="gripper_base"/>
+      <xacro:insert_block name="origin"/>
+    </joint>
+
+    <!-- gripper_controller is the master; the other five follow it (vendor linkage) -->
+    <xacro:finger_joint name="gripper_controller" parent="gripper_base" child="gripper_left3"
+                        xyz="-0.012 0.005 0" lower="-0.74" upper="0.15" actuated="${actuated}"/>
+    <xacro:finger_joint name="gripper_base_to_gripper_left2" parent="gripper_base"
+                        child="gripper_left2" xyz="-0.005 0.027 0" lower="-0.8" upper="0.5"
+                        actuated="${actuated}" mimic="1.0"/>
+    <xacro:finger_joint name="gripper_left3_to_gripper_left1" parent="gripper_left3"
+                        child="gripper_left1" xyz="-0.027 0.016 0" lower="-0.5" upper="0.5"
+                        actuated="${actuated}" mimic="-1.0"/>
+    <xacro:finger_joint name="gripper_base_to_gripper_right3" parent="gripper_base"
+                        child="gripper_right3" xyz="0.012 0.005 0" lower="-0.15" upper="0.7"
+                        actuated="${actuated}" mimic="-1.0"/>
+    <xacro:finger_joint name="gripper_base_to_gripper_right2" parent="gripper_base"
+                        child="gripper_right2" xyz="0.005 0.027 0" lower="-0.5" upper="0.8"
+                        actuated="${actuated}" mimic="-1.0"/>
+    <xacro:finger_joint name="gripper_right3_to_gripper_right1" parent="gripper_right3"
+                        child="gripper_right1" xyz="0.027 0.016 0" lower="-0.5" upper="0.5"
+                        actuated="${actuated}" mimic="1.0"/>
+  </xacro:macro>
+
+</robot>
