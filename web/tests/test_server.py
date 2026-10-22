@@ -16,13 +16,13 @@ os.environ["BRACO_ROS"] = "0"  # and never start ROS 2, even where it is install
 from fastapi.testclient import TestClient  # noqa: E402
 
 from web.server import app as app_module  # noqa: E402
-from web.server import arm, docs, github, role, ros  # noqa: E402
+from web.server import arm, camera, docs, github, role, ros  # noqa: E402
 from web.server.app import app  # noqa: E402
 from web.server.session import ControlError  # noqa: E402
 
 STATIC_FILES = [
     "index.html", "css/style.css", "js/app.js", "js/util.js", "js/specs.js", "js/arm3d.js",
-    "js/activity.js", "js/views/home.js", "js/views/arm.js", "js/views/ros.js", "js/views/docs.js",
+    "js/activity.js", "js/camera.js", "js/views/home.js", "js/views/arm.js", "js/views/ros.js", "js/views/docs.js",
     "js/views/sprints.js", "js/views/sprint-detail.js",
 ]
 
@@ -463,6 +463,60 @@ def test_ros_panels_without_ros(client):
     for path in ("/api/ros/health", "/api/ros/graph"):
         data = client.get(path).json()
         assert data["available"] is False and "BRACO_ROS=0" in data["error"]
+
+
+# ---- camera (fake frames: no ROS, no camera) --------------------------------------------
+
+class FakeFrame:
+    def __init__(self, data):
+        self.data = data
+
+
+def jpeg(tag):
+    return b"\xff\xd8" + tag + b"\xff\xd9"
+
+
+def test_camera_without_ros_is_offline():
+    cam = camera.Camera(ros.RosBridge())
+    s = cam.status()
+    assert s["online"] is False and s["fps"] == 0.0 and s["error"] == "ROS 2 not started"
+    assert cam.latest()[1] is None
+
+
+def test_camera_frames_and_staleness(monkeypatch):
+    clock = [1000.0]
+    monkeypatch.setattr(camera.time, "time", lambda: clock[0])
+    bridge = ros.RosBridge()
+    bridge.available = True
+    cam = camera.Camera(bridge)
+    assert "is the camera node running" in cam.status()["error"]
+    for i in range(10):
+        clock[0] += 0.1
+        cam._on_frame(FakeFrame(jpeg(bytes([i]))))
+    seq, data = cam.latest()
+    assert seq == 10 and data == jpeg(b"\x09")
+    s = cam.status()
+    assert s["online"] is True and s["error"] is None and s["fps"] == 5.0
+    clock[0] += camera.STALE_S + 1
+    assert cam.latest()[1] is None
+    assert cam.status()["online"] is False and "unplugged" in cam.status()["error"]
+
+
+def test_camera_api_offline(client):
+    s = client.get("/api/camera/status").json()
+    assert s["online"] is False and s["topic"] == "/camera/image_raw/compressed"
+    assert client.get("/api/camera/snapshot").status_code == 503
+    assert client.get("/api/camera/stream").status_code == 503
+
+
+def test_camera_api_snapshot_and_stream(client, monkeypatch):
+    monkeypatch.setattr(camera, "STALE_S", 0.3)   # the stream ends once the frame is stale
+    app_module.camera._on_frame(FakeFrame(jpeg(b"frame")))
+    r = client.get("/api/camera/snapshot")
+    assert r.status_code == 200 and r.headers["content-type"] == "image/jpeg" and r.content == jpeg(b"frame")
+    r = client.get("/api/camera/stream")
+    assert r.status_code == 200 and r.headers["content-type"].startswith("multipart/x-mixed-replace")
+    assert r.content.count(b"--frame\r\n") == 1 and jpeg(b"frame") in r.content
 
 
 # ---- shared session over /ws -----------------------------------------------------------

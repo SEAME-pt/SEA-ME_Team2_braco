@@ -1,6 +1,6 @@
 """braco: the team's web interface to the myCobot 280.
 
-Live telemetry and control of the arm, the ROS 2 graph, docs and sprints,
+Live telemetry and control of the arm, its camera, the ROS 2 graph, docs and sprints,
 shared in real time by everybody who has the page open (see session.py).
 
     ARM_MOCK=1 uvicorn web.server.app:app --port 8000      # PC, no arm
@@ -32,12 +32,13 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from . import docs, github, ros
 from .arm import POSES, JOINT_LIMITS, GazeboArm, MockArm, RestingError, RosArm
+from .camera import BOUNDARY, Camera
 from .role import machine_role
 from .ros_graph import Graph
 from .ros_health import Health
@@ -74,6 +75,7 @@ hub = Hub(control=arm)
 arm.on_control_lost = hub.control_lost   # RosArm: the joystick forced the control away
 health = Health(ros.bridge)
 graph = Graph(ros.bridge)
+camera = Camera(ros.bridge)
 _latest = {}   # last health sent, for new connections and change detection
 
 
@@ -119,6 +121,7 @@ async def lifespan(_app):
     hub.bind(asyncio.get_running_loop())
     if ROS_ENABLED:
         health.start()
+        camera.start()
     else:
         ros.bridge.error = "ROS 2 disabled (BRACO_ROS=0)"
     arm.start()
@@ -304,6 +307,30 @@ def ros_health():
 @app.get("/api/ros/graph")
 def ros_graph():
     return graph.snapshot()
+
+
+# ---- camera -----------------------------------------------------------------------------
+
+@app.get("/api/camera/status")
+def camera_status():
+    return camera.status()
+
+
+@app.get("/api/camera/snapshot")
+def camera_snapshot():
+    _seq, jpeg = camera.latest()
+    if jpeg is None:
+        raise HTTPException(status_code=503, detail=camera.status()["error"])
+    return Response(content=jpeg, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+
+
+@app.get("/api/camera/stream")
+def camera_stream():
+    """MJPEG for an <img>: ends when the camera goes offline (503 if it already is)."""
+    if camera.latest()[1] is None:
+        raise HTTPException(status_code=503, detail=camera.status()["error"])
+    return StreamingResponse(camera.stream(), headers={"Cache-Control": "no-store"},
+                             media_type="multipart/x-mixed-replace; boundary=" + BOUNDARY)
 
 
 # ---- websockets ---------------------------------------------------------------------

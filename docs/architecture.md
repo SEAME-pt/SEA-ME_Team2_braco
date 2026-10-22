@@ -39,13 +39,15 @@ figures. **Both files are kept in sync**: a change to one goes to the other in t
 
 - **One owner per device.** `arm_driver` is the only process that opens the myCobot 280 serial port
   (`/dev/ttyTHS1`, 1 Mbaud). Everyone else reaches the arm through its topics and services, so each client can
-  start, stop or crash without touching the port. The page has no direct serial mode.
+  start, stop or crash without touching the port. The page has no direct serial mode. Likewise `camera` is the
+  only process that opens the eye-in-hand USB camera; the page (and later vision) subscribes to its frames.
 - **The driver never moves the arm by itself.** Starting or stopping the system does not zero, park or power on the
   arm; those are explicit commands (`make zero`, `make park`, `make down PARK=1`).
 - **Safety lives next to the hardware.** Joint limits, the table margin, the watchdog, rest mode and the control
   owner are enforced in `arm_driver`, not in its clients: a buggy client cannot bypass them.
 - **Faults are visible.** `arm_driver` is not respawned: if it dies the launch shuts down, `arm_routine.sh` ends and
-  the container stops. `temperature_monitor` and `joystick_teleop` are respawned.
+  the container stops. `temperature_monitor`, `joystick_teleop` and `camera` are respawned; the arm never depends
+  on the camera, whose node waits for it when it is unplugged.
 - **One client moves the arm at a time.** The page, the joystick, zero/park and the mission take the control from
   `arm_driver` before moving; motion from anyone else is ignored, STOP never is
   ([ADR-0002](ADR-0002-controle-unico.md)).
@@ -75,7 +77,12 @@ figures. **Both files are kept in sync**: a change to one goes to the other in t
  │                                                    release_servos  │
  │                                                    take_control    │
  └──────────────────────────────────┬─────────────────────────────────┘
-                                    │
+                                    │                                      ┌───────────────────────┐
+                                    │                                      │ camera                │  V4L2   ┌──────────────┐
+                                    │                                      │ owns the USB camera   │ ◄────── │ USB camera   │
+                                    │                                      │ SENDS /camera/        │         │ /dev/video0  │
+                                    │                                      │  image_raw/compressed │         └──────────────┘
+                                    │                                      └───────────┬───────────┘
  ═══════════════════════ ROS 2 · DDS · domain 42 ════════════════════════════════════════════════════════
       │                       │                        │                          ┊
  ┌────┴──────────────┐ ┌──────┴────────────────┐ ┌─────┴───────────────────┐ ┌┄┄┄┴┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┐
@@ -89,9 +96,10 @@ figures. **Both files are kept in sync**: a change to one goes to the other in t
  │  /joint_states    │ │      power_on         │ │  /arm/servo_temperatures│ ┊  /diagnostics             ┊
  │  /control_owner   │ │ READS                 │ │                         │ └┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┘
  │  /diagnostics     │ │  /joint_states        │ │                         │
- │                   │ │  /control_owner       │ │                         │
+ │  /camera/…/compr. │ │  /control_owner       │ │                         │
  └────┬──────────────┘ └──────┬────────────────┘ └─────┬───────────────────┘
-      │ HTTP · WS :8000       │                        │ I2C
+      │ HTTP · WS · MJPEG     │                        │ I2C
+      │ :8000                 │                        │
    browsers             joystick /dev/input/js0    LCD1602 /dev/i2c-0
 ```
 
@@ -144,6 +152,7 @@ watchdog stops the arm.
 | `/arm/read_only` | `std_msgs/Bool`, latched | `arm_driver` | page |
 | `/arm/control_owner` | `std_msgs/String`, latched (`""` = free) | `arm_driver` | teleop, page |
 | `/diagnostics` | `diagnostic_msgs/DiagnosticArray` | `temperature_monitor` | page (levels, ROS health) |
+| `/camera/image_raw/compressed` | `sensor_msgs/CompressedImage` (JPEG, up to 15 fps, sensor-data QoS) | `camera` | page (MJPEG on Arm and Control), vision (planned) |
 | `/arm/take_control` | `braco_interfaces/TakeControl` | `arm_driver` | teleop, page, zero/park |
 | `/arm/power_on`, `/arm/release_servos` | `std_srvs/Trigger` | `arm_driver` | teleop, page, zero/park |
 | `/arm/set_gripper`, `/arm/set_read_only` | `std_srvs/SetBool` | `arm_driver` | teleop, page, zero/park, `temperature_monitor` |
@@ -192,6 +201,7 @@ package has its own README with its topics, parameters and how to run it by hand
 | [`braco_interfaces`](../ros2_ws/src/braco_interfaces/README.md) | Interfaces | `ArmCommand`, `JointTarget`, `ServoTemperatures`, `ServoVoltages`, `TakeControl` | done |
 | [`braco_driver`](../ros2_ws/src/braco_driver/README.md) | Nodes | `arm_driver` (owns the port and the control), `temperature_monitor` (LCD, `/diagnostics`, rest on overheat) | done |
 | [`braco_teleop`](../ros2_ws/src/braco_teleop/README.md) | Node | `joystick_teleop`: jogs the arm through `arm_driver` | done |
+| [`braco_camera`](../ros2_ws/src/braco_camera/README.md) | Node (Python) | `camera`: the eye-in-hand USB camera as JPEG frames | done |
 | [`braco_bringup`](../ros2_ws/src/braco_bringup/README.md) | Launch + config | `braco.launch.py`, `braco.yaml`, the container entrypoint, `zero` / `park` | done, `sim:=true` reserved |
 | [`braco_description`](../ros2_ws/src/braco_description/README.md) | Model | URDF of the myCobot 280 | placeholder #25 |
 | [`braco_moveit_config`](../ros2_ws/src/braco_moveit_config/README.md) | Config | MoveIt 2 for the arm | placeholder #40 |
@@ -218,6 +228,8 @@ SEA-ME_Team2_braco/
 │   ├── braco_teleop/
 │   │   ├── src/  joystick_teleop.cpp
 │   │   └── test/ test_teleop_logic.cpp
+│   ├── braco_camera/
+│   │   └── scripts/ camera.py         # USB camera -> /camera/image_raw/compressed
 │   ├── braco_bringup/
 │   │   ├── launch/  braco.launch.py     # sim:=true|false
 │   │   ├── config/  braco.yaml          # tuning of every node
@@ -227,7 +239,7 @@ SEA-ME_Team2_braco/
 │   ├── braco_moveit_config/    # placeholder #40
 │   └── braco_mission/          # placeholder #43
 ├── web/                      # the braco page, a ROS 2 client
-│   ├── server/   app.py  arm.py  ros.py  session.py …
+│   ├── server/   app.py  arm.py  camera.py  ros.py  session.py …
 │   ├── static/
 │   └── tests/
 ├── docker/
@@ -286,6 +298,7 @@ else has one generic folder.
  │   RViz2 · PlotJuggler · rqt          │    DDS       │     arm_driver ──── /dev/ttyTHS1 ── arm   │
  │                                      │  domain 42   │     temperature_monitor ── /dev/i2c-0 LCD │
  │ sim  arm_routine.sh                  │ ◄──────────► │     joystick_teleop ── /dev/input/js0     │
+ │                                      │              │     camera ── /dev/video0 USB camera      │
  │   braco.launch.py sim:=true          │  Fast DDS,   │   web page :8000  ARM_SOURCE=ros          │
  │     Gazebo arm (#34, reserved)       │  host network│   launch ends → container stops           │
  │   web page :8000  ARM_SOURCE=gazebo  │              │                                           │
@@ -320,10 +333,11 @@ The **wiring** (devices) comes from the launch arguments, filled by `docker/comp
 
 | Argument | Default | Used by |
 |---|---|---|
-| `sim` | `false` | `false`: `arm_driver`, `temperature_monitor`, `joystick_teleop`. `true`: the Gazebo arm (#34); until then it starts nothing and logs why |
+| `sim` | `false` | `false`: `arm_driver`, `temperature_monitor`, `joystick_teleop`, `camera`. `true`: the Gazebo arm (#34); until then it starts nothing and logs why |
 | `port`, `baud` | `/dev/ttyTHS1`, `1000000` | `arm_driver` |
 | `lcd_bus` | `/dev/i2c-0` | `temperature_monitor` |
 | `device` | `/dev/input/js0` | `joystick_teleop` |
+| `camera` | `/dev/video0` | `camera`; the `real` container passes `/run/hostdev/$CAMERA_DEVICE` (host `/dev` mounted there, so the camera can be plugged in later) |
 
 | Node | Parameter | Value | Meaning |
 |---|---|---|---|
@@ -339,6 +353,10 @@ The **wiring** (devices) comes from the launch arguments, filled by `docker/comp
 | `joystick_teleop` | `state_timeout_ms` | 150 | older `/joint_states`: no jogging |
 | | `debug` | false | log every joystick event |
 | | `force_button`, `force_hold_s` | 8, 1.0 | hold to take the control from another owner |
+| `camera` | `width`, `height` | 640, 480 | asked of the camera |
+| | `fps` | 15.0 | the most it publishes |
+| | `jpeg_quality` | 80 | only for cameras without MJPG (MJPG frames are passed on as they come) |
+| | `reopen_s` | 2.0 | without a camera: try again this often |
 
 ---
 
@@ -358,7 +376,7 @@ The **wiring** (devices) comes from the launch arguments, filled by `docker/comp
 | `make down` | Turn it off, without moving the arm (`PARK=1` parks the arm first) |
 | `make restart` | Restart the system container, then like `up` |
 | `make status` | Containers, CPU/RAM per container, the arm as the page sees it; a few seconds of `tegrastats` on the Jetson |
-| `make logs` | Follow the system's log (`S=web`, `S=arm_driver`, `S=temperature_monitor`, `S=joystick_teleop`) |
+| `make logs` | Follow the system's log (`S=web`, `S=arm_driver`, `S=temperature_monitor`, `S=joystick_teleop`, `S=camera`) |
 
 **Arm** · [mk/arm.mk](../mk/arm.mk) · Jetson
 
@@ -445,10 +463,11 @@ on a 2 GB Nano or with the desktop on leads to the OOM killer or to swapping on 
 | `arm_driver` | 15–25 MB | 4–8% | Serial loop with 10 ms pauses, angles at 20 Hz, temperatures and voltages every 2 s; mostly waiting on the UART |
 | `temperature_monitor` | 10–20 MB | <1% | One message every 2 s and one I2C write to the LCD |
 | `joystick_teleop` | 10–20 MB | 1–3% | 50 Hz timer; publishes only while a stick is off-centre |
+| `camera` (Python + OpenCV) | 60–90 MB | 3–8% (estimate) | 15 fps 640×480; MJPG frames are not decoded. The page relays them as MJPEG, ~0.8 MB/s per open tab with the camera |
 | `ros2 launch` (Python) | 50–70 MB | <1% | Only supervises its children |
 | page (uvicorn + rclpy) | 100–150 MB | 5–15% | 5 Hz telemetry per open tab; with the ROS tab open, graph introspection every 2 s (20–40%) |
 | Docker + containerd | 80–120 MB | 1–2% | Outside the container, always on |
-| **Total today** | **~270–400 MB** | **~12–30%** | About 3–8% of the Nano's CPU |
+| **Total today** | **~330–490 MB** | **~15–38%** | About 4–10% of the Nano's CPU |
 | *`robot_state_publisher` (planned)* | *15–25 MB* | *1–2%* | *TF from the URDF* |
 | *`move_group` (planned, PC)* | *300–600 MB* | *<2% idle* | *100% of a core for 0.1–2 s per plan: the heaviest process, kept on the PC* |
 | *`braco_mission` (planned, PC)* | *60–100 MB* | *<5%* | *State machine, mostly waiting on MoveIt* |

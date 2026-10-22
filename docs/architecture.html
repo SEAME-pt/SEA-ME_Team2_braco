@@ -208,10 +208,10 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
   <section id="s1">
     <div class="sechead"><span class="secnum">1</span><h2>Principles</h2></div>
     <div class="okgrid">
-      <div><b>One owner per device.</b> <code>arm_driver</code> is the only process that opens the myCobot 280 serial port (<code>/dev/ttyTHS1</code>, 1 Mbaud). Everyone else reaches the arm through its topics and services, so each client can start, stop or crash without touching the port. The page has no direct serial mode.</div>
+      <div><b>One owner per device.</b> <code>arm_driver</code> is the only process that opens the myCobot 280 serial port (<code>/dev/ttyTHS1</code>, 1 Mbaud). Everyone else reaches the arm through its topics and services, so each client can start, stop or crash without touching the port. The page has no direct serial mode. Likewise <code>camera</code> is the only process that opens the eye-in-hand USB camera; the page (and later vision) subscribes to its frames.</div>
       <div><b>The driver never moves the arm by itself.</b> Starting or stopping the system does not zero, park or power on the arm; those are explicit commands (<code>make zero</code>, <code>make park</code>, <code>make down PARK=1</code>).</div>
       <div><b>Safety lives next to the hardware.</b> Joint limits, the table margin, the watchdog, rest mode and the control owner are enforced in <code>arm_driver</code>, not in its clients: a buggy client cannot bypass them.</div>
-      <div><b>Faults are visible.</b> <code>arm_driver</code> is not respawned: if it dies the launch shuts down, <code>arm_routine.sh</code> ends and the container stops. <code>temperature_monitor</code> and <code>joystick_teleop</code> are respawned.</div>
+      <div><b>Faults are visible.</b> <code>arm_driver</code> is not respawned: if it dies the launch shuts down, <code>arm_routine.sh</code> ends and the container stops. <code>temperature_monitor</code>, <code>joystick_teleop</code> and <code>camera</code> are respawned; the arm never depends on the camera, whose node waits for it when it is unplugged.</div>
       <div><b>One client moves the arm at a time.</b> The page, the joystick, zero/park and the mission take the control from <code>arm_driver</code> before moving; motion from anyone else is ignored, STOP never is (<a href="ADR-0002-controle-unico.md">ADR-0002</a>).</div>
       <div><b>One source for each fact.</b> The thermal level is computed once, by <code>temperature_monitor</code>, and published on <code>/diagnostics</code>; the page shows it and does not recompute it. The control owner is kept once, by <code>arm_driver</code>.</div>
       <div><b>Same interface for real and simulated.</b> Everything above the driver uses <code>/joint_states</code> and <code>braco_interfaces</code>, so the mission and planning layers run unchanged on both (#37).</div>
@@ -224,7 +224,7 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
     <div class="sechead"><span class="secnum">2</span><h2>The system at a glance</h2></div>
     <figure>
       <div class="scroll">
-      <svg viewBox="0 0 1000 640" role="img" aria-label="arm_driver above the ROS 2 graph, the only owner of the UART, with the gates STOP, rest mode, control owner and watchdog. Below, the web page, the joystick, the temperature monitor and the planned braco_mission, all talking only through the graph.">
+      <svg viewBox="0 0 1000 640" role="img" aria-label="arm_driver above the ROS 2 graph, the only owner of the UART, with the gates STOP, rest mode, control owner and watchdog. Beside it, the camera node, the only owner of the USB camera. Below, the web page, the joystick, the temperature monitor and the planned braco_mission, all talking only through the graph.">
         <defs>
           <marker id="r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ah-ros"/></marker>
           <marker id="h" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ah-hw"/></marker>
@@ -265,6 +265,17 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
 
         <line x1="340" y1="198" x2="340" y2="246" class="w-ros" marker-start="url(#r)" marker-end="url(#r)"/>
 
+        <rect x="680" y="152" width="150" height="84" rx="4" class="box"/>
+        <text x="694" y="174" class="t-b">camera</text>
+        <text x="694" y="190" class="t-s">owns the USB camera</text>
+        <text x="694" y="208" class="t-m">/camera/image_raw/</text>
+        <text x="694" y="224" class="t-m">  compressed (JPEG)</text>
+        <line x1="755" y1="237" x2="755" y2="246" class="w-ros" marker-end="url(#r)"/>
+        <rect x="850" y="166" width="130" height="56" rx="4" class="hwbox"/>
+        <text x="915" y="189" text-anchor="middle" class="t-b">USB camera</text>
+        <text x="915" y="207" text-anchor="middle" class="t-m">/dev/video0</text>
+        <line x1="848" y1="194" x2="832" y2="194" class="w-hw" marker-end="url(#h)"/>
+
         <rect x="20" y="248" width="960" height="44" rx="4" class="band"/>
         <text x="500" y="268" text-anchor="middle" class="t-b t-ros">ROS 2 · DDS · domain 42</text>
         <text x="500" y="284" text-anchor="middle" class="t-s">nodes of one ros2 launch; no client talks to another outside the graph</text>
@@ -282,9 +293,10 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
         <text x="36" y="427" class="t-m">srv take_control</text>
         <text x="36" y="442" class="t-m">srv power_on, gripper…</text>
         <text x="36" y="464" class="t-l">READS</text>
-        <text x="36" y="480" class="t-m">/joint_states</text>
-        <text x="36" y="495" class="t-m">/arm/control_owner</text>
-        <text x="36" y="510" class="t-m">/diagnostics</text>
+        <text x="36" y="478" class="t-m">/joint_states</text>
+        <text x="36" y="492" class="t-m">/arm/control_owner</text>
+        <text x="36" y="506" class="t-m">/diagnostics</text>
+        <text x="36" y="520" class="t-m">/camera/image_raw/compressed</text>
 
         <rect x="265" y="330" width="225" height="196" rx="4" class="box"/>
         <text x="281" y="354" class="t-b">joystick_teleop</text>
@@ -319,7 +331,7 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
         <rect x="20" y="572" width="225" height="50" rx="4" class="box"/>
         <text x="132" y="602" text-anchor="middle" class="t-b">browsers</text>
         <line x1="132" y1="570" x2="132" y2="528" class="w-fg" marker-start="url(#f)" marker-end="url(#f)"/>
-        <text x="140" y="553" class="t-m">HTTP · WS :8000</text>
+        <text x="140" y="553" class="t-m">HTTP · WS · MJPEG :8000</text>
         <rect x="265" y="572" width="225" height="50" rx="4" class="hwbox"/>
         <text x="377" y="594" text-anchor="middle" class="t-b">joystick</text>
         <text x="377" y="611" text-anchor="middle" class="t-m">/dev/input/js0</text>
@@ -388,6 +400,7 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
           <tr><td><code>/arm/read_only</code></td><td><code>std_msgs/Bool</code>, latched</td><td><code>arm_driver</code></td><td>page</td></tr>
           <tr><td><code>/arm/control_owner</code></td><td><code>std_msgs/String</code>, latched (<code>""</code> = free)</td><td><code>arm_driver</code></td><td>teleop, page</td></tr>
           <tr><td><code>/diagnostics</code></td><td><code>diagnostic_msgs/DiagnosticArray</code></td><td><code>temperature_monitor</code></td><td>page (levels, ROS health)</td></tr>
+          <tr><td><code>/camera/image_raw/compressed</code></td><td><code>sensor_msgs/CompressedImage</code> (JPEG, up to 15 fps, sensor-data QoS)</td><td><code>camera</code></td><td>page (MJPEG on Arm and Control), vision (planned)</td></tr>
           <tr><td><code>/arm/take_control</code></td><td><code>braco_interfaces/TakeControl</code></td><td><code>arm_driver</code></td><td>teleop, page, zero/park</td></tr>
           <tr><td><code>/arm/power_on</code>, <code>/arm/release_servos</code></td><td><code>std_srvs/Trigger</code></td><td><code>arm_driver</code></td><td>teleop, page, zero/park</td></tr>
           <tr><td><code>/arm/set_gripper</code>, <code>/arm/set_read_only</code></td><td><code>std_srvs/SetBool</code></td><td><code>arm_driver</code></td><td>teleop, page, zero/park, <code>temperature_monitor</code></td></tr>
@@ -455,6 +468,7 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
           <tr><td><a href="../ros2_ws/src/braco_interfaces/README.md"><code>braco_interfaces</code></a></td><td>Interfaces</td><td><code>ArmCommand</code>, <code>JointTarget</code>, <code>ServoTemperatures</code>, <code>ServoVoltages</code>, <code>TakeControl</code></td><td><span class="pill p-ok">done</span></td></tr>
           <tr><td><a href="../ros2_ws/src/braco_driver/README.md"><code>braco_driver</code></a></td><td>Nodes</td><td><code>arm_driver</code> (owns the port and the control), <code>temperature_monitor</code> (LCD, <code>/diagnostics</code>, rest on overheat)</td><td><span class="pill p-ok">done</span></td></tr>
           <tr><td><a href="../ros2_ws/src/braco_teleop/README.md"><code>braco_teleop</code></a></td><td>Node</td><td><code>joystick_teleop</code>: jogs the arm through <code>arm_driver</code></td><td><span class="pill p-ok">done</span></td></tr>
+          <tr><td><a href="../ros2_ws/src/braco_camera/README.md"><code>braco_camera</code></a></td><td>Node (Python)</td><td><code>camera</code>: the eye-in-hand USB camera as JPEG frames</td><td><span class="pill p-ok">done</span></td></tr>
           <tr><td><a href="../ros2_ws/src/braco_bringup/README.md"><code>braco_bringup</code></a></td><td>Launch + config</td><td><code>braco.launch.py</code>, <code>braco.yaml</code>, the container entrypoint, <code>zero</code> / <code>park</code></td><td><span class="pill p-ok">done</span> <code>sim:=true</code> reserved</td></tr>
           <tr class="future"><td><a href="../ros2_ws/src/braco_description/README.md"><code>braco_description</code></a></td><td>Model</td><td>URDF of the myCobot 280</td><td><span class="pill p-note">placeholder #25</span></td></tr>
           <tr class="future"><td><a href="../ros2_ws/src/braco_moveit_config/README.md"><code>braco_moveit_config</code></a></td><td>Config</td><td>MoveIt 2 for the arm</td><td><span class="pill p-note">placeholder #40</span></td></tr>
@@ -483,6 +497,8 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
 │   ├── <span class="p">braco_teleop/</span>
 │   │   ├── src/  joystick_teleop.cpp
 │   │   └── test/ test_teleop_logic.cpp
+│   ├── <span class="p">braco_camera/</span>
+│   │   └── scripts/ camera.py         <span class="c"># USB camera -> /camera/image_raw/compressed</span>
 │   ├── <span class="p">braco_bringup/</span>
 │   │   ├── launch/  braco.launch.py     <span class="c"># sim:=true|false</span>
 │   │   ├── config/  braco.yaml          <span class="c"># tuning of every node</span>
@@ -492,7 +508,7 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
 │   ├── <span class="n">braco_moveit_config/</span>    <span class="c"># placeholder #40</span>
 │   └── <span class="n">braco_mission/</span>          <span class="c"># placeholder #43</span>
 ├── web/                      <span class="c"># the braco page, a ROS 2 client</span>
-│   ├── server/   app.py  arm.py  ros.py  session.py …
+│   ├── server/   app.py  arm.py  camera.py  ros.py  session.py …
 │   ├── static/
 │   └── tests/
 ├── docker/
@@ -581,8 +597,9 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
         <text x="616" y="126" class="t-m">  arm_driver ──── /dev/ttyTHS1 ── arm</text>
         <text x="616" y="144" class="t-m">  temperature_monitor ── /dev/i2c-0 LCD</text>
         <text x="616" y="162" class="t-m">  joystick_teleop ── /dev/input/js0</text>
-        <text x="616" y="186" class="t-m">web page :8000  ARM_SOURCE=ros</text>
-        <text x="616" y="212" class="t-s">launch ends → container stops (no restart)</text>
+        <text x="616" y="180" class="t-m">  camera ── /dev/video0 USB camera</text>
+        <text x="616" y="202" class="t-m">web page :8000  ARM_SOURCE=ros</text>
+        <text x="616" y="226" class="t-s">launch ends → container stops (no restart)</text>
         <rect x="600" y="256" width="360" height="68" rx="4" class="box"/>
         <text x="616" y="278" class="t-b">dev</text><text x="650" y="278" class="t-s">throw-away, run --rm</text>
         <text x="616" y="300" class="t-m">build · zero · park</text>
@@ -612,10 +629,11 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
       <table>
         <thead><tr><th>Argument</th><th>Default</th><th>Used by</th></tr></thead>
         <tbody>
-          <tr><td><code>sim</code></td><td class="num">false</td><td><code>false</code>: <code>arm_driver</code>, <code>temperature_monitor</code>, <code>joystick_teleop</code>. <code>true</code>: the Gazebo arm (#34); until then it starts nothing and logs why</td></tr>
+          <tr><td><code>sim</code></td><td class="num">false</td><td><code>false</code>: <code>arm_driver</code>, <code>temperature_monitor</code>, <code>joystick_teleop</code>, <code>camera</code>. <code>true</code>: the Gazebo arm (#34); until then it starts nothing and logs why</td></tr>
           <tr><td><code>port</code>, <code>baud</code></td><td class="num">/dev/ttyTHS1, 1000000</td><td><code>arm_driver</code></td></tr>
           <tr><td><code>lcd_bus</code></td><td class="num">/dev/i2c-0</td><td><code>temperature_monitor</code></td></tr>
           <tr><td><code>device</code></td><td class="num">/dev/input/js0</td><td><code>joystick_teleop</code></td></tr>
+          <tr><td><code>camera</code></td><td class="num">/dev/video0</td><td><code>camera</code>; the <code>real</code> container passes <code>/run/hostdev/$CAMERA_DEVICE</code> (host <code>/dev</code> mounted there, so the camera can be plugged in later)</td></tr>
         </tbody>
       </table>
     </div>
@@ -629,12 +647,16 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
           <tr><td><code>gripper_speed</code></td><td class="num">50</td><td>1..100</td></tr>
           <tr><td><code>read_only</code></td><td class="num">false</td><td>start in rest mode</td></tr>
           <tr><td><code>control_idle_s</code></td><td class="num">5.0</td><td>the owner loses the control after this long without motion</td></tr>
-          <tr><td rowspan="2"><code>temperature_monitor</code></td><td><code>stale_timeout_s</code></td><td class="num">5.0</td><td>no temperatures for this long: "no feedback" on the LCD</td></tr>
+          <tr><td rowspan="3"><code>temperature_monitor</code></td><td><code>stale_timeout_s</code></td><td class="num">5.0</td><td>no temperatures for this long: "no feedback" on the LCD</td></tr>
           <tr><td><code>auto_rest_on_hot</code></td><td class="num">true</td><td>a servo at 65 °C puts the arm to rest, once per episode</td></tr>
           <tr><td><code>park_on_hot</code></td><td class="num">true</td><td>... by running park (fold, release the joints); false: rest mode only</td></tr>
           <tr><td rowspan="3"><code>joystick_teleop</code></td><td><code>state_timeout_ms</code></td><td class="num">150</td><td>older <code>/joint_states</code>: no jogging</td></tr>
           <tr><td><code>debug</code></td><td class="num">false</td><td>log every joystick event</td></tr>
           <tr><td><code>force_button</code>, <code>force_hold_s</code></td><td class="num">8, 1.0</td><td>hold to take the control from another owner</td></tr>
+          <tr><td rowspan="4"><code>camera</code></td><td><code>width</code>, <code>height</code></td><td class="num">640, 480</td><td>asked of the camera</td></tr>
+          <tr><td><code>fps</code></td><td class="num">15.0</td><td>the most it publishes</td></tr>
+          <tr><td><code>jpeg_quality</code></td><td class="num">80</td><td>only for cameras without MJPG (MJPG frames are passed on as they come)</td></tr>
+          <tr><td><code>reopen_s</code></td><td class="num">2.0</td><td>without a camera: try again this often</td></tr>
         </tbody>
       </table>
     </div>
@@ -656,7 +678,7 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
           <li><code>make down</code><span>Turn it off, without moving the arm.<small><code>PARK=1</code> parks the arm first.</small></span></li>
           <li><code>make restart</code><span>Restart the system container, then like <code>up</code>.</span></li>
           <li><code>make status</code><span>Containers, CPU/RAM per container, the arm as the page sees it; a few seconds of <code>tegrastats</code> on the Jetson.</span></li>
-          <li><code>make logs</code><span>Follow the system's log.<small><code>S=web</code>, <code>S=arm_driver</code>, <code>S=temperature_monitor</code>, <code>S=joystick_teleop</code>.</small></span></li>
+          <li><code>make logs</code><span>Follow the system's log.<small><code>S=web</code>, <code>S=arm_driver</code>, <code>S=temperature_monitor</code>, <code>S=joystick_teleop</code>, <code>S=camera</code>.</small></span></li>
         </ul>
       </div>
       <div class="grp">
@@ -787,10 +809,11 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
           <tr><td><code>arm_driver</code></td><td class="num">15–25 MB</td><td class="num">4–8%</td><td>Serial loop with 10 ms pauses, angles at 20 Hz, temperatures and voltages every 2 s; mostly waiting on the UART.</td></tr>
           <tr><td><code>temperature_monitor</code></td><td class="num">10–20 MB</td><td class="num">&lt;1%</td><td>One message every 2 s and one I2C write to the LCD.</td></tr>
           <tr><td><code>joystick_teleop</code></td><td class="num">10–20 MB</td><td class="num">1–3%</td><td>50 Hz timer; publishes only while a stick is off-centre.</td></tr>
+          <tr><td><code>camera</code> (Python + OpenCV)</td><td class="num">60–90 MB</td><td class="num">3–8% (estimate)</td><td>15 fps 640×480; MJPG frames are not decoded. The page relays them as MJPEG, ~0.8 MB/s per open tab with the camera.</td></tr>
           <tr><td><code>ros2 launch</code> (Python)</td><td class="num">50–70 MB</td><td class="num">&lt;1%</td><td>Only supervises its children.</td></tr>
           <tr><td>page (uvicorn + rclpy)</td><td class="num">100–150 MB</td><td class="num">5–15%</td><td>5 Hz telemetry per open tab; with the ROS tab open, graph introspection every 2 s (20–40%).</td></tr>
           <tr><td>Docker + containerd</td><td class="num">80–120 MB</td><td class="num">1–2%</td><td>Outside the container, always on.</td></tr>
-          <tr class="total"><td>Total today</td><td class="num">~270–400 MB</td><td class="num">~12–30%</td><td>About 3–8% of the Nano's CPU.</td></tr>
+          <tr class="total"><td>Total today</td><td class="num">~330–490 MB</td><td class="num">~15–38%</td><td>About 4–10% of the Nano's CPU.</td></tr>
           <tr class="future"><td><code>robot_state_publisher</code> (planned)</td><td class="num">15–25 MB</td><td class="num">1–2%</td><td>TF from the URDF.</td></tr>
           <tr class="future"><td><code>move_group</code> (planned, PC)</td><td class="num">300–600 MB</td><td class="num">&lt;2% idle</td><td>100% of a core for 0.1–2 s per plan: the heaviest process, kept on the PC.</td></tr>
           <tr class="future"><td><code>braco_mission</code> (planned, PC)</td><td class="num">60–100 MB</td><td class="num">&lt;5%</td><td>State machine, mostly waiting on MoveIt.</td></tr>
