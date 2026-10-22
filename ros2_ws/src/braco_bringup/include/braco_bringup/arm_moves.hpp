@@ -14,8 +14,7 @@
 
 // ArmMoves - small client of arm_driver for zero and park (C++ version of the old arm_moves.py).
 //
-// The programs cannot open /dev/ttyTHS1 like libs/cpp/srcs/zero.cpp and park.cpp do: arm_driver
-// owns the port. Instead they:
+// The programs cannot open /dev/ttyTHS1 themselves: arm_driver owns the port. Instead they:
 //   * wait for arm_driver (its /joint_states and services),
 //   * send bounded steps toward the pose (at most STEP_DEG ahead of the real angles, all joints
 //     arriving together), resent every RESEND, so the driver's watchdog stops the arm if the

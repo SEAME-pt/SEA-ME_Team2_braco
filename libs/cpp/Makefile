@@ -1,12 +1,13 @@
 # Makefile for the myCobot 280 C++ programs.
 #
 #   make          build all programs (object files go in obj/)
-#   make zero     build only zero
+#   make pid_tool build only pid_tool
 #   make clean    remove the obj/ folder
 #   make fclean   remove the obj/ folder and the programs
 #   make re       rebuild everything from scratch
 #
-# To add a program (e.g. srcs/park.cpp): add its name to PROGRAMS below.
+# To add a program (e.g. srcs/my_tool.cpp): add its name to PROGRAMS below.
+# Zero and park are not here: they are ROS 2 programs in braco_bringup (make zero / make park).
 
 CXX      := g++
 CXXFLAGS := -O2 -std=c++17 -Wall -Wextra -MMD -MP
@@ -17,7 +18,7 @@ OBJ_DIR  := obj
 
 CPPFLAGS := -I$(INC_DIR)
 
-PROGRAMS := park zero joystick_all_joints joystick_display pid_tool temps_lcd
+PROGRAMS := joystick_all_joints joystick_display pid_tool temps_lcd
 LIB_OBJS := $(OBJ_DIR)/mycobot.o $(OBJ_DIR)/joystick.o $(OBJ_DIR)/display.o $(OBJ_DIR)/lcd_display.o
 
 .PHONY: all clean fclean re

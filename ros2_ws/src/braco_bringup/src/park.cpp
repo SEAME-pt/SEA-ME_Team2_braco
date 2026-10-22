@@ -14,9 +14,8 @@
 
 // park - shutdown routine: fold the arm into the park pose, then release all joints.
 //
-// ROS 2 version of libs/cpp/srcs/park.cpp: goes through arm_driver instead of opening the
-// serial port. Same pose (mycobot::PARK_ANGLES) and speed. Run by hand with `make park`
-// or before `make down PARK=1`.
+// Goes through arm_driver instead of opening the serial port. Pose: mycobot::PARK_ANGLES.
+// Run by hand with `make park` or before `make down PARK=1`.
 
 #include "braco_bringup/arm_moves.hpp"
 #include "mycobot.hpp"
