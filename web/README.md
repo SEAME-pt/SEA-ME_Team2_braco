@@ -50,7 +50,7 @@ There the page uses `ARM_SOURCE=ros`: it never opens the serial port, it is a cl
 is no direct serial mode. Its lease is `arm_driver`'s control owner `web`, renewed every second while it lasts; the
 temperature levels come from `/diagnostics` (`temperature_monitor`). A move is a stream of targets at most 15° ahead of the real angles, resent
 every 100 ms, exactly like `braco_bringup/src/arm_moves.cpp`; if the page dies, the driver's 300 ms watchdog stops the
-arm. Park uses the firmware limits and leaves the servos on; it does not enter rest mode. Wake up leaves rest mode
+arm. Park uses the firmware limits and, like `make park`, releases the servos and enters rest mode once it arrives (STOP or a newer command before that cancels it). Wake up leaves rest mode
 and powers the servos without moving the arm (rest mode is only entered with the *Rest on* button).
 
 **On a PC** it runs in the `sim` container with `ARM_SOURCE=gazebo` (http://localhost:8000):
@@ -82,7 +82,7 @@ No arm, no ROS and no network needed:
   everybody, one command at a time, idle expiry, reload vs closing the page, activity log; with a fake driver
   control: taking asks it, refused while the joystick has it, kept alive every tick, lost when forced away.
 - `tests/test_ros_arm.py`: `RosArm` with a fake bridge: joint states, bounded steps resent inside the 300 ms watchdog,
-  STOP and newer commands cancel a move, timeout, park (no release, no rest), wake (no movement), gripper/LED,
+  STOP and newer commands cancel a move, timeout, park (releases and rests on arrival, not when cancelled), wake (no movement), gripper/LED,
   `source: web` on every command, take/release control, losing it ends a move without STOP, temperature levels
   from `/diagnostics`; the ROS panels without ROS.
 

@@ -1,7 +1,7 @@
 """RosArm and the ROS panels without ROS: the bridge, messages and services are faked.
 
 What matters most: a move is a stream of bounded steps resent faster than
-arm_driver's 300 ms watchdog, STOP cancels it, park / wake never power or rest the arm by themselves,
+arm_driver's 300 ms watchdog, STOP cancels it, wake never powers or rests the arm by itself (park releases and rests on arrival),
 and the page moves the arm only while it is arm_driver's control owner ("web").
 """
 
@@ -323,13 +323,28 @@ def test_no_timeout_stop_without_the_control(ros_arm, monkeypatch):
 
 # ---- poses, rest, wake ------------------------------------------------------------------
 
-def test_park_keeps_the_servos_on(ros_arm):
+def test_park_releases_the_servos_and_rests_on_arrival(ros_arm, monkeypatch):
+    monkeypatch.setattr(arm, "ROS_PARK_SETTLE_S", 0.05)
+    feeder = ros_arm.feed([0] * 6)
+    ros_arm.go_to_pose("park")
+    assert wait_for(lambda: moves(ros_arm))
+    assert ros_arm.bridge.calls == []   # nothing is released while it is still moving
+    feeder.angles = list(arm.POSES["park"])
+    assert wait_for(lambda: ros_arm.bridge.calls == [("release_servos", None), ("set_read_only", True)])
+    s = ros_arm.snapshot()
+    assert s["resting"] is True and s["power_on"] is False
+
+
+def test_park_stopped_before_arrival_does_not_release(ros_arm, monkeypatch):
+    monkeypatch.setattr(arm, "ROS_PARK_SETTLE_S", 0.2)
     feeder = ros_arm.feed([0] * 6)
     ros_arm.go_to_pose("park")
     assert wait_for(lambda: moves(ros_arm))
     feeder.angles = list(arm.POSES["park"])
+    time.sleep(0.05)
+    ros_arm.stop_motion()   # during the settle pause
     time.sleep(0.4)
-    assert ros_arm.bridge.calls == []   # no release, no rest mode
+    assert ros_arm.bridge.calls == []
     assert ros_arm.snapshot()["resting"] is False
 
 

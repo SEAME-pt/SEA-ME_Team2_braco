@@ -70,6 +70,7 @@ ROS_STEP_DEG = 15.0
 ROS_RESEND_S = 0.1
 ROS_TOLERANCE_DEG = 2.0
 ROS_MOVE_TIMEOUT = 20.0
+ROS_PARK_SETTLE_S = 0.5   # same pause as `make park` before it releases the servos
 ROS_STATE_TIMEOUT = 0.5   # older /joint_states = no feedback for a move
 ROS_STALE_AFTER = 2.0     # seconds without /joint_states before the page shows "disconnected"
 ROS_SOURCE = "web"        # ArmCommand.source and the control owner name of the page
@@ -554,20 +555,34 @@ class RosArm(_Base):
             self._motion += 1
             return self._motion
 
-    def _start_move(self, target, speed):
-        """Stream `target` in a worker thread."""
+    def _start_move(self, target, speed, on_arrival=None):
+        """Stream `target` in a worker thread; on_arrival() runs there once it is reached."""
         token = self._cancel()
-        threading.Thread(target=self._stream, args=(token, list(target), speed),
+        threading.Thread(target=self._stream, args=(token, list(target), speed, on_arrival),
                          daemon=True).start()
         return token
 
-    def _stream(self, token, target, speed):
+    def _park_finish(self, token):
+        """Like `make park`: let the arm settle, release the servos, then enter rest mode."""
+        if self._closed.wait(ROS_PARK_SETTLE_S) or token != self._motion or not self._has_control():
+            return   # STOP, a newer command or a lost control: do not release a moving arm
+        try:
+            self._service("release_servos")
+            self._update(power_on=False)
+            self._service("set_read_only", True)
+            self._update(resting=True)
+        except Exception as e:
+            self._notice("park: the arm arrived but the servos were not released ({})".format(e))
+
+    def _stream(self, token, target, speed, on_arrival=None):
         end = time.monotonic() + ROS_MOVE_TIMEOUT
         while token == self._motion and not self._closed.is_set():
             angles = self._fresh_angles()
             if angles is not None:
                 deviation = max(abs(a - p) for a, p in zip(angles, target))
                 if deviation <= ROS_TOLERANCE_DEG:
+                    if on_arrival is not None:
+                        on_arrival(token)
                     return
                 # Same fraction for every joint, so they all arrive together
                 scale = min(1.0, ROS_STEP_DEG / deviation)
@@ -621,7 +636,7 @@ class RosArm(_Base):
         if name not in POSES:
             raise ValueError("unknown pose: " + name)
         self._check_can_move()
-        self._start_move(POSES[name], speed)
+        self._start_move(POSES[name], speed, self._park_finish if name == "park" else None)
 
     def move_joint(self, index, angle, speed=POSE_SPEED):
         self._check_can_move()
