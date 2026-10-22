@@ -1,0 +1,87 @@
+<?xml version="1.0"?>
+<!--
+  braco: the whole robot. myCobot 280 + adaptive gripper + camera mount, with the TF frames
+  the rest of the system uses (REP-103/105):
+
+    world -> base_link -> link1 ... link6 -> tool0 -> gripper_base ...
+                                              tool0 -> tcp
+                                              tool0 -> camera_mount -> camera_link
+                                                                        -> camera_optical_frame
+
+  Offsets marked MEASURE are not measured yet: they are zero or a rough value until someone
+  puts calipers on the real hardware (docs/urdf-sim-to-real.md, "Open items").
+
+  Arguments:
+    gripper_actuated  false (default): fingers fixed open, the real driver publishes no gripper state
+                      true: vendor finger linkage with one slider (for RViz sliders, later Gazebo)
+-->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="braco">
+
+  <xacro:arg name="gripper_actuated" default="false"/>
+
+  <xacro:include filename="$(find braco_description)/urdf/mycobot_280.urdf.xacro"/>
+  <xacro:include filename="$(find braco_description)/urdf/adaptive_gripper.xacro"/>
+
+  <!-- world: the table surface under the arm. Height of the arm's base over it, in metres.
+       Value from BASE_HEIGHT_MM of libs/cpp/includes/mycobot.hpp (table -> arm base, with the
+       Jetson casing / G-base). MEASURE again if the arm sits on something else. -->
+  <xacro:property name="base_height" value="0.140"/>
+
+  <!-- tcp: the point between the fingertips, along the tool0 z axis. Rough: the flange-to-tip
+       length of the closed gripper with camera (TOOL_LENGTH_MM in mycobot.hpp). MEASURE to the
+       middle of the closed fingertips. -->
+  <xacro:property name="tcp_length" value="0.130"/>
+
+  <!-- camera mount on the flange. MEASURE with calipers: position of the camera lens centre in
+       the tool0 frame (x, y, z in metres). camera_link follows REP-103: x forward, y left, z up. -->
+  <xacro:property name="camera_xyz" value="0 0 0"/>
+  <xacro:property name="camera_rpy" value="0 0 0"/>
+
+  <link name="world"/>
+
+  <xacro:mycobot_280 parent="world">
+    <origin xyz="0 0 ${base_height}" rpy="0 0 0"/>
+  </xacro:mycobot_280>
+
+  <!-- tool0: the flange, z pointing out of it (REP-103 / ROS-Industrial name). Same frame as link6. -->
+  <link name="tool0"/>
+  <joint name="link6_to_tool0" type="fixed">
+    <parent link="link6"/>
+    <child link="tool0"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint>
+
+  <xacro:adaptive_gripper parent="tool0" actuated="$(arg gripper_actuated)">
+    <origin xyz="0 0 0.034" rpy="${pi / 2} 0 0"/>
+  </xacro:adaptive_gripper>
+
+  <link name="tcp"/>
+  <joint name="tool0_to_tcp" type="fixed">
+    <parent link="tool0"/>
+    <child link="tcp"/>
+    <origin xyz="0 0 ${tcp_length}" rpy="0 0 0"/>
+  </joint>
+
+  <link name="camera_mount"/>
+  <joint name="tool0_to_camera_mount" type="fixed">
+    <parent link="tool0"/>
+    <child link="camera_mount"/>
+    <origin xyz="${camera_xyz}" rpy="${camera_rpy}"/>
+  </joint>
+
+  <link name="camera_link"/>
+  <joint name="camera_mount_to_camera_link" type="fixed">
+    <parent link="camera_mount"/>
+    <child link="camera_link"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint>
+
+  <!-- Optical frame: z forward, x right, y down (REP-103). Rotated from camera_link. -->
+  <link name="camera_optical_frame"/>
+  <joint name="camera_link_to_optical" type="fixed">
+    <parent link="camera_link"/>
+    <child link="camera_optical_frame"/>
+    <origin xyz="0 0 0" rpy="${-pi / 2} 0 ${-pi / 2}"/>
+  </joint>
+
+</robot>
