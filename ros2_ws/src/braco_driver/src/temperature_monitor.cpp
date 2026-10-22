@@ -212,7 +212,8 @@ private:
     return true;
   }
 
-  // Called every second: has the park program ended? A failure leaves the arm in rest mode anyway.
+  // Called every second: has the park program ended? Then rest mode is requested (also when
+  // park failed), so the arm always ends in rest mode.
   void checkPark()
   {
     if (park_pid_ <= 0) {return;}
@@ -220,7 +221,10 @@ private:
     if (waitpid(park_pid_, &status, WNOHANG) != park_pid_) {return;}
     park_pid_ = -1;
     if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
-      RCLCPP_INFO(get_logger(), "park finished: joints released, rest mode on");
+      // park enters rest mode itself; asking again is harmless and makes the order certain:
+      // park first, rest mode after, whatever park did at its end
+      RCLCPP_INFO(get_logger(), "park finished: joints released, confirming rest mode");
+      requestRestMode(hot_joint_, hot_celsius_);
       return;
     }
     RCLCPP_ERROR(get_logger(), "park failed (status %d): putting the arm to rest", status);
