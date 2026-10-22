@@ -22,7 +22,7 @@ if echo "$SHORT_MSG" | grep -qE "^(Merge|Revert) "; then
     exit 0
 fi
 
-PATTERN="^(fix|feat|test|style|docs|build|ops|chore|perf|refactor)(\([^)]+\))?: .+"
+PATTERN="^(Merge|Revert|fix|feat|test|style|docs|build|ops|chore|perf|refactor)(\([^)]+\))?: .+"
 
 if ! echo "$SHORT_MSG" | grep -qE "$PATTERN"; then
     echo -e "${RED}ERROR:${RESET} bad commit message format."
