@@ -102,7 +102,7 @@ function controlHTML() {
       <div class="ctl-top">
         <button class="stop-btn" id="a-stop" title="Anyone can stop the arm, operator or not">■ STOP</button>
         <div class="ctl-poses">
-          <button data-pose="park" title="goes to [0, 131, -148, 146, 4.5, 0] and stays powered">⌂ Park</button>
+          <button data-pose="park" title="goes to [0, 131, -148, 146, 4.5, 0] then releases the joints (rest mode)">⌂ Park</button>
           <button data-pose="zero" title="all joints to 0°">◎ Zero</button>
         </div>
         <label class="ctl-speed">speed <b id="c-speed-v">30</b>
