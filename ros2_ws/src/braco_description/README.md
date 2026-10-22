@@ -7,7 +7,7 @@ arm (zero pose, joint directions, forward kinematics) and the open measurements 
 
 | Folder | Content |
 |---|---|
-| `urdf/braco.urdf.xacro` | The whole robot: `world` -> arm -> `tool0` -> gripper, `tcp`, camera frames |
+| `urdf/braco.urdf.xacro` | The whole robot: `world` -> G-base -> arm -> `tool0` -> gripper, `tcp`, camera frames |
 | `urdf/mycobot_280.urdf.xacro` | The arm (macro): `base_link`, `link1..link6`, `joint1..joint6` |
 | `urdf/adaptive_gripper.xacro` | The gripper (macro), fingers fixed open or with the vendor linkage |
 | `urdf/braco.gazebo.xacro` | `gz_ros2_control` on `joint1..joint6`, added only with `gazebo:=true` |
@@ -42,7 +42,7 @@ xacro urdf/braco.urdf.xacro > /tmp/braco.urdf && check_urdf /tmp/braco.urdf
 - **Limits** (`<limit>`) are `JOINT_LIMITS` of `libs/cpp/includes/mycobot.hpp`, converted to radians. Change them
   there first: `test_urdf.py` fails if the two disagree. The URDF limits only inform tools (MoveIt, Gazebo);
   the arm itself is limited by `mycobot::MyCobot280::sendAngles`.
-- **Frames**: `world` is the table; `tool0` is the flange (z out of it, REP-103); `tcp` is between the fingertips;
+- **Frames**: `world` is the table; `g_base` is the G-shape base plate the arm stands on; `tool0` is the flange (z out of it, REP-103); `tcp` is between the fingertips;
   `camera_optical_frame` has z forward, x right, y down (REP-103).
 - Values still **not measured** (velocity, effort, masses/inertia, camera mount, `tcp` length) are marked in the
   xacro and listed in `docs/urdf-sim-to-real.md`.
@@ -53,5 +53,5 @@ Adapted from Elephant Robotics' [mycobot_ros2](https://github.com/elephantroboti
 BSD-2-Clause): `mycobot_description/urdf/mycobot_280_jn` and `adaptive_gripper` for the links, joints and meshes.
 Changes: joint and link names,
 the vendor's invalid XML fixed, limits from `JOINT_LIMITS`, inertials, collision, gripper options, TF frames,
-and `meshes/arm/link4.dae` rewritten from COLLADA `<polygons>` to `<triangles>` (same geometry): Gazebo loads
+the G-base (`mycobot_280_pi/G_base.dae` -> `meshes/arm/g_base.dae`), and `meshes/arm/link4.dae` rewritten from COLLADA `<polygons>` to `<triangles>` (same geometry): Gazebo loads
 `<polygons>` as an empty mesh and its physics crashes on the empty collision.

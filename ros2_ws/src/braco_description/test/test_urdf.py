@@ -45,9 +45,9 @@ MYCOBOT_HPP_CANDIDATES = [
 ARM_JOINTS = ['joint%d' % n for n in range(1, 7)]
 
 # tool0 position at all joints = 0 (metres, in world), from the vendor joint origins and the
-# base height. NOT checked against the real arm yet: that is the zero-pose comparison of
+# G-base height. NOT checked against the real arm yet: that is the zero-pose comparison of
 # docs/urdf-sim-to-real.md. This only catches an accidental edit of the origins.
-ZERO_TOOL0 = (0.0456, -0.06462, 0.140 + 0.43614)
+ZERO_TOOL0 = (0.0456, -0.06462, 0.032 + 0.43614)   # G-base plate + arm
 
 
 def load_urdf(gripper_actuated='false', gazebo='false'):
@@ -117,7 +117,7 @@ def test_every_link_with_geometry_has_positive_mass_and_inertia():
         assert m[0][0] > 0 and det2 > 0 and det3 > 0, '%s inertia is not positive definite' % name
 
 
-@pytest.mark.parametrize('frame', ['world', 'base_link', 'link6', 'tool0', 'tcp',
+@pytest.mark.parametrize('frame', ['world', 'g_base', 'base_link', 'link6', 'tool0', 'tcp',
                                    'camera_mount', 'camera_link', 'camera_optical_frame'])
 def test_frame_exists(frame):
     robot = load_urdf()
