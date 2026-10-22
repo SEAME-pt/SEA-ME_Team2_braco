@@ -44,8 +44,8 @@ POSES = [
 
 class MoveArm(Node):
 
-    def __init__(self):
-        super().__init__('move_arm_example')
+    def __init__(self, name='move_arm_example'):
+        super().__init__(name)
         self.client = ActionClient(self, FollowJointTrajectory,
                                    '/arm_controller/follow_joint_trajectory')
         self.angles = None
