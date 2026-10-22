@@ -3,10 +3,10 @@
   braco: the whole robot. myCobot 280 + adaptive gripper + camera mount, with the TF frames
   the rest of the system uses (REP-103/105):
 
-    world -> base_link -> link1 ... link6 -> tool0 -> gripper_base ...
-                                              tool0 -> tcp
-                                              tool0 -> camera_mount -> camera_link
-                                                                        -> camera_optical_frame
+    world -> g_base -> base_link -> link1 ... link6 -> tool0 -> gripper_base ...
+                                                        tool0 -> tcp
+                                                        tool0 -> camera_mount -> camera_link
+                                                                                  -> camera_optical_frame
 
   Offsets marked MEASURE are not measured yet: they are zero or a rough value until someone
   puts calipers on the real hardware (docs/urdf-sim-to-real.md, "Open items").
@@ -31,10 +31,14 @@
       controllers="$(find braco_description)/config/gazebo_controllers.yaml"/>
   </xacro:if>
 
-  <!-- world: the table surface under the arm. Height of the arm's base over it, in metres.
-       Value from BASE_HEIGHT_MM of libs/cpp/includes/mycobot.hpp (table -> arm base, with the
-       Jetson casing / G-base). MEASURE again if the arm sits on something else. -->
-  <xacro:property name="base_height" value="0.140"/>
+  <!-- world: the table surface. The arm stands on the G-shape base (a 150 x 110 mm plate,
+       clamped to the table with its black grip), and base_link (the bottom of the Jetson casing)
+       sits on top of the plate. Plate thickness from the vendor mesh (meshes/arm/g_base.dae,
+       Elephant Robotics mycobot_280_pi/G_base.dae). MEASURE with calipers. -->
+  <xacro:property name="g_base_height" value="0.032"/>
+  <!-- UNMEASURED: weigh the plate. It is fixed to the world, so only the positive-mass rule
+       of the model (Gazebo, MoveIt) needs it. -->
+  <xacro:property name="g_base_mass" value="0.5"/>
 
   <!-- tcp: the point between the fingertips, along the tool0 z axis. Rough: the flange-to-tip
        length of the closed gripper with camera (TOOL_LENGTH_MM in mycobot.hpp). MEASURE to the
@@ -48,8 +52,38 @@
 
   <link name="world"/>
 
-  <xacro:mycobot_280 parent="world">
-    <origin xyz="0 0 ${base_height}" rpy="0 0 0"/>
+  <!-- G-base: its frame is on the table, under the arm's axis. The vendor mesh is turned 90 deg
+       so its long side runs along y, like the Jetson casing. Collision is a box of the same size
+       (the mesh has 40k vertices and the plate never moves). -->
+  <link name="g_base">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 ${pi / 2}"/>
+      <geometry>
+        <mesh filename="package://braco_description/meshes/arm/g_base.dae"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 ${g_base_height / 2}" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.110 0.150 ${g_base_height}"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="0 0 ${g_base_height / 2}" rpy="0 0 0"/>
+      <mass value="${g_base_mass}"/>
+      <inertia ixx="${g_base_mass * (0.150 ** 2 + g_base_height ** 2) / 12}" ixy="0" ixz="0"
+               iyy="${g_base_mass * (0.110 ** 2 + g_base_height ** 2) / 12}" iyz="0"
+               izz="${g_base_mass * (0.110 ** 2 + 0.150 ** 2) / 12}"/>
+    </inertial>
+  </link>
+  <joint name="world_to_g_base" type="fixed">
+    <parent link="world"/>
+    <child link="g_base"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint>
+
+  <xacro:mycobot_280 parent="g_base">
+    <origin xyz="0 0 ${g_base_height}" rpy="0 0 0"/>
   </xacro:mycobot_280>
 
   <!-- tool0: the flange, z pointing out of it (REP-103 / ROS-Industrial name). Same frame as link6. -->
