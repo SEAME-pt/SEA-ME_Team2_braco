@@ -1,6 +1,5 @@
 # ---- C++ programs (libs/cpp/Makefile) -----------------------------------------
 /libs/cpp/obj
-/libs/cpp/zero
 /libs/cpp/joystick_all_joints
 /libs/cpp/joystick_display
 /libs/cpp/pid_tool
