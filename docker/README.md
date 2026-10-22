@@ -240,9 +240,10 @@ make run CMD='ros2 topic echo /arm/servo_temperatures'
 ```
 
 `make setup` fills in `I2C_GID`, `INPUT_GID` and `VIDEO_GID`; `LCD_I2C_BUS`, `JOYSTICK_DEVICE` and `CAMERA_DEVICE`
-in `.env` change the devices. The camera, like the joystick, may be missing or plugged in later: the host's `/dev` is
-mounted at `/run/hostdev` with a cgroup rule for V4L2 devices (major 81), and `CAMERA_DEVICE` is a name under it
-(`video0`, or `v4l/by-id/...` to survive renumbering).
+in `.env` change the devices. If the host has no `i2c` or `input` group, the container gets a placeholder group instead
+and cannot use the LCD or joystick: `make doctor ROLE=jetson` reports it. The camera, like the joystick, may be missing
+or plugged in later: the host's `/dev` is mounted at `/run/hostdev` with a cgroup rule for V4L2 devices (major 81), and
+`CAMERA_DEVICE` is a name under it (`video0`, or `v4l/by-id/...` to survive renumbering).
 **Only one program can use the serial port:** run `make down` before starting `temps_lcd`, `joystick_all_joints` or
 any pymycobot script by hand. But prefer not to: `make park`, `zero` and `temps` go through the driver, and stopping
 the container also stops the temperature readings.

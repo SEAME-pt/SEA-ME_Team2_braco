@@ -55,7 +55,9 @@ $(ENV_FILE): $(ENV_EXAMPLE)
 	      -e "s/^COMPOSE_PROFILES=.*/COMPOSE_PROFILES=$(ROLE)/" $(ENV_EXAMPLE) > $@.tmp && \
 	  for pair in DIALOUT_GID:dialout VIDEO_GID:video RENDER_GID:render I2C_GID:i2c INPUT_GID:input; do \
 	    var=$${pair%%:*}; grp=$${pair##*:}; gid=$$(getent group $$grp 2>/dev/null | cut -d: -f3); \
-	    if [ -n "$$gid" ]; then sed "s/^$$var=.*/$$var=$$gid/" $@.tmp > $@.tmp2 && mv $@.tmp2 $@.tmp; fi; \
+	    if [ -n "$$gid" ]; then sed "s/^$$var=.*/$$var=$$gid/" $@.tmp > $@.tmp2 && mv $@.tmp2 $@.tmp; \
+	    elif [ "$(ROLE)" = jetson ] && { [ $$grp = i2c ] || [ $$grp = input ]; }; then \
+	      echo "warning: no '$$grp' group on this host - $$var left empty, the real container cannot use the device (see make doctor)" >&2; fi; \
 	  done; mv $@.tmp $@; \
 	  echo "created $@ for ROLE=$(ROLE) (uid $$(id -u), gid $$(id -g))"; fi
 
@@ -112,6 +114,15 @@ case "$$ROLE" in
     if [ -e /dev/input/js0 ]; then ok "joystick /dev/input/js0 present"; else ok "no joystick at /dev/input/js0 (joystick_teleop waits for it)"; fi
     cam=$$(sed -n 's/^CAMERA_DEVICE=//p' "$$ENV_FILE" 2>/dev/null | tail -n 1)
     if [ -e "/dev/$${cam:-video0}" ]; then ok "camera /dev/$${cam:-video0} present"; else ok "no camera at /dev/$${cam:-video0} (the camera node waits for it)"; fi
+    # The real container reaches the LCD and joystick through these groups; unset, compose gives it a placeholder.
+    for pair in I2C_GID:i2c INPUT_GID:input; do
+      var=$${pair%%:*}; grp=$${pair##*:}
+      gid=$$(getent group "$$grp" 2>/dev/null | cut -d: -f3)
+      envgid=$$(sed -n "s/^$$var=//p" "$$ENV_FILE" 2>/dev/null | tail -n 1)
+      if [ -z "$$gid" ]; then warn "no '$$grp' group on this host: the real container gets a placeholder group and cannot open the device (create the group and a udev rule, then set $$var in $$ENV_FILE)"
+      elif [ "$$envgid" != "$$gid" ]; then warn "$$var=$${envgid:-<empty>} in $$ENV_FILE but the host's '$$grp' gid is $$gid: set $$var=$$gid (make setup never overwrites .env)"
+      else ok "group $$grp ($$gid) matches $$var in $$ENV_FILE"; fi
+    done
     # The Nano has 4 GB: a desktop takes ~1 GB of it, 5 W mode halves the CPU, and colcon needs swap to finish.
     if systemctl is-active --quiet display-manager 2>/dev/null || pgrep -x Xorg >/dev/null 2>&1; then
       warn "a desktop session is running (~1 GB of RAM): sudo systemctl set-default multi-user.target && sudo reboot"
