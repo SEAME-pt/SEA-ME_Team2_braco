@@ -29,51 +29,49 @@
 
 #include "display.hpp"
 
-namespace ui
-{
+namespace ui {
 
-class LcdDisplay
-{
+class LcdDisplay {
 public:
-  static constexpr const char * DEFAULT_BUS = "/dev/i2c-0";
-  static constexpr int COLS = 16;
+    static constexpr const char* DEFAULT_BUS = "/dev/i2c-0";
+    static constexpr int COLS = 16;
 
-  // Opens the bus and initialises the LCD. Never throws: check ok().
-  explicit LcdDisplay(const std::string & bus = DEFAULT_BUS,
-                      std::chrono::milliseconds refresh = std::chrono::milliseconds(200));
-  ~LcdDisplay();  // leaves the last content on the screen
+    // Opens the bus and initialises the LCD. Never throws: check ok().
+    explicit LcdDisplay(const std::string& bus = DEFAULT_BUS,
+                        std::chrono::milliseconds refresh = std::chrono::milliseconds(200));
+    ~LcdDisplay();  // leaves the last content on the screen
 
-  LcdDisplay(const LcdDisplay &) = delete;
-  LcdDisplay & operator=(const LcdDisplay &) = delete;
+    LcdDisplay(const LcdDisplay&) = delete;
+    LcdDisplay& operator=(const LcdDisplay&) = delete;
 
-  bool ok() const { return ok_; }                       // LCD found and initialised
-  const std::string & error() const { return error_; }  // why not, if !ok()
+    bool ok() const { return ok_; }                      // LCD found and initialised
+    const std::string& error() const { return error_; }  // why not, if !ok()
 
-  // Redraw from the status, at most once per refresh period unless force.
-  void show(const Status & status, bool force = false) noexcept;
+    // Redraw from the status, at most once per refresh period unless force.
+    void show(const Status& status, bool force = false) noexcept;
 
-  // The two 16-character lines show() would draw for this status.
-  // Public so the layout can be tested without hardware.
-  static std::array<std::string, 2> linesFor(const Status & status);
+    // The two 16-character lines show() would draw for this status.
+    // Public so the layout can be tested without hardware.
+    static std::array<std::string, 2> linesFor(const Status& status);
 
 private:
-  int fd_ = -1;
-  bool ok_ = false;
-  std::string error_;
-  std::chrono::milliseconds refresh_;
-  std::chrono::steady_clock::time_point lastDraw_{};
-  int currentAddr_ = -1;                         // I2C address selected on fd_
-  std::array<std::string, 2> shown_;             // what is on the screen now
-  std::array<int, 3> backlight_ = {-1, -1, -1};  // current R, G, B (-1 = unknown)
+    int fd_ = -1;
+    bool ok_ = false;
+    std::string error_;
+    std::chrono::milliseconds refresh_;
+    std::chrono::steady_clock::time_point lastDraw_{};
+    int currentAddr_ = -1;                         // I2C address selected on fd_
+    std::array<std::string, 2> shown_;             // what is on the screen now
+    std::array<int, 3> backlight_ = {-1, -1, -1};  // current R, G, B (-1 = unknown)
 
-  bool initBacklight();
-  bool initLcd();
-  bool updateLine(int row, const std::string & text);  // writes changed chars only
-  bool setBacklight(uint8_t r, uint8_t g, uint8_t b);  // skips if unchanged
+    bool initBacklight();
+    bool initLcd();
+    bool updateLine(int row, const std::string& text);   // writes changed chars only
+    bool setBacklight(uint8_t r, uint8_t g, uint8_t b);  // skips if unchanged
 
-  bool writeReg(uint8_t addr, uint8_t reg, uint8_t value);
-  bool command(uint8_t cmd);
-  bool data(uint8_t ch);
+    bool writeReg(uint8_t addr, uint8_t reg, uint8_t value);
+    bool command(uint8_t cmd);
+    bool data(uint8_t ch);
 };
 
 }  // namespace ui

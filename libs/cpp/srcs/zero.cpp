@@ -14,45 +14,42 @@
 
 using namespace std::chrono_literals;
 
-namespace
-{
+namespace {
 
 const int SPEED = 30;
 
-void printAngles(const char * label, const std::optional<mycobot::Angles> & angles)
-{
-  if (!angles) {
-    std::printf("%s (no valid reading)\n", label);
-    return;
-  }
-  std::printf("%s [", label);
-  for (size_t i = 0; i < angles->size(); ++i) {
-    std::printf("%s%.2f", i ? ", " : "", (*angles)[i]);
-  }
-  std::printf("]\n");
+void printAngles(const char* label, const std::optional<mycobot::Angles>& angles) {
+    if (!angles) {
+        std::printf("%s (no valid reading)\n", label);
+        return;
+    }
+    std::printf("%s [", label);
+    for (size_t i = 0; i < angles->size(); ++i) {
+        std::printf("%s%.2f", i ? ", " : "", (*angles)[i]);
+    }
+    std::printf("]\n");
 }
 
 }  // namespace
 
-int main()
-{
-  try {
-    mycobot::MyCobot280 mc;  // /dev/ttyTHS1 at 1000000 baud
-    std::this_thread::sleep_for(1s);
+int main() {
+    try {
+        mycobot::MyCobot280 mc;  // /dev/ttyTHS1 at 1000000 baud
+        std::this_thread::sleep_for(1s);
 
-    printAngles("Before:", mc.getAngles());
+        printAngles("Before:", mc.getAngles());
 
-    // Send the command for all 6 joints to move simultaneously
-    mc.sendAngles({0, 0, 0, 0, 0, 0}, SPEED);
+        // Send the command for all 6 joints to move simultaneously
+        mc.sendAngles({0, 0, 0, 0, 0, 0}, SPEED);
 
-    // Wait for the movement to finish before reading the angles again
-    std::this_thread::sleep_for(3s);
+        // Wait for the movement to finish before reading the angles again
+        std::this_thread::sleep_for(3s);
 
-    printAngles("After:", mc.getAngles());
-    return 0;
-  } catch (const std::exception & e) {
-    std::fprintf(stderr, "Error: %s\n", e.what());
-    return 1;  // systemd sees the failure, same as the Python version
-  }
+        printAngles("After:", mc.getAngles());
+        return 0;
+    } catch (const std::exception& e) {
+        std::fprintf(stderr, "Error: %s\n", e.what());
+        return 1;  // systemd sees the failure, same as the Python version
+    }
 }
 int x = 1;
