@@ -230,7 +230,7 @@ the same commands:
 
 | Job | What it runs | Reproduce locally |
 |---|---|---|
-| `host` | `make ci`: host checks (venv with Python 3.14 from `.python-version`, imports, C++ hello-world build), `make lint` (compose files for both machines, shellcheck, hadolint) and the web page tests (pytest `web/tests`); creates `docker/.env` if missing | `make ci` |
+| `host` | `make ci`: host checks (venv with Python 3.14 from `.python-version`, imports, C++ hello-world build), `make format-check` (C++ and Python formatting, see [5.1](#51-code-formatting)), `make lint` (compose files for both machines, shellcheck, hadolint) and the web page tests (pytest `web/tests`); creates `docker/.env` if missing | `make ci` |
 | `ros` | Builds the Dockerfile's `base` stage (Ubuntu 26.04 + ROS 2 Lyrical), then `rosdep install`, `colcon build` and `colcon test` of `ros2_ws/src` and `libs` in a throw-away container | `make ci-ros` (builds the image the first time) |
 
 * shellcheck and hadolint need no install: without a local binary, `make lint` runs the images pinned in
@@ -252,6 +252,7 @@ C++ is formatted by clang-format (`.clang-format`) and Python by ruff (`.ruff.to
 
 * The pre-push hook (`.githooks/pre-push`) runs `make format-check` and blocks the push if it fails. Fix with
   `make format`, then commit and push again.
+* CI runs the same check (`make ci`, the `host` job), so a push that skipped the hook still fails on the PR.
 * `ros2_ws/src` is skipped: the ROS 2 packages are checked by their own linters (`ament_uncrustify`,
   `ament_flake8`) in `make test`, because their style rules differ from clang-format and ruff.
 

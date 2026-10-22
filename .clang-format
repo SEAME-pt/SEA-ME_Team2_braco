@@ -3,7 +3,11 @@ Language: Cpp
 BasedOnStyle: Google
 
 AccessModifierOffset: -2
-AlignAfterOpenBracket: AlwaysBreak
+AlignAfterOpenBracket: Align
+# Compact: short functions, ifs and blocks stay on one line.
+AllowShortFunctionsOnASingleLine: All
+AllowShortIfStatementsOnASingleLine: WithoutElse
+AllowShortBlocksOnASingleLine: Always
 BraceWrapping:
   AfterClass: true
   AfterFunction: true
