@@ -39,9 +39,8 @@ public:
   static constexpr int COLS = 16;
 
   // Opens the bus and initialises the LCD. Never throws: check ok().
-  explicit LcdDisplay(
-    const std::string & bus = DEFAULT_BUS,
-    std::chrono::milliseconds refresh = std::chrono::milliseconds(200));
+  explicit LcdDisplay(const std::string & bus = DEFAULT_BUS,
+                      std::chrono::milliseconds refresh = std::chrono::milliseconds(200));
   ~LcdDisplay();  // leaves the last content on the screen
 
   LcdDisplay(const LcdDisplay &) = delete;

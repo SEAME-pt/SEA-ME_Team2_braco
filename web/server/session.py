@@ -130,12 +130,7 @@ class Hub:
             client.left_at = None
             client.queues.append(queue)
             welcome = [
-                {
-                    'type': 'welcome',
-                    'you': cid,
-                    'name': name,
-                    'idle_timeout': self.idle_timeout,
-                },
+                {'type': 'welcome', 'you': cid, 'name': name, 'idle_timeout': self.idle_timeout},
                 {'type': 'activity', 'entries': list(self._activity)},
                 self._speed_message(),
             ]
@@ -209,8 +204,7 @@ class Hub:
                 'holder': {'id': self._holder, 'name': client.name if client else '?'},
                 'since': self._since,
                 'idle_left': max(
-                    0.0,
-                    round(self.idle_timeout - (self.clock() - self._last_activity), 1),
+                    0.0, round(self.idle_timeout - (self.clock() - self._last_activity), 1)
                 ),
             }
 

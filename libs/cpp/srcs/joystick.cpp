@@ -23,9 +23,7 @@ Joystick::Joystick(const std::string & device)
 
 Joystick::~Joystick()
 {
-  if (fd_ >= 0) {
-    close(fd_);
-  }
+  if (fd_ >= 0) { close(fd_); }
 }
 
 std::vector<Event> Joystick::readEvents()

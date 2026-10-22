@@ -242,8 +242,8 @@ private:
   std::optional<std::vector<uint8_t>> query(uint8_t cmd, size_t expected_size, int retries = 5);
 
   // Send a request with data and return the reply's data bytes, any size.
-  std::optional<std::vector<uint8_t>> queryWithData(
-    uint8_t cmd, const std::vector<uint8_t> & data, int retries);
+  std::optional<std::vector<uint8_t>> queryWithData(uint8_t cmd, const std::vector<uint8_t> & data,
+                                                    int retries);
 
   // Write one servo data byte, then read it back. True if it matches.
   bool writeServoByte(int joint, uint8_t address, int value);

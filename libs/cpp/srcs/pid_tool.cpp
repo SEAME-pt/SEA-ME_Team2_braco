@@ -55,9 +55,8 @@ std::optional<std::string> prompt(const std::string & text)
 
 std::string lower(std::string s)
 {
-  std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) {
-    return static_cast<char>(std::tolower(c));
-  });
+  std::transform(s.begin(), s.end(), s.begin(),
+                 [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
   return s;
 }
 
@@ -87,9 +86,9 @@ enum class Answer
 Answer askPid(int joint, const mycobot::Pid & now, mycobot::Pid & out)
 {
   while (true) {
-    const auto line = prompt(
-      "joint " + std::to_string(joint) + " <p> <i> <d> (now " + std::to_string(now.p) + " " +
-      std::to_string(now.i) + " " + std::to_string(now.d) + "): ");
+    const auto line =
+      prompt("joint " + std::to_string(joint) + " <p> <i> <d> (now " + std::to_string(now.p) + " " +
+             std::to_string(now.i) + " " + std::to_string(now.d) + "): ");
     if (!line || lower(*line) == "q") return Answer::Quit;
     if (line->empty()) return Answer::Keep;
 

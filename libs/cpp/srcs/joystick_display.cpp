@@ -194,8 +194,8 @@ std::string format(const char * fmt, Args... args)
   return buf;
 }
 
-std::string fmtAngles(
-  const std::optional<mycobot::Angles> & angles, const char * numFormat = "%.2f")
+std::string fmtAngles(const std::optional<mycobot::Angles> & angles,
+                      const char * numFormat = "%.2f")
 {
   if (!angles) return "None";
   std::string out = "[";
@@ -226,9 +226,8 @@ double stickRatio(int raw)
 
 Motion motionForRatio(double ratio, const SpeedMode & mode, int direction)
 {
-  return {
-    direction, MIN_SPEED + ratio * (mode.maxSpeed - MIN_SPEED),
-    LEAD_MIN_DEG + ratio * (mode.leadMax - LEAD_MIN_DEG)};
+  return {direction, MIN_SPEED + ratio * (mode.maxSpeed - MIN_SPEED),
+          LEAD_MIN_DEG + ratio * (mode.leadMax - LEAD_MIN_DEG)};
 }
 
 double bumperRatio(const SpeedMode & mode)
@@ -237,8 +236,8 @@ double bumperRatio(const SpeedMode & mode)
   return std::clamp((mode.bumperSpeed - MIN_SPEED) / span, 0.0, 1.0);
 }
 
-std::optional<Shaped> shapeNearLimit(
-  const mycobot::JointLimit & lim, double angle, int direction, double speed, double lead)
+std::optional<Shaped> shapeNearLimit(const mycobot::JointLimit & lim, double angle, int direction,
+                                     double speed, double lead)
 {
   const double remaining = direction > 0 ? (lim.max - angle) : (angle - lim.min);
   if (remaining <= AT_LIMIT_DEG) return std::nullopt;
@@ -250,9 +249,8 @@ std::optional<Shaped> shapeNearLimit(
   return Shaped{angle + direction * lead, shapedSpeed};
 }
 
-Wanted wantedMotion(
-  const std::map<int, int> & axisState, const std::map<int, int> & buttonState,
-  const SpeedMode & mode, const std::set<int> & blocked)
+Wanted wantedMotion(const std::map<int, int> & axisState, const std::map<int, int> & buttonState,
+                    const SpeedMode & mode, const std::set<int> & blocked)
 {
   Wanted wanted;
 
@@ -288,8 +286,8 @@ void setLed(mycobot::MyCobot280 & mc, const SpeedMode & mode, ui::TerminalDispla
 
 // ---- Main control loop -----------------------------------------------------
 
-void controlLoop(
-  input::Joystick & js, mycobot::MyCobot280 & mc, ui::TerminalDisplay & display, bool debug)
+void controlLoop(input::Joystick & js, mycobot::MyCobot280 & mc, ui::TerminalDisplay & display,
+                 bool debug)
 {
   size_t modeIndex = START_MODE;
   const SpeedMode * mode = &SPEED_MODES[modeIndex];
@@ -383,9 +381,8 @@ void controlLoop(
         if (number == BUTTON_SPEED_MODE) {
           speedBtnMs = tMs;
           for (const auto & [axis, axisMs] : axisChangedMs) {
-            if (
-              tMs - axisMs <= SPEED_BUTTON_GUARD_MS &&
-              std::abs(valueOr0(axisState, axis)) > AXIS_DEADZONE) {
+            if (tMs - axisMs <= SPEED_BUTTON_GUARD_MS &&
+                std::abs(valueOr0(axisState, axis)) > AXIS_DEADZONE) {
               blockedAxes.insert(axis);
             }
           }
@@ -638,14 +635,12 @@ void controlLoop(
     for (const auto & [joint, motion] : wanted) moving.insert(joint);
 
     std::set<int> released;
-    std::set_difference(
-      active.begin(), active.end(), moving.begin(), moving.end(),
-      std::inserter(released, released.begin()));
+    std::set_difference(active.begin(), active.end(), moving.begin(), moving.end(),
+                        std::inserter(released, released.begin()));
 
     std::set<int> stillReported;
-    std::set_intersection(
-      limitReported.begin(), limitReported.end(), moving.begin(), moving.end(),
-      std::inserter(stillReported, stillReported.begin()));
+    std::set_intersection(limitReported.begin(), limitReported.end(), moving.begin(), moving.end(),
+                          std::inserter(stillReported, stillReported.begin()));
     limitReported = stillReported;
 
     // 6a. Latch idle joints
@@ -681,8 +676,8 @@ void controlLoop(
     // 6d. Moving joints: proportional speed, slowed near limits
     for (const auto & [joint, motion] : wanted) {
       const double angle = (*angles)[joint - 1];
-      const auto shaped = shapeNearLimit(
-        mycobot::JOINT_LIMITS[joint - 1], angle, motion.direction, motion.speed, motion.lead);
+      const auto shaped = shapeNearLimit(mycobot::JOINT_LIMITS[joint - 1], angle, motion.direction,
+                                         motion.speed, motion.lead);
       if (!shaped) {
         if (!limitReported.count(joint)) {
           display.addMessage(format(">>> J%d at limit", joint));
@@ -696,9 +691,7 @@ void controlLoop(
       pause(COMMAND_GAP);
     }
 
-    if (moving != active) {
-      display.addMessage(">>> jogging joints " + fmtJoints(moving));
-    }
+    if (moving != active) { display.addMessage(">>> jogging joints " + fmtJoints(moving)); }
     active = moving;
   };
 

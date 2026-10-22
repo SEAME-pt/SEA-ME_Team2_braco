@@ -107,13 +107,7 @@ class WaveshareLCD:
 
 # ---- Speed modes (pymycobot speed units 1..100 = percent) ------------------
 SPEED_MODES = [
-    {
-        'name': 'slow',
-        'max_speed': 12,
-        'lead_max': 5.0,
-        'bumper_speed': 8,
-        'color': (0, 0, 255),
-    },
+    {'name': 'slow', 'max_speed': 12, 'lead_max': 5.0, 'bumper_speed': 8, 'color': (0, 0, 255)},
     {
         'name': 'medium',
         'max_speed': 30,
@@ -121,13 +115,7 @@ SPEED_MODES = [
         'bumper_speed': 15,
         'color': (0, 255, 0),
     },
-    {
-        'name': '50%',
-        'max_speed': 50,
-        'lead_max': 15.0,
-        'bumper_speed': 22,
-        'color': (128, 0, 255),
-    },
+    {'name': '50%', 'max_speed': 50, 'lead_max': 15.0, 'bumper_speed': 22, 'color': (128, 0, 255)},
     {
         'name': '75%',
         'max_speed': 75,
@@ -135,13 +123,7 @@ SPEED_MODES = [
         'bumper_speed': 30,
         'color': (255, 255, 255),
     },
-    {
-        'name': '100%',
-        'max_speed': 100,
-        'lead_max': 25.0,
-        'bumper_speed': 40,
-        'color': (255, 0, 0),
-    },
+    {'name': '100%', 'max_speed': 100, 'lead_max': 25.0, 'bumper_speed': 40, 'color': (255, 0, 0)},
 ]
 START_MODE = 1
 
@@ -171,13 +153,7 @@ BUMPERS_EXCLUSIVE = True
 COMMAND_GAP = 0.05
 LOOP_PERIOD = 0.02
 
-AXIS_TO_JOINT = {
-    0: (1, -1),
-    1: (2, 1),
-    3: (4, -1),
-    2: (5, -1),
-    7: (3, 1),
-}
+AXIS_TO_JOINT = {0: (1, -1), 1: (2, 1), 3: (4, -1), 2: (5, -1), 7: (3, 1)}
 
 TRIGGER_AXES = {4, 5}
 BUTTON_GRIPPER_CLOSE = 0

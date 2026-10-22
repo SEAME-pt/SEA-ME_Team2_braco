@@ -72,11 +72,10 @@ Transform jointTransform(const double xyz[3], const double rpy[3], double angle)
   const double cp = std::cos(rpy[1]), sp = std::sin(rpy[1]);
   const double cy = std::cos(rpy[2]), sy = std::sin(rpy[2]);
   const double cq = std::cos(angle), sq = std::sin(angle);
-  const Transform origin = {
-    {{cy * cp, cy * sp * sr - sy * cr, cy * sp * cr + sy * sr},
-     {sy * cp, sy * sp * sr + cy * cr, sy * sp * cr - cy * sr},
-     {-sp, cp * sr, cp * cr}},
-    {xyz[0], xyz[1], xyz[2]}};
+  const Transform origin = {{{cy * cp, cy * sp * sr - sy * cr, cy * sp * cr + sy * sr},
+                             {sy * cp, sy * sp * sr + cy * cr, sy * sp * cr - cy * sr},
+                             {-sp, cp * sr, cp * cr}},
+                            {xyz[0], xyz[1], xyz[2]}};
   const Transform spin = {{{cq, -sq, 0}, {sq, cq, 0}, {0, 0, 1}}, {0, 0, 0}};
   return origin * spin;
 }
@@ -120,9 +119,7 @@ MyCobot280::MyCobot280(const std::string & port, int baud)
   speed_t termios_baud = toTermiosBaud(baud);
 
   fd_ = open(port.c_str(), O_RDWR | O_NOCTTY);
-  if (fd_ < 0) {
-    throw systemError("could not open " + port);
-  }
+  if (fd_ < 0) { throw systemError("could not open " + port); }
 
   // Exclusive access: a second (non-root) opener, e.g. an old script run on the host while
   // arm_driver is up, now gets EBUSY at once instead of interleaving bytes with the driver.
@@ -151,9 +148,7 @@ MyCobot280::MyCobot280(const std::string & port, int baud)
 
 MyCobot280::~MyCobot280()
 {
-  if (fd_ >= 0) {
-    close(fd_);
-  }
+  if (fd_ >= 0) { close(fd_); }
 }
 
 // -------------------------------------------------------------------- power
@@ -253,9 +248,7 @@ std::optional<Angles> MyCobot280::getAngles(int retries)
   if (!data) return std::nullopt;
 
   Angles angles{};
-  for (size_t i = 0; i < 6; ++i) {
-    angles[i] = readInt16(*data, 2 * i) / 100.0;
-  }
+  for (size_t i = 0; i < 6; ++i) { angles[i] = readInt16(*data, 2 * i) / 100.0; }
   lastAngles_ = angles;
   return angles;
 }
@@ -347,16 +340,16 @@ void MyCobot280::checkPidBounds(int joint, const Pid & pid)
     throw std::invalid_argument(j + ": PID values cannot be negative");
   }
   if (pid.p > maxP) {
-    throw std::invalid_argument(
-      j + ": P " + std::to_string(pid.p) + " above safe maximum " + std::to_string(maxP));
+    throw std::invalid_argument(j + ": P " + std::to_string(pid.p) + " above safe maximum " +
+                                std::to_string(maxP));
   }
   if (pid.i > PID_MAX_I) {
-    throw std::invalid_argument(
-      j + ": I " + std::to_string(pid.i) + " above safe maximum " + std::to_string(PID_MAX_I));
+    throw std::invalid_argument(j + ": I " + std::to_string(pid.i) + " above safe maximum " +
+                                std::to_string(PID_MAX_I));
   }
   if (pid.d > maxD) {
-    throw std::invalid_argument(
-      j + ": D " + std::to_string(pid.d) + " above safe maximum " + std::to_string(maxD));
+    throw std::invalid_argument(j + ": D " + std::to_string(pid.d) + " above safe maximum " +
+                                std::to_string(maxD));
   }
 }
 
@@ -367,8 +360,8 @@ bool MyCobot280::setPid(int joint, const Pid & pid)
   // Only write once reading works: proves the protocol before changing anything.
   const auto current = getPid(joint);
   if (!current) {
-    throw std::runtime_error(
-      "J" + std::to_string(joint) + ": cannot read current PID values, nothing was written");
+    throw std::runtime_error("J" + std::to_string(joint) +
+                             ": cannot read current PID values, nothing was written");
   }
   if (isMoving().value_or(false)) {
     throw std::runtime_error("arm is moving, PID values were not changed");
@@ -385,11 +378,11 @@ bool MyCobot280::writeServoByte(int joint, uint8_t address, int value)
 {
   // Private: only called by setPid() with a PID address and a checked value.
   if (address != servo::ADDR_P && address != servo::ADDR_I && address != servo::ADDR_D) {
-    throw std::logic_error(
-      "writeServoByte: address " + std::to_string(address) + " is not a PID address");
+    throw std::logic_error("writeServoByte: address " + std::to_string(address) +
+                           " is not a PID address");
   }
-  const std::vector<uint8_t> data = {
-    static_cast<uint8_t>(joint), address, static_cast<uint8_t>(value)};
+  const std::vector<uint8_t> data = {static_cast<uint8_t>(joint), address,
+                                     static_cast<uint8_t>(value)};
   for (int attempt = 0; attempt < SERVO_WRITE_ATTEMPTS; ++attempt) {
     sendCommand(protocol::SET_SERVO_DATA, data);
     std::this_thread::sleep_for(SERVO_WRITE_SETTLE);
@@ -439,8 +432,8 @@ std::optional<TempCheck> MyCobot280::checkTemps(int retries)
 
 void MyCobot280::sendCommand(uint8_t cmd, const std::vector<uint8_t> & data)
 {
-  std::vector<uint8_t> frame = {
-    protocol::HEADER, protocol::HEADER, static_cast<uint8_t>(data.size() + 2), cmd};
+  std::vector<uint8_t> frame = {protocol::HEADER, protocol::HEADER,
+                                static_cast<uint8_t>(data.size() + 2), cmd};
   frame.insert(frame.end(), data.begin(), data.end());
   frame.push_back(protocol::FOOTER);
 
@@ -456,8 +449,8 @@ void MyCobot280::sendCommand(uint8_t cmd, const std::vector<uint8_t> & data)
   tcdrain(fd_);  // wait until the bytes have left the UART
 }
 
-std::optional<std::vector<uint8_t>> MyCobot280::readReply(
-  uint8_t cmd, std::chrono::milliseconds timeout)
+std::optional<std::vector<uint8_t>> MyCobot280::readReply(uint8_t cmd,
+                                                          std::chrono::milliseconds timeout)
 {
   std::vector<uint8_t> buf;
   const auto deadline = std::chrono::steady_clock::now() + timeout;
@@ -465,12 +458,8 @@ std::optional<std::vector<uint8_t>> MyCobot280::readReply(
   while (std::chrono::steady_clock::now() < deadline) {
     uint8_t tmp[64];
     ssize_t n = read(fd_, tmp, sizeof(tmp));
-    if (n < 0 && errno != EINTR && errno != EAGAIN) {
-      throw systemError("serial read failed");
-    }
-    if (n > 0) {
-      buf.insert(buf.end(), tmp, tmp + n);
-    }
+    if (n < 0 && errno != EINTR && errno != EAGAIN) { throw systemError("serial read failed"); }
+    if (n > 0) { buf.insert(buf.end(), tmp, tmp + n); }
 
     // Look for: HEADER HEADER len cmd data... FOOTER
     for (size_t i = 0; i + 4 < buf.size(); ++i) {
@@ -486,31 +475,28 @@ std::optional<std::vector<uint8_t>> MyCobot280::readReply(
   return std::nullopt;
 }
 
-std::optional<std::vector<uint8_t>> MyCobot280::query(
-  uint8_t cmd, size_t expected_size, int retries)
+std::optional<std::vector<uint8_t>> MyCobot280::query(uint8_t cmd, size_t expected_size,
+                                                      int retries)
 {
   for (int attempt = 0; attempt < std::max(1, retries); ++attempt) {
     tcflush(fd_, TCIFLUSH);  // drop stale bytes from earlier commands
     sendCommand(cmd);
     auto data = readReply(cmd, REPLY_TIMEOUT);
-    if (data && data->size() == expected_size) {
-      return data;
-    }
+    if (data && data->size() == expected_size) { return data; }
     std::this_thread::sleep_for(RETRY_DELAY);
   }
   return std::nullopt;
 }
 
-std::optional<std::vector<uint8_t>> MyCobot280::queryWithData(
-  uint8_t cmd, const std::vector<uint8_t> & data, int retries)
+std::optional<std::vector<uint8_t>> MyCobot280::queryWithData(uint8_t cmd,
+                                                              const std::vector<uint8_t> & data,
+                                                              int retries)
 {
   for (int attempt = 0; attempt < std::max(1, retries); ++attempt) {
     tcflush(fd_, TCIFLUSH);
     sendCommand(cmd, data);
     auto reply = readReply(cmd, REPLY_TIMEOUT);
-    if (reply && !reply->empty()) {
-      return reply;
-    }
+    if (reply && !reply->empty()) { return reply; }
     std::this_thread::sleep_for(RETRY_DELAY);
   }
   return std::nullopt;

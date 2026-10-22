@@ -42,10 +42,7 @@ DH = [
 
 # Fixed poses, same as ZERO_ANGLES / PARK_ANGLES in libs/cpp/includes/mycobot.hpp
 # (J3 -148: just inside the J3 limit)
-POSES = {
-    'park': [0, 131, -148, 146, 4.5, 0],
-    'zero': [0, 0, 0, 0, 0, 0],
-}
+POSES = {'park': [0, 131, -148, 146, 4.5, 0], 'zero': [0, 0, 0, 0, 0, 0]}
 POSE_SPEED = 30
 POSE_HOLD = 10  # mock only: seconds to stay in the pose before wandering again
 

@@ -559,9 +559,7 @@ def main():
         help='print what each pushed control is mapped to, arm stays still',
     )
     parser.add_argument(
-        '--show',
-        action='store_true',
-        help='print the mapping, check all joints, and exit',
+        '--show', action='store_true', help='print the mapping, check all joints, and exit'
     )
     parser.add_argument('--debug', action='store_true', help='print every joystick event')
     parser.add_argument('--device', default=JOYSTICK_DEVICE)

@@ -48,8 +48,8 @@ class TerminalDisplay
 {
 public:
   // enabled = false keeps plain-text output (useful with --debug).
-  explicit TerminalDisplay(
-    bool enabled = true, std::chrono::milliseconds refresh = std::chrono::milliseconds(100));
+  explicit TerminalDisplay(bool enabled = true,
+                           std::chrono::milliseconds refresh = std::chrono::milliseconds(100));
   ~TerminalDisplay();  // restores the normal terminal screen
 
   TerminalDisplay(const TerminalDisplay &) = delete;
