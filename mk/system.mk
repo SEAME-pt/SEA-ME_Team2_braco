@@ -54,7 +54,7 @@ status: _role ## Containers, CPU/RAM per container, the arm as the page sees it 
 
 # S=web shows only the page; any other S is a pattern, e.g. S=arm_driver or S='ERROR|WARN'.
 LOGS_web := uvicorn|braco|web page|Application|HTTP
-logs: _role ## Follow the system's log (S=web, S=arm_driver, S=temperature_monitor, S=joystick_teleop, any pattern)
+logs: _role ## Follow the system's log (S=web, S=arm_driver, S=temperature_monitor, S=joystick_teleop, S=camera, any pattern)
 	@if [ -n "$(S)" ]; then \
 	  $(COMPOSE) logs -f --tail=300 $(SYSTEM) | grep --line-buffered -iE '$(or $(LOGS_$(S)),$(S))'; \
 	else $(COMPOSE) logs -f --tail=100 $(SYSTEM); fi

@@ -1,6 +1,7 @@
-// Live arm panel: 3D model, joints, temperatures, history, reference. The controls are in control.js.
+// Live arm panel: 3D model, camera, joints, temperatures, history, reference. The controls are in control.js.
 
 import { mountActivity } from "../activity.js";
+import { mountCamera } from "../camera.js";
 import { mountChart } from "../chart.js";
 import { esc, fmt, on } from "../util.js";
 import {
@@ -98,6 +99,10 @@ export function render(root) {
       <div id="a-history"></div>
     </section>
     <div class="grid cols-2">
+      <section class="card camera-card">
+        <h2>Camera <span class="muted small" style="text-transform:none;letter-spacing:0">eye-in-hand · /camera/image_raw/compressed</span></h2>
+        <div id="a-camera"></div>
+      </section>
       <section class="card">
         <h2>Cartesian pose</h2>
         <div class="kv" id="a-coords">
@@ -140,6 +145,7 @@ export function render(root) {
 
   const offs = [mountChart($("#a-history"))];
   offs.push(mountActivity($("#a-activity"), 40));
+  offs.push(mountCamera($("#a-camera")));
 
   offs.push(on("telemetry", (s) => {
     $("#a-port").textContent = SOURCE_PORT[s.source] || "on /dev/ttyTHS1";

@@ -11,6 +11,7 @@ EXPECTED_NODES = [
     ("arm_driver", "owns the serial port: angles, temperatures, commands"),
     ("temperature_monitor", "temperatures -> /diagnostics and the LCD"),
     ("joystick_teleop", "joystick -> /arm/command"),
+    ("camera", "eye-in-hand camera -> /camera/image_raw/compressed"),
 ]
 EXPECTED_SERVICES = ["/arm/power_on", "/arm/release_servos", "/arm/set_gripper", "/arm/set_read_only",
                      "/arm/take_control"]

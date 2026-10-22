@@ -15,7 +15,7 @@
 """
 The braco system in one ROS 2 launch, on the real arm or in simulation.
 
-    sim:=false  arm_driver, temperature_monitor and joystick_teleop (the default). This is
+    sim:=false  arm_driver, temperature_monitor, joystick_teleop and camera (the default). This is
                 what the `real` container runs (make up), started by arm_routine.sh, which
                 also starts the web page. The arm is not zeroed or parked on start/stop.
                 arm_driver is not respawned: when it exits the whole launch shuts down, so
@@ -25,7 +25,7 @@ The braco system in one ROS 2 launch, on the real arm or in simulation.
                 then it starts nothing and says so.
 
 Tuning parameters of the nodes live in config/braco.yaml. The wiring (port, baud, lcd_bus,
-device) comes from the launch arguments, which the compose file fills from docker/.env.
+device, camera) comes from the launch arguments, which the compose file fills from docker/.env.
 Also usable by hand in the dev container: ros2 launch braco_bringup braco.launch.py
 """
 
@@ -45,6 +45,7 @@ def generate_launch_description():
     baud = LaunchConfiguration('baud')
     lcd_bus = LaunchConfiguration('lcd_bus')
     device = LaunchConfiguration('device')
+    camera = LaunchConfiguration('camera')
     config = PathJoinSubstitution([FindPackageShare('braco_bringup'), 'config', 'braco.yaml'])
     real = UnlessCondition(sim)
     # The only process that opens the serial port. Not respawned: a fault must be seen.
@@ -59,6 +60,8 @@ def generate_launch_description():
         DeclareLaunchArgument('baud', default_value='1000000'),
         DeclareLaunchArgument('lcd_bus', default_value='/dev/i2c-0'),
         DeclareLaunchArgument('device', default_value='/dev/input/js0'),
+        DeclareLaunchArgument('camera', default_value='/dev/video0',
+                              description='video device of the eye-in-hand camera'),
         arm_driver,
         # Without the driver nothing else is useful: end the launch instead of idling
         RegisterEventHandler(
@@ -71,6 +74,10 @@ def generate_launch_description():
         Node(package='braco_teleop', executable='joystick_teleop', name='joystick_teleop',
              output='screen', respawn=True, condition=real,
              parameters=[config, {'device': device}]),
+        # Never needed by the arm: without a camera it waits for one
+        Node(package='braco_camera', executable='camera', name='camera',
+             output='screen', respawn=True, condition=real,
+             parameters=[config, {'device': camera}]),
         LogInfo(condition=IfCondition(sim),
                 msg='sim:=true: the simulated arm is not available yet '
                     '(Gazebo #34, model in braco_description #25), nothing started'),

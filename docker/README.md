@@ -177,7 +177,7 @@ Notes:
 
 ## The system on the Jetson: driver, temperature, joystick, web page
 
-Everything from `ros2_ws/src/braco_driver`, `braco_teleop` and `braco_bringup` runs all the time on the Nano **inside
+Everything from `ros2_ws/src/braco_driver`, `braco_teleop`, `braco_camera` and `braco_bringup` runs all the time on the Nano **inside
 ROS 2, in one container**, `real` (same `braco-image/jetson` image as `dev`, no build of its own). `arm_routine.sh` is its
 entrypoint: it starts `ros2 launch braco_bringup braco.launch.py sim:=false` and the web page. It does **not** move
 the arm at start or stop:
@@ -194,11 +194,13 @@ arm_driver           ROS 2 node   the ONLY process that opens /dev/ttyTHS1 (myco
 temperature_monitor  ROS 2 node   temperatures -> /diagnostics + LCD1602 (port of mycobot_cpp temps_lcd), rest mode
                                   at 65 °C; respawned
 joystick_teleop      ROS 2 node   joystick -> /arm/command (port of mycobot_cpp joystick_all_joints); respawned
+camera               ROS 2 node   the ONLY process that opens the USB camera -> /camera/image_raw/compressed
+                                  (JPEG, 15 fps); waits for the camera when it is missing; respawned
 braco web page       uvicorn      http://<jetson>:8000 (WEB_PORT), ARM_SOURCE=ros: a plain client of the topics/services above
 arm_routine.sh       entrypoint   start: the launch + the page / stop: the page, then the launch (no zero, no park)
 ```
 
-Launch arguments: `port`, `baud`, `lcd_bus`, `device` (filled from `.env`). Use ROS 2 tools on the running graph from
+Launch arguments: `port`, `baud`, `lcd_bus`, `device`, `camera` (filled from `.env`). Use ROS 2 tools on the running graph from
 `dev` (`make run CMD='ros2 node list'`, `ros2 param`, `ros2 service call`). Logs of all nodes: `make logs`; one node:
 `make logs S=arm_driver`; only the page: `make logs S=web`.
 
@@ -237,7 +239,10 @@ make boot-on                             # start the system at boot (systemd uni
 make run CMD='ros2 topic echo /arm/servo_temperatures'
 ```
 
-`make setup` fills in `I2C_GID` and `INPUT_GID`; `LCD_I2C_BUS` and `JOYSTICK_DEVICE` in `.env` change the devices.
+`make setup` fills in `I2C_GID`, `INPUT_GID` and `VIDEO_GID`; `LCD_I2C_BUS`, `JOYSTICK_DEVICE` and `CAMERA_DEVICE`
+in `.env` change the devices. The camera, like the joystick, may be missing or plugged in later: the host's `/dev` is
+mounted at `/run/hostdev` with a cgroup rule for V4L2 devices (major 81), and `CAMERA_DEVICE` is a name under it
+(`video0`, or `v4l/by-id/...` to survive renumbering).
 **Only one program can use the serial port:** run `make down` before starting `temps_lcd`, `joystick_all_joints` or
 any pymycobot script by hand. But prefer not to: `make park`, `zero` and `temps` go through the driver, and stopping
 the container also stops the temperature readings.

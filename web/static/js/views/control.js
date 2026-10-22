@@ -1,4 +1,5 @@
-// Arm control page: STOP, Park / Zero, shared speed, per-joint controls, gripper, LED, rest mode.
+// Arm control page: STOP, Park / Zero, shared speed, per-joint controls, gripper, LED, rest mode,
+// and the arm's camera beside them.
 //
 // Only the operator (the tab holding the control lease) can move the arm; STOP works for
 // everybody. While the joystick or zero/park has the arm (arm_driver's control owner),
@@ -8,6 +9,7 @@
 // limit (80) the operator has to accept a warning.
 
 import { mountActivity } from "../activity.js";
+import { mountCamera } from "../camera.js";
 import {
   esc, fmt, holderName, isOperator, live, on, OWNER_NAMES, outsideOwner, post, shareUi, takeControl,
 } from "../util.js";
@@ -87,7 +89,13 @@ export function render(root) {
       </div>
       <div class="filters" id="a-badges"></div>
     </div>
-    ${controlHTML()}
+    <div class="ctl-layout">
+      ${controlHTML()}
+      <section class="card camera-card">
+        <h2>Camera <span class="muted small" style="text-transform:none;letter-spacing:0">what the arm sees</span></h2>
+        <div id="c-camera"></div>
+      </section>
+    </div>
     <section class="card">
       <h2>Activity <span class="muted small" style="text-transform:none;letter-spacing:0">everybody's commands, live</span></h2>
       <div id="a-activity" class="activity-box"></div>
@@ -300,6 +308,7 @@ export function render(root) {
   offs.push(on("ui", applyRemote));
   offs.push(on("speed", applySpeed));
   offs.push(mountActivity($("#a-activity"), 40));
+  offs.push(mountCamera($("#c-camera")));
 
   updateEnabled();
 

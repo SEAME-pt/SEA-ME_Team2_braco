@@ -1,14 +1,14 @@
 # braco (web page)
 
-The team's interface to the myCobot 280: live telemetry and control of the arm, its ROS 2 graph, the repository
+The team's interface to the myCobot 280: live telemetry and control of the arm, its camera, its ROS 2 graph, the repository
 docs and the sprints. It is served by the Jetson and opened from everybody's PC at the same time, and **every page
 is in sync**: who is online, who controls the arm, what each person did, and the operator's control panel as it moves.
 
 | Page | What it shows | Where it comes from |
 |---|---|---|
 | **Home** | arm summary, who is on the page, ROS 2 node health, activity log, current sprint, shortcuts | the other pages |
-| **Arm** | 3D model, angles with soft/firmware limits, temperatures, cartesian pose, 60 s history, activity, protocol table, limits and factory PID | `/ws` + `js/specs.js` |
-| **Control** | the only page that moves the arm: STOP, Park, Zero, wake up, shared speed, per-joint sliders, gripper, LED, rest mode, activity | `/ws` |
+| **Arm** | 3D model, angles with soft/firmware limits, temperatures, the camera, cartesian pose, 60 s history, activity, protocol table, limits and factory PID | `/ws` + `js/specs.js` + `/api/camera/stream` |
+| **Control** | the only page that moves the arm: STOP, Park, Zero, wake up, shared speed, per-joint sliders, gripper, LED, rest mode, with the camera beside them; activity | `/ws` + `/api/camera/stream` |
 | **ROS 2** | *Health*: arm_driver / temperature_monitor / joystick_teleop up or missing, driver services, `/diagnostics`. *Graph*: every node, topic (with live echo and rate), service and action | the web server's ROS 2 node |
 | **Docs** | every `.md` in the repository, grouped by topic, rendered | `GET /api/docs` |
 | **Sprints** | milestone timeline, countdown, one card per `SPRINT N` issue with its sub-issues, and a page per sprint (`#/sprints/N`) | GitHub API, 5 min cache |
@@ -29,6 +29,11 @@ is in sync**: who is online, who controls the arm, what each person did, and the
   dropped again when control is released.
 - Control is released by the operator, when the operator's page is closed (5 s later, so a reload keeps it), or
   after **60 s** without a command or a touch of the control panel. The sidebar shows the countdown.
+- **The camera** (eye-in-hand) is shown live on the Arm and Control pages to everybody, operator or not. It comes
+  from the `camera` node ([braco_camera](../ros2_ws/src/braco_camera/README.md)) through
+  `/camera/image_raw/compressed`: the page never opens the camera. While no frames arrive (camera unplugged, node
+  down, `make web` without ROS) it shows why and opens the stream again once they come back. *⤓ Frame* saves the
+  current frame as a JPEG.
 - **Activity log**: commands, STOPs, failures, control changes, joins and leaves, for everybody (Home and Arm pages).
   Other people's actions also pop up as toasts.
 
@@ -82,6 +87,8 @@ No arm, no ROS and no network needed:
 - `tests/test_session.py`: the hub with a fake clock: one operator, commands locked for the others, STOP for
   everybody, one command at a time, idle expiry, reload vs closing the page, activity log; with a fake driver
   control: taking asks it, refused while the joystick has it, kept alive every tick, lost when forced away.
+- `tests/test_server.py` also covers the camera with fake frames: online/offline, rate, staleness, snapshot and
+  the MJPEG stream.
 - `tests/test_ros_arm.py`: `RosArm` with a fake bridge: joint states, bounded steps resent inside the 300 ms watchdog,
   STOP and newer commands cancel a move, timeout, park (releases and rests on arrival, not when cancelled), wake (no movement), gripper/LED,
   `source: web` on every command, take/release control, losing it ends a move without STOP, temperature levels
@@ -115,6 +122,7 @@ web/
   server/ros.py         the one shared rclpy node (imported lazily: the server runs without ROS)
   server/ros_health.py  arm nodes and /diagnostics
   server/ros_graph.py   read-only graph explorer and topic echo
+  server/camera.py      the camera node's JPEG frames as an MJPEG stream
   server/docs.py        finds, groups and reads every Markdown file in the repository
   server/github.py      milestones, SPRINT issues and sub-issues
   static/               plain HTML/CSS/JS, no build (three.js, marked and highlight.js from a CDN)
@@ -139,6 +147,9 @@ runs **409**.
 | `POST /api/speed` `{value, unlocked}` | the one speed everybody shares (1-100), **operator only**. Above 80 it needs `unlocked: true` (the page asks the operator to accept a warning); releasing control puts a speed above 80 back to 80 |
 | `POST /api/rest` `{on}` · `/api/gripper` `{closed}` · `/api/led` `{r, g, b}` | rest mode, gripper, Atom LED (ROS and mock sources) |
 | `GET /api/ros/health` · `/graph` | the ROS 2 panels |
+| `GET /api/camera/status` | `{online, fps, age, bytes, error}` of `/camera/image_raw/compressed` |
+| `GET /api/camera/stream` | MJPEG (`multipart/x-mixed-replace`) of the camera, at most 15 fps per viewer, for an `<img>`; ends when the camera goes offline, **503** if it already is |
+| `GET /api/camera/snapshot` | the newest frame as `image/jpeg`; **503** without one |
 | `GET /api/docs` · `/api/docs/{path}` | document list / Markdown of one |
 | `GET /api/sprints?refresh=1` | sprint data (`refresh` skips the cache) |
 
