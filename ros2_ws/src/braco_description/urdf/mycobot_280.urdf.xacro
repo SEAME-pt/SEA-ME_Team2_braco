@@ -74,7 +74,8 @@
     </joint>
   </xacro:macro>
 
-  <xacro:macro name="mycobot_280" params="parent:=world *origin">
+  <!-- flange_yaw (rad): turns the flange mesh about the joint 6 axis (see braco.urdf.xacro). -->
+  <xacro:macro name="mycobot_280" params="parent:=world flange_yaw:=0 *origin">
     <xacro:arm_link name="base_link" mesh="base_link" mass="${base_mass}"
                     xyz="0 0 0" rpy="0 0 3.14159"/>
     <joint name="${parent}_to_base_link" type="fixed">
@@ -94,7 +95,7 @@
     <xacro:arm_link name="link5" mesh="link5" mass="${link_mass}"
                     xyz="0 0 -0.038" rpy="0 0 0"/>
     <xacro:arm_link name="link6" mesh="link6" mass="${link_mass}"
-                    xyz="0 0 -0.012" rpy="0 0 0"/>
+                    xyz="0 0 -0.012" rpy="0 0 ${flange_yaw}"/>
 
     <xacro:arm_joint n="1" parent="base_link" child="link1"
                      xyz="0 0 0.15756" rpy="0 0 0"/>
