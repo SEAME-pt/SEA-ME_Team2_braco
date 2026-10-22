@@ -716,7 +716,7 @@ GUI tools (rqt, RViz2, Gazebo, PlotJuggler) are only in the **PC image** (`braco
 ## 23. How this maps to our project
 
 The packages, nodes, topics and services of braco, and where each one runs, are in
-[docs/architecture.md](../architecture.md). In short:
+[docs/architecture.html](../architecture.html). In short:
 
 - **Topics**: `/joint_states` from `arm_driver`, `/arm/command` from its clients, `/diagnostics` from `temperature_monitor`.
 - **Services**: quick arm commands (`/arm/power_on`, `/arm/release_servos`, `/arm/set_gripper`, `/arm/set_read_only`).
