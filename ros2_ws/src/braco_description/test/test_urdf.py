@@ -21,8 +21,9 @@ Processes braco.urdf.xacro and checks that
   * the <limit> of every joint is JOINT_LIMITS of libs/cpp/includes/mycobot.hpp
   * every link with geometry has a positive mass and a positive-definite inertia
   * the frames the system uses exist (world, base_link, tool0, tcp, camera_optical_frame)
-  * every mesh file exists
+  * every mesh file, and every texture image a mesh points to, exists
   * the model's zero pose has not moved by accident (see ZERO_TOOL0)
+  * gazebo:=true controls exactly joint1..joint6, and the plain model has no ros2_control
 """
 
 import math
@@ -49,13 +50,13 @@ ARM_JOINTS = ['joint%d' % n for n in range(1, 7)]
 ZERO_TOOL0 = (0.0456, -0.06462, 0.140 + 0.43614)
 
 
-def load_urdf(gripper_actuated='false'):
+def load_urdf(gripper_actuated='false', gazebo='false'):
     """Process braco.urdf.xacro without needing the workspace to be sourced."""
     path = os.path.join(PACKAGE_DIR, 'urdf', 'braco.urdf.xacro')
     with open(path, encoding='utf-8') as f:
         text = f.read().replace('$(find braco_description)', PACKAGE_DIR)
     doc = xacro.parse(text)
-    xacro.process_doc(doc, mappings={'gripper_actuated': gripper_actuated})
+    xacro.process_doc(doc, mappings={'gripper_actuated': gripper_actuated, 'gazebo': gazebo})
     return ET.fromstring(doc.toxml())
 
 
@@ -142,6 +143,30 @@ def test_meshes_exist():
         assert os.path.isfile(os.path.join(PACKAGE_DIR, filename[len(prefix):])), filename
 
 
+def test_mesh_textures_exist():
+    # A .dae can point to texture images next to it; RViz aborts if one is missing.
+    robot = load_urdf()
+    prefix = 'package://braco_description/'
+    meshes = {m.get('filename')[len(prefix):] for m in robot.iter('mesh')}
+    for mesh in meshes:
+        path = os.path.join(PACKAGE_DIR, mesh)
+        with open(path, encoding='utf-8') as f:
+            images = re.findall(
+                r'<init_from>([^<]+\.(?:png|jpe?g|tga|bmp))</init_from>', f.read(), re.I)
+        for image in images:
+            assert os.path.isfile(os.path.join(os.path.dirname(path), image)), (mesh, image)
+
+
+def test_meshes_are_triangulated():
+    # Gazebo loads COLLADA <polygons> as an empty mesh, and an empty collision mesh crashes
+    # its physics. RViz does not mind, so only this test catches it.
+    robot = load_urdf()
+    prefix = 'package://braco_description/'
+    for mesh in {m.get('filename')[len(prefix):] for m in robot.iter('mesh')}:
+        with open(os.path.join(PACKAGE_DIR, mesh), encoding='utf-8') as f:
+            assert '<polygons' not in f.read(), mesh
+
+
 def test_actuated_gripper_has_one_master_and_five_mimics():
     robot = load_urdf(gripper_actuated='true')
     mimics = robot.findall('.//mimic')
@@ -167,10 +192,8 @@ def rotation(r, p, y):
 
 
 def test_zero_pose_tool0_position_is_unchanged():
-    """Check the forward kinematics at all joints = 0, down to tool0.
-
-    All joint angles are zero, so only the fixed origins of the chain count.
-    """
+    """Check the forward kinematics at all joints = 0, down to tool0."""
+    # All joint angles are zero, so only the fixed origins of the chain count.
     robot = load_urdf()
     parent_of = {j.find('child').get('link'): j for j in robot.findall('joint')}
     chain, link = [], 'tool0'
@@ -189,3 +212,16 @@ def test_zero_pose_tool0_position_is_unchanged():
                for i in range(3)]
     for got, want in zip(pos, ZERO_TOOL0):
         assert got == pytest.approx(want, abs=1e-3)
+
+
+def test_plain_model_has_no_ros2_control():
+    assert load_urdf().find('ros2_control') is None
+
+
+def test_gazebo_model_controls_the_arm_joints():
+    robot = load_urdf(gazebo='true')
+    control = robot.find('ros2_control')
+    assert control is not None
+    assert [j.get('name') for j in control.findall('joint')] == ARM_JOINTS
+    params = robot.find('gazebo/plugin/parameters').text
+    assert os.path.isfile(params), params
