@@ -114,8 +114,8 @@ services:
               "lcd_bus:=${LCD_I2C_BUS:-/dev/i2c-0}", "device:=${JOYSTICK_DEVICE:-/dev/input/js0}"]
     group_add:
       - "${DIALOUT_GID:-20}"
-      - "${I2C_GID:-65534}"                 # set by make setup; fallback: nogroup (harmless; the two
-      - "${INPUT_GID:-${USER_GID:-1000}}"   #   fallbacks differ because compose refuses duplicates)
+      - "${I2C_GID:-65533}"                 # set by make setup; unset: unused placeholder (no LCD access; make doctor warns)
+      - "${INPUT_GID:-65534}"               # set by make setup; unset: nogroup (no joystick access; make doctor warns)
     devices:
       - ${MYCOBOT_PORT:-/dev/ttyTHS1}:${MYCOBOT_PORT:-/dev/ttyTHS1}:rwm
       - ${LCD_I2C_BUS:-/dev/i2c-0}:${LCD_I2C_BUS:-/dev/i2c-0}:rw
