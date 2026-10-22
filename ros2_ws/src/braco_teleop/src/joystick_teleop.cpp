@@ -12,20 +12,28 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// joystick_teleop - ROS 2 version of libs/cpp/srcs/joystick_all_joints.cpp.
+// joystick_teleop - ROS 2 version of mycobot_cpp/srcs/joystick_all_joints.cpp.
 //
 // Same mapping, speed modes and safety model (step-ahead jogging: every target
 // is only a few degrees ahead of the real angles), but the arm is reached
 // through arm_driver instead of the serial port:
 //
 //   sub  /joint_states        the real angles (older than state_timeout_ms = no feedback)
-//   pub  /arm/command         STOP / JOINTS / ALL_ANGLES, one per tick
-//   pub  /arm/led             speed mode colour
-//   cli  /arm/power_on        when a joystick connects
+//   sub  /arm/control_owner   who may move the arm (latched)
+//   pub  /arm/command         STOP / JOINTS / ALL_ANGLES, one per tick, source "joystick"
+//   pub  /arm/led             speed mode colour (dimmed while another client has the control)
+//   cli  /arm/take_control    on the first stick move when the control is free, or forced
+//   cli  /arm/power_on        when a joystick connects, once the joystick has the control
 //   cli  /arm/set_gripper     A = close, B = open
 //
+// Control (docs/ADR-0002-controle-unico.md): only the owner moves the arm. With
+// the control free, touching a stick, X or A/B takes it. While another client (the
+// web page, zero/park) has it, the joystick is ignored until force_button is held for
+// force_hold_s. Letting go of everything does not release it: arm_driver frees it
+// after control_idle_s without motion.
+//
 // The joystick may be missing or unplugged at any time: the node then stops the
-// arm and tries to open the device again every second.
+// arm (if it has the control) and tries to open the device again every second.
 //
 // Mapping:
 //   Left stick  X / Y  joint 1 / joint 2 (base yaw [inverted] / shoulder pitch)
@@ -35,6 +43,7 @@
 //   A / B              close / open gripper
 //   X (click)          home all joints to 0 (click again to abort)
 //   Button 9           cycle speed: blue -> green -> purple -> white -> red
+//   Button 8 (hold)    take the control from another client (force_button)
 
 #include <algorithm>
 #include <chrono>
@@ -52,14 +61,17 @@
 #include "rclcpp/rclcpp.hpp"
 #include "teleop_logic.hpp"
 #include "braco_interfaces/msg/arm_command.hpp"
+#include "braco_interfaces/srv/take_control.hpp"
 #include "sensor_msgs/msg/joint_state.hpp"
 #include "std_msgs/msg/color_rgba.hpp"
+#include "std_msgs/msg/string.hpp"
 #include "std_srvs/srv/set_bool.hpp"
 #include "std_srvs/srv/trigger.hpp"
 
 using namespace std::chrono_literals;
 using braco_interfaces::msg::ArmCommand;
 using braco_interfaces::msg::JointTarget;
+using braco_interfaces::srv::TakeControl;
 namespace tl = mycobot::teleop;
 
 namespace
@@ -68,6 +80,8 @@ namespace
 constexpr auto LOOP_PERIOD = 20ms;
 constexpr auto REOPEN_PERIOD = 1s;
 constexpr double RAD_TO_DEG = 180.0 / M_PI;
+constexpr const char * SOURCE = "joystick";   // ArmCommand.source and the control owner name
+constexpr float NOT_OWNER_LED = 0.15f;        // LED brightness while another client has the control
 
 std::string fmtJoints(const std::set<int> & joints)
 {
@@ -95,11 +109,18 @@ public:
     device_ = declare_parameter<std::string>("device", input::Joystick::DEFAULT_DEVICE);
     state_timeout_ = std::chrono::milliseconds(declare_parameter<int>("state_timeout_ms", 150));
     debug_ = declare_parameter<bool>("debug", false);
+    force_button_ = declare_parameter<int>("force_button", tl::BUTTON_FORCE_CONTROL);
+    force_hold_s_ = declare_parameter<double>("force_hold_s", tl::FORCE_HOLD_S);
+    force_hold_ = tl::ButtonHold(force_hold_s_);
 
     command_pub_ = create_publisher<ArmCommand>("arm/command", 10);
     led_pub_ = create_publisher<std_msgs::msg::ColorRGBA>("arm/led", 10);
     power_client_ = create_client<std_srvs::srv::Trigger>("arm/power_on");
     gripper_client_ = create_client<std_srvs::srv::SetBool>("arm/set_gripper");
+    take_client_ = create_client<TakeControl>("arm/take_control");
+    owner_sub_ = create_subscription<std_msgs::msg::String>(
+      "arm/control_owner", rclcpp::QoS(1).transient_local(),
+      [this](std_msgs::msg::String::ConstSharedPtr msg) {onOwner(msg->data);});
     joint_sub_ = create_subscription<sensor_msgs::msg::JointState>(
       "joint_states", 10,
       [this](sensor_msgs::msg::JointState::ConstSharedPtr msg) {onJointState(*msg);});
@@ -149,12 +170,69 @@ private:
     return angles_;
   }
 
+  // ---- Control owner ---------------------------------------------------------
+
+  bool isOwner() const {return owner_ == SOURCE;}
+
+  void onOwner(const std::string & owner)
+  {
+    if (owner == owner_) {return;}
+    const bool was_owner = isOwner();
+    owner_ = owner;
+    if (was_owner && !isOwner()) {
+      // The new owner (or nobody) moves the arm now: forget the jog without sending STOP
+      active_.clear();
+      hold_.clear();
+      homing_ = false;
+      if (owner_.empty()) {
+        RCLCPP_INFO(get_logger(), ">>> control released (idle)");
+      } else {
+        RCLCPP_WARN(
+          get_logger(), ">>> control taken by %s: joystick ignored (hold button %d for %.1f s)",
+          owner_.c_str(), force_button_, force_hold_s_);
+      }
+    } else if (isOwner()) {
+      RCLCPP_INFO(get_logger(), ">>> joystick has the control");
+    }
+    if (js_) {setLed(mode());}
+  }
+
+  // Ask arm_driver for the control (asynchronous; the answer updates owner_).
+  void requestControl(bool force)
+  {
+    if (take_pending_) {return;}
+    if (!take_client_->service_is_ready()) {
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 2000, "arm_driver not available: cannot take the control");
+      return;
+    }
+    take_pending_ = true;
+    auto req = std::make_shared<TakeControl::Request>();
+    req->source = SOURCE;
+    req->force = force;
+    take_client_->async_send_request(
+      req, [this](rclcpp::Client<TakeControl>::SharedFuture future) {
+        take_pending_ = false;
+        const auto res = future.get();
+        if (!res->success) {
+          RCLCPP_WARN(
+            get_logger(), ">>> %s: hold button %d for %.1f s to take it",
+            res->message.c_str(), force_button_, force_hold_s_);
+        }
+        onOwner(res->owner);
+      });
+  }
+
   // ---- Outputs ---------------------------------------------------------------
 
+  // Only the owner stops the arm: a STOP from an idle joystick would cut the
+  // move of whoever has the control (unplugging it, Ctrl+C...).
   void sendStop()
   {
+    if (!isOwner()) {return;}
     ArmCommand cmd;
     cmd.type = ArmCommand::STOP;
+    cmd.source = SOURCE;
     command_pub_->publish(cmd);
   }
 
@@ -167,10 +245,11 @@ private:
 
   void setLed(const tl::SpeedMode & mode)
   {
+    const float k = (owner_.empty() || isOwner()) ? 1.0f : NOT_OWNER_LED;
     std_msgs::msg::ColorRGBA c;
-    c.r = mode.r / 255.0f;
-    c.g = mode.g / 255.0f;
-    c.b = mode.b / 255.0f;
+    c.r = k * mode.r / 255.0f;
+    c.g = k * mode.g / 255.0f;
+    c.b = k * mode.b / 255.0f;
     c.a = 1.0f;
     led_pub_->publish(c);
   }
@@ -231,10 +310,10 @@ private:
     bad_reads_ = 0;
   }
 
-  // Lock the joints once arm_driver is reachable (like powerOn() at start).
+  // Lock the joints once the joystick has the control (like powerOn() at start).
   void powerOnIfPending()
   {
-    if (!power_pending_ || !power_client_->service_is_ready()) {return;}
+    if (!power_pending_ || !isOwner() || !power_client_->service_is_ready()) {return;}
     power_pending_ = false;
     power_client_->async_send_request(std::make_shared<std_srvs::srv::Trigger::Request>());
   }
@@ -246,13 +325,13 @@ private:
   void tick()
   {
     if (!ensureJoystick()) {return;}
-    powerOnIfPending();
 
     // 1. Drain joystick events
     bool home_clicked = false;
+    std::optional<bool> gripper;   // close / open requested
     try {
       for (const input::Event & ev : js_->readEvents()) {
-        handleEvent(ev, home_clicked);
+        handleEvent(ev, home_clicked, gripper);
       }
     } catch (const std::exception & e) {
       RCLCPP_ERROR(get_logger(), "%s - stopping the arm, waiting for the joystick", e.what());
@@ -263,7 +342,30 @@ private:
 
     const tl::Wanted wanted = tl::wantedMotion(axis_state_, button_state_, mode(), blocked_axes_);
 
-    // 2. Homing state transitions (click toggles, any jog input aborts)
+    // 2. Control: force_button held takes it; with the control free any input takes it
+    if (force_hold_.update(tl::valueOr0(button_state_, force_button_) == 1, nowSeconds()) &&
+      !isOwner())
+    {
+      RCLCPP_INFO(get_logger(), ">>> button %d held: taking the control", force_button_);
+      requestControl(true);
+    }
+    if (!isOwner()) {
+      if (!wanted.empty() || home_clicked || gripper) {
+        if (owner_.empty()) {
+          requestControl(false);   // the next tick jogs, once the driver said yes
+        } else {
+          RCLCPP_WARN_THROTTLE(
+            get_logger(), *get_clock(), 3000,
+            "!!! %s has the control: joystick ignored (hold button %d for %.1f s)",
+            owner_.c_str(), force_button_, force_hold_s_);
+        }
+      }
+      return;
+    }
+    powerOnIfPending();
+    if (gripper) {setGripper(*gripper);}
+
+    // 3. Homing state transitions (click toggles, any jog input aborts)
     if (home_clicked) {
       if (homing_) {
         RCLCPP_INFO(get_logger(), ">>> homing cancelled");
@@ -283,13 +385,13 @@ private:
       stopArm();
     }
 
-    // 3. Homing: bounded, synchronised steps toward all-zero
+    // 4. Homing: bounded, synchronised steps toward all-zero
     if (homing_) {
       home();
       return;
     }
 
-    // 4. Nothing requested -> stop once, then idle (no commands)
+    // 5. Nothing requested -> stop once, then idle (no commands; the control lapses)
     if (wanted.empty()) {
       if (!active_.empty()) {
         RCLCPP_INFO(get_logger(), ">>> stop");
@@ -300,7 +402,7 @@ private:
       return;
     }
 
-    // 5. Jogging requires fresh feedback
+    // 6. Jogging requires fresh feedback
     const auto angles = freshAngles();
     if (!angles) {
       RCLCPP_WARN_THROTTLE(
@@ -311,7 +413,7 @@ private:
     jog(wanted, *angles);
   }
 
-  void handleEvent(const input::Event & ev, bool & home_clicked)
+  void handleEvent(const input::Event & ev, bool & home_clicked, std::optional<bool> & gripper)
   {
     const int64_t t_ms = ev.timeMs;
     const int number = ev.number;
@@ -353,9 +455,9 @@ private:
 
       if (value == 1) {
         if (number == tl::BUTTON_GRIPPER_CLOSE) {
-          setGripper(true);
+          gripper = true;
         } else if (number == tl::BUTTON_GRIPPER_OPEN) {
-          setGripper(false);
+          gripper = false;
         } else if (number == tl::BUTTON_HOME) {
           home_clicked = true;
         } else if (number == tl::BUTTON_SPEED_MODE) {
@@ -393,6 +495,7 @@ private:
     cmd.type = ArmCommand::ALL_ANGLES;
     std::copy(targets->begin(), targets->end(), cmd.angles_deg.begin());
     cmd.speed = tl::HOME_SPEED;
+    cmd.source = SOURCE;
     command_pub_->publish(cmd);
   }
 
@@ -401,6 +504,7 @@ private:
     const double now = nowSeconds();
     ArmCommand cmd;
     cmd.type = ArmCommand::JOINTS;
+    cmd.source = SOURCE;
     auto add = [&cmd](int joint, double angle, int speed) {
         JointTarget t;
         t.joint = static_cast<uint8_t>(joint);
@@ -486,6 +590,13 @@ private:
   std::string device_;
   std::chrono::milliseconds state_timeout_{};
   bool debug_ = false;
+  int force_button_ = tl::BUTTON_FORCE_CONTROL;
+  double force_hold_s_ = tl::FORCE_HOLD_S;
+
+  // Control owner (arm/control_owner, or the answer to our take_control)
+  std::string owner_;
+  bool take_pending_ = false;
+  tl::ButtonHold force_hold_;
 
   // Joystick connection
   std::unique_ptr<input::Joystick> js_;
@@ -515,6 +626,8 @@ private:
   rclcpp::Publisher<std_msgs::msg::ColorRGBA>::SharedPtr led_pub_;
   rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr power_client_;
   rclcpp::Client<std_srvs::srv::SetBool>::SharedPtr gripper_client_;
+  rclcpp::Client<TakeControl>::SharedPtr take_client_;
+  rclcpp::Subscription<std_msgs::msg::String>::SharedPtr owner_sub_;
   rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr joint_sub_;
   rclcpp::TimerBase::SharedPtr timer_;
   rclcpp::PreShutdownCallbackHandle shutdown_cb_;

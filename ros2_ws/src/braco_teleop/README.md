@@ -14,14 +14,21 @@ anything dies.
 | A / B | close / open the gripper |
 | X | home all joints to 0 (click again, or touch a stick, to abort) |
 | Button 9 | cycle the speed mode: blue → green → purple → white → red (LED colour) |
+| Button 8, held 1 s | take the control from the web page or zero/park |
 
 | | Name |
 |---|---|
-| sub | `/joint_states` |
-| pub | `/arm/command`, `/arm/led` |
-| client | `/arm/power_on` (when a joystick connects), `/arm/set_gripper` |
+| sub | `/joint_states`, `/arm/control_owner` |
+| pub | `/arm/command` (`source: joystick`), `/arm/led` |
+| client | `/arm/take_control`, `/arm/power_on` (when a joystick connects, once it has the control), `/arm/set_gripper` |
 
-The jogging logic (dead zone, speed modes, slow-down near the soft limits, homing steps) is in
-`libs/cpp/includes/teleop_logic.hpp` (shared with the stand-alone `joystick_all_joints`), without ROS, and tested by `test/test_teleop_logic.cpp` (`make test`).
+**Control** ([ADR-0002](../../../docs/ADR-0002-controle-unico.md)): only the control owner moves the arm. With
+the control free, the first stick move (or X, A, B) takes it. While the web page or zero/park has it, the
+joystick is ignored and the LED is dimmed; hold **button 8 for 1 s** (`force_button`, `force_hold_s`) to take
+it anyway. Letting go does not release it: `arm_driver` frees it 5 s after the last move. A joystick without
+the control never sends STOP, so unplugging it does not cut somebody else's move.
+
+The jogging logic (dead zone, speed modes, slow-down near the soft limits, homing steps, the held button) is in
+`ros2_ws/src/mycobot_cpp/includes/teleop_logic.hpp` (shared with the stand-alone `joystick_all_joints`), without ROS, and tested by `test/test_teleop_logic.cpp` (`make test`).
 
 Starts with the whole system (`make up`); by hand: `ros2 run braco_teleop joystick_teleop`.

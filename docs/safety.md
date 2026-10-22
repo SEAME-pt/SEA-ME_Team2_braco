@@ -83,7 +83,9 @@ The following team members have attended all mandatory laboratory training modul
   # Release all joint servo torques
   mc.release_all_servos()
 
-* **With the ROS 2 arm services (Jetson):** do not open the serial port yourself while the `real` container (`arm_driver` node) runs. Run `make park` (from the repo root): it folds the arm, releases the joints and puts the driver in **rest mode**, which refuses motion but keeps publishing servo temperatures. Overheated servos (warm 55 °C, hot 65 °C, see the LCD or `make temps`) should rest in this mode until back to normal; leave it with `make zero` or `make resume`. See [arm-rest-mode.md](arm-rest-mode.md).
+* **With the ROS 2 arm services (Jetson):** do not open the serial port yourself while the `real` container (`arm_driver` node) runs. Run `make park` (from the repo root): it folds the arm, releases the joints and puts the driver in **rest mode**, which refuses motion but keeps publishing servo temperatures. Overheated servos (warm 55 °C, hot 65 °C, see the LCD or `make temps`) should rest in this mode until back to normal; leave it with `make zero` or `make resume`. At 65 °C the system enters rest mode **by itself** (once per hot episode, [ADR-0003](ADR-0003-repouso-por-temperatura.md)); leaving it is always manual. See [arm-rest-mode.md](arm-rest-mode.md).
+* **One client moves the arm at a time:** the web page, the joystick and `make zero` / `make park` never command it together. Whoever has the control (shown on the page; `ros2 topic echo /arm/control_owner`) moves it; the others are ignored. The joystick takes it from the page only when its button 8 is held for ~1 s. **STOP works from every client, whoever has the control.** See [ADR-0002](ADR-0002-controle-unico.md).
+* **A driver fault stops the system:** if `arm_driver` exits, the launch and the `real` container stop (`make status`, `make logs`); nothing keeps running without it.
 
 ### 5.3 Post-Shutdown Recovery Routine
 1. Disconnect or terminate the faulty control script.

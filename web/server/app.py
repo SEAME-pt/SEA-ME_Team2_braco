@@ -1,6 +1,6 @@
 """braco: the team's web interface to the myCobot 280.
 
-Live telemetry and control of the arm, the ROS 2 graph, docs and sprints,
+Live telemetry and control of the arm, its camera, the ROS 2 graph, docs and sprints,
 shared in real time by everybody who has the page open (see session.py).
 
     ARM_MOCK=1 uvicorn web.server.app:app --port 8000      # PC, no arm
@@ -10,16 +10,18 @@ shared in real time by everybody who has the page open (see session.py).
 Run ONE process (no --workers > 1): presence, the control lease and the
 activity log live in memory.
 
-Environment:
+The page is a plain ROS 2 client of arm_driver: it never opens the serial port.
+With ARM_SOURCE=ros the control lease is also arm_driver's control owner "web"
+(docs/ADR-0002-controle-unico.md): taking it fails with 409 while the
+joystick or zero/park has the arm.
+
+Environment (one of ARM_MOCK / ARM_SOURCE is required):
     ARM_MOCK=1         synthetic data instead of the arm
     ARM_SOURCE=ros     the arm through arm_driver (ROS 2); what the real container uses
     ARM_SOURCE=gazebo  arm simulated in Gazebo over ROS 2 (PC only: the sim container
                        of make up)
-    (neither)          the arm straight through pymycobot on ARM_PORT / ARM_BAUD
     BRACO_ROS=0        do not start ROS 2 at all (health and graph stay empty)
     GZ_JOINT_NAMES     joint names in /joint_states, comma separated
-    ARM_PORT           serial port (default /dev/ttyTHS1)
-    ARM_BAUD           baud rate (default 1000000)
     GITHUB_TOKEN       optional, raises the GitHub API rate limit
 """
 
@@ -30,17 +32,17 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from . import docs, github, ros
-from .arm import (DEFAULT_BAUD, DEFAULT_PORT, POSES, JOINT_LIMITS,
-                  ArmSource, GazeboArm, MockArm, RestingError, RosArm)
+from .arm import POSES, JOINT_LIMITS, GazeboArm, MockArm, RestingError, RosArm
+from .camera import BOUNDARY, Camera
 from .role import machine_role
 from .ros_graph import Graph
 from .ros_health import Health
-from .session import BusyError, Hub, LockedError, drain, new_queue
+from .session import BusyError, ControlError, Hub, LockedError, drain, new_queue
 
 STATIC = Path(__file__).resolve().parents[1] / "static"
 PUSH_PERIOD = 0.2       # telemetry
@@ -62,14 +64,18 @@ def build_arm():
             raise RuntimeError("ARM_SOURCE=gazebo only runs on the PC (this machine is the {})".format(role))
         names = os.environ.get("GZ_JOINT_NAMES")
         return GazeboArm([n.strip() for n in names.split(",")] if names else None)
-    return ArmSource(os.environ.get("ARM_PORT", DEFAULT_PORT),
-                     int(os.environ.get("ARM_BAUD", DEFAULT_BAUD)))
+    if source:
+        raise RuntimeError("unknown ARM_SOURCE={!r}: use ros or gazebo".format(source))
+    # The serial port belongs to arm_driver: the page never opens it itself
+    raise RuntimeError("no arm source: set ARM_SOURCE=ros (real container) or ARM_MOCK=1")
 
 
 arm = build_arm()
-hub = Hub()
+hub = Hub(control=arm)
+arm.on_control_lost = hub.control_lost   # RosArm: the joystick forced the control away
 health = Health(ros.bridge)
 graph = Graph(ros.bridge)
+camera = Camera(ros.bridge)
 _latest = {}   # last health sent, for new connections and change detection
 
 
@@ -90,7 +96,7 @@ async def _pump():
                 hub.log("arm", notice["text"], ok=False)
 
             if tick % HEALTH_EVERY == 0:
-                hub.tick()
+                await loop.run_in_executor(None, hub.tick)   # may call /arm/take_control
                 data = await loop.run_in_executor(None, health.snapshot)
                 text = json.dumps(data, sort_keys=True, default=str)
                 if _latest.get("health", (None,))[0] != text:
@@ -115,6 +121,7 @@ async def lifespan(_app):
     hub.bind(asyncio.get_running_loop())
     if ROS_ENABLED:
         health.start()
+        camera.start()
     else:
         ros.bridge.error = "ROS 2 disabled (BRACO_ROS=0)"
     arm.start()
@@ -271,6 +278,10 @@ def take_control(request: Request):
         hub.take(cid)
     except LockedError as e:
         raise HTTPException(status_code=423, detail=str(e))
+    except ControlError as e:   # the joystick or zero/park has the arm
+        raise HTTPException(status_code=409, detail=str(e))
+    except Exception as e:      # arm_driver not reachable
+        raise HTTPException(status_code=503, detail=str(e))
     return hub.lease()
 
 
@@ -296,6 +307,30 @@ def ros_health():
 @app.get("/api/ros/graph")
 def ros_graph():
     return graph.snapshot()
+
+
+# ---- camera -----------------------------------------------------------------------------
+
+@app.get("/api/camera/status")
+def camera_status():
+    return camera.status()
+
+
+@app.get("/api/camera/snapshot")
+def camera_snapshot():
+    _seq, jpeg = camera.latest()
+    if jpeg is None:
+        raise HTTPException(status_code=503, detail=camera.status()["error"])
+    return Response(content=jpeg, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+
+
+@app.get("/api/camera/stream")
+def camera_stream():
+    """MJPEG for an <img>: ends when the camera goes offline (503 if it already is)."""
+    if camera.latest()[1] is None:
+        raise HTTPException(status_code=503, detail=camera.status()["error"])
+    return StreamingResponse(camera.stream(), headers={"Cache-Control": "no-store"},
+                             media_type="multipart/x-mixed-replace; boundary=" + BOUNDARY)
 
 
 # ---- websockets ---------------------------------------------------------------------
