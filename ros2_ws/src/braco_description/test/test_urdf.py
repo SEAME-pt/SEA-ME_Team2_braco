@@ -47,7 +47,7 @@ ARM_JOINTS = ['joint%d' % n for n in range(1, 7)]
 # tool0 position at all joints = 0 (metres, in world), from the vendor joint origins and the
 # G-base height. NOT checked against the real arm yet: that is the zero-pose comparison of
 # docs/urdf-sim-to-real.md. This only catches an accidental edit of the origins.
-ZERO_TOOL0 = (0.0456, -0.06462, 0.032 + 0.43614)   # G-base plate + arm
+ZERO_TOOL0 = (0.0456, -0.06462, 0.030 + 0.43614)   # G-base + arm
 
 
 def load_urdf(gripper_actuated='false', gazebo='false'):
@@ -64,15 +64,29 @@ def floats(text):
     return [float(v) for v in text.split()]
 
 
-def hpp_limits(name):
-    """Return the {min, max} pairs of `constexpr JointLimits <name>` in mycobot.hpp, in degrees."""
+def mycobot_source(filename):
+    """Return the text of libs/cpp includes/mycobot.hpp or srcs/mycobot.cpp."""
     for candidate in MYCOBOT_HPP_CANDIDATES:
         if candidate and os.path.isfile(candidate):
-            with open(candidate, encoding='utf-8') as f:
-                text = f.read()
-            break
-    else:
-        pytest.skip('mycobot.hpp not found (set MYCOBOT_HPP)')
+            if filename != 'mycobot.hpp':
+                candidate = os.path.join(os.path.dirname(candidate), '..', 'srcs', filename)
+            if os.path.isfile(candidate):
+                with open(candidate, encoding='utf-8') as f:
+                    return f.read()
+    pytest.skip('%s not found (set MYCOBOT_HPP)' % filename)
+
+
+def hpp_constant(name):
+    """Return `constexpr double <name>` of mycobot.hpp."""
+    match = re.search(r'constexpr double ' + name + r'\s*=\s*(-?[\d.]+)',
+                      mycobot_source('mycobot.hpp'))
+    assert match, '%s not found in mycobot.hpp' % name
+    return float(match.group(1))
+
+
+def hpp_limits(name):
+    """Return the {min, max} pairs of `constexpr JointLimits <name>` in mycobot.hpp, in degrees."""
+    text = mycobot_source('mycobot.hpp')
     block = re.search(name + r'\s*=\s*\{\{(.*?)\}\};', text, re.S)
     assert block, '%s not found in mycobot.hpp' % name
     pairs = re.findall(r'\{\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\}', block.group(1))
@@ -94,6 +108,27 @@ def test_limits_match_mycobot_hpp():
         limit = robot.find("joint[@name='%s']/limit" % name)
         assert float(limit.get('lower')) == pytest.approx(math.radians(lo), abs=1e-9), name
         assert float(limit.get('upper')) == pytest.approx(math.radians(hi), abs=1e-9), name
+
+
+def test_base_height_matches_mycobot_hpp():
+    # The C++ table check (minHeightMm) starts its chain at the bottom of the casing,
+    # BASE_HEIGHT_MM - CASING_HEIGHT_MM above the table: the same point as base_link here.
+    robot = load_urdf()
+    z = floats(robot.find("joint[@name='g_base_to_base_link']/origin").get('xyz'))[2]
+    expected = (hpp_constant('BASE_HEIGHT_MM') - hpp_constant('CASING_HEIGHT_MM')) / 1000.0
+    assert z == pytest.approx(expected, abs=0.001)
+
+
+def test_joint_origins_match_mycobot_cpp():
+    # minHeightMm keeps the arm off the table with its own copy of the kinematics.
+    block = re.search(r'JOINT_ORIGINS\[6\]\s*=\s*\{(.*?)\};', mycobot_source('mycobot.cpp'), re.S)
+    assert block, 'JOINT_ORIGINS not found in mycobot.cpp'
+    cpp = re.findall(r'\{\{\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\}', block.group(1))
+    assert len(cpp) == 6
+    robot = load_urdf()
+    for name, xyz in zip(ARM_JOINTS, cpp):
+        urdf = floats(robot.find("joint[@name='%s']/origin" % name).get('xyz'))
+        assert urdf == pytest.approx([float(v) for v in xyz], abs=1e-6), name
 
 
 def test_every_link_with_geometry_has_positive_mass_and_inertia():

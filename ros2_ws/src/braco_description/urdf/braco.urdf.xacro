@@ -33,9 +33,14 @@
 
   <!-- world: the table surface. The arm stands on the G-shape base (a 150 x 110 mm plate,
        clamped to the table with its black grip), and base_link (the bottom of the Jetson casing)
-       sits on top of the plate. Plate thickness from the vendor mesh (meshes/arm/g_base.dae,
-       Elephant Robotics mycobot_280_pi/G_base.dae). MEASURE with calipers. -->
-  <xacro:property name="g_base_height" value="0.032"/>
+       sits on top of the plate, 2 mm down in its pocket. Measured: table -> top of the casing
+       = 140 mm (BASE_HEIGHT_MM in libs/cpp/includes/mycobot.hpp), minus the 109.7 mm casing
+       (CASING_HEIGHT_MM) = 30.3 mm; the vendor mounts it at 30 mm (mycobot_280_pi URDF).
+       test_urdf.py keeps g_base_height and mycobot.hpp within 1 mm. -->
+  <xacro:property name="g_base_height" value="0.030"/>
+  <!-- Plate thickness, from the vendor mesh (meshes/arm/g_base.dae, Elephant Robotics
+       mycobot_280_pi/G_base.dae). Only for the collision box and the inertia. -->
+  <xacro:property name="g_base_thickness" value="0.032"/>
   <!-- UNMEASURED: weigh the plate. It is fixed to the world, so only the positive-mass rule
        of the model (Gazebo, MoveIt) needs it. -->
   <xacro:property name="g_base_mass" value="0.5"/>
@@ -63,16 +68,16 @@
       </geometry>
     </visual>
     <collision>
-      <origin xyz="0 0 ${g_base_height / 2}" rpy="0 0 0"/>
+      <origin xyz="0 0 ${g_base_thickness / 2}" rpy="0 0 0"/>
       <geometry>
-        <box size="0.110 0.150 ${g_base_height}"/>
+        <box size="0.110 0.150 ${g_base_thickness}"/>
       </geometry>
     </collision>
     <inertial>
-      <origin xyz="0 0 ${g_base_height / 2}" rpy="0 0 0"/>
+      <origin xyz="0 0 ${g_base_thickness / 2}" rpy="0 0 0"/>
       <mass value="${g_base_mass}"/>
-      <inertia ixx="${g_base_mass * (0.150 ** 2 + g_base_height ** 2) / 12}" ixy="0" ixz="0"
-               iyy="${g_base_mass * (0.110 ** 2 + g_base_height ** 2) / 12}" iyz="0"
+      <inertia ixx="${g_base_mass * (0.150 ** 2 + g_base_thickness ** 2) / 12}" ixy="0" ixz="0"
+               iyy="${g_base_mass * (0.110 ** 2 + g_base_thickness ** 2) / 12}" iyz="0"
                izz="${g_base_mass * (0.110 ** 2 + 0.150 ** 2) / 12}"/>
     </inertial>
   </link>
