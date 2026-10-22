@@ -37,6 +37,7 @@ variant `mycobot_280_jn` + `adaptive_gripper` for the model
 | Limits taken from `JOINT_LIMITS` in `libs/cpp/includes/mycobot.hpp` | `<limit>` = `JOINT_LIMITS` (the firmware limit minus 1-2°, the same one `sendAngles` applies). There is only one set of limits in the code, so there is no `<safety_controller>`. |
 | `inertial` and `collision` added | The vendor only has `visual`. A positive inertia is required by Gazebo/MoveIt. |
 | Gripper mounted with `pi/2` instead of `1.579` | The vendor value is ~0.5° off 90°. |
+| Flange and everything on it turned -45° about the joint 6 axis (`flange_yaw` in `braco.urdf.xacro`) | Compared with the real arm at joint 6 = 0, the flange's LEGO hole grid (and so the gripper pinned to it) was 45° off in the vendor model. Turns the flange mesh and `tool0`, so the gripper, `tcp` and camera frames follow; positions do not change. |
 | Fingers **fixed** (open) by default | The driver does not publish the gripper state yet. With `gripper_actuated:=true` the vendor linkage is used (1 master joint + 5 `mimic`). |
 
 The joint origins and the mesh offsets are the vendor's, unchanged.
