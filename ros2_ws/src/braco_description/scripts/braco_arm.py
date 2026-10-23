@@ -86,7 +86,14 @@ class _Arm:
         return self.angles
 
     def spin(self, seconds):
+        """Handle at most one callback, waiting up to `seconds` for it."""
         self.executor.spin_once(timeout_sec=seconds)
+
+    def pause(self, seconds):
+        """Wait `seconds` while still handling callbacks (joint states)."""
+        end = time.monotonic() + seconds
+        while time.monotonic() < end:
+            self.spin(min(0.05, max(0.0, end - time.monotonic())))
 
     def wait(self, future, timeout):
         self.executor.spin_until_future_complete(future, timeout_sec=timeout)
@@ -147,7 +154,7 @@ class SimArm(_Arm):
 
 
 class RealArm(_Arm):
-    """The real arm through arm_driver (/arm/command, arm/power_on, arm/set_read_only)."""
+    """The real arm through arm_driver (/arm/command and its arm/* services)."""
 
     def __init__(self, name, domain, speed):
         super().__init__(name, domain)
@@ -155,6 +162,30 @@ class RealArm(_Arm):
         self.command_pub = self.node.create_publisher(ArmCommand, 'arm/command', 10)
         self.power_client = self.node.create_client(Trigger, 'arm/power_on')
         self.rest_client = self.node.create_client(SetBool, 'arm/set_read_only')
+        self.release_client = self.node.create_client(Trigger, 'arm/release_servos')
+
+    def _call(self, client, request, what):
+        if not client.wait_for_service(timeout_sec=CALL_TIMEOUT_S):
+            self.log.error('%s failed: arm_driver has no %s service' % (what, client.srv_name))
+            return False
+        future = client.call_async(request)
+        if not self.wait(future, CALL_TIMEOUT_S):
+            self.log.error('%s failed: timeout' % what)
+            return False
+        if not future.result().success:
+            self.log.error('%s failed: %s' % (what, future.result().message))
+            return False
+        return True
+
+    def set_rest(self, on):
+        """Rest mode: the driver refuses motion and power on, temperatures keep coming."""
+        request = SetBool.Request()
+        request.data = on
+        return self._call(self.rest_client, request, 'rest mode %s' % ('on' if on else 'off'))
+
+    def release_servos(self):
+        """Free all joints: the arm goes limp, so only from a resting pose (park)."""
+        return self._call(self.release_client, Trigger.Request(), 'release servos')
 
     def prepare(self):
         end = time.monotonic() + DRIVER_TIMEOUT_S
@@ -166,16 +197,8 @@ class RealArm(_Arm):
             self.log.error('arm_driver not found on ROS domain %d: is the arm up on the Jetson '
                            '(make up)?' % self.domain)
             return False
-        if self.rest_client.service_is_ready():   # leave rest mode, or power on is refused
-            request = SetBool.Request()
-            request.data = False
-            self.wait(self.rest_client.call_async(request), CALL_TIMEOUT_S)
-        power = self.power_client.call_async(Trigger.Request())
-        if not self.wait(power, CALL_TIMEOUT_S) or not power.result().success:
-            message = power.result().message if power.done() else 'timeout'
-            self.log.error('power on failed: %s' % message)
-            return False
-        return True
+        self.set_rest(False)   # leave rest mode (set by park), or power on is refused
+        return self._call(self.power_client, Trigger.Request(), 'power on')
 
     def move(self, degrees, seconds=None):
         """Go to `degrees`; `seconds` is for Gazebo only, the real arm moves at self.speed."""
@@ -216,14 +239,19 @@ def _run_on(arm, label, moves):
         if not arm.move(degrees, seconds):
             arm.log.error('%s: move to %s FAILED' % (label, degrees))
             return False
-        arm.spin(0.3)
+        arm.pause(0.3)
         now = [round(a, 1) for a in arm.angles] if arm.angles else None
         arm.log.info('%s: reached %s (arm at %s)' % (label, degrees, now))
     return True
 
 
-def run(name, moves, description=''):
-    """Run `moves` [(degrees J1..J6, seconds), ...] in Gazebo, then with --real on the arm."""
+def run(name, moves, description='', after_real=None, after_real_note=''):
+    """
+    Run `moves` [(degrees J1..J6, seconds), ...] in Gazebo, then with --real on the arm.
+
+    after_real(arm) -> bool runs on the real arm once all moves are done (e.g. park releases
+    the joints); after_real_note says what it does in the confirmation question.
+    """
     parser = argparse.ArgumentParser(prog=name, description=description)
     parser.add_argument('--real', action='store_true',
                         help='after Gazebo, run the same moves on the real arm (asks first)')
@@ -261,14 +289,18 @@ def run(name, moves, description=''):
         return 0
 
     if not args.yes:
-        answer = input('Run the same moves on the REAL arm (ROS domain %d, speed %d)? '
-                       'Keep the emergency stop at hand. [y/N] ' % (args.real_domain, args.speed))
+        then = ', then %s' % after_real_note if after_real_note else ''
+        answer = input('Run the same moves on the REAL arm (ROS domain %d, speed %d%s)? '
+                       'Keep the emergency stop at hand. [y/N] '
+                       % (args.real_domain, args.speed, then))
         if answer.strip().lower() not in ('y', 'yes'):
             print('real arm not moved')
             return 0
     real = RealArm(name + '_real', args.real_domain, args.speed)
     try:
         ok = _run_on(real, 'real arm', moves)
+        if ok and after_real is not None:
+            ok = after_real(real)
     except KeyboardInterrupt:
         real.stop()
         real.log.warning('interrupted: arm stopped')
