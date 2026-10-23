@@ -66,11 +66,20 @@ world -> g_base -> base_link -> link1 -> link2 -> link3 -> link4 -> link5 -> lin
 - `base_link`: the bottom of the Jetson casing, in the plate's pocket: `g_base_height` = 0.030 m above the table.
   **Measured**: table to the top of the casing = 140 mm (`BASE_HEIGHT_MM`), minus the 109.7 mm casing
   (`CASING_HEIGHT_MM`) = 30.3 mm; the vendor mounts it at 30 mm.
-- `tool0`: the flange, z axis pointing out of it (REP-103), same as `link6`.
+- `tool0`: the flange, z axis pointing out of it (REP-103); `link6` turned by `flange_yaw` (-45°) so x and y follow
+  the flange's hole grid.
 - `tcp`: on the z axis of `tool0`, at `tcp_length` = 0.130 m (from `TOOL_LENGTH_MM`: flange to the tip of the closed
   gripper with camera). **Placeholder**: measure to the middle of the fingertips.
+- `camera_mount`: the camera plate, Elephant Robotics' **camera flange** (in the arm's box, `docs/inventory`), an
+  83 × 34 mm plate, 16 mm thick with the USB camera. Its LEGO hole grid goes on the flange's, and the gripper pins onto
+  the same holes on its front face: **flange → camera plate → gripper** (the gripper is 16.3 mm further out than on a
+  bare flange). Mesh and mount are the vendor's (`mycobot_280_pi/camera_flange.dae`,
+  `mycobot_280_pi_with_camera_flange.urdf`); its direction (`tool0` +x) matches the real arm's front and back photos at
+  the zero pose (`camera_flange` photos in `docs/inventory`).
+- `camera_link`: on the lens, from the vendor mesh: **(41.5, 0, 12) mm in `tool0`**, looking along `tool0` +z like the
+  gripper (`camera_link` x = `tool0` z, REP-103). The roll of the image about the viewing axis is not known from the
+  model: the hand-eye calibration sets it.
 - `camera_optical_frame`: z forward, x right, y down (rotation `-pi/2, 0, -pi/2` from `camera_link`).
-  The position of `camera_mount` relative to `tool0` is **zero (to measure)**.
 
 Frame tree PDFs (in [`urdf-sim-to-real/`](urdf-sim-to-real/)):
 
@@ -82,28 +91,70 @@ Frame tree PDFs (in [`urdf-sim-to-real/`](urdf-sim-to-real/)):
 
 All in degrees (the URDF uses radians; the test checks the conversion).
 
-| Joint | `JOINT_LIMITS` (`<limit>`) | Measured velocity | Effort |
+| Joint | `JOINT_LIMITS` (`<limit>`) | Velocity limit (measured, speed 100) | Effort limit (approximation) |
 |---|---|---|---|
-| joint1 | -166 .. 166 | to measure | to measure (placeholder 1.0 N·m) |
-| joint2 | -138 .. 138 | to measure | to measure |
-| joint3 | -149 .. 149 | to measure | to measure |
-| joint4 | -149 .. 149 | to measure | to measure |
-| joint5 | -153 .. 158 | to measure | to measure |
-| joint6 | -178 .. 178 | to measure | to measure |
+| joint1 | -166 .. 166 | 2.64 rad/s (151°/s) | 1.9 N·m |
+| joint2 | -138 .. 138 | 2.44 rad/s (140°/s) | 1.9 N·m |
+| joint3 | -149 .. 149 | 2.72 rad/s (156°/s) | 1.2 N·m |
+| joint4 | -149 .. 149 | 2.69 rad/s (154°/s) | 0.7 N·m |
+| joint5 | -153 .. 158 | 2.65 rad/s (152°/s) | 0.6 N·m |
+| joint6 | -178 .. 178 | 2.60 rad/s (149°/s) | 0.6 N·m |
 
-In the URDF, `velocity` is a placeholder 1.0 rad/s and `effort` 1.0 N·m for every joint (the vendor uses 0 and 1000,
-which mean nothing). Nothing in the system depends on these two numbers yet.
+### Measured joint speed per firmware speed setting
+
+`sim_to_real.py velocity`: each joint swept from -A to +A (J1 and J6 ±90°, J2 ±45°, J3 to J5 ±60°) with the other
+joints at 0, timed from `/joint_states` (20 Hz) over the middle 80 % of the sweep (leaves out the acceleration and the
+final approach). rad/s, peak in brackets:
+
+| Joint | speed 25 | speed 50 | speed 75 | speed 100 |
+|---|---|---|---|---|
+| joint1 | 0.66 (0.72) | 1.33 (1.42) | 1.99 (2.06) | 2.64 (2.70) |
+| joint2 | 0.67 (0.75) | 1.39 (1.72) | 2.09 (3.70) | 2.44 (2.89) |
+| joint3 | 0.66 (0.72) | 1.34 (1.45) | 2.01 (2.09) | 2.79 (2.72) |
+| joint4 | 0.67 (0.71) | 1.34 (1.40) | 2.06 (2.06) | 2.69 (2.78) |
+| joint5 | 0.66 (0.76) | 1.33 (1.39) | 2.01 (2.13) | 2.65 (2.73) |
+| joint6 | 0.65 (0.70) | 1.24 (1.43) | 2.00 (2.02) | 2.60 (2.72) |
+
+- **The speed setting is linear:** about **0.0265 rad/s (1.5°/s) per speed unit** on every joint, up to about 2.6 to
+  2.8 rad/s at 100. joint2, which carries the whole arm, is the slowest at speed 100 (2.44).
+- The URDF `velocity` limit is the speed-100 value per joint. joint3's 2.79 average is above its 2.72 peak, which
+  cannot be: the fast 120° sweep lasts about 0.6 s, so the 20 Hz joint states give about ±8 % timing resolution. The
+  lower value (2.72) is used. Peaks come from two samples, so single outliers (joint2 at speed 75: 3.70) are noise.
+
+`effort` is an **approximation**. Elephant Robotics does not publish the joint servos' torque (the spec pages list
+payload, reach and joint ranges only; the one servo table in the 2021 user manual, 0.44 N·m stall, is a micro servo
+too weak to hold the arm, most likely the gripper's). So each joint's limit is the lower bound the published spec
+implies: the static torque to hold the arm (masses below, with the camera plate) **plus the rated 0.25 kg payload at
+`tcp`**, in the joint's
+worst pose (a grid of J2..J5 from -90 to +90°), rounded up:
+
+| | J1 | J2 | J3 | J4 | J5 | J6 |
+|---|---|---|---|---|---|---|
+| Arm only (N·m) | 0 | 0.93 | 0.47 | 0.22 | 0.13 | 0.01 |
+| Arm + 0.25 kg payload (N·m) | 0 | 1.89 | 1.15 | 0.67 | 0.57 | 0.01 |
+| **Effort limit in the URDF (N·m)** | 1.9 | 1.9 | 1.2 | 0.7 | 0.6 | 0.6 |
+
+J1 (vertical axis) and J6 (the payload is on its axis) carry no gravity load and take their neighbour's value. Checked in
+Gazebo: the arm holds itself stretched out (J2 ±90°) and makes fast moves (J2 through 90° in 0.7 s). The first
+placeholder (1.0 N·m for every joint, with the old 0.1 kg per link) made the Gazebo arm collapse at J2 -45°.
 
 ## Inertia
 
+No scale was available, so the masses come from documented totals:
+
 | Item | Value in the model | Source |
 |---|---|---|
-| `base_link` | 0.4 kg | **estimated** (to weigh) |
-| `link1..link6` | 0.1 kg each | **estimated** (split the total mass of the arm) |
-| `gripper_base` / fingers | 0.1 kg / 0.01 kg each | **estimated** (to weigh on a scale) |
+| Gripper, total | **0.110 kg** | **documented**: myCobot Adaptive Gripper, 110 g on retailer spec sheets ([OpenELAB](https://openelab.com/products/elephant-robotics-mycobot-adaptive-gripper), [robu.in](https://robu.in/?p=2097029)); the same listings give the 110 × 90 × 60 mm and 150 g clamp printed on our gripper's label |
+| `gripper_base` / 6 finger parts | 0.080 kg / 0.005 kg each | split **estimated** (the body holds the servo) |
+| Whole arm (`base_link` + `link1..link6`) | **1.03 kg** | **documented**: myCobot 280 Jetson Nano spec sheet ([Qviro](https://qviro.com/product/elephant-robotics/jetson-nano/specifications)) |
+| `link1..link6` | 0.14 / 0.23 / 0.17 / 0.02 / 0.08 / 0.01 kg (0.65 kg) | **estimated**: the standard 280 weighs 850 g with a ~0.2 kg M5 base, so about 0.65 kg moves; split by mesh volume (21 / 35 / 27 / 3 / 12 / 2 %). link4 and link6 may be low (thin-shell meshes) |
+| `base_link` (Jetson casing) | 0.38 kg | the rest of 1.03 kg |
+| Camera flange (plate + USB camera) | 0.040 kg | **estimated** (to weigh) |
+| `g_base` | 0.5 kg | **estimated**; fixed to the world, so it does not affect the arm |
 | Inertia tensor | solid cylinder r = 0.03 m, l = 0.08 m | **estimated**; guarantees a positive-definite matrix |
 
-The vendor does not publish masses.
+Weigh the gripper, the camera + mount and, if possible, the arm when a scale is available, then recompute the effort
+limits (the payload method above).
 
 ## Zero pose
 
@@ -134,12 +185,14 @@ Tick them here as they are measured and update the URDF and the tables above. `s
 against the real arm (Gazebo on this shell's `ROS_DOMAIN_ID`, e.g. 77; the real arm on 42):
 `ros2 run braco_description sim_to_real.py directions | fk | velocity`.
 
-- [ ] **Velocity** of each joint (`sim_to_real.py velocity`): each joint across a known range at speeds 25/50/75/100,
-  timed from `/joint_states`. Fill in `joint_velocity` per joint in `mycobot_280.urdf.xacro`.
-- [ ] **Effort**: servo stall torque (datasheet), marked as an approximation.
-- [ ] **Masses**: weigh the gripper and the camera + flange; arm masses (vendor, or the total split). Update
-  `base_mass`, `link_mass`, `gripper_base_mass`.
-- [ ] **Offsets** with calipers (photograph the measurements): `camera_xyz`/`camera_rpy`, `tcp_length`.
+- [x] **Velocity** of each joint (`sim_to_real.py velocity`): each joint across a known range at speeds 25/50/75/100,
+  timed from `/joint_states`. Results in "Limits" above; `joint_velocity` per joint in `mycobot_280.urdf.xacro`.
+- [x] **Effort**: no datasheet published; approximation from the rated payload (see "Limits"), marked as such.
+- [ ] **Masses** (partly done): from documented totals, no scale yet (see "Inertia"): gripper 110 g documented, arm 1.03 kg
+  documented and split by mesh volume. Still to weigh: the gripper, the camera + mount, the arm.
+- [ ] **Offsets** (partly done): the camera from the vendor's camera-flange model (see "Frame tree"), no calipers
+  needed. Still to check with a ruler: `tcp_length`. The model puts the open fingertips about 125 mm from the flange
+  face (midpoint of their last 10 mm at (-0.6, 8.2, 120) mm in `tool0`); `TOOL_LENGTH_MM` says 130 closed / 110 open.
 - [x] **Zero pose**: `make zero` on the Jetson; on the PC, Gazebo with all joints at 0. Photos in "Zero pose" above:
   they match.
 - [x] **Sign of each joint** (`sim_to_real.py directions`): +30° on one joint, in Gazebo and on the real arm; does
@@ -154,19 +207,30 @@ against the real arm (Gazebo on this shell's `ROS_DOMAIN_ID`, e.g. 77; the real 
   | joint5 | yes | yes |  |
   | joint6 | yes | yes |  |
 
-- [ ] **FK vs. `get_coords()`** (`sim_to_real.py fk`): puts Gazebo at the real arm's angles and prints the model's
-  `tool0` in `base_link` (what `tf2_echo base_link tool0` shows), against `mc.get_coords()` on the real arm (X, Y, Z
-  within a few mm).
+- [x] **FK vs. `get_coords()`** (`sim_to_real.py fk --pose ...`): Gazebo previews the pose, the real arm moves there,
+  and the model's `tool0` in `base_link` (what `tf2_echo base_link tool0` shows) is computed at the real arm's angles.
+  Then `make down` on the Jetson and `mc.get_coords()` (pymycobot 4.0.7, `MyCobot280`), `make up`. Model FK below is at
+  the exact angles `get_angles()` returned. **The link lengths match within 1.5 mm.**
 
-  | Pose | Model FK (mm) | `get_coords()` (mm) | Error (mm) |
-  |---|---|---|---|
-  | zero | 45.6 / -64.6 / 436.1 | | |
+  | Pose | Angles J1..J6 (deg, `get_angles()`) | Model FK X / Y / Z (mm) | `get_coords()` X / Y / Z (mm) | Real − model (mm) |
+  |---|---|---|---|---|
+  | 1 zero | -1.05, 0.17, -0.52, -1.05, -0.79, 1.05 | 46.4 / -66.1 / 435.0 | 46.4 / -64.8 / 419.7 | 0.0 / +1.3 / -15.3 |
+  | 2 | 29.09, -19.68, 39.72, -0.87, -0.79, 0.87 | 52.1 / -45.7 / 434.8 | 50.9 / -44.8 / 419.4 | -1.2 / +0.9 / -15.4 |
+  | 3 | -44.12, 19.77, -30.93, 8.70, 19.33, 0.70 | -14.8 / -54.6 / 425.9 | -13.9 / -53.7 / 410.6 | +0.9 / +0.9 / -15.3 |
+  | 4 lower | -1.05, -40.42, 59.67, -0.96, -0.79, 0.70 | 59.1 / -66.3 / 415.0 | 58.5 / -65.1 / 399.6 | -0.6 / +1.2 / -15.4 |
+
+  - **Z is 15.4 mm lower in every pose (spread 0.1 mm)**: the firmware's coordinate origin is 15.4 mm above
+    `base_link` (the bottom of the Jetson casing). A constant offset is a different reference point, not a length error.
+  - **After that offset the error is 1.3 to 1.5 mm** in every pose (X and Y match directly: both are measured from the
+    J1 axis). That is within servo resolution and backlash. No joint origin needs to change.
+  - To convert: `get_coords()` Z = `base_link` Z - 15.4 mm; X and Y are the same.
 
 - [x] `ros2 run tf2_tools view_frames` with Gazebo running, and attach the PDF: see "Frame tree" above.
 
 ## Known gaps
 
 - Gripper not actuated: the driver does not publish the finger state. With `gripper_actuated:=false` they stay fixed open.
-- Inertias, velocities and efforts are estimates (tables above) until they are measured.
+- Masses are documented totals with an estimated split; efforts are a payload-based approximation; inertias are
+  cylinders. The joint velocities are measured.
 - Collision = the vendor mesh itself (heavy). Worth simplifying later for MoveIt/Gazebo.
 - `world -> g_base -> base_link` assumes the arm stands on the G-base plate on the table; adjust if it is mounted on another base.
