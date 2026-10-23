@@ -24,7 +24,8 @@
 using namespace std::chrono_literals;
 using braco_driver::AutoRest;
 using braco_driver::ControlLease;
-using mycobot::TempLevel;
+using mycobot::TEMP_HOT_C;
+using mycobot::TEMP_WARM_C;
 
 namespace
 {
@@ -117,28 +118,54 @@ TEST(ControlLease, OnlyTheOwnerReleases)
 TEST(AutoRest, RestsOncePerHotEpisode)
 {
   AutoRest rest;
-  EXPECT_FALSE(rest.update(TempLevel::Normal));
-  EXPECT_FALSE(rest.update(TempLevel::Warm));
-  EXPECT_TRUE(rest.update(TempLevel::Hot));
+  EXPECT_FALSE(rest.update(40));
+  EXPECT_FALSE(rest.update(TEMP_WARM_C));
+  EXPECT_TRUE(rest.update(TEMP_HOT_C));
   EXPECT_TRUE(rest.active());
   // Still hot (for example after make resume): not again
-  EXPECT_FALSE(rest.update(TempLevel::Hot));
-  EXPECT_FALSE(rest.update(TempLevel::Hot));
+  EXPECT_FALSE(rest.update(TEMP_HOT_C));
+  EXPECT_FALSE(rest.update(TEMP_HOT_C + 3));
 }
 
-TEST(AutoRest, EpisodeEndsBelowHot)
+TEST(AutoRest, HoveringAtTheThresholdIsOneEpisode)
 {
   AutoRest rest;
-  EXPECT_TRUE(rest.update(TempLevel::Hot));
-  EXPECT_FALSE(rest.update(TempLevel::Warm));
+  EXPECT_TRUE(rest.update(TEMP_HOT_C));
+  // 65, 64, 65, 64, 65...: the reading jitters, the arm has not cooled down
+  for (int i = 0; i < 5; ++i) {
+    EXPECT_FALSE(rest.update(TEMP_HOT_C - 1));
+    EXPECT_TRUE(rest.active());
+    EXPECT_FALSE(rest.update(TEMP_HOT_C));
+  }
+  // Anywhere between REARM_BELOW_C and TEMP_HOT_C keeps the episode
+  EXPECT_FALSE(rest.update(AutoRest::REARM_BELOW_C));
+  EXPECT_FALSE(rest.update(TEMP_HOT_C));
+}
+
+TEST(AutoRest, EpisodeEndsOnlyBelowRearm)
+{
+  AutoRest rest;
+  EXPECT_TRUE(rest.update(TEMP_HOT_C));
+  EXPECT_FALSE(rest.update(AutoRest::REARM_BELOW_C - 1));
   EXPECT_FALSE(rest.active());
-  EXPECT_TRUE(rest.update(TempLevel::Hot));   // a new episode
+  EXPECT_TRUE(rest.update(TEMP_HOT_C));   // cooled down and hot again: a new episode
+}
+
+TEST(AutoRest, NoEpisodeBelowHot)
+{
+  AutoRest rest;
+  // Warming up from cold: nothing until TEMP_HOT_C
+  for (int c = AutoRest::REARM_BELOW_C; c < TEMP_HOT_C; ++c) {
+    EXPECT_FALSE(rest.update(c));
+    EXPECT_FALSE(rest.active());
+  }
+  EXPECT_TRUE(rest.update(TEMP_HOT_C));
 }
 
 TEST(AutoRest, RetryAfterAFailedRequest)
 {
   AutoRest rest;
-  EXPECT_TRUE(rest.update(TempLevel::Hot));
+  EXPECT_TRUE(rest.update(TEMP_HOT_C));
   rest.retry();
-  EXPECT_TRUE(rest.update(TempLevel::Hot));
+  EXPECT_TRUE(rest.update(TEMP_HOT_C));
 }

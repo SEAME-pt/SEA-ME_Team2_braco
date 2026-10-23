@@ -29,7 +29,8 @@
 //
 // Auto rest (docs/ADR-0003-rest-per-temp.md): the first hot reading of an episode runs
 // park (fold the arm, release the joints so the servos cool, rest mode on), once; the episode
-// ends when every joint is below TEMP_HOT_C. With park_on_hot false, or if park cannot run or
+// ends when every joint is below AutoRest::REARM_BELOW_C (60 C, hysteresis: a servo hovering at
+// 64/65 C is not parked again on every crossing). With park_on_hot false, or if park cannot run or
 // fails, it only calls /arm/set_read_only true. Leaving rest is manual (make resume): the
 // monitor never does it.
 
@@ -136,7 +137,7 @@ private:
     const auto level = check.level;
     const int hottest = check.hottestJoint - 1;
 
-    if (auto_rest_on_hot_ && auto_rest_.update(level)) {
+    if (auto_rest_on_hot_ && auto_rest_.update(temps[hottest])) {
       requestRest(hottest + 1, temps[hottest]);
     }
 
