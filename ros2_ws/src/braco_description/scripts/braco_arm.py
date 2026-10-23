@@ -53,6 +53,7 @@ RESEND_S = 0.1          # well below the driver's 300 ms watchdog
 STATE_TIMEOUT_S = 0.5   # older /joint_states = no feedback
 LOOP_S = 0.02
 TOLERANCE_DEG = 2.0
+DEADBAND_DEG = 3.0     # stopped this close to the target: the servo's dead zone, count it as there
 MOVE_TIMEOUT_S = 120.0  # safety cap for one move; slow speeds and long moves take a while
 STALL_S = 5.0          # stop if the arm got no closer for this long (refused, blocked, ...)
 STALL_PROGRESS_DEG = 0.5
@@ -229,6 +230,10 @@ class RealArm(_Arm):
             if best is None or deviation < best - STALL_PROGRESS_DEG:
                 best, best_time = deviation, now
             elif now - best_time > STALL_S:
+                if deviation <= DEADBAND_DEG:
+                    self.log.warning('real arm stopped %.1f deg from the target (servo dead '
+                                     'zone): close enough' % deviation)
+                    return True
                 reason = ('no progress for %.0f s (move refused by the driver, e.g. the table '
                           'check, or a joint blocked?)' % STALL_S)
                 break

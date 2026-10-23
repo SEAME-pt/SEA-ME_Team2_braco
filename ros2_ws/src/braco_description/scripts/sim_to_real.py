@@ -22,9 +22,10 @@ Gazebo on this shell's ROS_DOMAIN_ID (e.g. 77), the real arm on --real-domain (d
                they moved the same joint the same way; prints the table for the report
   fk           step 3: reads the real arm's angles, puts Gazebo there and prints the model's
                tool0 position in base_link (mm), to compare with mc.get_coords();
-               --pose J1..J6 (deg) first moves the real arm there
-  velocity     step 4: times each joint across a range at speeds 25/50/75/100 on the real arm;
-               prints rad/s per joint and speed, and the speed-100 values for the URDF
+               --pose J1..J6 (deg) first moves Gazebo there, then (asks) the real arm
+  velocity     step 4: shows each joint's sweep in Gazebo, then times it on the real arm at
+               speeds 25/50/75/100 (middle 80 % of the sweep); prints rad/s per joint and
+               speed, and the speed-100 values for the URDF
 
 Every real move asks first; Ctrl-C stops the arm.
 """
@@ -47,6 +48,7 @@ TEST_DEG = 30.0
 VELOCITY_RANGE_DEG = [90, 45, 60, 60, 60, 90]
 VELOCITY_SPEEDS = [25, 50, 75, 100]
 VELOCITY_TIMEOUT_S = 30.0
+VELOCITY_TOLERANCE_DEG = 2.0
 
 
 def ask(question):
@@ -126,7 +128,7 @@ def fk(sim, real):
         real.log.error('no fresh /joint_states from the real arm')
         return False
     print('real arm angles (deg): %s' % [round(a, 1) for a in angles])
-    print('putting Gazebo in the same pose ...')
+    print("putting Gazebo at the real arm's actual angles ...")
     sim.move(angles, 3.0)
     xyz = tool0_in_base_link(angles)
     print('model tool0 in base_link (mm): X %.1f  Y %.1f  Z %.1f' % tuple(v * 1000 for v in xyz))
@@ -139,18 +141,21 @@ def _time_move(real, joint, target, speed):
     """
     Send `target` (all six angles) at `speed`, re-sent so the watchdog stays fed.
 
-    Return (seconds, peak deg/s) from the first motion to within tolerance.
+    Only `joint` counts (the others rest about 1 deg off their targets: servo dead zone).
+    Return (rad/s over the middle 80 % of the sweep, peak rad/s, where it stopped), or
+    (None, peak, angle) if it did not get through.
     """
-    start_angle = real.fresh_angles()[joint]
-    t_start, peak, last = None, 0.0, None
+    start = real.fresh_angles()[joint]
+    sweep = abs(target[joint] - start)
+    t10 = t90 = None
+    peak, last = 0.0, None
+    still_since = time.monotonic()
     end = time.monotonic() + VELOCITY_TIMEOUT_S
     next_send = 0.0
+    angle = start
     while time.monotonic() < end:
         real.spin(0.01)
         now = time.monotonic()
-        current = real.fresh_angles()
-        if current is None:
-            continue
         if now >= next_send:
             next_send = now + 0.1
             command = ArmCommand()
@@ -158,16 +163,27 @@ def _time_move(real, joint, target, speed):
             command.angles_deg = [float(v) for v in target]
             command.speed = speed
             real.command_pub.publish(command)
-        angle = current[joint]
-        if t_start is None and abs(angle - start_angle) > 1.0:
-            t_start = real.angles_time
-        if last is not None and real.angles_time > last[1]:
-            peak = max(peak, abs(angle - last[0]) / (real.angles_time - last[1]))
-        last = (angle, real.angles_time)
-        if max(abs(c - t) for c, t in zip(current, target)) <= 1.0 and t_start is not None:
-            return real.angles_time - t_start, peak
+        current = real.fresh_angles()
+        if current is None or (last is not None and real.angles_time <= last[1]):
+            continue
+        angle, stamp = current[joint], real.angles_time
+        if last is not None:
+            peak = max(peak, abs(angle - last[0]) / (stamp - last[1]))
+            if abs(angle - last[0]) > 0.2:
+                still_since = now
+        last = (angle, stamp)
+        done = abs(angle - start) / sweep
+        if t10 is None and done >= 0.1:
+            t10 = stamp
+        if t90 is None and done >= 0.9:
+            t90 = stamp
+        arrived = abs(angle - target[joint]) <= VELOCITY_TOLERANCE_DEG
+        if t90 is not None and (arrived or now - still_since > 1.0):
+            return math.radians(0.8 * sweep) / (t90 - t10), math.radians(peak), angle
     real.stop()
-    return None, peak
+    if t90 is not None:   # got through the timed part, only the end is short of the target
+        return math.radians(0.8 * sweep) / (t90 - t10), math.radians(peak), angle
+    return None, math.radians(peak), angle
 
 
 def velocity(sim, real):
@@ -176,34 +192,37 @@ def velocity(sim, real):
         a = VELOCITY_RANGE_DEG[j]
         lo, hi = zero(), zero()
         lo[j], hi[j] = -a, a
-        if not ask('\njoint%d: from %+d to %+d deg at speeds %s on the REAL arm (others at 0)?'
-                   % (j + 1, -a, a, VELOCITY_SPEEDS)):
+        sweep_s = max(3.0, math.radians(2 * a) / 0.8)   # within Gazebo's 1 rad/s limit
+        print('\n--- joint%d: from %+d to %+d deg. Watch Gazebo.' % (j + 1, -a, a))
+        preview = [(lo, sweep_s / 2), (hi, sweep_s), (zero(), sweep_s / 2)]
+        if not all(sim.move(pose, seconds) for pose, seconds in preview):
+            return False
+        if not ask('Same sweep on the REAL arm at speeds %s (others at 0)?' % VELOCITY_SPEEDS):
             continue
         for speed in VELOCITY_SPEEDS:
             if not real.move(lo):
                 return False
             real.pause(0.5)
-            seconds, peak = _time_move(real, j, hi, speed)
-            if seconds is None:
-                real.log.error('joint%d speed %d: target not reached' % (j + 1, speed))
+            avg, peak, stopped = _time_move(real, j, hi, speed)
+            if avg is None:
+                real.log.error('joint%d speed %d: did not get through the sweep (stopped at %.1f '
+                               'deg, target %+d)' % (j + 1, speed, stopped, a))
                 return False
-            avg = math.radians(2 * a) / seconds
-            results[(j, speed)] = (avg, math.radians(peak))
-            print('joint%d speed %3d: %.2f s for %d deg -> avg %.2f rad/s, peak %.2f rad/s'
-                  % (j + 1, speed, seconds, 2 * a, avg, math.radians(peak)))
+            results[(j, speed)] = (avg, peak)
+            print('joint%d speed %3d: %.2f rad/s (%.0f deg/s) over the middle of the sweep, '
+                  'peak %.2f rad/s' % (j + 1, speed, avg, math.degrees(avg), peak))
         if not real.move(zero()):
             return False
-    print('\nAverage (peak) rad/s across the range:\n')
-    print('| Joint | ' + ' | '.join('speed %d' % s for s in VELOCITY_SPEEDS) + ' |')
+    print('\nrad/s over the middle 80 %% of the sweep (peak):\n')
+    print('| Joint | ' + ' | '.join('speed %d' % sp for sp in VELOCITY_SPEEDS) + ' |')
     print('|---|' + '---|' * len(VELOCITY_SPEEDS))
     for j in range(6):
-        cells = ['%.2f (%.2f)' % results[(j, s)] if (j, s) in results else '-'
-                 for s in VELOCITY_SPEEDS]
+        cells = ['%.2f (%.2f)' % results[(j, sp)] if (j, sp) in results else '-'
+                 for sp in VELOCITY_SPEEDS]
         print('| joint%d | %s |' % (j + 1, ' | '.join(cells)))
-    top = [results[(j, 100)][1] for j in range(6) if (j, 100) in results]
+    top = ['joint%d %.2f' % (j + 1, results[(j, 100)][0]) for j in range(6) if (j, 100) in results]
     if top:
-        print('\nURDF velocity limit (peak at speed 100), per joint measured: %s rad/s'
-              % [round(v, 2) for v in top])
+        print('\nURDF velocity (speed 100, middle of the sweep), rad/s: %s' % ', '.join(top))
     return True
 
 
@@ -218,7 +237,7 @@ def main():
     parser.add_argument('--speed', type=int, default=15,
                         help='real arm speed for directions and fk positioning (default 15)')
     parser.add_argument('--pose', type=float, nargs=6, metavar='DEG',
-                        help='fk: first move the real arm to these six angles (asks first)')
+                        help='fk: first move Gazebo, then (asks) the real arm to these angles')
     args = parser.parse_args(remove_ros_args(sys.argv)[1:])
     if args.sim_domain == args.real_domain:
         parser.error('Gazebo and the real arm are both on ROS domain %d: export another '
@@ -231,8 +250,11 @@ def main():
             return 1
         if args.check == 'fk':
             if args.pose:
-                if not ask('Move the REAL arm (ROS domain %d) to %s at speed %d? Emergency stop '
-                           'at hand?' % (args.real_domain, args.pose, args.speed)):
+                print('Gazebo first (preview) ...')
+                if not sim.move(args.pose, 3.0):
+                    return 1
+                if not ask('Gazebo is at %s. Move the REAL arm (ROS domain %d) there at speed %d?'
+                           ' Emergency stop at hand?' % (args.pose, args.real_domain, args.speed)):
                     return 0
                 if not (real.prepare() and real.move(args.pose)):
                     return 1
