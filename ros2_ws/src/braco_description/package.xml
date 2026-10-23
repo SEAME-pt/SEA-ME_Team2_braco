@@ -21,8 +21,10 @@
   <exec_depend>controller_manager</exec_depend>
   <exec_depend>joint_state_broadcaster</exec_depend>
   <exec_depend>joint_trajectory_controller</exec_depend>
-  <!-- scripts/move_arm_example.py -->
+  <!-- scripts/: braco_arm.py drives Gazebo and then, on request, the real arm (arm_driver) -->
   <exec_depend>rclpy</exec_depend>
+  <exec_depend>braco_interfaces</exec_depend>
+  <exec_depend>std_srvs</exec_depend>
   <exec_depend>control_msgs</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>
   <exec_depend>trajectory_msgs</exec_depend>
