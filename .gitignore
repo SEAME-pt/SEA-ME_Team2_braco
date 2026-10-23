@@ -1,13 +1,11 @@
-# ---- C++ programs (libs/cpp/Makefile) -----------------------------------------
-/libs/cpp/obj
-/libs/cpp/zero
-/libs/cpp/joystick_all_joints
-/libs/cpp/joystick_display
-/libs/cpp/pid_tool
-/libs/cpp/temps_lcd
-
-# CMake build of tests/ (root Makefile: make ci)
-/tests/build/
+# ---- C++ programs (ros2_ws/src/mycobot_cpp/Makefile) -----------------------------------------
+/ros2_ws/src/mycobot_cpp/obj
+/ros2_ws/src/mycobot_cpp/zero
+/ros2_ws/src/mycobot_cpp/park
+/ros2_ws/src/mycobot_cpp/joystick_all_joints
+/ros2_ws/src/mycobot_cpp/joystick_display
+/ros2_ws/src/mycobot_cpp/pid_tool
+/ros2_ws/src/mycobot_cpp/temps_lcd
 
 # ---- ROS 2 workspace (colcon output, recordings, ccache) ------------------------
 /ros2_ws/build/
@@ -28,3 +26,4 @@ __pycache__/
 .env
 
 .vscode
+bench-report.log

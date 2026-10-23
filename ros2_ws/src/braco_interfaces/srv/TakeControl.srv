@@ -1,0 +1,12 @@
+# /arm/take_control on arm_driver: become (or stop being) the one client that moves the arm.
+#
+# Taking succeeds when the control is free, already ours, or force is set (force takes it
+# from the current owner, whose pending motion is dropped). The owner keeps the control
+# while it sends motion commands; arm_driver frees it after control_idle_s without any.
+string source        # "web", "joystick", "script" or "mission"
+bool force           # take it even if another source owns it
+bool release         # give it back instead (only the owner can)
+---
+bool success
+string owner         # owner after the call ("" = free)
+string message

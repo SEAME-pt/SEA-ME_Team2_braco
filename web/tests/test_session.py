@@ -8,7 +8,7 @@ import threading
 
 import pytest
 
-from web.server.session import BusyError, Hub, LockedError, clean_name
+from web.server.session import BusyError, ControlError, Hub, LockedError, clean_name
 
 
 class Clock:
@@ -27,6 +27,36 @@ def clock():
 @pytest.fixture
 def hub(clock):
     return Hub(idle_timeout=60, grace=5, clock=clock)
+
+
+class FakeControl:
+    """arm_driver's control as the hub sees it: `owner` outside the page refuses the take."""
+
+    def __init__(self):
+        self.owner = ''
+        self.calls = []
+
+    def take_control(self):
+        self.calls.append('take')
+        if self.owner not in ('', 'web'):
+            raise ControlError('the arm is controlled by ' + self.owner)
+        self.owner = 'web'
+
+    def release_control(self):
+        self.calls.append('release')
+        if self.owner == 'web':
+            self.owner = ''
+
+
+@pytest.fixture
+def control():
+    return FakeControl()
+
+
+@pytest.fixture
+def ruled(clock, control):
+    """A hub tied to arm_driver's control, as app.py builds it."""
+    return Hub(idle_timeout=60, grace=5, clock=clock, control=control)
 
 
 def join(hub, cid, name):
@@ -248,3 +278,66 @@ def test_released_lease_caps_the_speed(hub):
     hub.set_speed('a', 20)
     hub.release('a')
     assert hub.speed == 20  # a safe speed is kept for the next operator
+
+
+# ---- the lease follows arm_driver's control owner ------------------------------------
+
+
+def test_take_asks_the_driver(ruled, control):
+    join(ruled, 'a', 'Ana')
+    ruled.take('a')
+    assert control.owner == 'web' and control.calls == ['take']
+    ruled.release('a')
+    assert control.owner == '' and control.calls == ['take', 'release']
+
+
+def test_take_refused_while_the_joystick_has_the_arm(ruled, control):
+    join(ruled, 'a', 'Ana')
+    control.owner = 'joystick'
+    with pytest.raises(ControlError, match='joystick'):
+        ruled.take('a')
+    assert ruled.lease()['holder'] is None
+
+
+def test_tick_keeps_the_control_while_the_lease_lasts(ruled, control):
+    join(ruled, 'a', 'Ana')
+    ruled.take('a')
+    ruled.tick()
+    ruled.tick()
+    assert control.calls == ['take'] * 3
+    ruled.release('a')
+    ruled.tick()  # no lease: nothing to keep
+    assert control.calls == ['take'] * 3 + ['release']
+
+
+def test_forced_control_ends_the_lease(ruled, control):
+    join(ruled, 'a', 'Ana')
+    ruled.take('a')
+    control.owner = 'joystick'  # held button 8
+    ruled.control_lost('joystick')
+    assert ruled.lease()['holder'] is None
+    assert 'release' not in control.calls  # nothing to give back: it is the joystick's
+    assert ruled.activity()[-1]['action'] == 'released control (joystick took control)'
+    with pytest.raises(ControlError):
+        ruled.take('a')
+
+
+def test_tick_notices_a_lost_control(ruled, control):
+    join(ruled, 'a', 'Ana')
+    ruled.take('a')
+    control.owner = 'script'  # make zero, before the owner topic arrived
+    ruled.tick()
+    assert ruled.lease()['holder'] is None
+    assert 'script' in ruled.activity()[-1]['action']
+
+
+def test_tick_survives_an_unreachable_driver(ruled, control):
+    join(ruled, 'a', 'Ana')
+    ruled.take('a')
+
+    def gone():
+        raise RuntimeError('service /arm/take_control is not available')
+
+    control.take_control = gone
+    ruled.tick()
+    assert ruled.lease()['holder']['id'] == 'a'  # a restart is not a lost control

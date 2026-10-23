@@ -17,6 +17,7 @@
 
   <exec_depend>braco_driver</exec_depend>
   <exec_depend>braco_teleop</exec_depend>
+  <exec_depend>braco_camera</exec_depend>
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
 

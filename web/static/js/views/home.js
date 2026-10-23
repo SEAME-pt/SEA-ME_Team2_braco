@@ -26,7 +26,7 @@ export function render(root) {
     </div>
     <div class="hero">
       <section class="card">
-        <h2>Arm now <a href="#/arm" class="small">open panel →</a></h2>
+        <h2>Arm now <a href="#/arm" class="small">open panel →</a> <a href="#/control" class="small">controls →</a></h2>
         <div class="stat-row" style="margin-bottom:14px">
           <div class="stat"><b id="h-conn">—</b><span>connection</span></div>
           <div class="stat"><b id="h-power">—</b><span>servos</span></div>
