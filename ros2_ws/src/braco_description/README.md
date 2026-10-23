@@ -24,7 +24,88 @@ arm (zero pose, joint directions, forward kinematics) and the open measurements 
 The full simulation bringup (`sim:=true` in `braco_bringup`, the web page and teleop driving the simulated arm)
 is issues #34/#37.
 
-## Use
+## Run Gazebo, step by step
+
+On the **PC** (Gazebo only runs there; the Jetson image has none). Commands in `make` run on the host from the repo
+root; the others in a container shell (`make shell`).
+
+**1. Start the containers, with the GPU.**
+
+```bash
+make up GPU=nvidia          # NVIDIA GPU with nvidia-container-toolkit; GPU=dri for Intel/AMD; nothing = CPU (slow)
+```
+
+`GPU=` is read from the command line only: pass it on every `make up` / `make restart`. Without it Gazebo draws on
+the CPU (`llvmpipe`) and is slow or freezes.
+
+**2. If the real arm is on the network, stop the PC's `sim` container.** It runs on ROS domain 42 like the real arm
+and would mix its `/joint_states` with the arm's (`gazebo.launch.py` runs in `dev`, it does not need `sim`):
+
+```bash
+docker stop braco-sim-1
+```
+
+**3. Terminal 1: launch Gazebo** on its own ROS domain.
+
+```bash
+make shell
+source /ws/install/setup.bash
+export ROS_DOMAIN_ID=77     # anything but 42 (the real arm); a teammate on the same network: another number
+ros2 launch braco_description gazebo.launch.py
+```
+
+The Gazebo window opens with the arm on its G-base at the zero pose. It is ready when the terminal shows
+`Configured and activated arm_controller`. `gui:=false` runs it without a window.
+
+**4. Terminal 2: move the arm.** Same `export ROS_DOMAIN_ID` as terminal 1.
+
+```bash
+make shell
+source /ws/install/setup.bash
+export ROS_DOMAIN_ID=77
+
+ros2 run braco_description move_arm_example.py      # a few poses, waits for each move
+ros2 run braco_description park.py                  # the park pose
+
+# or one move by hand: six angles in radians, reached in 2 s
+ros2 topic pub --once /arm_controller/joint_trajectory trajectory_msgs/msg/JointTrajectory \
+  "{joint_names: [joint1, joint2, joint3, joint4, joint5, joint6],
+    points: [{positions: [0.5, 0.3, -0.3, 0.0, 0.0, 0.0], time_from_start: {sec: 2}}]}"
+
+ros2 topic echo /joint_states --field position      # the joint angles (radians)
+```
+
+**5. Your own moves:** copy `scripts/move_arm_example.py` (e.g. to `scripts/my_test.py`), edit its `MOVES` list
+(six angles in degrees, seconds in Gazebo) and run it straight from the source folder, no rebuild:
+
+```bash
+python3 /ws/src/braco_description/scripts/my_test.py
+```
+
+**6. Then on the real arm (optional).** With the Jetson up (`make up` there), `--real` runs the same moves on the
+arm after Gazebo, and asks first. Check first that the PC sees the arm: `ROS_DOMAIN_ID=42 ros2 node list` shows
+`/arm_driver`.
+
+```bash
+python3 /ws/src/braco_description/scripts/my_test.py --real --speed 15
+```
+
+**7. Stop:** Ctrl-C in terminal 1. A `parameter_bridge ... exit code -11` on the way out is harmless.
+
+### When something goes wrong
+
+| What you see | Why / fix |
+|---|---|
+| `Package 'braco_description' not found` | Not built or not sourced: `cd /ws && colcon build --packages-select braco_description && source install/setup.bash` |
+| No window | On the host: `make xhost`, then launch again. Check `echo $DISPLAY` in the container |
+| Slow, or "Gazebo is taking too long to start" | No GPU: `glxinfo -B \| grep "OpenGL renderer"` says `llvmpipe`. Restart with `make down && make up GPU=nvidia` |
+| Stuck on `Requesting list of world names` | Gazebo's processes cannot find each other: `GZ_IP` must be `127.0.0.1` (set by `docker/compose.yml`; recreate the containers after pulling it) |
+| `Moved backwards in time`, controllers never answer | Two Gazebos (or the `sim` container) on the same `ROS_DOMAIN_ID`: one domain per simulation |
+| `/joint_states` values like `1e-11` on domain 42 | That is a simulation, not the real arm: stop `braco-sim-1` (step 2) |
+| `Command of at least one joint is out of limits` | The joint limiter capping a move faster than the measured joint speed; the move still finishes |
+| The model looks old after a change to the URDF or meshes | Gazebo reads the model at launch: Ctrl-C and launch again |
+
+## Commands in short
 
 ```bash
 # Gazebo: the model holding its pose (gui:=false for server only)

@@ -6,6 +6,9 @@ measured on the hardware** (section "Open items"). Nothing below marked "to meas
 
 ## How to use
 
+Step by step, with the GPU, ROS domains and common problems: [Run Gazebo, step by step](../ros2_ws/src/braco_description/README.md#run-gazebo-step-by-step).
+In short:
+
 ```bash
 # PC (pc-dev container, with X11): the model in Gazebo, holding its pose (gui:=false: server only)
 ros2 launch braco_description gazebo.launch.py
