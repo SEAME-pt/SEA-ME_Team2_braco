@@ -470,7 +470,7 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
           <tr><td><a href="../ros2_ws/src/braco_teleop/README.md"><code>braco_teleop</code></a></td><td>Node</td><td><code>joystick_teleop</code>: jogs the arm through <code>arm_driver</code></td><td><span class="pill p-ok">done</span></td></tr>
           <tr><td><a href="../ros2_ws/src/braco_camera/README.md"><code>braco_camera</code></a></td><td>Node (Python)</td><td><code>camera</code>: the eye-in-hand USB camera as JPEG frames</td><td><span class="pill p-ok">done</span></td></tr>
           <tr><td><a href="../ros2_ws/src/braco_bringup/README.md"><code>braco_bringup</code></a></td><td>Launch + config</td><td><code>braco.launch.py</code>, <code>braco.yaml</code>, the container entrypoint, <code>zero</code> / <code>park</code></td><td><span class="pill p-ok">done</span> <code>sim:=true</code> reserved</td></tr>
-          <tr class="future"><td><a href="../ros2_ws/src/braco_description/README.md"><code>braco_description</code></a></td><td>Model</td><td>URDF of the myCobot 280</td><td><span class="pill p-note">placeholder #25</span></td></tr>
+          <tr><td><a href="../ros2_ws/src/braco_description/README.md"><code>braco_description</code></a></td><td>Model + tools</td><td>URDF of the myCobot 280 with G-base, camera flange and gripper; <code>gazebo.launch.py</code> (Gazebo viewer); <code>sim_to_real.py</code> (checks against the real arm)</td><td><span class="pill p-ok">done</span> #25</td></tr>
           <tr class="future"><td><a href="../ros2_ws/src/braco_moveit_config/README.md"><code>braco_moveit_config</code></a></td><td>Config</td><td>MoveIt 2 for the arm</td><td><span class="pill p-note">placeholder #40</span></td></tr>
           <tr class="future"><td><a href="../ros2_ws/src/braco_mission/README.md"><code>braco_mission</code></a></td><td>Nodes</td><td>Mission state machine, MoveIt 2 client</td><td><span class="pill p-note">placeholder #43</span></td></tr>
         </tbody>
@@ -504,7 +504,10 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
 │   │   ├── config/  braco.yaml          <span class="c"># tuning of every node</span>
 │   │   ├── scripts/ arm_routine.sh      <span class="c"># container entrypoint</span>
 │   │   └── src/     zero.cpp  park.cpp  arm_moves.cpp
-│   ├── <span class="n">braco_description/</span>      <span class="c"># placeholder #25</span>
+│   ├── <span class="n">braco_description/</span>
+│   │   ├── urdf/    braco.urdf.xacro  mycobot_280  adaptive_gripper  braco.gazebo
+│   │   ├── meshes/  config/  launch/ gazebo.launch.py
+│   │   └── scripts/ braco_arm.py  park.py  move_arm_example.py  sim_to_real.py
 │   ├── <span class="n">braco_moveit_config/</span>    <span class="c"># placeholder #40</span>
 │   └── <span class="n">braco_mission/</span>          <span class="c"># placeholder #43</span>
 ├── scripts/  bench.sh        <span class="c"># bench test (make bench)</span>
@@ -619,6 +622,7 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
       <li><b>Heavy work stays on the PC.</b> <code>move_group</code> needs 300–600 MB and a full core while planning, so MoveIt 2 and the mission run on the PC and reach the arm on the Jetson through DDS. The Jetson runs only the nodes that need its devices.</li>
       <li><code>make up</code> starts the system container; <code>arm_routine.sh</code> runs the launch and the web page side by side, stops both on <code>docker stop</code>, and ends the container when the launch ends.</li>
       <li>The page's arm source: <code>ARM_SOURCE=ros</code> (real), <code>ARM_SOURCE=gazebo</code> (sim, PC only) or <code>ARM_MOCK=1</code> (<code>make web</code>, no arm, no ROS, no Docker). There is no mode that opens the serial port.</li>
+      <li>Gazebo's own transport stays on the machine: <code>compose.yml</code> sets <code>GZ_IP=127.0.0.1</code> (override in <code>.env</code>). With the host network it otherwise picks an interface by itself and, behind a VPN or a firewall, its processes never find each other. ROS 2 (DDS) is not affected. Run a simulation on its own <code>ROS_DOMAIN_ID</code> (e.g. 77) when the real arm is on the network: both publish <code>/joint_states</code>.</li>
     </ul>
   </section>
 
@@ -852,7 +856,7 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
         <rect x="270" y="40" width="230" height="60" rx="4" class="future"/>
         <text x="385" y="66" text-anchor="middle" class="t-m t-b">MoveIt 2</text><text x="385" y="86" text-anchor="middle" class="t-s t-note">braco_moveit_config #40</text>
         <rect x="270" y="150" width="230" height="56" rx="4" class="future"/>
-        <text x="385" y="174" text-anchor="middle" class="t-m t-b">braco_description</text><text x="385" y="193" text-anchor="middle" class="t-s t-note">URDF #25</text>
+        <text x="385" y="174" text-anchor="middle" class="t-m t-b">braco_description</text><text x="385" y="193" text-anchor="middle" class="t-s t-note">URDF</text>
         <rect x="620" y="20" width="360" height="60" rx="4" class="key"/>
         <text x="800" y="46" text-anchor="middle" class="t-b">real arm: arm_driver</text><text x="800" y="66" text-anchor="middle" class="t-s">trajectory path decided with #37</text>
         <rect x="620" y="110" width="360" height="60" rx="4" class="future"/>
@@ -868,7 +872,7 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
     </figure>
     <ul class="plain">
       <li><code>braco_description</code> holds the URDF; its joint limits must match <code>JOINT_LIMITS</code> in <code>mycobot.hpp</code>, and its joint names are the ones on <code>/joint_states</code> (<code>joint1..joint6</code>) on both the real arm and the simulation.</li>
-      <li><code>sim:=true</code> will start Gazebo with that model, publishing the same <code>/joint_states</code>.</li>
+      <li><code>sim:=true</code> will start Gazebo with that model, publishing the same <code>/joint_states</code>. Until then <code>braco_description</code>'s <code>gazebo.launch.py</code> shows it in Gazebo with <code>gz_ros2_control</code> (<code>/arm_controller</code>, <code>FollowJointTrajectory</code>), and <code>scripts/braco_arm.py</code> runs the same moves there and, with <code>--real</code>, on the arm.</li>
       <li>How MoveIt's trajectories reach <code>arm_driver</code> on the real arm is decided with #37 and #40.</li>
     </ul>
   </section>
@@ -905,6 +909,7 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
       <div><b>One Makefile.</b> Split in <code>mk/</code>, idempotent <code>make up</code>, ~30 public commands.</div>
       <div><b>Lean repository root.</b> <code>docker</code>, <code>docs</code>, <code>mk</code>, <code>ros2_ws</code>, <code>scripts</code> (operator scripts run by <code>make</code>), <code>web</code> and the <code>Makefile</code> (plus the formatter configs and <code>requirements-dev.txt</code>); <code>mycobot_cpp</code> in <code>ros2_ws/src</code> (one colcon base path, no extra mount); <code>tests/</code>, <code>playground/</code> and the root <code>requirements.txt</code> removed.</div>
       <div><b>Jetson guards.</b> <code>doctor</code> checks, ccache limit, ROS log cleanup, <code>status</code> with <code>docker stats</code> and <code>tegrastats</code>.</div>
+      <div><b>Validated URDF.</b> <code>braco_description</code>: joint names, limits, zero pose, joint directions and FK (within 1.5 mm of <code>get_coords()</code>) checked on the real arm; measured joint velocities; the table check in <code>mycobot_cpp</code> uses the same kinematics (<a href="urdf-sim-to-real.md">report</a>, #25).</div>
     </div>
 
     <div class="subhead">Differs from the target (accepted for now)</div>
@@ -928,7 +933,6 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
       <table>
         <thead><tr><th>Item</th><th>Issue</th></tr></thead>
         <tbody>
-          <tr><td><code>braco_description</code>: URDF/xacro, meshes, RViz config</td><td><span class="pill p-note">#25</span></td></tr>
           <tr><td><code>sim:=true</code>: Gazebo + <code>gz_ros2_control</code> with the same <code>/joint_states</code></td><td><span class="pill p-note">#34</span></td></tr>
           <tr><td>How trajectories reach <code>arm_driver</code> on the real arm (<code>FollowJointTrajectory</code> or equivalent)</td><td><span class="pill p-note">#37</span></td></tr>
           <tr><td><code>braco_moveit_config</code>: SRDF, kinematics, limits, controllers</td><td><span class="pill p-note">#40</span></td></tr>
