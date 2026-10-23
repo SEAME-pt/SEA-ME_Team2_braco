@@ -6,7 +6,8 @@ find_package(ament_cmake REQUIRED)
 install(DIRECTORY urdf meshes launch config DESTINATION share/${PROJECT_NAME})
 # Moves in Gazebo, then (--real) on the real arm: ros2 run braco_description park.py [--real]
 # The scripts import braco_arm.py from their own folder: install it next to them.
-install(PROGRAMS scripts/move_arm_example.py scripts/park.py DESTINATION lib/${PROJECT_NAME})
+install(PROGRAMS scripts/move_arm_example.py scripts/park.py scripts/sim_to_real.py
+  DESTINATION lib/${PROJECT_NAME})
 install(FILES scripts/braco_arm.py DESTINATION lib/${PROJECT_NAME})
 
 if(BUILD_TESTING)
