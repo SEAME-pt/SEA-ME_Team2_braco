@@ -1,6 +1,6 @@
 # ROS 2 Troubleshooting
 
-Common problems when installing and using ROS 2 in this project, and how to fix them. Problems specific to building the Docker images are also listed in [docker/README.md → If the build fails](../docker/README.md#if-the-build-fails).
+Common problems when installing and using ROS 2 in this project, and how to fix them. Problems specific to building the Docker images are also listed in [docker/README.md → If the build fails](../../docker/README.md#if-the-build-fails).
 
 When something fails, first collect the basics:
 

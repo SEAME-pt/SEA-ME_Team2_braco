@@ -6,7 +6,7 @@ Quick reference for daily work. Explanations are in [README.md](README.md), step
 
 | Command | What it does |
 |---|---|
-| `make setup` | Create `.env` for this machine, git hooks, folders (once; `ROLE=pc\|jetson` to override the detection) |
+| `make setup` | Create `.env` for this machine, dev venv (PC), git hooks, folders (once; `ROLE=pc\|jetson` to override the detection) |
 | `make doctor` | Check Docker, Compose, `.env`, folders, devices; on the Jetson also RAM, power mode, swap |
 | `make up` / `make down` | Turn the system on / off (`real` on the Jetson; `sim` plus `dev` on the PC) |
 | `make status` / `make logs` | Containers and resources / follow the system's log (`S=web`, `S=arm_driver`, ...) |

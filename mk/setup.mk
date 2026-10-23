@@ -8,7 +8,8 @@ JETSON_TAG := $(IMAGE_TAG)-arm64
 
 ##@ Setup (once per machine)
 
-setup: _role $(ENV_FILE) | $(WS_DIRS) ## docker/.env for this machine, git hooks, folders, then doctor
+# On the PC, setup also creates the venv: the pre-push hook needs its ruff and clang-format (requirements-dev.txt).
+setup: _role $(ENV_FILE) $(if $(filter pc,$(ROLE)),$(VENV)/.installed) | $(WS_DIRS) ## docker/.env for this machine, venv (PC), git hooks, folders, then doctor
 	git config core.hooksPath .githooks
 	@$(DOCTOR_RUN)
 
@@ -112,6 +113,8 @@ case "$$ROLE" in
     lcd=$$(sed -n 's/^LCD_I2C_BUS=//p' "$$ENV_FILE" 2>/dev/null | tail -n 1)
     if [ -e "$${lcd:-/dev/i2c-0}" ]; then ok "$${lcd:-/dev/i2c-0} present (LCD of temperature_monitor)"; else bad "$${lcd:-/dev/i2c-0} not found: the real container cannot start (set LCD_I2C_BUS in .env)"; fi
     if [ -e /dev/input/js0 ]; then ok "joystick /dev/input/js0 present"; else ok "no joystick at /dev/input/js0 (joystick_teleop waits for it)"; fi
+    cam=$$(sed -n 's/^CAMERA_DEVICE=//p' "$$ENV_FILE" 2>/dev/null | tail -n 1)
+    if [ -e "/dev/$${cam:-video0}" ]; then ok "camera /dev/$${cam:-video0} present"; else ok "no camera at /dev/$${cam:-video0} (the camera node waits for it)"; fi
     # The real container reaches the LCD and joystick through these groups; unset, compose gives it a placeholder.
     for pair in I2C_GID:i2c INPUT_GID:input; do
       var=$${pair%%:*}; grp=$${pair##*:}

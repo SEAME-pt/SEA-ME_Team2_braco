@@ -10,19 +10,24 @@ import json
 import threading
 import time
 
-ECHO_LINGER = 30.0     # seconds a subscription survives without viewers
+ECHO_LINGER = 30.0  # seconds a subscription survives without viewers
 ECHO_MAX_CHARS = 4000  # longer messages are cut for the page
-ECHO_ARRAY_MAX = 32    # array/string elements kept per field
-RATE_WINDOW = 5.0      # seconds of message stamps used for the rate
+ECHO_ARRAY_MAX = 32  # array/string elements kept per field
+RATE_WINDOW = 5.0  # seconds of message stamps used for the rate
 INTERNAL_SUFFIXES = (
-    "/describe_parameters", "/get_parameter_types", "/get_parameters", "/list_parameters",
-    "/set_parameters", "/set_parameters_atomically", "/get_type_description",
+    '/describe_parameters',
+    '/get_parameter_types',
+    '/get_parameters',
+    '/list_parameters',
+    '/set_parameters',
+    '/set_parameters_atomically',
+    '/get_type_description',
 )
 
 
 def is_internal_service(name):
     """Parameter and type-description services every node has; hidden by default."""
-    return name.endswith(INTERNAL_SUFFIXES) or "/_action/" in name
+    return name.endswith(INTERNAL_SUFFIXES) or '/_action/' in name
 
 
 def jsonable(value):
@@ -35,7 +40,7 @@ def jsonable(value):
         return list(value[:ECHO_ARRAY_MAX])
     if isinstance(value, (str, int, float, bool)) or value is None:
         return value
-    if hasattr(value, "tolist"):   # array.array, numpy
+    if hasattr(value, 'tolist'):  # array.array, numpy
         return jsonable(value.tolist())
     return str(value)
 
@@ -45,7 +50,7 @@ def cut(data):
     text = json.dumps(data)
     if len(text) <= ECHO_MAX_CHARS:
         return data
-    return text[:ECHO_MAX_CHARS] + " … (cut)"
+    return text[:ECHO_MAX_CHARS] + ' … (cut)'
 
 
 class _Echo:
@@ -71,7 +76,11 @@ class _Echo:
         recent = [t for t in self.stamps if now - t <= RATE_WINDOW]
         if len(recent) < 2:
             return None
-        return round((len(recent) - 1) / (recent[-1] - recent[0]), 2) if recent[-1] > recent[0] else None
+        return (
+            round((len(recent) - 1) / (recent[-1] - recent[0]), 2)
+            if recent[-1] > recent[0]
+            else None
+        )
 
 
 class Graph:
@@ -83,29 +92,44 @@ class Graph:
     def snapshot(self):
         node = self._bridge.node
         if node is None or not self._bridge.available:
-            return {"available": False, "error": self._bridge.error}
+            return {'available': False, 'error': self._bridge.error}
         try:
             nodes = sorted(
-                (ns.rstrip("/") + "/" + name) for name, ns in node.get_node_names_and_namespaces())
-            topics = [{
-                "name": name,
-                "types": types,
-                "publishers": node.count_publishers(name),
-                "subscribers": node.count_subscribers(name),
-            } for name, types in sorted(node.get_topic_names_and_types())]
-            services = [{"name": name, "types": types, "internal": is_internal_service(name)}
-                        for name, types in sorted(node.get_service_names_and_types())]
+                (ns.rstrip('/') + '/' + name) for name, ns in node.get_node_names_and_namespaces()
+            )
+            topics = [
+                {
+                    'name': name,
+                    'types': types,
+                    'publishers': node.count_publishers(name),
+                    'subscribers': node.count_subscribers(name),
+                }
+                for name, types in sorted(node.get_topic_names_and_types())
+            ]
+            services = [
+                {'name': name, 'types': types, 'internal': is_internal_service(name)}
+                for name, types in sorted(node.get_service_names_and_types())
+            ]
             actions = []
             try:
                 from rclpy.action import get_action_names_and_types
-                actions = [{"name": name, "types": types}
-                           for name, types in sorted(get_action_names_and_types(node))]
+
+                actions = [
+                    {'name': name, 'types': types}
+                    for name, types in sorted(get_action_names_and_types(node))
+                ]
             except ImportError:
                 pass
-        except Exception as e:   # the context is shutting down
-            return {"available": False, "error": str(e)}
-        return {"available": True, "error": None, "nodes": nodes, "topics": topics,
-                "services": services, "actions": actions}
+        except Exception as e:  # the context is shutting down
+            return {'available': False, 'error': str(e)}
+        return {
+            'available': True,
+            'error': None,
+            'nodes': nodes,
+            'topics': topics,
+            'services': services,
+            'actions': actions,
+        }
 
     # ---- echo -----------------------------------------------------------------
 
@@ -113,7 +137,7 @@ class Graph:
         """Start showing `topic` to `viewer`; returns an error string or None."""
         node = self._bridge.node
         if node is None:
-            return self._bridge.error or "ROS 2 not available"
+            return self._bridge.error or 'ROS 2 not available'
         with self._lock:
             echo = self._echoes.get(topic)
             if echo is not None:
@@ -122,18 +146,19 @@ class Graph:
                 return None
         types = dict(node.get_topic_names_and_types()).get(topic)
         if not types:
-            return "topic {} not found".format(topic)
+            return 'topic {} not found'.format(topic)
         try:
             from rclpy.qos import QoSProfile, ReliabilityPolicy
             from rosidl_runtime_py.utilities import get_message
+
             cls = get_message(types[0])
         except Exception as e:
-            return "cannot load message type {}: {}".format(types[0], e)
+            return 'cannot load message type {}: {}'.format(types[0], e)
         echo = _Echo(topic, types[0])
         # Best effort subscribes to both reliable and best-effort publishers
         qos = QoSProfile(depth=5, reliability=ReliabilityPolicy.BEST_EFFORT)
         with self._lock:
-            if topic in self._echoes:   # another viewer won the race
+            if topic in self._echoes:  # another viewer won the race
                 self._echoes[topic].viewers.add(viewer)
                 return None
             echo.subscription = node.create_subscription(cls, topic, echo.on_message, qos)
@@ -177,8 +202,17 @@ class Graph:
         if echo.last is not None:
             try:
                 from rosidl_runtime_py.convert import message_to_ordereddict
-                data = cut(jsonable(message_to_ordereddict(echo.last, truncate_length=ECHO_ARRAY_MAX)))
+
+                data = cut(
+                    jsonable(message_to_ordereddict(echo.last, truncate_length=ECHO_ARRAY_MAX))
+                )
             except Exception as e:
-                data = "cannot show this message: {}".format(e)
-        return {"topic": echo.topic, "type": echo.type, "count": echo.count,
-                "hz": echo.rate(now), "last_t": echo.last_t, "message": data}
+                data = 'cannot show this message: {}'.format(e)
+        return {
+            'topic': echo.topic,
+            'type': echo.type,
+            'count': echo.count,
+            'hz': echo.rate(now),
+            'last_t': echo.last_t,
+            'message': data,
+        }

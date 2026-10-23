@@ -14,8 +14,9 @@
 
 // park - shutdown routine: fold the arm into the park pose, then release all joints.
 //
-// Goes through arm_driver instead of opening the serial port. Pose: mycobot::PARK_ANGLES.
-// Run by hand with `make park` or before `make down PARK=1`.
+// ROS 2 version of mycobot_cpp/srcs/park.cpp: goes through arm_driver instead of opening the
+// serial port. Same pose (mycobot::PARK_ANGLES) and speed. Run by hand with `make park`
+// or before `make down PARK=1`.
 
 #include "braco_bringup/arm_moves.hpp"
 #include "mycobot.hpp"
@@ -25,16 +26,16 @@ using namespace std::chrono_literals;
 namespace
 {
 
-constexpr int SPEED = 30;
-constexpr double TOLERANCE_DEG = 2.0;
 constexpr auto TIMEOUT = 20s;
 constexpr auto DRIVER_TIMEOUT = 10s;
 
 bool park(braco_bringup::ArmMoves & arm)
 {
-  if (!arm.waitForDriver(DRIVER_TIMEOUT)) {return false;}
+  if (!arm.waitForDriver(DRIVER_TIMEOUT) || !arm.takeControl()) {return false;}
   arm.setRest(false);   // rest mode refuses the park move itself
-  if (!arm.moveTo(mycobot::PARK_ANGLES, SPEED, TOLERANCE_DEG, TIMEOUT)) {
+  if (!arm.moveTo(
+      mycobot::PARK_ANGLES, mycobot::MOVE_SPEED, mycobot::POSE_TOLERANCE_DEG, TIMEOUT))
+  {
     RCLCPP_ERROR(arm.get_logger(), "Park position not reached - joints left locked");
     return false;
   }

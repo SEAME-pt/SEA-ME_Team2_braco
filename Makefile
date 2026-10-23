@@ -11,11 +11,11 @@
 # The commands live in mk/, one file per topic:
 #   mk/config.mk   paths, machine detection, compose command
 #   mk/system.mk   up down restart status logs
-#   mk/arm.mk      zero park rest resume temps                  (Jetson)
+#   mk/arm.mk      zero park rest resume temps bench            (Jetson)
 #   mk/dev.mk      shell run build test web clean
 #   mk/setup.mk    setup doctor image boot-on boot-off jetson-image reset
 #   mk/net.mk      net-test net-talk net-listen
-#   mk/ci.mk       ci ci-image ci-ros lint
+#   mk/ci.mk       ci ci-image ci-ros lint format format-check
 
 .DEFAULT_GOAL := help
 

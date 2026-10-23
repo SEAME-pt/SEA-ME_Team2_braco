@@ -1,9 +1,9 @@
-# mk/arm.mk - the real arm, through the running `real` container (Jetson): zero park rest resume temps.
+# mk/arm.mk - the real arm, through the running `real` container (Jetson): zero park rest resume temps bench.
 #
 # These run inside the system container (ROS sourced, workspace mounted), so nothing has to be stopped and the
 # serial port keeps its single owner, arm_driver.
 
-.PHONY: zero park rest resume temps _system_up
+.PHONY: zero park rest resume temps bench _system_up
 
 ##@ Arm (Jetson, with the system up)
 
@@ -21,6 +21,9 @@ resume: _jetson _system_up ## Rest mode off: motion accepted again (joints stay 
 
 temps: _jetson _system_up ## Print the servo temperatures once (works in rest mode)
 	$(SYS_EXEC) ros2 topic echo --once /arm/servo_temperatures
+
+bench: _jetson _system_up ## Bench test of control and auto-rest (scripts/bench.sh; asks before moving the arm)
+	BENCH_EXEC="env $(SYS_EXEC)" scripts/bench.sh
 
 _system_up: _role
 	@[ -n "$$($(COMPOSE) ps -q --status running $(SYSTEM) 2>/dev/null)" ] || { echo "the system is not running: make up" >&2; exit 1; }
