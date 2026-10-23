@@ -1,6 +1,6 @@
-# mk/ci.mk - what .github/workflows/ci.yml runs, reproducible here: ci ci-ros lint.
+# mk/ci.mk - what .github/workflows/ci.yml runs, reproducible here: ci ci-ros lint format format-check.
 #
-#   host job   make ci       lint, web page tests
+#   host job   make ci       format check, lint, web page tests
 #   ros job    make ci-ros   rosdep, colcon build and colcon test of ros2_ws/src (make ci-image builds its image)
 #
 # No robot and no display needed.
@@ -30,11 +30,20 @@ SHELLCHECK_FILES := $(SCRIPTS_DIR)/*.sh $(TESTS_DIR)/*.sh
 HADOLINT_IMAGE   := hadolint/hadolint:v2.12.0
 HADOLINT_FLAGS   := $(addprefix --ignore ,DL3008 DL3013 DL3059 DL3006 DL3042 DL3045 SC1091 SC2086 SC2016)
 
-.PHONY: ci ci-image ci-ros lint
+# format / format-check: clang-format (C++) and ruff (Python, .ruff.toml) on the files git tracks. The ROS 2
+# packages in $(WS_SRC) are left to ament_uncrustify and ament_flake8 (make test), except $(CPP_PKG), which has no
+# ament linters. format-check is the pre-push hook.
+CPP_GLOBS = '*.cpp' '*.hpp' '*.h' '*.cc'
+CPP_FILES = $(shell git ls-files -- $(CPP_GLOBS) ':!$(WS_SRC)') $(shell git ls-files -- $(addprefix $(CPP_PKG)/,$(CPP_GLOBS)))
+PY_FILES  = $(shell git ls-files '*.py')
+# Use the venv's pinned ruff and clang-format (make setup) even when the venv is not activated.
+format format-check: export PATH := $(CURDIR)/$(VENV)/bin:$(PATH)
+
+.PHONY: ci ci-image ci-ros lint format format-check
 
 ##@ CI (.github/workflows/ci.yml)
 
-ci: lint $(VENV)/.web-test-installed ## The `host` CI job: lint, web page tests
+ci: format-check lint $(VENV)/.web-test-installed ## The `host` CI job: format check, lint, web page tests
 	$(VENV)/bin/python -m pytest web/tests -q
 
 ci-image: ## Build the `ros` CI job's image (Dockerfile stage CI_TARGET=base) as CI_IMAGE, for your UID/GID
@@ -62,3 +71,18 @@ lint: $(ENV_FILE) ## Compose files (both machines, GPU overrides), shellcheck an
 	else \
 	  { docker image inspect $(HADOLINT_IMAGE) >/dev/null 2>&1 || docker pull -q $(HADOLINT_IMAGE) >/dev/null; } && \
 	  docker run --rm -i $(HADOLINT_IMAGE) hadolint $(HADOLINT_FLAGS) - < $(DOCKERFILE) && echo "  hadolint ($(HADOLINT_IMAGE)): clean"; fi
+
+format: $(VENV)/.installed ## Fix the formatting of all C++ (clang-format) and Python (ruff) files
+	@clang-format -i $(CPP_FILES)
+	@ruff format -q $(PY_FILES)
+	@printf '\033[0;32mOK:\033[0m all files formatted\n'
+
+format-check: $(VENV)/.installed ## Check the formatting without changing files (used by the pre-push hook)
+	@clang-format --dry-run --Werror $(CPP_FILES)
+	@ruff format --check -q $(PY_FILES)
+	@printf '\033[0;32mOK:\033[0m formatting is correct\n'
+
+# The dev tools on the host (requirements-dev.txt): the formatters, and the container's arm libraries for the editor.
+$(VENV)/.installed: $(VENV)/bin/python requirements-dev.txt
+	$(PIP) install -r requirements-dev.txt
+	touch $@

@@ -1,0 +1,5 @@
+pymycobot==4.0.7
+pyserial==3.5
+numpy==2.3.5
+ruff==0.17.1
+clang-format==21.1.8

@@ -6,8 +6,6 @@
 
 #pragma once
 
-#include "mycobot.hpp"
-
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -16,6 +14,8 @@
 #include <map>
 #include <optional>
 #include <set>
+
+#include "mycobot.hpp"
 
 namespace mycobot {
 namespace teleop {
@@ -34,16 +34,16 @@ struct SpeedMode {
 };
 
 constexpr std::array<SpeedMode, 5> SPEED_MODES = {{
-    {"15%",   15,  5.0,  10, 0,   0,   255},   // blue
-    {"30%",   30,  10.0, 20, 0,   255, 0},     // green
-    {"50%",   50,  15.0, 30, 128, 0,   255},   // purple
-    {"75%",   75,  20.0, 40, 255, 255, 255},   // white
-    {"100%",  100, 25.0, 50, 255, 0,   0},     // red
+    {"15%", 15, 5.0, 10, 0, 0, 255},       // blue
+    {"30%", 30, 10.0, 20, 0, 255, 0},      // green
+    {"50%", 50, 15.0, 30, 128, 0, 255},    // purple
+    {"75%", 75, 20.0, 40, 255, 255, 255},  // white
+    {"100%", 100, 25.0, 50, 255, 0, 0},    // red
 }};
-constexpr size_t START_MODE = 1;     // 1 = medium
+constexpr size_t START_MODE = 1;  // 1 = medium
 
-constexpr double MIN_SPEED = 3.0;    // speed just outside the deadzone
-constexpr double STICK_EXPO = 1.8;   // >1 = more resolution near centre
+constexpr double MIN_SPEED = 3.0;   // speed just outside the deadzone
+constexpr double STICK_EXPO = 1.8;  // >1 = more resolution near centre
 constexpr int GRIPPER_SPEED = 50;
 
 // ---- Step-ahead lead -------------------------------------------------------
@@ -62,7 +62,7 @@ constexpr int HOME_MAX_BAD_READS = 3;
 
 // ---- Idle-joint hold -------------------------------------------------------
 constexpr double HOLD_TOLERANCE_DEG = 1.5;
-constexpr double HOLD_RESEND_PERIOD = 0.3;   // seconds
+constexpr double HOLD_RESEND_PERIOD = 0.3;  // seconds
 constexpr int HOLD_SPEED = 10;
 
 // ---- Input -----------------------------------------------------------------
@@ -78,27 +78,25 @@ struct AxisMap {
 // axis number -> (joint 1..6, direction)
 inline const std::map<int, AxisMap>& axisToJoint() {
     static const std::map<int, AxisMap> map = {
-        {0, {1, -1}},   // left stick X  -> joint 1 (base yaw) [inverted]
-        {1, {2, 1}},    // left stick Y  -> joint 2 (shoulder pitch)
-        {3, {4, -1}},   // right stick vertical   -> joint 4
-        {2, {5, -1}},   // right stick horizontal -> joint 5
-        {7, {3, 1}},    // d-pad Y       -> joint 3 (elbow)
+        {0, {1, -1}},  // left stick X  -> joint 1 (base yaw) [inverted]
+        {1, {2, 1}},   // left stick Y  -> joint 2 (shoulder pitch)
+        {3, {4, -1}},  // right stick vertical   -> joint 4
+        {2, {5, -1}},  // right stick horizontal -> joint 5
+        {7, {3, 1}},   // d-pad Y       -> joint 3 (elbow)
     };
     return map;
 }
 
 // Analog trigger axes: ignored completely, never move a joint.
-inline bool isTriggerAxis(int axis) {
-    return axis == 4 || axis == 5;
-}
+inline bool isTriggerAxis(int axis) { return axis == 4 || axis == 5; }
 
-constexpr int BUTTON_GRIPPER_CLOSE = 0;   // A
-constexpr int BUTTON_GRIPPER_OPEN = 1;    // B
-constexpr int BUTTON_HOME = 3;            // X
-constexpr int BUTTON_L1 = 6;              // J6 negative
-constexpr int BUTTON_R1 = 7;              // J6 positive
-constexpr int BUTTON_SPEED_MODE = 9;      // cycle speed mode
-constexpr int BUTTON_FORCE_CONTROL = 8;   // hold: take the control from another owner (ROS only)
+constexpr int BUTTON_GRIPPER_CLOSE = 0;  // A
+constexpr int BUTTON_GRIPPER_OPEN = 1;   // B
+constexpr int BUTTON_HOME = 3;           // X
+constexpr int BUTTON_L1 = 6;             // J6 negative
+constexpr int BUTTON_R1 = 7;             // J6 positive
+constexpr int BUTTON_SPEED_MODE = 9;     // cycle speed mode
+constexpr int BUTTON_FORCE_CONTROL = 8;  // hold: take the control from another owner (ROS only)
 constexpr double FORCE_HOLD_S = 1.0;
 
 // Axes that change while button 9 is held, or within this window of its
@@ -112,16 +110,14 @@ struct Motion {
     double speed;
     double lead;
 };
-using Wanted = std::map<int, Motion>;   // joint -> motion (sorted by joint)
+using Wanted = std::map<int, Motion>;  // joint -> motion (sorted by joint)
 
 struct Shaped {
     double target;
     int speed;
 };
 
-inline double round1(double v) {
-    return std::round(v * 10.0) / 10.0;
-}
+inline double round1(double v) { return std::round(v * 10.0) / 10.0; }
 
 inline int valueOr0(const std::map<int, int>& m, int key) {
     auto it = m.find(key);
@@ -138,8 +134,7 @@ inline double stickRatio(int raw) {
 
 // Map a 0..1 command ratio to (speed, lead) for the given mode.
 inline Motion motionForRatio(double ratio, const SpeedMode& mode, int direction) {
-    return {direction,
-            MIN_SPEED + ratio * (mode.maxSpeed - MIN_SPEED),
+    return {direction, MIN_SPEED + ratio * (mode.maxSpeed - MIN_SPEED),
             LEAD_MIN_DEG + ratio * (mode.leadMax - LEAD_MIN_DEG)};
 }
 
@@ -151,23 +146,21 @@ inline double bumperRatio(const SpeedMode& mode) {
 
 // Scale speed and lead by the distance left to the limit we move toward.
 // Returns nothing if the joint is already at the limit.
-inline std::optional<Shaped> shapeNearLimit(const JointLimit& lim, double angle,
-                                            int direction, double speed, double lead) {
+inline std::optional<Shaped> shapeNearLimit(const JointLimit& lim, double angle, int direction,
+                                            double speed, double lead) {
     const double remaining = direction > 0 ? (lim.max - angle) : (angle - lim.min);
     if (remaining <= AT_LIMIT_DEG) return std::nullopt;
 
-    const double factor = remaining >= SLOW_ZONE_DEG
-                              ? 1.0
-                              : std::max(MIN_LIMIT_FACTOR, remaining / SLOW_ZONE_DEG);
+    const double factor =
+        remaining >= SLOW_ZONE_DEG ? 1.0 : std::max(MIN_LIMIT_FACTOR, remaining / SLOW_ZONE_DEG);
     const int shapedSpeed = std::max(1, static_cast<int>(std::lround(speed * factor)));
-    lead = std::min(lead * factor, remaining);   // never step past the limit
+    lead = std::min(lead * factor, remaining);  // never step past the limit
     return Shaped{angle + direction * lead, shapedSpeed};
 }
 
 // Desired motion per joint. Axes in `blocked` never produce motion.
 inline Wanted wantedMotion(const std::map<int, int>& axisState,
-                           const std::map<int, int>& buttonState,
-                           const SpeedMode& mode,
+                           const std::map<int, int>& buttonState, const SpeedMode& mode,
                            const std::set<int>& blocked) {
     Wanted wanted;
 
@@ -176,7 +169,7 @@ inline Wanted wantedMotion(const std::map<int, int>& axisState,
     const int bumperDir = (l1 && !r1) ? -1 : ((r1 && !l1) ? 1 : 0);
     if (bumperDir != 0) {
         wanted[6] = motionForRatio(bumperRatio(mode), mode, bumperDir);
-        if (BUMPERS_EXCLUSIVE) return wanted;   // ignore sticks while J6 rotates
+        if (BUMPERS_EXCLUSIVE) return wanted;  // ignore sticks while J6 rotates
     }
 
     for (const auto& [axis, map] : axisToJoint()) {
@@ -212,8 +205,8 @@ public:
 
 private:
     double holdS_;
-    std::optional<double> since_;   // when the current press started
-    bool fired_ = false;            // already fired during this press
+    std::optional<double> since_;  // when the current press started
+    bool fired_ = false;           // already fired during this press
 };
 
 // Homing step: one bounded step of stepToward() to the zero pose. Returns nothing

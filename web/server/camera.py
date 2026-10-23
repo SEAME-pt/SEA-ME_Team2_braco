@@ -10,11 +10,11 @@ import asyncio
 import threading
 import time
 
-TOPIC = "/camera/image_raw/compressed"
-STALE_S = 2.0          # no frame for this long: the camera is offline
+TOPIC = '/camera/image_raw/compressed'
+STALE_S = 2.0  # no frame for this long: the camera is offline
 STREAM_MAX_FPS = 15.0  # per browser, whatever the camera sends
 POLL_S = 0.02
-BOUNDARY = "frame"
+BOUNDARY = 'frame'
 
 
 class Camera:
@@ -24,7 +24,7 @@ class Camera:
         self._jpeg = None
         self._seq = 0
         self._t = 0.0
-        self._times = []   # arrival of the last frames, for the rate
+        self._times = []  # arrival of the last frames, for the rate
 
     def start(self):
         self._bridge.start()
@@ -35,6 +35,7 @@ class Camera:
             return
         from rclpy.qos import qos_profile_sensor_data
         from sensor_msgs.msg import CompressedImage
+
         node.create_subscription(CompressedImage, TOPIC, self._on_frame, qos_profile_sensor_data)
 
     def _on_frame(self, msg):
@@ -65,16 +66,16 @@ class Camera:
         elif not self._bridge.available:
             error = self._bridge.error
         elif age is None:
-            error = "no frames on {} (is the camera node running?)".format(TOPIC)
+            error = 'no frames on {} (is the camera node running?)'.format(TOPIC)
         else:
-            error = "no frame for {:.0f} s (camera unplugged?)".format(age)
+            error = 'no frame for {:.0f} s (camera unplugged?)'.format(age)
         return {
-            "online": online,
-            "topic": TOPIC,
-            "fps": round(len(times) / 2.0, 1) if online else 0.0,
-            "age": None if age is None else round(age, 2),
-            "bytes": size,
-            "error": error,
+            'online': online,
+            'topic': TOPIC,
+            'fps': round(len(times) / 2.0, 1) if online else 0.0,
+            'age': None if age is None else round(age, 2),
+            'bytes': size,
+            'error': error,
         }
 
     async def stream(self):
@@ -88,6 +89,13 @@ class Camera:
             now = time.monotonic()
             if seq != last and now - sent >= 1.0 / STREAM_MAX_FPS:
                 last, sent = seq, now
-                yield (b"--" + BOUNDARY.encode() + b"\r\nContent-Type: image/jpeg\r\nContent-Length: "
-                       + str(len(jpeg)).encode() + b"\r\n\r\n" + jpeg + b"\r\n")
+                yield (
+                    b'--'
+                    + BOUNDARY.encode()
+                    + b'\r\nContent-Type: image/jpeg\r\nContent-Length: '
+                    + str(len(jpeg)).encode()
+                    + b'\r\n\r\n'
+                    + jpeg
+                    + b'\r\n'
+                )
             await asyncio.sleep(POLL_S)

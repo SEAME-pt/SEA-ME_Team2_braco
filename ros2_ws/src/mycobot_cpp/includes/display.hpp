@@ -25,22 +25,22 @@ namespace ui {
 
 // Everything the display shows. The program fills it; the display draws it.
 struct Status {
-    std::optional<std::array<double, 6>> angles;   // J1..J6, nullopt = unknown
-    std::array<std::pair<double, double>, 6> limits{};   // soft limits (min, max)
+    std::optional<std::array<double, 6>> angles;        // J1..J6, nullopt = unknown
+    std::array<std::pair<double, double>, 6> limits{};  // soft limits (min, max)
 
-    std::string modeName;     // speed mode, e.g. "medium"
-    int speedCap = 0;         // percent
-    double maxCoast = 0.0;    // degrees
-    uint8_t r = 0, g = 0, b = 0;   // mode colour (same as the Atom LED)
+    std::string modeName;         // speed mode, e.g. "medium"
+    int speedCap = 0;             // percent
+    double maxCoast = 0.0;        // degrees
+    uint8_t r = 0, g = 0, b = 0;  // mode colour (same as the Atom LED)
 
-    std::array<bool, 6> moving{};    // joints being jogged
-    std::array<bool, 6> atLimit{};   // joints stopped at a soft limit
+    std::array<bool, 6> moving{};   // joints being jogged
+    std::array<bool, 6> atLimit{};  // joints stopped at a soft limit
     bool homing = false;
-    bool feedbackOk = true;          // false after a failed angle read
+    bool feedbackOk = true;  // false after a failed angle read
 
-    std::optional<std::array<int, 6>> temps;   // servo temperatures (deg C), nullopt = unknown
-    int hotJoint = 0;                          // 1..6 if that servo is too hot, 0 = none
-    bool autoRest = false;                     // the hot servo put the arm to rest (LCD only)
+    std::optional<std::array<int, 6>> temps;  // servo temperatures (deg C), nullopt = unknown
+    int hotJoint = 0;                         // 1..6 if that servo is too hot, 0 = none
+    bool autoRest = false;                    // the hot servo put the arm to rest (LCD only)
 };
 
 class TerminalDisplay {
@@ -48,7 +48,7 @@ public:
     // enabled = false keeps plain-text output (useful with --debug).
     explicit TerminalDisplay(bool enabled = true,
                              std::chrono::milliseconds refresh = std::chrono::milliseconds(100));
-    ~TerminalDisplay();   // restores the normal terminal screen
+    ~TerminalDisplay();  // restores the normal terminal screen
 
     TerminalDisplay(const TerminalDisplay&) = delete;
     TerminalDisplay& operator=(const TerminalDisplay&) = delete;
@@ -69,7 +69,7 @@ private:
     bool active_ = false;
     std::chrono::milliseconds refresh_;
     std::chrono::steady_clock::time_point lastDraw_{};
-    std::deque<std::pair<std::string, int>> messages_;   // text, repeat count
+    std::deque<std::pair<std::string, int>> messages_;  // text, repeat count
 
     void render(const Status& status);
     static void writeAll(const std::string& text);

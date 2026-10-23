@@ -29,10 +29,6 @@
 //   ./joystick_display --debug   plain text output with event/target details
 //                                (the status screen is disabled)
 
-#include "display.hpp"
-#include "joystick.hpp"
-#include "mycobot.hpp"
-
 #include <signal.h>
 
 #include <algorithm>
@@ -52,6 +48,10 @@
 #include <string>
 #include <thread>
 
+#include "display.hpp"
+#include "joystick.hpp"
+#include "mycobot.hpp"
+
 using namespace std::chrono_literals;
 
 namespace {
@@ -61,20 +61,20 @@ const char* JOYSTICK_DEVICE = "/dev/input/js0";
 // ---- Speed modes (speed units 1..100 = percent) ---------------------------
 struct SpeedMode {
     const char* name;
-    int maxSpeed;        // jog speed at full stick deflection
-    double leadMax;      // step-ahead at full deflection (= worst-case coast)
-    int bumperSpeed;     // fixed J6 speed for L1/R1
-    uint8_t r, g, b;     // Atom LED colour
+    int maxSpeed;     // jog speed at full stick deflection
+    double leadMax;   // step-ahead at full deflection (= worst-case coast)
+    int bumperSpeed;  // fixed J6 speed for L1/R1
+    uint8_t r, g, b;  // Atom LED colour
 };
 
 const std::array<SpeedMode, 5> SPEED_MODES = {{
-    {"15%",   15,  5.0,  8,  0,   0,   255},   // blue
-    {"30%",   30,  10.0, 15, 0,   255, 0},     // green
-    {"50%",   50,  15.0, 22, 128, 0,   255},   // purple
-    {"75%",   75,  20.0, 30, 255, 255, 255},   // white
-    {"100%",  100, 25.0, 40, 255, 0,   0},     // red
+    {"15%", 15, 5.0, 8, 0, 0, 255},        // blue
+    {"30%", 30, 10.0, 15, 0, 255, 0},      // green
+    {"50%", 50, 15.0, 22, 128, 0, 255},    // purple
+    {"75%", 75, 20.0, 30, 255, 255, 255},  // white
+    {"100%", 100, 25.0, 40, 255, 0, 0},    // red
 }};
-constexpr size_t START_MODE = 1;     // 1 = medium
+constexpr size_t START_MODE = 1;  // 1 = medium
 
 constexpr double MIN_SPEED = 3.0;
 constexpr double STICK_EXPO = 1.8;
@@ -98,14 +98,14 @@ constexpr int HOME_MAX_BAD_READS = 3;
 // soft limits (switching earlier would clamp the next command: a sudden jump).
 constexpr mycobot::Angles PARK_ANGLES = {0, 131, -148, 146, 4.5, 0};
 constexpr int PARK_SPEED = 30;
-constexpr double PARK_LEAD_DEG = 15.0;       // bounded step per tick, like homing
+constexpr double PARK_LEAD_DEG = 15.0;  // bounded step per tick, like homing
 constexpr double PARK_TOLERANCE_DEG = 2.0;
 constexpr double PARK_TIMEOUT_S = 20.0;
-constexpr double PARK_SETTLE_S = 0.5;        // wait after arriving, then release
+constexpr double PARK_SETTLE_S = 0.5;  // wait after arriving, then release
 
 // Stiffer hold (prevents J4 sag while other joints move)
 constexpr double HOLD_TOLERANCE_DEG = 0.8;
-constexpr double HOLD_RESEND_PERIOD = 0.1;   // seconds
+constexpr double HOLD_RESEND_PERIOD = 0.1;  // seconds
 constexpr int HOLD_SPEED = 20;
 
 constexpr int AXIS_DEADZONE = 5000;
@@ -117,10 +117,10 @@ constexpr auto LOOP_PERIOD = 20ms;
 constexpr int ANGLE_READ_RETRIES = 1;
 
 // While idle, angles are read only for the display, at most this often.
-constexpr double IDLE_POLL_PERIOD = 0.25;   // seconds
+constexpr double IDLE_POLL_PERIOD = 0.25;  // seconds
 
 // Servo temperatures change slowly: read them while idle, at most this often.
-constexpr double TEMP_POLL_PERIOD = 2.0;    // seconds
+constexpr double TEMP_POLL_PERIOD = 2.0;  // seconds
 
 struct AxisMap {
     int joint;
@@ -128,22 +128,22 @@ struct AxisMap {
 };
 
 const std::map<int, AxisMap> AXIS_TO_JOINT = {
-    {0, {1, -1}},   // left stick X  -> joint 1 (base yaw) [inverted]
-    {1, {2, 1}},    // left stick Y  -> joint 2 (shoulder pitch)
-    {3, {4, -1}},   // right stick vertical   -> joint 4
-    {2, {5, -1}},   // right stick horizontal -> joint 5
-    {7, {3, 1}},    // d-pad Y       -> joint 3 (elbow)
+    {0, {1, -1}},  // left stick X  -> joint 1 (base yaw) [inverted]
+    {1, {2, 1}},   // left stick Y  -> joint 2 (shoulder pitch)
+    {3, {4, -1}},  // right stick vertical   -> joint 4
+    {2, {5, -1}},  // right stick horizontal -> joint 5
+    {7, {3, 1}},   // d-pad Y       -> joint 3 (elbow)
 };
 
 const std::set<int> TRIGGER_AXES = {4, 5};
 
-constexpr int BUTTON_GRIPPER_CLOSE = 0;   // A
-constexpr int BUTTON_GRIPPER_OPEN = 1;    // B
-constexpr int BUTTON_HOME = 3;            // X
-constexpr int BUTTON_PARK = 4;            // Y (check with jstest on your controller)
-constexpr int BUTTON_L1 = 6;              // J6 negative
-constexpr int BUTTON_R1 = 7;              // J6 positive
-constexpr int BUTTON_SPEED_MODE = 9;      // cycle speed mode
+constexpr int BUTTON_GRIPPER_CLOSE = 0;  // A
+constexpr int BUTTON_GRIPPER_OPEN = 1;   // B
+constexpr int BUTTON_HOME = 3;           // X
+constexpr int BUTTON_PARK = 4;           // Y (check with jstest on your controller)
+constexpr int BUTTON_L1 = 6;             // J6 negative
+constexpr int BUTTON_R1 = 7;             // J6 positive
+constexpr int BUTTON_SPEED_MODE = 9;     // cycle speed mode
 
 constexpr int64_t SPEED_BUTTON_GUARD_MS = 250;
 
@@ -151,9 +151,7 @@ constexpr int64_t SPEED_BUTTON_GUARD_MS = 250;
 
 volatile std::sig_atomic_t g_quit = 0;
 
-void onSignal(int) {
-    g_quit = 1;
-}
+void onSignal(int) { g_quit = 1; }
 
 struct Motion {
     int direction;
@@ -167,18 +165,14 @@ struct Shaped {
     int speed;
 };
 
-void pause(std::chrono::milliseconds d) {
-    std::this_thread::sleep_for(d);
-}
+void pause(std::chrono::milliseconds d) { std::this_thread::sleep_for(d); }
 
 double nowSeconds() {
-    return std::chrono::duration<double>(
-        std::chrono::steady_clock::now().time_since_epoch()).count();
+    return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch())
+        .count();
 }
 
-double round1(double v) {
-    return std::round(v * 10.0) / 10.0;
-}
+double round1(double v) { return std::round(v * 10.0) / 10.0; }
 
 int valueOr0(const std::map<int, int>& m, int key) {
     auto it = m.find(key);
@@ -193,7 +187,8 @@ std::string format(const char* fmt, Args... args) {
     return buf;
 }
 
-std::string fmtAngles(const std::optional<mycobot::Angles>& angles, const char* numFormat = "%.2f") {
+std::string fmtAngles(const std::optional<mycobot::Angles>& angles,
+                      const char* numFormat = "%.2f") {
     if (!angles) return "None";
     std::string out = "[";
     for (size_t i = 0; i < angles->size(); ++i) {
@@ -220,8 +215,7 @@ double stickRatio(int raw) {
 }
 
 Motion motionForRatio(double ratio, const SpeedMode& mode, int direction) {
-    return {direction,
-            MIN_SPEED + ratio * (mode.maxSpeed - MIN_SPEED),
+    return {direction, MIN_SPEED + ratio * (mode.maxSpeed - MIN_SPEED),
             LEAD_MIN_DEG + ratio * (mode.leadMax - LEAD_MIN_DEG)};
 }
 
@@ -230,23 +224,20 @@ double bumperRatio(const SpeedMode& mode) {
     return std::clamp((mode.bumperSpeed - MIN_SPEED) / span, 0.0, 1.0);
 }
 
-std::optional<Shaped> shapeNearLimit(const mycobot::JointLimit& lim, double angle,
-                                     int direction, double speed, double lead) {
+std::optional<Shaped> shapeNearLimit(const mycobot::JointLimit& lim, double angle, int direction,
+                                     double speed, double lead) {
     const double remaining = direction > 0 ? (lim.max - angle) : (angle - lim.min);
     if (remaining <= AT_LIMIT_DEG) return std::nullopt;
 
-    const double factor = remaining >= SLOW_ZONE_DEG
-                              ? 1.0
-                              : std::max(MIN_LIMIT_FACTOR, remaining / SLOW_ZONE_DEG);
+    const double factor =
+        remaining >= SLOW_ZONE_DEG ? 1.0 : std::max(MIN_LIMIT_FACTOR, remaining / SLOW_ZONE_DEG);
     const int shapedSpeed = std::max(1, static_cast<int>(std::lround(speed * factor)));
     lead = std::min(lead * factor, remaining);
     return Shaped{angle + direction * lead, shapedSpeed};
 }
 
-Wanted wantedMotion(const std::map<int, int>& axisState,
-                    const std::map<int, int>& buttonState,
-                    const SpeedMode& mode,
-                    const std::set<int>& blocked) {
+Wanted wantedMotion(const std::map<int, int>& axisState, const std::map<int, int>& buttonState,
+                    const SpeedMode& mode, const std::set<int>& blocked) {
     Wanted wanted;
 
     const bool l1 = valueOr0(buttonState, BUTTON_L1) == 1;
@@ -280,8 +271,8 @@ void setLed(mycobot::MyCobot280& mc, const SpeedMode& mode, ui::TerminalDisplay&
 
 // ---- Main control loop -----------------------------------------------------
 
-void controlLoop(input::Joystick& js, mycobot::MyCobot280& mc,
-                 ui::TerminalDisplay& display, bool debug) {
+void controlLoop(input::Joystick& js, mycobot::MyCobot280& mc, ui::TerminalDisplay& display,
+                 bool debug) {
     size_t modeIndex = START_MODE;
     const SpeedMode* mode = &SPEED_MODES[modeIndex];
     setLed(mc, *mode, display);
@@ -300,9 +291,9 @@ void controlLoop(input::Joystick& js, mycobot::MyCobot280& mc,
     std::optional<int64_t> speedBtnMs;
 
     // Park state
-    bool parking = false;                  // moving to the park pose
-    bool parked = false;                   // joints released in the park pose
-    bool parkedWarned = false;             // "joints are free" shown for this input
+    bool parking = false;       // moving to the park pose
+    bool parked = false;        // joints released in the park pose
+    bool parkedWarned = false;  // "joints are free" shown for this input
     double parkDeadline = 0.0;
     std::optional<double> parkReachedAt;
 
@@ -399,8 +390,8 @@ void controlLoop(input::Joystick& js, mycobot::MyCobot280& mc,
                         modeIndex = (modeIndex + 1) % SPEED_MODES.size();
                         mode = &SPEED_MODES[modeIndex];
                         setLed(mc, *mode, display);
-                        display.addMessage(format(">>> speed mode: %s (cap %d %%)",
-                                                  mode->name, mode->maxSpeed));
+                        display.addMessage(
+                            format(">>> speed mode: %s (cap %d %%)", mode->name, mode->maxSpeed));
                     }
                 }
             }
@@ -416,8 +407,9 @@ void controlLoop(input::Joystick& js, mycobot::MyCobot280& mc,
                 parked = false;
                 active.clear();
                 hold.clear();
-                display.addMessage(">>> joints locked. Firmware limits stay active until the "
-                                   "arm is back inside the normal range (X homes)");
+                display.addMessage(
+                    ">>> joints locked. Firmware limits stay active until the "
+                    "arm is back inside the normal range (X homes)");
             } else if (!wanted.empty() && !parkedWarned) {
                 display.addMessage(">>> parked: joints are free - click Y to lock them first");
                 parkedWarned = true;
@@ -471,7 +463,8 @@ void controlLoop(input::Joystick& js, mycobot::MyCobot280& mc,
                 mc.stop();
                 pause(COMMAND_GAP);
                 if (badReads >= HOME_MAX_BAD_READS) {
-                    display.addMessage("!!! no valid angle feedback, parking aborted - joints left locked");
+                    display.addMessage(
+                        "!!! no valid angle feedback, parking aborted - joints left locked");
                     endParking();
                 }
                 return;
@@ -484,7 +477,7 @@ void controlLoop(input::Joystick& js, mycobot::MyCobot280& mc,
                 maxDev = std::max(maxDev, std::abs(PARK_ANGLES[i] - (*angles)[i]));
             }
 
-            if (parkReachedAt) {   // arrived: wait PARK_SETTLE_S, then release
+            if (parkReachedAt) {  // arrived: wait PARK_SETTLE_S, then release
                 if (now - *parkReachedAt >= PARK_SETTLE_S) {
                     mc.releaseAllServos();
                     pause(COMMAND_GAP);
@@ -595,13 +588,14 @@ void controlLoop(input::Joystick& js, mycobot::MyCobot280& mc,
             if (now - lastTempPoll >= TEMP_POLL_PERIOD) {
                 lastTempPoll = now;
                 const auto check = mc.checkTemps(1);
-                if (!check) return;   // no answer: try again next time
+                if (!check) return;  // no answer: try again next time
 
                 const int j = check->hottestJoint;
                 const int t = check->temps[j - 1];
                 if (check->level != lastTempLevel) {
                     if (check->level == mycobot::TempLevel::Hot) {
-                        display.addMessage(format("!!! servo J:%d HOT (%d C) - let the arm rest", j, t));
+                        display.addMessage(
+                            format("!!! servo J:%d HOT (%d C) - let the arm rest", j, t));
                     } else if (check->level == mycobot::TempLevel::Warm) {
                         display.addMessage(format(">>> servo J:%d warm (%d C)", j, t));
                     } else {
@@ -631,9 +625,8 @@ void controlLoop(input::Joystick& js, mycobot::MyCobot280& mc,
                             std::inserter(released, released.begin()));
 
         std::set<int> stillReported;
-        std::set_intersection(limitReported.begin(), limitReported.end(),
-                              moving.begin(), moving.end(),
-                              std::inserter(stillReported, stillReported.begin()));
+        std::set_intersection(limitReported.begin(), limitReported.end(), moving.begin(),
+                              moving.end(), std::inserter(stillReported, stillReported.begin()));
         limitReported = stillReported;
 
         // 6a. Latch idle joints
@@ -684,9 +677,7 @@ void controlLoop(input::Joystick& js, mycobot::MyCobot280& mc,
             pause(COMMAND_GAP);
         }
 
-        if (moving != active) {
-            display.addMessage(">>> jogging joints " + fmtJoints(moving));
-        }
+        if (moving != active) { display.addMessage(">>> jogging joints " + fmtJoints(moving)); }
         active = moving;
     };
 
@@ -720,7 +711,7 @@ int main(int argc, char** argv) {
 
     std::setvbuf(stdout, nullptr, _IOLBF, 0);
 
-    struct sigaction sa {};
+    struct sigaction sa{};
     sa.sa_handler = onSignal;
     sigemptyset(&sa.sa_mask);
     sigaction(SIGINT, &sa, nullptr);
@@ -750,7 +741,7 @@ int main(int argc, char** argv) {
             try {
                 controlLoop(js, mc, display, debug);
             } catch (const std::exception& e) {
-                endReason = std::string("Stopping: ") + e.what();   // e.g. joystick unplugged
+                endReason = std::string("Stopping: ") + e.what();  // e.g. joystick unplugged
                 exitCode = 1;
             }
 

@@ -4,13 +4,13 @@
 // Build:
 //     g++ -O2 -std=c++17 -o zero zero.cpp mycobot.cpp
 
-#include "mycobot.hpp"
-
 #include <chrono>
 #include <cstdio>
 #include <exception>
 #include <optional>
 #include <thread>
+
+#include "mycobot.hpp"
 
 using namespace std::chrono_literals;
 
@@ -32,7 +32,7 @@ void printAngles(const char* label, const std::optional<mycobot::Angles>& angles
 
 int main() {
     try {
-        mycobot::MyCobot280 mc;   // /dev/ttyTHS1 at 1000000 baud
+        mycobot::MyCobot280 mc;  // /dev/ttyTHS1 at 1000000 baud
         std::this_thread::sleep_for(1s);
 
         printAngles("Before:", mc.getAngles());
@@ -47,6 +47,7 @@ int main() {
         return 0;
     } catch (const std::exception& e) {
         std::fprintf(stderr, "Error: %s\n", e.what());
-        return 1;   // systemd sees the failure, same as the Python version
+        return 1;  // systemd sees the failure, same as the Python version
     }
 }
+int x = 1;

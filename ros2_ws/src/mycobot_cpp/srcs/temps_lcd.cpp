@@ -19,9 +19,6 @@
 //
 // Stop other programs using the serial port first (joystick program, driver).
 
-#include "lcd_display.hpp"
-#include "mycobot.hpp"
-
 #include <signal.h>
 
 #include <chrono>
@@ -30,15 +27,16 @@
 #include <exception>
 #include <thread>
 
+#include "lcd_display.hpp"
+#include "mycobot.hpp"
+
 namespace {
 
-constexpr auto TEMP_PERIOD = std::chrono::seconds(2);   // temperatures change slowly
+constexpr auto TEMP_PERIOD = std::chrono::seconds(2);  // temperatures change slowly
 
 volatile std::sig_atomic_t g_quit = 0;
 
-void onSignal(int) {
-    g_quit = 1;
-}
+void onSignal(int) { g_quit = 1; }
 
 // Backlight colour for each temperature level
 void setColour(ui::Status& status, mycobot::TempLevel level) {
@@ -60,7 +58,7 @@ void setColour(ui::Status& status, mycobot::TempLevel level) {
 
 int main() {
     // Ctrl+C or kill: finish the current step, then exit cleanly
-    struct sigaction sa {};
+    struct sigaction sa{};
     sa.sa_handler = onSignal;
     sigemptyset(&sa.sa_mask);
     sigaction(SIGINT, &sa, nullptr);
@@ -80,7 +78,7 @@ int main() {
         std::printf("Reading servo temperatures every %lld s. Ctrl+C quits.\n\n",
                     static_cast<long long>(TEMP_PERIOD.count()));
 
-        ui::Status status;   // everything the LCD shows
+        ui::Status status;  // everything the LCD shows
         setColour(status, mycobot::TempLevel::Normal);
 
         while (!g_quit) {
@@ -97,7 +95,8 @@ int main() {
                 // 4. Fill the status: temperatures, hot warning, colour
                 status.feedbackOk = true;
                 status.temps = check->temps;
-                status.hotJoint = (check->level == mycobot::TempLevel::Hot) ? check->hottestJoint : 0;
+                status.hotJoint =
+                    (check->level == mycobot::TempLevel::Hot) ? check->hottestJoint : 0;
                 setColour(status, check->level);
 
                 // for (int j = 0; j < 6; ++j) {

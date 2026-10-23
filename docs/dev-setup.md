@@ -64,18 +64,31 @@ After cloning the repository, prepare the machine once:
 make setup
 ```
 
-It creates `docker/.env` for this machine (PC or Jetson, detected), binds the commit message linters in `.githooks/`
-so commit message standards are maintained, and runs `make doctor`. Then `make up` turns the braco system on
-(see [docker/README.md](../docker/README.md)); `make` lists every command.
+It creates `docker/.env` for this machine (PC or Jetson, detected), on the PC the development venv (see
+[2.4](#24-host-python-web-page-and-dev-tools)), binds the git hooks in `.githooks/` (commit message format, and a code
+format check before every push, see [4.1](#41-code-formatting)), and runs `make doctor`. Then `make up` turns the
+braco system on (see [docker/README.md](../docker/README.md)); `make` lists every command.
 
-### 2.4 Host Python (the web page only)
+### 2.4 Host Python (web page and dev tools)
 
-Everything that talks to the arm runs in the containers. On the host, Python is only needed for the web page and its
-tests; `make web` and `make ci` create `.venv` from `web/requirements*.txt` by themselves:
+Everything that talks to the arm runs in the containers. On the host, Python is only needed for the web page, its
+tests and the development tools; `make web` and `make ci` create `.venv` from `web/requirements*.txt` by themselves:
 
 ```bash
 make web    # the page with mock arm data on http://localhost:8080 (no arm, no ROS, no Docker)
-make ci     # lint and the web page tests, as the CI `host` job
+make ci     # format check, lint and the web page tests, as the CI `host` job
+```
+
+On the PC, `make setup` also installs `requirements-dev.txt` in the same venv, for development only:
+
+* `ruff`, `clang-format`: the code formatters used by `make format` and the pre-push hook ([4.1](#41-code-formatting)).
+* `pymycobot`, `pyserial`, `numpy`: the same versions as the container, so the editor resolves imports and
+  autocompletes.
+
+The hook and `make format` use the venv without activating it. Activate it only to run `python` or `ruff` by hand:
+
+```bash
+source .venv/bin/activate
 ```
 
 ### 2.5 C++ Toolchain (stand-alone tools)
@@ -121,7 +134,7 @@ the same commands:
 
 | Job | What it runs | Reproduce locally |
 |---|---|---|
-| `host` | `make ci`: `make lint` (compose files for both machines, shellcheck, hadolint) and the web page tests (pytest `web/tests`, in a venv from `web/requirements*.txt`); creates `docker/.env` if missing | `make ci` |
+| `host` | `make ci`: `make format-check` (C++ and Python formatting, see [4.1](#41-code-formatting)), `make lint` (compose files for both machines, shellcheck, hadolint) and the web page tests (pytest `web/tests`, in a venv from `web/requirements*.txt`); creates `docker/.env` if missing | `make ci` |
 | `ros` | Builds the Dockerfile's `base` stage (Ubuntu 26.04 + ROS 2 Lyrical), then `rosdep install`, `colcon build` and `colcon test` of `ros2_ws/src` (with `mycobot_cpp`) in a throw-away container | `make ci-ros` (builds the image the first time) |
 
 * shellcheck and hadolint need no install: without a local binary, `make lint` runs the images pinned in
@@ -130,6 +143,23 @@ the same commands:
   (`actions/cache`, reset whenever `docker/` changes). A warm run only recompiles what changed.
 * The arm64 Jetson image is not built in CI (QEMU is too slow); build it by hand with `make jetson-image`.
 * `ci-ros` writes to `ros2_ws/build`, `install` and `log`, like `make build`, plus its ccache in `ros2_ws/.ccache`.
+
+### 4.1 Code Formatting
+
+C++ is formatted by clang-format (`.clang-format`) and Python by ruff (`.ruff.toml`). Both are pinned in
+`requirements-dev.txt`, so everyone formats the same way.
+
+| Command | What it does |
+|---|---|
+| `make format` | Fixes the formatting of every C++ and Python file |
+| `make format-check` | Only checks, changes nothing; prints `OK` or the files to fix |
+
+* The pre-push hook (`.githooks/pre-push`) runs `make format-check` and blocks the push if it fails. Fix with
+  `make format`, then commit and push again.
+* CI runs the same check (`make ci`, the `host` job), so a push that skipped the hook still fails on the PR.
+* `ros2_ws/src` is skipped, except `ros2_ws/src/mycobot_cpp` (plain C++, no ament linters): the ROS 2 packages are
+  checked by their own linters (`ament_uncrustify`, `ament_flake8`) in `make test`, because their style rules differ
+  from clang-format and ruff.
 
 ---
 
@@ -153,4 +183,6 @@ the same commands:
 | *2026-10-09* | Fixed CMake output path to tests/ directory and recorded successful physical robot test verification | d-branco |
 | *2026-10-20* | Added the CI section (GitHub Action, issue #16) and its status badge | Petrichor |
 | *2026-10-21* | New make commands (issue #54): `make setup`, `make ci`, `make ci-ros`, `make park` ... | Denionline |
+| *2026-10-21* | Code formatting: `make format`, `make format-check` and the pre-push hook (issue #58) | carlaugu |
+| *2026-10-21* | Host venv: `make setup` creates it from `requirements-dev.txt` (container versions) | carlaugu |
 | *2026-10-22* | Root cleanup: `libs/cpp` moved to `ros2_ws/src/mycobot_cpp`; `tests/` (hello-world demos), `playground/`, `requirements.txt` and `.python-version` removed | Denionline |
