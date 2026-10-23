@@ -1,59 +1,59 @@
-# Modo "rest" do braço e comandos básicos
+# Arm "rest" mode and basic commands
 
-## Por que mudou
+## Why it changed
 
-Rodar `park.py` direto no host (versão antiga, serial direta) enquanto o `arm_driver` estava ativo dava
-`SerialException: ... multiple access on port?`. Para contornar, os containers eram derrubados, e sem o
-`arm_driver` ninguém lia a temperatura: o braço esfriava sem monitoramento.
+Running `park.py` directly on the host (old version, direct serial access) while `arm_driver` was running gave
+`SerialException: ... multiple access on port?`. The workaround was to bring the containers down, and without
+`arm_driver` nobody read the temperature: the arm cooled down unmonitored.
 
-## O que mudou
+## What changed
 
-| Onde | Mudança |
+| Where | Change |
 |---|---|
-| `arm_driver.cpp` | Novo **modo rest** (somente leitura): recusa movimento, gripper e `power_on`, mas continua publicando `/joint_states` e `/arm/servo_temperatures`. Serviço `/arm/set_read_only` (`std_srvs/SetBool`), tópico `/arm/read_only` (latched) e parâmetro `read_only`. `STOP` e `release_servos` continuam funcionando. |
-| `ros2_ws/src/mycobot_cpp/srcs/mycobot.cpp` | A porta serial é aberta com `TIOCEXCL`: um segundo processo (não-root) recebe "Device or resource busy" na hora, em vez de corromper a leitura. |
-| `park` (C++, `braco_bringup`) | Sai do rest, vai para a pose de park, solta os servos e **entra em rest**. O driver segue vivo medindo temperatura. |
-| `zero` (C++, `braco_bringup`) | Sai do rest antes de ligar os servos e mover. |
-| `arm_moves.cpp` | Novo `setRest(on)` (cliente do serviço acima). |
-| `Makefile` (repo root) | Comandos `park`, `zero`, `rest`, `resume`, `temps` (rodam dentro do container `real`; eram `arm-*` antes da #54). |
+| `arm_driver.cpp` | New **rest mode** (read only): refuses motion, gripper and `power_on`, but keeps publishing `/joint_states` and `/arm/servo_temperatures`. Service `/arm/set_read_only` (`std_srvs/SetBool`), topic `/arm/read_only` (latched) and parameter `read_only`. `STOP` and `release_servos` keep working. |
+| `ros2_ws/src/mycobot_cpp/srcs/mycobot.cpp` | The serial port is opened with `TIOCEXCL`: a second (non-root) process gets "Device or resource busy" right away, instead of corrupting the reads. |
+| `park` (C++, `braco_bringup`) | Leaves rest, goes to the park pose, releases the servos and **enters rest**. The driver stays alive measuring temperature. |
+| `zero` (C++, `braco_bringup`) | Leaves rest before powering the servos and moving. |
+| `arm_moves.cpp` | New `setRest(on)` (client of the service above). |
+| `Makefile` (repo root) | Commands `park`, `zero`, `rest`, `resume`, `temps` (run inside the `real` container; they were `arm-*` before #54). |
 
-## Como usar (na Jetson, em `docker/`)
+## How to use (on the Jetson, in `docker/`)
 
 ```bash
-make park      # estaciona, solta os servos e entra em rest (nada precisa ser parado)
-make temps     # imprime as temperaturas uma vez (funciona em rest)
-make logs     # acompanha os nós (monitor, driver, teleop); o LCD continua atualizando
-make resume    # sai do rest (movimento aceito de novo)
-make zero      # sai do rest, liga os servos e vai para a pose zero
-make rest      # entra em rest sem estacionar (ex.: só travar movimento)
+make park      # parks, releases the servos and enters rest (nothing needs to be stopped)
+make temps     # prints the temperatures once (works in rest)
+make logs      # follows the nodes (monitor, driver, teleop); the LCD keeps updating
+make resume    # leaves rest (motion accepted again)
+make zero      # leaves rest, powers the servos and goes to the zero pose
+make rest      # enters rest without parking (e.g. just to lock motion)
 ```
 
-Fluxo típico com braço quente: `make park` → esperar → `make temps` (ou olhar o LCD) até
-normalizar (< 55 °C) → `make zero` (ou `make resume` se for usar o joystick; os servos continuam soltos
-até `arm-zero` ou `power_on`).
+Typical flow with a hot arm: `make park` → wait → `make temps` (or watch the LCD) until it is back to
+normal (< 55 °C) → `make zero` (or `make resume` if you will use the joystick; the servos stay released
+until `make zero` or `power_on`).
 
-## Regras
+## Rules
 
-- **Nunca abra a serial fora do `arm_driver`** (as ferramentas avulsas de `mycobot_cpp`, pymycobot no host). Use os targets acima.
-- Em rest, o joystick e o `ArmCommand` são ignorados (aviso no log do driver a cada 5 s).
-- Um servo a ≥ 65 °C (`TEMP_HOT_C`) põe o braço em rest **sozinho**: o `temperature_monitor` chama
-  `/arm/set_read_only true` uma vez por episódio (até todas as juntas ficarem abaixo de 65 °C) e o LCD mostra
-  `REST: SERVO HOT` / `J4 66 C cooling`. A volta é sempre manual (`make resume`); um `make resume` durante o
-  mesmo episódio não é desfeito (serve para estacionar um braço quente de propósito). Desligável com o
-  parâmetro `auto_rest_on_hot`. Nesse momento o monitor executa o `park` (dobra o braço, solta as juntas para esfriar e liga o repouso); se o `park` não puder rodar ou falhar, só liga o repouso. Parâmetros `park_on_hot` e `park_command`. Ver [ADR-0003](ADR-0003-repouso-por-temperatura.md).
-- `zero` e `park` pegam o controle do braço à força (`take_control("script", force=true)`) e devolvem no fim:
-  funcionam com o joystick conectado ou a página no controle. Ver [ADR-0002](ADR-0002-controle-unico.md).
-- O `arm_routine.sh` (entrypoint do container `real`) não move o braço ao parar: use `make down PARK=1`, que roda `park` antes de desligar e deixa o braço em rest.
-- `ros2 topic echo /arm/read_only` mostra o estado atual.
+- **Never open the serial port outside `arm_driver`** (the standalone `mycobot_cpp` tools, pymycobot on the host). Use the targets above.
+- In rest, the joystick and `ArmCommand` are ignored (warning in the driver log every 5 s).
+- A servo at ≥ 65 °C (`TEMP_HOT_C`) puts the arm in rest **by itself**: `temperature_monitor` calls
+  `/arm/set_read_only true` once per episode (until all joints are below 65 °C) and the LCD shows
+  `REST: SERVO HOT` / `J4 66 C cooling`. Leaving it is always manual (`make resume`); a `make resume` during the
+  same episode is not undone (useful to park a hot arm on purpose). Can be disabled with the
+  `auto_rest_on_hot` parameter. At that moment the monitor runs `park` (folds the arm, releases the joints to cool down and turns rest on); if `park` cannot run or fails, it only turns rest on. Parameters `park_on_hot` and `park_command`. See [ADR-0003](ADR-0003-rest-per-temp.md).
+- `zero` and `park` take control of the arm by force (`take_control("script", force=true)`) and hand it back at the end:
+  they work with the joystick connected or the web page in control. See [ADR-0002](ADR-0002-unique-control.md).
+- `arm_routine.sh` (entrypoint of the `real` container) does not move the arm when stopping: use `make down PARK=1`, which runs `park` before shutting down and leaves the arm in rest.
+- `ros2 topic echo /arm/read_only` shows the current state.
 
-## Como testar
+## How to test
 
 1. `make up`
-2. `make park`, depois `make temps` retorna `valid: true`.
-3. Joystick não move o braço; `make resume` e ele volta a mover.
-4. Com o driver ligado, uma ferramenta avulsa (`make -C ros2_ws/src/mycobot_cpp temps_lcd && ros2_ws/src/mycobot_cpp/temps_lcd`)
-   falha com "Device or resource busy".
-5. Servo quente simulado: com o sistema rodando, uma leitura falsa a 66 °C basta (a leitura real seguinte,
-   2 s depois, encerra o episódio):
+2. `make park`, then `make temps` returns `valid: true`.
+3. The joystick does not move the arm; after `make resume` it moves again.
+4. With the driver running, a standalone tool (`make -C ros2_ws/src/mycobot_cpp temps_lcd && ros2_ws/src/mycobot_cpp/temps_lcd`)
+   fails with "Device or resource busy".
+5. Simulated hot servo: with the system running, one fake reading at 66 °C is enough (the next real reading,
+   2 s later, ends the episode):
    `make run CMD='ros2 topic pub --once /arm/servo_temperatures braco_interfaces/msg/ServoTemperatures "{celsius: [40, 40, 40, 66, 40, 40], valid: true}"'`.
-   O braço entra em rest, o log do monitor e o LCD avisam, e `make resume` faz voltar.
+   The arm enters rest, the monitor log and the LCD warn about it, and `make resume` brings it back.
