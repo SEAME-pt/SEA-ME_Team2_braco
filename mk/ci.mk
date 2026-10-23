@@ -2,6 +2,7 @@
 #
 #   host job   make ci       format check, lint, web page tests
 #   ros job    make ci-ros   rosdep, colcon build and colcon test of ros2_ws/src (make ci-image builds its image)
+#              make coverage the GoogleTests only, built with --coverage, then a gcovr report (same image)
 #
 # No robot and no display needed.
 
@@ -18,6 +19,30 @@ CI_ROS_SH := set -e; rosdep update --rosdistro "$$ROS_DISTRO" >/dev/null 2>&1 ||
              $(COLCON); \
              colcon test-result --delete-yes >/dev/null 2>&1 || true; \
              colcon test --base-paths $(WS_BASE_PATHS); colcon test-result --verbose
+CI_RUN = docker run --rm -e CCACHE_DIR=/ws/.ccache -e CCACHE_MAXSIZE=500M -v $(CURDIR)/$(WS_DIR):/ws $(CI_IMAGE)
+
+# coverage: a Debug build with --coverage in its own tree, ros2_ws/coverage/ - not in build/, where it would replace
+# ci-ros's cached build and colcon test-result would count its tests twice. --cmake-args replaces the cmake-args of
+# colcon-defaults.yaml, so the ccache launchers are repeated. gcov adds to the .gcda counters of the last run: they
+# are deleted first. Only the gtest label runs (no linters); a failing test stops before the report. The table is cut
+# before gcovr's Missing column (every uncovered line number): the HTML report has them.
+COVERAGE_PKGS := braco_driver braco_teleop
+COV_DIRS      := --build-base coverage/build --install-base coverage/install
+COV_FLAGS     := -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_FLAGS=--coverage -DCMAKE_CXX_FLAGS=--coverage \
+                 -DCMAKE_EXE_LINKER_FLAGS=--coverage -DCMAKE_SHARED_LINKER_FLAGS=--coverage \
+                 -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+CI_COV_SH := set -eo pipefail; sudo apt-get update -qq; sudo apt-get install -y -qq gcovr >/dev/null; \
+             rosdep install --from-paths $(WS_BASE_PATHS) --ignore-src -y >/dev/null; \
+             colcon --log-base coverage/log build --base-paths $(WS_BASE_PATHS) --packages-up-to $(COVERAGE_PKGS) \
+                 $(COV_DIRS) --cmake-args $(COV_FLAGS); \
+             find coverage/build -name "*.gcda" -delete; \
+             colcon test-result --test-result-base coverage/build --delete-yes >/dev/null 2>&1 || true; \
+             colcon --log-base coverage/log test --base-paths $(WS_BASE_PATHS) --packages-select $(COVERAGE_PKGS) \
+                 $(COV_DIRS) --ctest-args -L gtest; \
+             colcon test-result --test-result-base coverage/build --verbose; \
+             mkdir -p coverage/html; \
+             gcovr -r /ws/src coverage/build --exclude ".*/test/.*" --txt --print-summary \
+                 --html-details coverage/html/index.html | cut -c1-64
 BUILDX_MISSING := docker buildx not found: the Dockerfile needs BuildKit (apt install docker-buildx, or docker-buildx-plugin from Docker's repo)
 
 # shellcheck and hadolint: a local binary if installed, else the pinned image through docker, so no check is ever
@@ -39,7 +64,7 @@ PY_FILES  = $(shell git ls-files '*.py')
 # Use the venv's pinned ruff and clang-format (make setup) even when the venv is not activated.
 format format-check: export PATH := $(CURDIR)/$(VENV)/bin:$(PATH)
 
-.PHONY: ci ci-image ci-ros lint format format-check
+.PHONY: ci ci-image ci-ros coverage lint format format-check
 
 ##@ CI (.github/workflows/ci.yml)
 
@@ -52,8 +77,11 @@ ci-image: ## Build the `ros` CI job's image (Dockerfile stage CI_TARGET=base) as
 
 ci-ros: ## The `ros` CI job: rosdep + colcon build + colcon test in a throw-away container (CI_IMAGE built if missing)
 	@docker image inspect $(CI_IMAGE) >/dev/null 2>&1 || $(MAKE) --no-print-directory ci-image
-	docker run --rm -e CCACHE_DIR=/ws/.ccache -e CCACHE_MAXSIZE=500M -v $(CURDIR)/$(WS_DIR):/ws \
-	    $(CI_IMAGE) bash -c '$(CI_ROS_SH)'
+	$(CI_RUN) bash -c '$(CI_ROS_SH)'
+
+coverage: ## GoogleTests of ros2_ws with coverage (gcovr), in the ci-ros container; report in ros2_ws/coverage/html
+	@docker image inspect $(CI_IMAGE) >/dev/null 2>&1 || $(MAKE) --no-print-directory ci-image
+	$(CI_RUN) bash -c '$(CI_COV_SH)'
 
 lint: $(ENV_FILE) ## Compose files (both machines, GPU overrides), shellcheck and hadolint (binaries or their docker images)
 	@echo "== compose =="

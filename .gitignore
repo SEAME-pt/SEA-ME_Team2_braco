@@ -13,6 +13,7 @@
 /ros2_ws/log/
 /ros2_ws/bags/
 /ros2_ws/.ccache/
+/ros2_ws/coverage/
 
 # ---- Python -------------------------------------------------------------------
 # Virtual environment created by make ci / make web
