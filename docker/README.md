@@ -211,7 +211,7 @@ Launch arguments: `port`, `baud`, `lcd_bus`, `device`, `camera` (filled from `.e
 - The teleop waits for the joystick and survives unplugging it (it stops the arm if it has the control, and opens
   the device again).
 - **One client at a time** moves the arm: the page, the joystick or zero/park, whoever holds `arm_driver`'s control
-  (`ros2 topic echo /arm/control_owner`). STOP always works. See [ADR-0002](../docs/ADR-0002-controle-unico.md).
+  (`ros2 topic echo /arm/control_owner`). STOP always works. See [ADR-0002](../docs/ADR-0002-unique-control.md).
 - Zero and park are **manual**: nothing moves the arm when the container starts or stops (`make up`, `make down`,
   `make restart`, `systemctl stop braco`, a Jetson shutdown). Run them with `make zero` / `make park` (no container
   has to be stopped), or `make down PARK=1` to park and then stop. Park the arm before shutting down, or it will drop
@@ -219,7 +219,7 @@ Launch arguments: `port`, `baud`, `lcd_bus`, `device`, `camera` (filled from `.e
 - **Rest mode.** `make park` (`ros2 run braco_bringup park`) ends by putting the driver in rest mode: motion, gripper and `power_on` are
   refused, but angles and temperatures keep being published, so a hot arm can cool down under watch (LCD and
   `/diagnostics` keep updating). Leave it with `make resume` or `make zero`; `make rest` enters it without parking.
-  A servo at 65 °C enters it by itself ([ADR-0003](../docs/ADR-0003-repouso-por-temperatura.md)).
+  A servo at 65 °C enters it by itself ([ADR-0003](../docs/ADR-0003-rest-per-temp.md)).
   Details: [../docs/arm-rest-mode.md](../docs/arm-rest-mode.md).
 - The driver opens the port with `TIOCEXCL`: a second program (non-root) gets `Device or resource busy` immediately.
 - **The braco web page** ([../web/README.md](../web/README.md)) runs in this container too: the repository is mounted

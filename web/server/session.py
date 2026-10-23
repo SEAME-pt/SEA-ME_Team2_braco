@@ -10,7 +10,7 @@ running is refused as busy). The lease ends when the operator releases it,
 closes the page (after RECONNECT_GRACE, so a reload keeps it) or does nothing
 for IDLE_TIMEOUT seconds.
 
-The lease is also the page's claim on the arm itself (docs/ADR-0002-controle-unico.md):
+The lease is also the page's claim on the arm itself (docs/ADR-0002-unique-control.md):
 with a `control` (the arm source), taking the lease asks arm_driver for the control
 (ControlError while the joystick or zero/park has it), every tick renews it while the
 lease is held, and the lease ends when the lease is released or another client forces

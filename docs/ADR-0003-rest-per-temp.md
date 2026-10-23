@@ -112,4 +112,4 @@ on the real arm they come from `/diagnostics`, so there is one definition of
 ## More Information
 
 * Issue [#55](https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/55)
-* Related: [ADR-0002](ADR-0002-controle-unico.md) (one control owner), [safety.md](safety.md)
+* Related: [ADR-0002](ADR-0002-unique-control.md) (one control owner), [safety.md](safety.md)

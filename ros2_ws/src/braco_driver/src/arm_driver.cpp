@@ -31,7 +31,7 @@
 //   srv  /arm/take_control           braco_interfaces/TakeControl
 //   pub  /arm/control_owner          std_msgs/String (latched, "" = free)
 //
-// Control owner (docs/ADR-0002-controle-unico.md): the web page, the joystick,
+// Control owner (docs/ADR-0002-unique-control.md): the web page, the joystick,
 // zero/park and the mission never move the arm at the same time. Motion is obeyed
 // only from the ArmCommand.source that holds the control (ControlLease); STOP always
 // passes, whoever sends it. The owner takes it with /arm/take_control (force takes

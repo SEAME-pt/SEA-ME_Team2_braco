@@ -15,7 +15,7 @@ figures. **Both files are kept in sync**: a change to one goes to the other in t
 > document disagree, the code wins and this document is the bug.
 >
 > Last checked against the code: **2026-10-22** · [ADR-0001](ADR-0001-ros2-in-docker-on-jetson-nano.md) ·
-> [ADR-0002](ADR-0002-controle-unico.md) · [ADR-0003](ADR-0003-repouso-por-temperatura.md)
+> [ADR-0002](ADR-0002-unique-control.md) · [ADR-0003](ADR-0003-rest-per-temp.md)
 
 **Contents**
 
@@ -43,7 +43,7 @@ figures. **Both files are kept in sync**: a change to one goes to the other in t
   only process that opens the eye-in-hand USB camera; the page (and later vision) subscribes to its frames.
 - **The driver never moves the arm by itself.** Starting or stopping the system does not zero, park or power on the
   arm; those are explicit commands (`make zero`, `make park`, `make down PARK=1`). The one automatic move is the
-  park on overheat, run by `temperature_monitor` ([ADR-0003](ADR-0003-repouso-por-temperatura.md)).
+  park on overheat, run by `temperature_monitor` ([ADR-0003](ADR-0003-rest-per-temp.md)).
 - **Safety lives next to the hardware.** Joint limits, the table margin, the watchdog, rest mode and the control
   owner are enforced in `arm_driver`, not in its clients: a buggy client cannot bypass them.
 - **Faults are visible.** `arm_driver` is not respawned: if it dies the launch shuts down, `arm_routine.sh` ends and
@@ -51,7 +51,7 @@ figures. **Both files are kept in sync**: a change to one goes to the other in t
   on the camera, whose node waits for it when it is unplugged.
 - **One client moves the arm at a time.** The page, the joystick, zero/park and the mission take the control from
   `arm_driver` before moving; motion from anyone else is ignored, STOP never is
-  ([ADR-0002](ADR-0002-controle-unico.md)).
+  ([ADR-0002](ADR-0002-unique-control.md)).
 - **One source for each fact.** The thermal level is computed once, by `temperature_monitor`, and published on
   `/diagnostics`; the page shows it and does not recompute it. The control owner is kept once, by `arm_driver`.
 - **Same interface for real and simulated.** Everything above the driver uses `/joint_states` and
@@ -172,9 +172,9 @@ watchdog stops the arm.
 - **Rest mode.** `/arm/set_read_only true`: motion, gripper and power on are refused; angles and temperatures keep
   being published. `temperature_monitor` enters it by itself when a servo reaches 65 °C, once per hot episode,
   after parking the arm (`park_on_hot`); leaving it is manual (`make resume`). See [arm-rest-mode.md](arm-rest-mode.md) and
-  [ADR-0003](ADR-0003-repouso-por-temperatura.md).
+  [ADR-0003](ADR-0003-rest-per-temp.md).
 
-### Who moves the arm ([ADR-0002](ADR-0002-controle-unico.md))
+### Who moves the arm ([ADR-0002](ADR-0002-unique-control.md))
 
 | | |
 |---|---|
@@ -540,10 +540,10 @@ PR that closes or opens a gap.
 | Item | Detail |
 |---|---|
 | **Single serial owner** | Only `arm_driver` opens the UART; the page has no direct serial mode |
-| **One control owner** | `ArmCommand.source`, `TakeControl.srv`, latched `/arm/control_owner`; motion only from the owner, STOP from anyone ([ADR-0002](ADR-0002-controle-unico.md)) |
+| **One control owner** | `ArmCommand.source`, `TakeControl.srv`, latched `/arm/control_owner`; motion only from the owner, STOP from anyone ([ADR-0002](ADR-0002-unique-control.md)) |
 | **Clients follow the owner** | Page lease = control `web`; joystick takes it free or forced (button 8 for 1 s), `power_on` only as owner; zero/park force and release |
 | **One thermal authority** | `temperature_monitor` publishes the level on `/diagnostics`; the page reads it |
-| **Rest on overheat** | Once per hot episode, manual resume ([ADR-0003](ADR-0003-repouso-por-temperatura.md)) |
+| **Rest on overheat** | Once per hot episode, manual resume ([ADR-0003](ADR-0003-rest-per-temp.md)) |
 | **braco layout** | `ros2_ws/src` with `braco_interfaces`, `braco_driver`, `braco_teleop`, `braco_camera`, `braco_bringup`; one launch and one `braco.yaml`; a README in every package, `mycobot_cpp` included |
 | **braco infrastructure** | `docker/Dockerfile`, `compose.yml` (project `braco`), `braco-image/*`, `braco.service` |
 | **One Makefile** | Split in `mk/`, idempotent `make up`, ~30 public commands |
