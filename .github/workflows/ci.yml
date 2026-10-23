@@ -33,7 +33,9 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
-          cache-dependency-path: web/requirements*.txt
+          cache-dependency-path: |
+            requirements-dev.txt
+            web/requirements*.txt
 
       # shellcheck and hadolint need no install step: without a local binary, make lint runs the images pinned in
       # SHELLCHECK_IMAGE and HADOLINT_IMAGE (Makefile) through docker.

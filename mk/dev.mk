@@ -36,7 +36,8 @@ clean: _role ## Delete colcon's build/ install/ log/ and the ROS logs (~/.ros/lo
 	  $(COMPOSE) run --rm --no-deps -T $(DEV) bash -c 'rm -rf "$$HOME/.ros/log"' && echo "cleared ~/.ros/log in the containers"; fi
 
 # ---- host venv for the page (also used by mk/ci.mk) ------------------------------------------
-# The page and its tests only need web/requirements*.txt (no arm library, no ROS).
+# The page and its tests only need web/requirements*.txt (no arm library, no ROS), so they also work where
+# requirements-dev.txt (pymycobot, numpy) cannot be installed.
 $(VENV)/bin/python:
 	$(PYTHON) -m venv $(VENV)
 	$(PIP) install --upgrade pip

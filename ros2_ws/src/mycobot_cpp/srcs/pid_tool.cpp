@@ -21,8 +21,6 @@
 // Stop every other program using the serial port first (joystick program,
 // ROS2 bridge, driver container).
 
-#include "mycobot.hpp"
-
 #include <algorithm>
 #include <array>
 #include <cctype>
@@ -34,6 +32,8 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+
+#include "mycobot.hpp"
 
 namespace {
 
@@ -76,9 +76,9 @@ enum class Answer { Value, Keep, Quit };
 // Value: `out` holds checked values. Keep: empty line. Quit: q or end of input.
 Answer askPid(int joint, const mycobot::Pid& now, mycobot::Pid& out) {
     while (true) {
-        const auto line = prompt("joint " + std::to_string(joint) + " <p> <i> <d> (now " +
-                                 std::to_string(now.p) + " " + std::to_string(now.i) + " " +
-                                 std::to_string(now.d) + "): ");
+        const auto line =
+            prompt("joint " + std::to_string(joint) + " <p> <i> <d> (now " + std::to_string(now.p) +
+                   " " + std::to_string(now.i) + " " + std::to_string(now.d) + "): ");
         if (!line || lower(*line) == "q") return Answer::Quit;
         if (line->empty()) return Answer::Keep;
 
@@ -107,9 +107,7 @@ bool confirmYes(const std::string& text) {
     return false;
 }
 
-void printPid(const mycobot::Pid& pid) {
-    std::printf("P %3d  I %3d  D %3d", pid.p, pid.i, pid.d);
-}
+void printPid(const mycobot::Pid& pid) { std::printf("P %3d  I %3d  D %3d", pid.p, pid.i, pid.d); }
 
 bool same(const mycobot::Pid& a, const mycobot::Pid& b) {
     return a.p == b.p && a.i == b.i && a.d == b.d;
@@ -141,8 +139,9 @@ int readAll(mycobot::MyCobot280& mc) {
     }
 
     if (failures > 0) {
-        std::printf("\nSome joints did not answer. Check the GET_SERVO_DATA code in\n"
-                    "mycobot.hpp against pymycobot before changing anything.\n");
+        std::printf(
+            "\nSome joints did not answer. Check the GET_SERVO_DATA code in\n"
+            "mycobot.hpp against pymycobot before changing anything.\n");
         return 1;
     }
     if (differences > 0) {
@@ -153,7 +152,7 @@ int readAll(mycobot::MyCobot280& mc) {
 
 // Write one joint after showing the change and asking for YES.
 int setOne(mycobot::MyCobot280& mc, int joint, const mycobot::Pid& wanted) {
-    mycobot::MyCobot280::checkPidBounds(joint, wanted);   // fail early, before asking
+    mycobot::MyCobot280::checkPidBounds(joint, wanted);  // fail early, before asking
 
     const auto current = mc.getPid(joint);
     if (!current) {
@@ -215,8 +214,9 @@ int setAll(mycobot::MyCobot280& mc) {
         current[j - 1] = *pid;
     }
 
-    std::printf("Type P I D for each joint, separated by spaces (e.g. 25 4 25).\n"
-                "Press Enter alone to keep a joint unchanged, or type q to quit.\n\n");
+    std::printf(
+        "Type P I D for each joint, separated by spaces (e.g. 25 4 25).\n"
+        "Press Enter alone to keep a joint unchanged, or type q to quit.\n\n");
 
     std::array<mycobot::Pid, 6> wanted = current;
     for (int j = 1; j <= 6; ++j) {
@@ -266,14 +266,15 @@ int setAll(mycobot::MyCobot280& mc) {
 int menu(mycobot::MyCobot280& mc) {
     std::printf("myCobot 280 - servo PID tool\n");
     while (true) {
-        std::printf("\n"
-                    "  1) read     show P, I, D of all joints\n"
-                    "  2) set      change one joint\n"
-                    "  3) all      go through all 6 joints\n"
-                    "  4) factory  put one joint back to factory values\n"
-                    "  q) quit\n");
+        std::printf(
+            "\n"
+            "  1) read     show P, I, D of all joints\n"
+            "  2) set      change one joint\n"
+            "  3) all      go through all 6 joints\n"
+            "  4) factory  put one joint back to factory values\n"
+            "  q) quit\n");
         const auto choice = prompt("> ");
-        if (!choice) break;   // end of input (Ctrl+D)
+        if (!choice) break;  // end of input (Ctrl+D)
         const std::string c = lower(*choice);
         std::printf("\n");
 
@@ -301,12 +302,13 @@ int menu(mycobot::MyCobot280& mc) {
 }
 
 void usage() {
-    std::printf("Usage:\n"
-                "  ./pid_tool                          interactive menu\n"
-                "  ./pid_tool read\n"
-                "  ./pid_tool set <joint 1-6> <P> <I> <D>\n"
-                "  ./pid_tool factory <joint 1-6>\n"
-                "  ./pid_tool all\n");
+    std::printf(
+        "Usage:\n"
+        "  ./pid_tool                          interactive menu\n"
+        "  ./pid_tool read\n"
+        "  ./pid_tool set <joint 1-6> <P> <I> <D>\n"
+        "  ./pid_tool factory <joint 1-6>\n"
+        "  ./pid_tool all\n");
 }
 
 }  // namespace

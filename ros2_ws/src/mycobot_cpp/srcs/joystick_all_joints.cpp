@@ -33,10 +33,6 @@
 //   ./joystick_all_joints           control the arm
 //   ./joystick_all_joints --debug   print events, targets, hold corrections
 
-#include "joystick.hpp"
-#include "mycobot.hpp"
-#include "teleop_logic.hpp"
-
 #include <signal.h>
 
 #include <algorithm>
@@ -55,6 +51,10 @@
 #include <set>
 #include <string>
 #include <thread>
+
+#include "joystick.hpp"
+#include "mycobot.hpp"
+#include "teleop_logic.hpp"
 
 using namespace std::chrono_literals;
 using namespace mycobot::teleop;
@@ -82,17 +82,13 @@ constexpr double STATE_GRACE_S = 0.3;
 
 volatile std::sig_atomic_t g_quit = 0;
 
-void onSignal(int) {
-    g_quit = 1;
-}
+void onSignal(int) { g_quit = 1; }
 
-void pause(std::chrono::milliseconds d) {
-    std::this_thread::sleep_for(d);
-}
+void pause(std::chrono::milliseconds d) { std::this_thread::sleep_for(d); }
 
 double nowSeconds() {
-    return std::chrono::duration<double>(
-        std::chrono::steady_clock::now().time_since_epoch()).count();
+    return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch())
+        .count();
 }
 
 std::string fmtAngles(const std::optional<mycobot::Angles>& angles, const char* format = "%.2f") {
@@ -127,8 +123,8 @@ void setLed(mycobot::MyCobot280& mc, const SpeedMode& mode) {
 }
 
 void printMode(const char* prefix, const SpeedMode& mode) {
-    std::printf("%s%s (cap %d %%, max coast %.0f deg)\n",
-                prefix, mode.name, mode.maxSpeed, mode.leadMax);
+    std::printf("%s%s (cap %d %%, max coast %.0f deg)\n", prefix, mode.name, mode.maxSpeed,
+                mode.leadMax);
 }
 
 // ---- Main control loop -----------------------------------------------------
@@ -137,16 +133,17 @@ void controlLoop(input::Joystick& js, mycobot::MyCobot280& mc, bool debug) {
     size_t modeIndex = START_MODE;
     const SpeedMode* mode = &SPEED_MODES[modeIndex];
     setLed(mc, *mode);
-    std::printf("Ready. Speed mode: %s (cap %d %%, max coast %.0f deg). "
-                "Button 9 changes speed, X homes, Ctrl+C quits.\n",
-                mode->name, mode->maxSpeed, mode->leadMax);
+    std::printf(
+        "Ready. Speed mode: %s (cap %d %%, max coast %.0f deg). "
+        "Button 9 changes speed, X homes, Ctrl+C quits.\n",
+        mode->name, mode->maxSpeed, mode->leadMax);
 
     std::map<int, int> axisState;
     std::map<int, int> buttonState;
-    std::set<int> active;                  // joints commanded on the previous tick
-    std::map<int, double> hold;            // idle joint -> latched angle
-    std::map<int, double> lastHoldSend;    // joint -> time of last hold command
-    std::set<int> limitReported;           // joints whose "at limit" was printed
+    std::set<int> active;                // joints commanded on the previous tick
+    std::map<int, double> hold;          // idle joint -> latched angle
+    std::map<int, double> lastHoldSend;  // joint -> time of last hold command
+    std::set<int> limitReported;         // joints whose "at limit" was printed
     bool homing = false;
     int badReads = 0;
     std::map<int, int64_t> axisChangedMs;  // axis -> joystick time of last event
@@ -184,7 +181,7 @@ void controlLoop(input::Joystick& js, mycobot::MyCobot280& mc, bool debug) {
             const int value = ev.value;
 
             if (ev.type == input::TYPE_AXIS) {
-                if (isTriggerAxis(number)) continue;   // never a joint command
+                if (isTriggerAxis(number)) continue;  // never a joint command
                 axisState[number] = value;
                 axisChangedMs[number] = tMs;
                 const bool nearSpeedBtn =
@@ -196,7 +193,7 @@ void controlLoop(input::Joystick& js, mycobot::MyCobot280& mc, bool debug) {
                     }
                     blockedAxes.insert(number);
                 } else if (blockedAxes.count(number) && std::abs(value) <= AXIS_DEADZONE) {
-                    blockedAxes.erase(number);   // back at centre -> usable
+                    blockedAxes.erase(number);  // back at centre -> usable
                     if (debug) std::printf("axis   %d unblocked\n", number);
                 }
                 if (debug) std::printf("axis   %d = %d\n", number, value);
@@ -328,9 +325,8 @@ void controlLoop(input::Joystick& js, mycobot::MyCobot280& mc, bool debug) {
                             std::inserter(released, released.begin()));
 
         std::set<int> stillReported;
-        std::set_intersection(limitReported.begin(), limitReported.end(),
-                              moving.begin(), moving.end(),
-                              std::inserter(stillReported, stillReported.begin()));
+        std::set_intersection(limitReported.begin(), limitReported.end(), moving.begin(),
+                              moving.end(), std::inserter(stillReported, stillReported.begin()));
         limitReported = stillReported;
 
         // 6a. Latch idle joints (at session start or on release)
@@ -356,9 +352,7 @@ void controlLoop(input::Joystick& js, mycobot::MyCobot280& mc, bool debug) {
             auto it = lastHoldSend.find(j);
             const double lastSend = it == lastHoldSend.end() ? 0.0 : it->second;
             if (std::abs(drift) > HOLD_TOLERANCE_DEG && now - lastSend >= HOLD_RESEND_PERIOD) {
-                if (debug) {
-                    std::printf("hold J%d: drift %+.1f, back to %.1f\n", j, drift, held);
-                }
+                if (debug) { std::printf("hold J%d: drift %+.1f, back to %.1f\n", j, drift, held); }
                 mc.sendAngle(j, round1(held), HOLD_SPEED);
                 lastHoldSend[j] = now;
                 pause(COMMAND_GAP);
@@ -385,9 +379,7 @@ void controlLoop(input::Joystick& js, mycobot::MyCobot280& mc, bool debug) {
             pause(COMMAND_GAP);
         }
 
-        if (moving != active) {
-            std::printf(">>> jogging joints %s\n", fmtJoints(moving).c_str());
-        }
+        if (moving != active) { std::printf(">>> jogging joints %s\n", fmtJoints(moving).c_str()); }
         active = moving;
         pause(LOOP_PERIOD);
     }
@@ -405,7 +397,7 @@ int main(int argc, char** argv) {
     std::setvbuf(stdout, nullptr, _IOLBF, 0);
 
     // Ctrl+C, kill and terminal hang-up all end the loop and stop the arm
-    struct sigaction sa {};
+    struct sigaction sa{};
     sa.sa_handler = onSignal;
     sigemptyset(&sa.sa_mask);
     sigaction(SIGINT, &sa, nullptr);
@@ -429,7 +421,7 @@ int main(int argc, char** argv) {
             controlLoop(js, mc, debug);
             std::printf("\nQuitting.\n");
         } catch (const std::exception& e) {
-            std::printf("\nStopping: %s\n", e.what());   // e.g. joystick unplugged
+            std::printf("\nStopping: %s\n", e.what());  // e.g. joystick unplugged
             exitCode = 1;
         }
 

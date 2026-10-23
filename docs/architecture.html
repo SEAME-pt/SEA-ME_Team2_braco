@@ -521,7 +521,8 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
 │   ├── architecture.html  architecture.md   <span class="c"># this page, two formats</span>
 │   ├── ADR-000N-*.md  safety.md  protocol_commands.md
 │   └── arm-rest-mode.md  dev-setup.md  ROS2/  inventory/
-└── .github/  .githooks/       <span class="c"># CI, PR template, commit hook</span></pre>
+├── .github/  .githooks/       <span class="c"># CI, PR template, commit and pre-push hooks</span>
+└── .clang-format  .ruff.toml  requirements-dev.txt   <span class="c"># formatters, host dev venv</span></pre>
         <div class="rules">
           <div class="rule"><h3>Package = braco_ + role</h3><p>One word after the prefix: <code>driver</code>, <code>teleop</code>, <code>mission</code>, <code>bringup</code>. The prefix avoids collisions with ROS packages and marks what belongs to the project.</p></div>
           <div class="rule"><h3>One name per thing</h3><p>File, executable and node share the name: <code>arm_driver.cpp</code> runs as <code>arm_driver</code>. Topics and services of the arm live under <code>/arm/*</code>.</p></div>
@@ -728,10 +729,11 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
       <div class="grp">
         <div class="grp-head"><h3>CI</h3><span>mk/ci.mk · same as GitHub</span></div>
         <ul class="cmds">
-          <li><code>make ci</code><span>The <code>host</code> job: lint, page tests.</span></li>
+          <li><code>make ci</code><span>The <code>host</code> job: format check, lint, page tests.</span></li>
           <li><code>make ci-ros</code><span>The <code>ros</code> job: rosdep, build, test in a clean image.</span></li>
           <li><code>make ci-image</code><span>Build that job's image.</span></li>
           <li><code>make lint</code><span>Compose files, shellcheck, hadolint.</span></li>
+          <li><code>make format</code><span>clang-format (C++) and ruff (Python); <code>format-check</code> only checks (pre-push hook).</span></li>
         </ul>
       </div>
     </div>
@@ -877,7 +879,7 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
 <pre class="code"><span class="k">make build</span>    <span class="c"># colcon build of ros2_ws/src, in the dev container</span>
 <span class="k">make test</span>     <span class="c"># colcon test: gtest (teleop logic, control owner, auto rest) and ament lint (PC only)</span>
 <span class="k">make restart</span>  <span class="c"># run what was just built</span>
-<span class="k">make ci</span>       <span class="c"># the `host` CI job: lint and the web page tests, no ROS</span>
+<span class="k">make ci</span>       <span class="c"># the `host` CI job: format check, lint and the web page tests, no ROS</span>
 <span class="k">make ci-ros</span>   <span class="c"># the `ros` CI job: rosdep, build and test in a clean image</span></pre>
     <ul class="plain">
       <li><b>PC:</b> everything, <code>RelWithDebInfo</code>, with tests.</li>
@@ -901,7 +903,7 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
       <div><b>braco layout.</b> <code>ros2_ws/src</code> with <code>braco_interfaces</code>, <code>braco_driver</code>, <code>braco_teleop</code>, <code>braco_camera</code>, <code>braco_bringup</code>; one launch and one <code>braco.yaml</code>; a README in every package, <code>mycobot_cpp</code> included.</div>
       <div><b>braco infrastructure.</b> <code>docker/Dockerfile</code>, <code>compose.yml</code> (project <code>braco</code>), <code>braco-image/*</code>, <code>braco.service</code>.</div>
       <div><b>One Makefile.</b> Split in <code>mk/</code>, idempotent <code>make up</code>, ~30 public commands.</div>
-      <div><b>Lean repository root.</b> <code>docker</code>, <code>docs</code>, <code>mk</code>, <code>ros2_ws</code>, <code>scripts</code> (operator scripts run by <code>make</code>), <code>web</code> and the <code>Makefile</code>; <code>mycobot_cpp</code> in <code>ros2_ws/src</code> (one colcon base path, no extra mount); <code>tests/</code>, <code>playground/</code> and the root <code>requirements.txt</code> removed.</div>
+      <div><b>Lean repository root.</b> <code>docker</code>, <code>docs</code>, <code>mk</code>, <code>ros2_ws</code>, <code>scripts</code> (operator scripts run by <code>make</code>), <code>web</code> and the <code>Makefile</code> (plus the formatter configs and <code>requirements-dev.txt</code>); <code>mycobot_cpp</code> in <code>ros2_ws/src</code> (one colcon base path, no extra mount); <code>tests/</code>, <code>playground/</code> and the root <code>requirements.txt</code> removed.</div>
       <div><b>Jetson guards.</b> <code>doctor</code> checks, ccache limit, ROS log cleanup, <code>status</code> with <code>docker stats</code> and <code>tegrastats</code>.</div>
     </div>
 

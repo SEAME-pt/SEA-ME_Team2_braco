@@ -255,7 +255,8 @@ SEA-ME_Team2_braco/
 │   ├── architecture.html  architecture.md   # this document, two formats
 │   ├── ADR-000N-*.md  safety.md  protocol_commands.md
 │   └── arm-rest-mode.md  dev-setup.md  ROS2/  inventory/
-└── .github/  .githooks/       # CI workflow, PR template, commit-msg hook
+├── .github/  .githooks/       # CI workflow, PR template, commit-msg and pre-push hooks
+└── .clang-format  .ruff.toml  requirements-dev.txt   # formatters (make format), host dev venv
 ```
 
 The root holds only the six folders above and the `Makefile`: everything colcon builds is in `ros2_ws/src`, everything
@@ -430,10 +431,11 @@ The **wiring** (devices) comes from the launch arguments, filled by `docker/comp
 
 | Command | What it does |
 |---|---|
-| `make ci` | The `host` job: lint, page tests |
+| `make ci` | The `host` job: format check, lint, page tests |
 | `make ci-ros` | The `ros` job: rosdep, build, test in a clean image |
 | `make ci-image` | Build that job's image |
 | `make lint` | Compose files, shellcheck, hadolint |
+| `make format` | clang-format (C++) and ruff (Python); `format-check` only checks (pre-push hook) |
 
 Each machine has two compose services from the same image: `dev`, the tools container used by `shell`, `run` and
 `build` (on the Jetson a throw-away `run --rm`), and the system itself, `real` on the Jetson or `sim` on the PC.
@@ -517,7 +519,7 @@ runs on the real arm and in simulation.
 make build    # colcon build of ros2_ws/src, in the dev container
 make test     # colcon test: gtest (teleop logic, control owner, auto rest) and ament lint (PC only)
 make restart  # run what was just built
-make ci       # the `host` CI job: lint and the web page tests, no ROS
+make ci       # the `host` CI job: format check, lint and the web page tests, no ROS
 make ci-ros   # the `ros` CI job: rosdep, build and test in a clean image
 ```
 
@@ -545,7 +547,7 @@ PR that closes or opens a gap.
 | **braco layout** | `ros2_ws/src` with `braco_interfaces`, `braco_driver`, `braco_teleop`, `braco_camera`, `braco_bringup`; one launch and one `braco.yaml`; a README in every package, `mycobot_cpp` included |
 | **braco infrastructure** | `docker/Dockerfile`, `compose.yml` (project `braco`), `braco-image/*`, `braco.service` |
 | **One Makefile** | Split in `mk/`, idempotent `make up`, ~30 public commands |
-| **Lean repository root** | `docker`, `docs`, `mk`, `ros2_ws`, `scripts` (operator scripts run by `make`), `web` and the `Makefile`; `mycobot_cpp` in `ros2_ws/src` (one colcon base path, no extra mount); `tests/`, `playground/` and the root `requirements.txt` removed |
+| **Lean repository root** | `docker`, `docs`, `mk`, `ros2_ws`, `scripts` (operator scripts run by `make`), `web` and the `Makefile` (plus the formatter configs and `requirements-dev.txt`); `mycobot_cpp` in `ros2_ws/src` (one colcon base path, no extra mount); `tests/`, `playground/` and the root `requirements.txt` removed |
 | **Jetson guards** | `doctor` checks, ccache limit, ROS log cleanup, `status` with `docker stats` and `tegrastats` |
 
 ### Differs from the target (accepted for now)

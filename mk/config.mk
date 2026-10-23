@@ -18,6 +18,8 @@ SYSTEMD_DEST := /etc/systemd/system/braco.service
 WS_DIR       := ros2_ws
 WS_SRC       := $(WS_DIR)/src
 WS_BAGS      := $(WS_DIR)/bags
+# The plain C++ arm library (no ament linters): formatted by clang-format like the code outside ros2_ws/src.
+CPP_PKG      := $(WS_SRC)/mycobot_cpp
 # Where compose.yml mounts docker/tests inside the containers.
 CONTAINER_TESTS    := /opt/seame/tests
 # Every package colcon builds lives in ros2_ws/src (mycobot_cpp included), mounted at /ws.
@@ -33,7 +35,8 @@ PROJECT_FILES := $(COMPOSE_BASE) $(ENV_EXAMPLE) $(DOCKERFILE) $(CONFIG_DIR)/colc
                  $(addprefix $(SCRIPTS_DIR)/,apt-install-optional.sh env.sh install-plotjuggler.sh \
                                              install-ros-apt-source.sh ros_entrypoint.sh smoke-test.sh)
 
-# Host side (no docker): Python venv for the web page and its tests (web/requirements*.txt).
+# Host side (no docker): Python venv for the web page and its tests (web/requirements*.txt) and the dev tools
+# (requirements-dev.txt: the formatters, plus the container's arm libraries for the editor).
 PYTHON     ?= python3
 VENV       := .venv
 PIP        := $(VENV)/bin/pip
