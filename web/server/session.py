@@ -10,6 +10,12 @@ running is refused as busy). The lease ends when the operator releases it,
 closes the page (after RECONNECT_GRACE, so a reload keeps it) or does nothing
 for IDLE_TIMEOUT seconds.
 
+The lease is also the page's claim on the arm itself (docs/ADR-0002-unique-control.md):
+with a `control` (the arm source), taking the lease asks arm_driver for the control
+(ControlError while the joystick or zero/park has it), every tick renews it while the
+lease is held, and the lease ends when the lease is released or another client forces
+the control away (control_lost()).
+
 Speed is shared too: one value for everybody, changed only by the operator and
 capped at SPEED_LIMIT unless the operator explicitly unlocks the higher range.
 It stays when the lease changes hands, but the unlock does not: a released lease
@@ -24,13 +30,13 @@ import collections
 import threading
 import time
 
-IDLE_TIMEOUT = 60.0       # seconds without a command or a control interaction
-RECONNECT_GRACE = 5.0     # a reload within this time keeps the lease and the presence
+IDLE_TIMEOUT = 60.0  # seconds without a command or a control interaction
+RECONNECT_GRACE = 5.0  # a reload within this time keeps the lease and the presence
 ACTIVITY_LENGTH = 200
-QUEUE_SIZE = 300          # messages waiting for one slow browser before it is skipped
+QUEUE_SIZE = 300  # messages waiting for one slow browser before it is skipped
 NAME_MAX = 32
 SPEED_DEFAULT = 30
-SPEED_LIMIT = 80          # above this the operator has to unlock the fast range
+SPEED_LIMIT = 80  # above this the operator has to unlock the fast range
 SPEED_MAX = 100
 
 
@@ -42,9 +48,13 @@ class BusyError(RuntimeError):
     """Another command is still running."""
 
 
+class ControlError(RuntimeError):
+    """arm_driver gave the control to a client outside the page (the joystick, zero/park)."""
+
+
 def clean_name(name):
-    name = " ".join(str(name or "").split())[:NAME_MAX]
-    return name or "Guest"
+    name = ' '.join(str(name or '').split())[:NAME_MAX]
+    return name or 'Guest'
 
 
 class Client:
@@ -52,22 +62,33 @@ class Client:
         self.id = cid
         self.name = name
         self.ip = ip
-        self.page = ""
+        self.page = ''
         self.since = time.time()
         self.connections = 0
         self.left_at = None
-        self.queues = []   # one asyncio.Queue per open websocket of this client
+        self.queues = []  # one asyncio.Queue per open websocket of this client
 
     def public(self):
-        return {"id": self.id, "name": self.name, "ip": self.ip, "page": self.page,
-                "since": self.since, "online": self.connections > 0}
+        return {
+            'id': self.id,
+            'name': self.name,
+            'ip': self.ip,
+            'page': self.page,
+            'since': self.since,
+            'online': self.connections > 0,
+        }
 
 
 class Hub:
-    def __init__(self, idle_timeout=IDLE_TIMEOUT, grace=RECONNECT_GRACE, clock=time.time):
+    def __init__(
+        self, idle_timeout=IDLE_TIMEOUT, grace=RECONNECT_GRACE, clock=time.time, control=None
+    ):
         self.idle_timeout = idle_timeout
         self.grace = grace
         self.clock = clock
+        self.control = (
+            control  # take_control() / release_control(), or None: the page alone decides
+        )
         self._lock = threading.RLock()
         self._command_lock = threading.Lock()
         self._loop = None
@@ -76,9 +97,9 @@ class Hub:
         self._since = None
         self._last_activity = None
         self._activity = collections.deque(maxlen=ACTIVITY_LENGTH)
-        self._ui = None   # last control-panel state sent by the operator
+        self._ui = None  # last control-panel state sent by the operator
         self._speed = SPEED_DEFAULT
-        self._fast = False   # the operator accepted the warning for speeds above SPEED_LIMIT
+        self._fast = False  # the operator accepted the warning for speeds above SPEED_LIMIT
 
     def bind(self, loop):
         self._loop = loop
@@ -90,9 +111,12 @@ class Hub:
         if self._loop is None:
             return
         with self._lock:
-            queues = [q for c in self._clients.values()
-                      if (only is None or c.id in only) and c.id != exclude
-                      for q in c.queues]
+            queues = [
+                q
+                for c in self._clients.values()
+                if (only is None or c.id in only) and c.id != exclude
+                for q in c.queues
+            ]
         if queues:
             self._loop.call_soon_threadsafe(self._fanout, queues, message)
 
@@ -121,16 +145,16 @@ class Hub:
             client.left_at = None
             client.queues.append(queue)
             welcome = [
-                {"type": "welcome", "you": cid, "name": name, "idle_timeout": self.idle_timeout},
-                {"type": "activity", "entries": list(self._activity)},
+                {'type': 'welcome', 'you': cid, 'name': name, 'idle_timeout': self.idle_timeout},
+                {'type': 'activity', 'entries': list(self._activity)},
                 self._speed_message(),
             ]
             if self._ui is not None:
-                welcome.append(dict(self._ui, type="ui"))
+                welcome.append(dict(self._ui, type='ui'))
         if not returning:
-            self.log(name, "joined", ok=True, by=cid)
+            self.log(name, 'joined', ok=True, by=cid)
         elif renamed:
-            self.log(name, "renamed", ok=True, by=cid)
+            self.log(name, 'renamed', ok=True, by=cid)
         self._send_presence()
         self._send_lease()
         return welcome
@@ -154,7 +178,7 @@ class Hub:
             if client is None or client.name == name:
                 return
             old, client.name = client.name, name
-        self.log(name, "renamed (was {})".format(old), ok=True, by=cid)
+        self.log(name, 'renamed (was {})'.format(old), ok=True, by=cid)
         self._send_presence()
         self._send_lease()
 
@@ -163,7 +187,7 @@ class Hub:
             client = self._clients.get(cid)
             if client is None:
                 return
-            client.page = str(page or "")[:40]
+            client.page = str(page or '')[:40]
         self._send_presence()
 
     def name_of(self, cid, ip=None):
@@ -171,7 +195,7 @@ class Hub:
             client = self._clients.get(cid)
         if client is not None:
             return client.name
-        return "someone" + (" at {}".format(ip) if ip else "")
+        return 'someone' + (' at {}'.format(ip) if ip else '')
 
     def clients_on(self, page):
         with self._lock:
@@ -182,41 +206,52 @@ class Hub:
             return [c.public() for c in sorted(self._clients.values(), key=lambda c: c.since)]
 
     def _send_presence(self):
-        self.broadcast({"type": "presence", "clients": self.presence()})
+        self.broadcast({'type': 'presence', 'clients': self.presence()})
 
     # ---- lease --------------------------------------------------------------------
 
     def lease(self):
         with self._lock:
             if self._holder is None:
-                return {"holder": None, "since": None, "idle_left": None}
+                return {'holder': None, 'since': None, 'idle_left': None}
             client = self._clients.get(self._holder)
             return {
-                "holder": {"id": self._holder, "name": client.name if client else "?"},
-                "since": self._since,
-                "idle_left": max(0.0, round(self.idle_timeout - (self.clock() - self._last_activity), 1)),
+                'holder': {'id': self._holder, 'name': client.name if client else '?'},
+                'since': self._since,
+                'idle_left': max(
+                    0.0, round(self.idle_timeout - (self.clock() - self._last_activity), 1)
+                ),
             }
 
     def _send_lease(self):
-        self.broadcast(dict(self.lease(), type="lease"))
+        self.broadcast(dict(self.lease(), type='lease'))
 
     def take(self, cid):
         with self._lock:
             client = self._clients.get(cid)
             if client is None or client.connections == 0:
-                raise LockedError("open the page first (no live connection for this tab)")
+                raise LockedError('open the page first (no live connection for this tab)')
             if self._holder == cid:
                 self._last_activity = self.clock()
                 return
             if self._holder is not None:
-                raise LockedError("the arm is controlled by {}".format(self.name_of(self._holder)))
+                raise LockedError('the arm is controlled by {}'.format(self.name_of(self._holder)))
+        # A ROS service call, outside the lock. ControlError: the joystick (or a script) has it.
+        if self.control is not None:
+            self.control.take_control()
+        with self._lock:
+            if self._holder == cid:
+                return
+            if self._holder is not None:  # another tab won the race; the control stays the page's
+                raise LockedError('the arm is controlled by {}'.format(self.name_of(self._holder)))
             now = self.clock()
             self._holder, self._since, self._last_activity = cid, now, now
             self._ui = None
-        self.log(client.name, "took control", ok=True, by=cid)
+        self.log(client.name, 'took control', ok=True, by=cid)
         self._send_lease()
 
-    def release(self, cid, reason=None):
+    def release(self, cid, reason=None, tell_control=True):
+        """tell_control=False: arm_driver already gave the control to someone else."""
         with self._lock:
             if self._holder != cid:
                 return False
@@ -229,11 +264,24 @@ class Hub:
             speed = self._speed_message()
         if capped:
             self.broadcast(speed)
-        self.log(self.name_of(cid), "released control" + (" ({})".format(reason) if reason else ""),
-                 ok=True, by=None if reason else cid)
+        self.log(
+            self.name_of(cid),
+            'released control' + (' ({})'.format(reason) if reason else ''),
+            ok=True,
+            by=None if reason else cid,
+        )
         self._send_lease()
-        self.broadcast({"type": "ui", "from": None, "state": None})
+        self.broadcast({'type': 'ui', 'from': None, 'state': None})
+        if tell_control and self.control is not None:
+            self.control.release_control()
         return True
+
+    def control_lost(self, owner):
+        """arm_driver gave the control to `owner` (the joystick forced it): the lease ends. Any thread."""
+        with self._lock:
+            holder = self._holder
+        if holder is not None:
+            self.release(holder, '{} took control'.format(owner), tell_control=False)
 
     # ---- speed, shared by everybody -----------------------------------------------
 
@@ -243,27 +291,32 @@ class Hub:
             return self._speed
 
     def _speed_message(self):
-        return {"type": "speed", "value": self._speed, "fast": self._fast,
-                "limit": SPEED_LIMIT, "max": SPEED_MAX}
+        return {
+            'type': 'speed',
+            'value': self._speed,
+            'fast': self._fast,
+            'limit': SPEED_LIMIT,
+            'max': SPEED_MAX,
+        }
 
     def set_speed(self, cid, value, fast=False):
         """Operator only. Above SPEED_LIMIT it needs fast=True (the page's warning, accepted)."""
         if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= SPEED_MAX:
-            raise ValueError("speed must be a whole number from 1 to {}".format(SPEED_MAX))
+            raise ValueError('speed must be a whole number from 1 to {}'.format(SPEED_MAX))
         if value > SPEED_LIMIT and not fast:
-            raise ValueError("speed above {} needs the fast range unlocked".format(SPEED_LIMIT))
+            raise ValueError('speed above {} needs the fast range unlocked'.format(SPEED_LIMIT))
         with self._lock:
             if self._holder is None:
-                raise LockedError("take control first")
+                raise LockedError('take control first')
             if self._holder != cid:
-                raise LockedError("the arm is controlled by {}".format(self.name_of(self._holder)))
+                raise LockedError('the arm is controlled by {}'.format(self.name_of(self._holder)))
             changed = value != self._speed
             self._speed, self._fast = value, bool(fast) and value > SPEED_LIMIT
             self._last_activity = self.clock()
             message = self._speed_message()
         self.broadcast(message)
         if changed:
-            self.log(self.name_of(cid), "speed {}".format(value), ok=True, by=cid)
+            self.log(self.name_of(cid), 'speed {}'.format(value), ok=True, by=cid)
         return message
 
     def touch(self, cid):
@@ -276,28 +329,44 @@ class Hub:
             return cid is not None and self._holder == cid
 
     def tick(self):
-        """Once a second: idle lease, clients gone for good, lease countdown."""
+        """Once a second: idle lease, clients gone for good, the driver's control, lease countdown.
+
+        It may call a ROS service: run it outside the event loop.
+        """
         now = self.clock()
         gone = []
         with self._lock:
             for cid, client in list(self._clients.items()):
-                if client.connections == 0 and client.left_at and now - client.left_at > self.grace:
+                if (
+                    client.connections == 0
+                    and client.left_at
+                    and now - client.left_at > self.grace
+                ):
                     gone.append(client)
             holder = self._holder
             idle = holder is not None and now - self._last_activity > self.idle_timeout
         if idle:
-            self.release(holder, "idle {:.0f} s".format(self.idle_timeout))
+            self.release(holder, 'idle {:.0f} s'.format(self.idle_timeout))
         for client in gone:
             if self._holder == client.id:
-                self.release(client.id, "left the page")
+                self.release(client.id, 'left the page')
             with self._lock:
                 if self._clients.get(client.id) is client and client.connections == 0:
                     del self._clients[client.id]
-            self.log(client.name, "left", ok=True, by=client.id)
+            self.log(client.name, 'left', ok=True, by=client.id)
         if gone:
             self._send_presence()
+        holder = self._holder
+        if holder is not None and self.control is not None:
+            # Keep arm_driver's control while the lease lasts (it frees an idle owner after 5 s)
+            try:
+                self.control.take_control()
+            except ControlError as e:
+                self.release(holder, str(e), tell_control=False)
+            except Exception as e:  # driver restarting: the next tick tries again
+                print('braco: keeping the control: {}'.format(e))
         if self._holder is not None:
-            self._send_lease()   # keeps the idle countdown moving on every page
+            self._send_lease()  # keeps the idle countdown moving on every page
 
     # ---- operator's control panel, mirrored to the viewers ------------------------
 
@@ -306,8 +375,8 @@ class Hub:
             return
         self.touch(cid)
         with self._lock:
-            self._ui = {"from": cid, "name": self.name_of(cid), "state": state}
-            message = dict(self._ui, type="ui")
+            self._ui = {'from': cid, 'name': self.name_of(cid), 'state': state}
+            message = dict(self._ui, type='ui')
         self.broadcast(message, exclude=cid)
 
     # ---- commands -----------------------------------------------------------------
@@ -323,11 +392,11 @@ class Hub:
             with self._lock:
                 holder = self._holder
             if holder is None:
-                raise LockedError("take control first")
+                raise LockedError('take control first')
             if holder != cid:
-                raise LockedError("the arm is controlled by {}".format(self.name_of(holder)))
+                raise LockedError('the arm is controlled by {}'.format(self.name_of(holder)))
             if not self._command_lock.acquire(blocking=False):
-                raise BusyError("another command is still running, try again")
+                raise BusyError('another command is still running, try again')
         try:
             result = fn()
         except Exception as e:
@@ -344,10 +413,17 @@ class Hub:
 
     def log(self, who, action, ok=True, detail=None, by=None):
         """`by` is the client id (None for the arm itself), so a tab can skip its own entries."""
-        entry = {"t": self.clock(), "who": who, "action": action, "ok": ok, "detail": detail, "by": by}
+        entry = {
+            't': self.clock(),
+            'who': who,
+            'action': action,
+            'ok': ok,
+            'detail': detail,
+            'by': by,
+        }
         with self._lock:
             self._activity.append(entry)
-        self.broadcast({"type": "activity", "entry": entry})
+        self.broadcast({'type': 'activity', 'entry': entry})
         return entry
 
     def activity(self):

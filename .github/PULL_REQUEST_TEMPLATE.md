@@ -18,3 +18,4 @@ List any manual testing performed (e.g., hardware/E-Stop checks, Gazebo simulato
 <!-- 
 Indicate code review approval and any documentation updates (e.g., README, wiring/pinout diagrams, or ROS topic definitions).
 -->
+- [ ] `docs/architecture.html` and `docs/architecture.md` updated (sections listed in "Keeping this document current"), or N/A: no change to nodes, topics, packages, folders, `make` commands or deployment
