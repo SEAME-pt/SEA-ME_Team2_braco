@@ -17,9 +17,9 @@
 #include <map>
 #include <set>
 
-#include "braco_teleop/teleop_logic.hpp"
+#include "teleop_logic.hpp"
 
-namespace tl = braco_teleop::teleop;
+namespace tl = mycobot::teleop;
 
 TEST(StickRatio, DeadzoneIsZero)
 {
@@ -103,4 +103,34 @@ TEST(HomeStep, DoneWithinTolerance)
 {
   const mycobot::Angles angles = {0.5, -0.5, 0.0, 0.9, 0.0, 0.0};
   EXPECT_FALSE(tl::homeStep(angles));
+}
+
+TEST(ButtonHold, FiresOnceAfterTheHoldTime)
+{
+  tl::ButtonHold hold(1.0);
+  EXPECT_FALSE(hold.update(true, 10.0));
+  EXPECT_FALSE(hold.update(true, 10.9));
+  EXPECT_TRUE(hold.update(true, 11.0));
+  EXPECT_FALSE(hold.update(true, 11.5));   // still the same press
+  EXPECT_FALSE(hold.update(true, 15.0));
+}
+
+TEST(ButtonHold, ShortPressesNeverFire)
+{
+  tl::ButtonHold hold(1.0);
+  EXPECT_FALSE(hold.update(true, 0.0));
+  EXPECT_FALSE(hold.update(false, 0.6));
+  EXPECT_FALSE(hold.update(true, 0.8));    // the timer starts again
+  EXPECT_FALSE(hold.update(true, 1.5));
+  EXPECT_TRUE(hold.update(true, 1.8));
+}
+
+TEST(ButtonHold, ReleaseRearms)
+{
+  tl::ButtonHold hold(1.0);
+  hold.update(true, 0.0);
+  EXPECT_TRUE(hold.update(true, 1.0));
+  EXPECT_FALSE(hold.update(false, 1.2));
+  EXPECT_FALSE(hold.update(true, 2.0));
+  EXPECT_TRUE(hold.update(true, 3.0));
 }

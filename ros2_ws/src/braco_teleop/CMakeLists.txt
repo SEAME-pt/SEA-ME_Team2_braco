@@ -16,7 +16,6 @@ find_package(std_srvs REQUIRED)
 find_package(braco_interfaces REQUIRED)
 
 add_executable(joystick_teleop src/joystick_teleop.cpp)
-target_include_directories(joystick_teleop PRIVATE include)
 target_link_libraries(joystick_teleop
   mycobot_cpp::mycobot_cpp rclcpp::rclcpp
   ${sensor_msgs_TARGETS} ${std_msgs_TARGETS} ${std_srvs_TARGETS} ${braco_interfaces_TARGETS})
@@ -30,7 +29,6 @@ if(BUILD_TESTING)
 
   find_package(ament_cmake_gtest REQUIRED)
   ament_add_gtest(test_teleop_logic test/test_teleop_logic.cpp)
-  target_include_directories(test_teleop_logic PRIVATE include)
   target_link_libraries(test_teleop_logic mycobot_cpp::mycobot_cpp)
 endif()
 

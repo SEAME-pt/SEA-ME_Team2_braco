@@ -10,6 +10,12 @@ running is refused as busy). The lease ends when the operator releases it,
 closes the page (after RECONNECT_GRACE, so a reload keeps it) or does nothing
 for IDLE_TIMEOUT seconds.
 
+The lease is also the page's claim on the arm itself (docs/ADR-0002-unique-control.md):
+with a `control` (the arm source), taking the lease asks arm_driver for the control
+(ControlError while the joystick or zero/park has it), every tick renews it while the
+lease is held, and the lease ends when the lease is released or another client forces
+the control away (control_lost()).
+
 Speed is shared too: one value for everybody, changed only by the operator and
 capped at SPEED_LIMIT unless the operator explicitly unlocks the higher range.
 It stays when the lease changes hands, but the unlock does not: a released lease
@@ -42,6 +48,10 @@ class BusyError(RuntimeError):
     """Another command is still running."""
 
 
+class ControlError(RuntimeError):
+    """arm_driver gave the control to a client outside the page (the joystick, zero/park)."""
+
+
 def clean_name(name):
     name = ' '.join(str(name or '').split())[:NAME_MAX]
     return name or 'Guest'
@@ -70,10 +80,15 @@ class Client:
 
 
 class Hub:
-    def __init__(self, idle_timeout=IDLE_TIMEOUT, grace=RECONNECT_GRACE, clock=time.time):
+    def __init__(
+        self, idle_timeout=IDLE_TIMEOUT, grace=RECONNECT_GRACE, clock=time.time, control=None
+    ):
         self.idle_timeout = idle_timeout
         self.grace = grace
         self.clock = clock
+        self.control = (
+            control  # take_control() / release_control(), or None: the page alone decides
+        )
         self._lock = threading.RLock()
         self._command_lock = threading.Lock()
         self._loop = None
@@ -221,13 +236,22 @@ class Hub:
                 return
             if self._holder is not None:
                 raise LockedError('the arm is controlled by {}'.format(self.name_of(self._holder)))
+        # A ROS service call, outside the lock. ControlError: the joystick (or a script) has it.
+        if self.control is not None:
+            self.control.take_control()
+        with self._lock:
+            if self._holder == cid:
+                return
+            if self._holder is not None:  # another tab won the race; the control stays the page's
+                raise LockedError('the arm is controlled by {}'.format(self.name_of(self._holder)))
             now = self.clock()
             self._holder, self._since, self._last_activity = cid, now, now
             self._ui = None
         self.log(client.name, 'took control', ok=True, by=cid)
         self._send_lease()
 
-    def release(self, cid, reason=None):
+    def release(self, cid, reason=None, tell_control=True):
+        """tell_control=False: arm_driver already gave the control to someone else."""
         with self._lock:
             if self._holder != cid:
                 return False
@@ -248,7 +272,16 @@ class Hub:
         )
         self._send_lease()
         self.broadcast({'type': 'ui', 'from': None, 'state': None})
+        if tell_control and self.control is not None:
+            self.control.release_control()
         return True
+
+    def control_lost(self, owner):
+        """arm_driver gave the control to `owner` (the joystick forced it): the lease ends. Any thread."""
+        with self._lock:
+            holder = self._holder
+        if holder is not None:
+            self.release(holder, '{} took control'.format(owner), tell_control=False)
 
     # ---- speed, shared by everybody -----------------------------------------------
 
@@ -296,7 +329,10 @@ class Hub:
             return cid is not None and self._holder == cid
 
     def tick(self):
-        """Once a second: idle lease, clients gone for good, lease countdown."""
+        """Once a second: idle lease, clients gone for good, the driver's control, lease countdown.
+
+        It may call a ROS service: run it outside the event loop.
+        """
         now = self.clock()
         gone = []
         with self._lock:
@@ -320,6 +356,15 @@ class Hub:
             self.log(client.name, 'left', ok=True, by=client.id)
         if gone:
             self._send_presence()
+        holder = self._holder
+        if holder is not None and self.control is not None:
+            # Keep arm_driver's control while the lease lasts (it frees an idle owner after 5 s)
+            try:
+                self.control.take_control()
+            except ControlError as e:
+                self.release(holder, str(e), tell_control=False)
+            except Exception as e:  # driver restarting: the next tick tries again
+                print('braco: keeping the control: {}'.format(e))
         if self._holder is not None:
             self._send_lease()  # keeps the idle countdown moving on every page
 
