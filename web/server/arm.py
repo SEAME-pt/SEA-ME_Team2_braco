@@ -19,7 +19,7 @@ import time
 
 from . import ros
 
-DEFAULT_PORT = "/dev/ttyTHS1"
+DEFAULT_PORT = '/dev/ttyTHS1'
 DEFAULT_BAUD = 1000000
 
 # Same thresholds as TEMP_WARM_C / TEMP_HOT_C in libs/cpp/includes/mycobot.hpp
@@ -42,23 +42,26 @@ DH = [
 
 # Fixed poses, same as ZERO_ANGLES / PARK_ANGLES in libs/cpp/includes/mycobot.hpp
 # (J3 -148: just inside the J3 limit)
-POSES = {
-    "park": [0, 131, -148, 146, 4.5, 0],
-    "zero": [0, 0, 0, 0, 0, 0],
-}
+POSES = {'park': [0, 131, -148, 146, 4.5, 0], 'zero': [0, 0, 0, 0, 0, 0]}
 POSE_SPEED = 30
-POSE_HOLD = 10   # mock only: seconds to stay in the pose before wandering again
+POSE_HOLD = 10  # mock only: seconds to stay in the pose before wandering again
 
 # Gazebo (ros2_control) source. Joint names follow the myCobot 280 URDF; override
 # them with GZ_JOINT_NAMES (comma separated) if the simulated model differs.
-GZ_JOINT_NAMES = ["joint2_to_joint1", "joint3_to_joint2", "joint4_to_joint3",
-                  "joint5_to_joint4", "joint6_to_joint5", "joint6output_to_joint6"]
-GZ_STATE_TOPIC = "/joint_states"
-GZ_TRAJ_TOPIC = "/joint_trajectory_controller/joint_trajectory"
-GZ_DEG_PER_SPEED = 1.0   # the arm's speed (1-100) in degrees per second
-GZ_MIN_MOVE_TIME = 0.5   # seconds, so a tiny move is not an instant jump
-GZ_MOVING_EPS = 0.05     # degrees: smaller changes between two states count as standing still
-GZ_STALE_AFTER = 2.0     # seconds without /joint_states before the page shows "disconnected"
+GZ_JOINT_NAMES = [
+    'joint2_to_joint1',
+    'joint3_to_joint2',
+    'joint4_to_joint3',
+    'joint5_to_joint4',
+    'joint6_to_joint5',
+    'joint6output_to_joint6',
+]
+GZ_STATE_TOPIC = '/joint_states'
+GZ_TRAJ_TOPIC = '/joint_trajectory_controller/joint_trajectory'
+GZ_DEG_PER_SPEED = 1.0  # the arm's speed (1-100) in degrees per second
+GZ_MIN_MOVE_TIME = 0.5  # seconds, so a tiny move is not an instant jump
+GZ_MOVING_EPS = 0.05  # degrees: smaller changes between two states count as standing still
+GZ_STALE_AFTER = 2.0  # seconds without /joint_states before the page shows "disconnected"
 
 # arm_driver (ROS 2) source: same values as ros2_ws/src/braco_bringup/src/arm_moves.cpp.
 # The driver stops the arm when no motion command arrives for 300 ms, so a move is a
@@ -67,12 +70,12 @@ ROS_STEP_DEG = 15.0
 ROS_RESEND_S = 0.1
 ROS_TOLERANCE_DEG = 2.0
 ROS_MOVE_TIMEOUT = 20.0
-ROS_STATE_TIMEOUT = 0.5   # older /joint_states = no feedback for a move
-ROS_STALE_AFTER = 2.0     # seconds without /joint_states before the page shows "disconnected"
+ROS_STATE_TIMEOUT = 0.5  # older /joint_states = no feedback for a move
+ROS_STALE_AFTER = 2.0  # seconds without /joint_states before the page shows "disconnected"
 
-ANGLE_PERIOD = 0.2   # 5 Hz
-STATE_PERIOD = 1.0   # power / moving
-TEMP_PERIOD = 2.0    # same as temps_lcd.cpp: temperatures change slowly
+ANGLE_PERIOD = 0.2  # 5 Hz
+STATE_PERIOD = 1.0  # power / moving
+TEMP_PERIOD = 2.0  # same as temps_lcd.cpp: temperatures change slowly
 
 
 class RestingError(RuntimeError):
@@ -81,17 +84,17 @@ class RestingError(RuntimeError):
 
 def check_awake(resting):
     if resting:
-        raise RestingError("arm is resting, wake it up first")
+        raise RestingError('arm is resting, wake it up first')
 
 
 def temp_level(celsius):
     if celsius is None:
         return None
     if celsius >= TEMP_HOT_C:
-        return "hot"
+        return 'hot'
     if celsius >= TEMP_WARM_C:
-        return "warm"
-    return "normal"
+        return 'warm'
+    return 'normal'
 
 
 def read_value(getter, retries=5):
@@ -121,36 +124,46 @@ def dh_coords(angles):
     for (offset, d, a, alpha), q in zip(DH, angles):
         th = math.radians(q) + offset
         c, s, ca, sa = math.cos(th), math.sin(th), math.cos(alpha), math.sin(alpha)
-        t = [[c, -s * ca, s * sa, a * c], [s, c * ca, -c * sa, a * s],
-             [0, sa, ca, d], [0, 0, 0, 1]]
+        t = [
+            [c, -s * ca, s * sa, a * c],
+            [s, c * ca, -c * sa, a * s],
+            [0, sa, ca, d],
+            [0, 0, 0, 1],
+        ]
         m = [[sum(m[i][k] * t[k][j] for k in range(4)) for j in range(4)] for i in range(4)]
-    return [round(m[0][3], 1), round(m[1][3], 1), round(m[2][3], 1),
-            round(angles[3], 2), round(angles[4], 2), round(angles[5], 2)]
+    return [
+        round(m[0][3], 1),
+        round(m[1][3], 1),
+        round(m[2][3], 1),
+        round(angles[3], 2),
+        round(angles[4], 2),
+        round(angles[5], 2),
+    ]
 
 
 class _Base:
-    CAPABILITIES = ("stop", "poses", "joints", "wake")
+    CAPABILITIES = ('stop', 'poses', 'joints', 'wake')
 
     def __init__(self):
         self._lock = threading.Lock()
         self._closed = threading.Event()
         self._state = {
-            "mock": False,
-            "source": "real",   # real | mock | gazebo
-            "connected": False,
-            "error": None,
-            "angles": None,
-            "coords": None,
-            "temps": None,
-            "temp_levels": None,
-            "power_on": None,
-            "resting": False,   # rest mode (motion refused): set by set_rest(), cleared by wake_up()
-            "moving": None,
-            "gripper": None,    # "open" | "closed" | None (unknown), last commanded
-            "led": None,        # [r, g, b] 0-255, last commanded
-            "notice": None,     # {"t", "text"}: something the operators should know (move timed out...)
-            "capabilities": list(self.CAPABILITIES),
-            "updated": None,
+            'mock': False,
+            'source': 'real',  # real | mock | gazebo
+            'connected': False,
+            'error': None,
+            'angles': None,
+            'coords': None,
+            'temps': None,
+            'temp_levels': None,
+            'power_on': None,
+            'resting': False,  # rest mode (motion refused): set by set_rest(), cleared by wake_up()
+            'moving': None,
+            'gripper': None,  # "open" | "closed" | None (unknown), last commanded
+            'led': None,  # [r, g, b] 0-255, last commanded
+            'notice': None,  # {"t", "text"}: something the operators should know (move timed out...)
+            'capabilities': list(self.CAPABILITIES),
+            'updated': None,
         }
 
     def snapshot(self):
@@ -160,7 +173,7 @@ class _Base:
     def _update(self, **fields):
         with self._lock:
             self._state.update(fields)
-            self._state["updated"] = time.time()
+            self._state['updated'] = time.time()
 
     def close(self):
         """Stop the polling thread (server shutdown, tests)."""
@@ -177,7 +190,7 @@ class ArmSource(_Base):
         self.port = port
         self.baud = baud
         self._mc = None
-        self._serial = threading.Lock()   # pymycobot is not thread-safe
+        self._serial = threading.Lock()  # pymycobot is not thread-safe
 
     def start(self):
         self._thread = threading.Thread(target=self._run, daemon=True)
@@ -185,7 +198,7 @@ class ArmSource(_Base):
 
     def close(self):
         super().close()
-        thread = getattr(self, "_thread", None)
+        thread = getattr(self, '_thread', None)
         if thread is not None:
             thread.join(timeout=5)
 
@@ -205,7 +218,7 @@ class ArmSource(_Base):
                 try:
                     self._connect()
                     self._update(connected=True, error=None)
-                except Exception as e:   # port busy, missing, no permission
+                except Exception as e:  # port busy, missing, no permission
                     self._update(connected=False, error=str(e))
                     self._closed.wait(3)
                     continue
@@ -215,8 +228,9 @@ class ArmSource(_Base):
                 # skip the other reads while the arm is not answering.
                 angles = read_value(lambda: self._call(self._mc.get_angles), retries=2)
                 if angles is None:
-                    self._update(angles=None, coords=None, connected=False,
-                                 error="no reply from the arm")
+                    self._update(
+                        angles=None, coords=None, connected=False, error='no reply from the arm'
+                    )
                     self._closed.wait(ANGLE_PERIOD)
                     continue
                 coords = read_value(lambda: self._call(self._mc.get_coords), retries=1)
@@ -232,7 +246,7 @@ class ArmSource(_Base):
                 if now - last_temp >= TEMP_PERIOD:
                     last_temp = now
                     self._set_temps(self._read_temps())
-            except Exception as e:   # serial unplugged mid-run
+            except Exception as e:  # serial unplugged mid-run
                 self._update(connected=False, error=str(e))
                 self._mc = None
                 self._closed.wait(1)
@@ -242,7 +256,7 @@ class ArmSource(_Base):
         self._close_port()
 
     def _close_port(self):
-        port = getattr(self._mc, "_serial_port", None)
+        port = getattr(self._mc, '_serial_port', None)
         if port is not None:
             with self._serial:
                 port.close()
@@ -255,7 +269,7 @@ class ArmSource(_Base):
             return fn()
 
     def _read_temps(self):
-        getter = getattr(self._mc, "get_servo_temps", None)
+        getter = getattr(self._mc, 'get_servo_temps', None)
         if getter is None:
             return None
         value = self._call(getter)
@@ -265,31 +279,31 @@ class ArmSource(_Base):
 
     def stop_motion(self):
         if self._mc is None:
-            raise RuntimeError("arm not connected")
+            raise RuntimeError('arm not connected')
         with self._serial:
             self._mc.stop()
 
     def go_to_pose(self, name, speed=POSE_SPEED):
         if name not in POSES:
-            raise ValueError("unknown pose: " + name)
+            raise ValueError('unknown pose: ' + name)
         if self._mc is None:
-            raise RuntimeError("arm not connected")
-        check_awake(self.snapshot()["resting"])
+            raise RuntimeError('arm not connected')
+        check_awake(self.snapshot()['resting'])
         with self._serial:
             self._mc.send_angles(POSES[name], speed)
 
     def move_joint(self, index, angle, speed=POSE_SPEED):
         """Move one joint (0-based index); the others are not commanded."""
         if self._mc is None:
-            raise RuntimeError("arm not connected")
-        check_awake(self.snapshot()["resting"])
+            raise RuntimeError('arm not connected')
+        check_awake(self.snapshot()['resting'])
         with self._serial:
             self._mc.send_angle(index + 1, angle, speed)
 
     def wake_up(self):
         """Power the servos on. The arm stays where it is: nothing moves."""
         if self._mc is None:
-            raise RuntimeError("arm not connected")
+            raise RuntimeError('arm not connected')
         with self._serial:
             self._mc.power_on()
         time.sleep(0.3)
@@ -299,7 +313,7 @@ class ArmSource(_Base):
 class MockArm(_Base):
     """Synthetic arm: slow sine waves inside the joint limits, warming servos."""
 
-    CAPABILITIES = ("stop", "poses", "joints", "wake", "rest", "gripper", "led")
+    CAPABILITIES = ('stop', 'poses', 'joints', 'wake', 'rest', 'gripper', 'led')
 
     def __init__(self):
         super().__init__()
@@ -307,8 +321,8 @@ class MockArm(_Base):
         self._temps = [32.0, 35.0, 36.0, 38.0, 34.0, 31.0]
         self._stopped_until = 0.0
         self._frozen = None
-        self._pose = None   # (angles, started_at, from_angles) while holding a pose
-        self._update(mock=True, source="mock", connected=True, power_on=True)
+        self._pose = None  # (angles, started_at, from_angles) while holding a pose
+        self._update(mock=True, source='mock', connected=True, power_on=True)
 
     def start(self):
         threading.Thread(target=self._run, daemon=True).start()
@@ -317,8 +331,8 @@ class MockArm(_Base):
         last_temp = 0.0
         while not self._closed.is_set():
             now = time.time()
-            if self.snapshot()["resting"]:
-                angles, moving = self._frozen, False   # resting: servos released
+            if self.snapshot()['resting']:
+                angles, moving = self._frozen, False  # resting: servos released
             elif now < self._stopped_until:
                 angles, moving = self._frozen, False
             elif self._pose and now < self._pose[1] + 3 + POSE_HOLD:
@@ -356,26 +370,26 @@ class MockArm(_Base):
 
     def go_to_pose(self, name, speed=POSE_SPEED):
         if name not in POSES:
-            raise ValueError("unknown pose: " + name)
-        check_awake(self.snapshot()["resting"])
+            raise ValueError('unknown pose: ' + name)
+        check_awake(self.snapshot()['resting'])
         self._start_move(POSES[name])
 
     def move_joint(self, index, angle, speed=POSE_SPEED):
-        check_awake(self.snapshot()["resting"])
+        check_awake(self.snapshot()['resting'])
         target = list(self._frozen or [0.0] * 6)
         target[index] = angle
         self._start_move(target)
 
     def wake_up(self):
-        self._update(power_on=True, resting=False)   # stays where it is
+        self._update(power_on=True, resting=False)  # stays where it is
 
     def set_rest(self, on):
         self.stop_motion()
         self._update(resting=bool(on))
 
     def set_gripper(self, closed):
-        check_awake(self.snapshot()["resting"])
-        self._update(gripper="closed" if closed else "open")
+        check_awake(self.snapshot()['resting'])
+        self._update(gripper='closed' if closed else 'open')
 
     def set_led(self, r, g, b):
         self._update(led=[int(r), int(g), int(b)])
@@ -387,8 +401,6 @@ class MockArm(_Base):
         self._pose = (target, time.time(), origin)
 
 
-
-
 class GazeboArm(_Base):
     """Arm simulated in Gazebo, read and commanded through ROS 2.
 
@@ -398,7 +410,9 @@ class GazeboArm(_Base):
     simulation: those stay None.
     """
 
-    def __init__(self, joint_names=None, state_topic=GZ_STATE_TOPIC, traj_topic=GZ_TRAJ_TOPIC, bridge=None):
+    def __init__(
+        self, joint_names=None, state_topic=GZ_STATE_TOPIC, traj_topic=GZ_TRAJ_TOPIC, bridge=None
+    ):
         super().__init__()
         self.joint_names = list(joint_names or GZ_JOINT_NAMES)
         self.state_topic = state_topic
@@ -408,8 +422,9 @@ class GazeboArm(_Base):
         self._msgs = None
         self._last_msg = 0.0
         self._last_move = 0.0
-        self._update(source="gazebo", connected=False, power_on=True,
-                     error="waiting for " + state_topic)
+        self._update(
+            source='gazebo', connected=False, power_on=True, error='waiting for ' + state_topic
+        )
 
     def start(self):
         self._bridge.start()
@@ -419,18 +434,21 @@ class GazeboArm(_Base):
 
     def close(self):
         super().close()
-        thread = getattr(self, "_thread", None)
+        thread = getattr(self, '_thread', None)
         if thread is not None:
             thread.join(timeout=5)
 
     def _setup(self, node):
         if node is None:
-            self._update(connected=False,
-                         error="{}, run inside the sim container".format(self._bridge.error))
+            self._update(
+                connected=False,
+                error='{}, run inside the sim container'.format(self._bridge.error),
+            )
             return
         from builtin_interfaces.msg import Duration
         from sensor_msgs.msg import JointState
         from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
+
         node.create_subscription(JointState, self.state_topic, self._on_joint_state, 10)
         self._msgs = (Duration, JointTrajectory, JointTrajectoryPoint)
         self._publisher = node.create_publisher(JointTrajectory, self.traj_topic, 10)
@@ -443,27 +461,36 @@ class GazeboArm(_Base):
         positions = dict(zip(msg.name, msg.position))
         missing = [n for n in self.joint_names if n not in positions]
         if missing:
-            self._update(connected=False, error="joint_states has no joint " + ", ".join(missing))
+            self._update(connected=False, error='joint_states has no joint ' + ', '.join(missing))
             return
         angles = [round(math.degrees(positions[n]), 2) for n in self.joint_names]
         now = time.time()
-        previous = self.snapshot()["angles"]
+        previous = self.snapshot()['angles']
         if previous is None or max(abs(a - b) for a, b in zip(angles, previous)) > GZ_MOVING_EPS:
             self._last_move = now
         self._last_msg = now
-        self._update(angles=angles, coords=dh_coords(angles), connected=True, error=None,
-                     moving=now - self._last_move < 0.5)
+        self._update(
+            angles=angles,
+            coords=dh_coords(angles),
+            connected=True,
+            error=None,
+            moving=now - self._last_move < 0.5,
+        )
 
     def _check_stale(self):
         if self._last_msg and time.time() - self._last_msg > GZ_STALE_AFTER:
             self._last_msg = 0.0
-            self._update(connected=False, moving=None,
-                         error="no {} for {:.0f} s, is Gazebo running?".format(
-                             self.state_topic, GZ_STALE_AFTER))
+            self._update(
+                connected=False,
+                moving=None,
+                error='no {} for {:.0f} s, is Gazebo running?'.format(
+                    self.state_topic, GZ_STALE_AFTER
+                ),
+            )
 
     def _send(self, target, seconds):
         if self._publisher is None:
-            raise RuntimeError("ROS 2 not ready")
+            raise RuntimeError('ROS 2 not ready')
         Duration, JointTrajectory, JointTrajectoryPoint = self._msgs
         point = JointTrajectoryPoint()
         point.positions = [math.radians(a) for a in target]
@@ -474,22 +501,24 @@ class GazeboArm(_Base):
         self._publisher.publish(trajectory)
 
     def _current(self):
-        angles = self.snapshot()["angles"]
+        angles = self.snapshot()['angles']
         if angles is None:
-            raise RuntimeError("no joint states from Gazebo yet")
+            raise RuntimeError('no joint states from Gazebo yet')
         return angles
 
     def _move_to(self, target, speed):
-        seconds = max(GZ_MIN_MOVE_TIME,
-                      max(abs(t - c) for t, c in zip(target, self._current())) / (speed * GZ_DEG_PER_SPEED))
+        seconds = max(
+            GZ_MIN_MOVE_TIME,
+            max(abs(t - c) for t, c in zip(target, self._current())) / (speed * GZ_DEG_PER_SPEED),
+        )
         self._send(target, seconds)
 
     def stop_motion(self):
-        self._send(self._current(), 0.1)   # a new trajectory replaces the running one
+        self._send(self._current(), 0.1)  # a new trajectory replaces the running one
 
     def go_to_pose(self, name, speed=POSE_SPEED):
         if name not in POSES:
-            raise ValueError("unknown pose: " + name)
+            raise ValueError('unknown pose: ' + name)
         self._move_to([float(a) for a in POSES[name]], speed)
 
     def move_joint(self, index, angle, speed=POSE_SPEED):
@@ -498,7 +527,7 @@ class GazeboArm(_Base):
         self._move_to(target, speed)
 
     def wake_up(self):
-        pass   # simulated servos are always on and never rest
+        pass  # simulated servos are always on and never rest
 
 
 class RosArm(_Base):
@@ -519,7 +548,7 @@ class RosArm(_Base):
     300 ms watchdog stops the arm.
     """
 
-    CAPABILITIES = ("stop", "poses", "joints", "wake", "rest", "gripper", "led")
+    CAPABILITIES = ('stop', 'poses', 'joints', 'wake', 'rest', 'gripper', 'led')
 
     def __init__(self, bridge=None):
         super().__init__()
@@ -530,9 +559,9 @@ class RosArm(_Base):
         self._clients = {}
         self._last_msg = 0.0
         self._last_move = 0.0
-        self._motion = 0   # bumped by every command; a worker stops when it changes
+        self._motion = 0  # bumped by every command; a worker stops when it changes
         self._motion_lock = threading.Lock()
-        self._update(source="ros", connected=False, error="waiting for arm_driver (/joint_states)")
+        self._update(source='ros', connected=False, error='waiting for arm_driver (/joint_states)')
 
     # ---- setup ----------------------------------------------------------------
 
@@ -544,7 +573,7 @@ class RosArm(_Base):
 
     def close(self):
         super().close()
-        thread = getattr(self, "_thread", None)
+        thread = getattr(self, '_thread', None)
         if thread is not None:
             thread.join(timeout=5)
 
@@ -555,27 +584,33 @@ class RosArm(_Base):
         try:
             from braco_interfaces.msg import ArmCommand, ServoTemperatures
         except ImportError as e:
-            self._update(connected=False,
-                         error="braco_interfaces not found, build and source the workspace ({})".format(e))
+            self._update(
+                connected=False,
+                error='braco_interfaces not found, build and source the workspace ({})'.format(e),
+            )
             return
         from rclpy.qos import DurabilityPolicy, QoSProfile
         from sensor_msgs.msg import JointState
         from std_msgs.msg import Bool, ColorRGBA
         from std_srvs.srv import SetBool, Trigger
 
-        self._types = {"ArmCommand": ArmCommand, "ColorRGBA": ColorRGBA,
-                       "SetBool": SetBool, "Trigger": Trigger}
-        node.create_subscription(JointState, "/joint_states", self._on_joint_state, 10)
-        node.create_subscription(ServoTemperatures, "/arm/servo_temperatures", self._on_temps, 10)
+        self._types = {
+            'ArmCommand': ArmCommand,
+            'ColorRGBA': ColorRGBA,
+            'SetBool': SetBool,
+            'Trigger': Trigger,
+        }
+        node.create_subscription(JointState, '/joint_states', self._on_joint_state, 10)
+        node.create_subscription(ServoTemperatures, '/arm/servo_temperatures', self._on_temps, 10)
         latched = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
-        node.create_subscription(Bool, "/arm/read_only", self._on_read_only, latched)
-        self._cmd_pub = node.create_publisher(ArmCommand, "/arm/command", 10)
-        self._led_pub = node.create_publisher(ColorRGBA, "/arm/led", 10)
+        node.create_subscription(Bool, '/arm/read_only', self._on_read_only, latched)
+        self._cmd_pub = node.create_publisher(ArmCommand, '/arm/command', 10)
+        self._led_pub = node.create_publisher(ColorRGBA, '/arm/led', 10)
         self._clients = {
-            "power_on": node.create_client(Trigger, "/arm/power_on"),
-            "release_servos": node.create_client(Trigger, "/arm/release_servos"),
-            "set_gripper": node.create_client(SetBool, "/arm/set_gripper"),
-            "set_read_only": node.create_client(SetBool, "/arm/set_read_only"),
+            'power_on': node.create_client(Trigger, '/arm/power_on'),
+            'release_servos': node.create_client(Trigger, '/arm/release_servos'),
+            'set_gripper': node.create_client(SetBool, '/arm/set_gripper'),
+            'set_read_only': node.create_client(SetBool, '/arm/set_read_only'),
         }
 
     # ---- telemetry --------------------------------------------------------------
@@ -584,19 +619,24 @@ class RosArm(_Base):
         if len(msg.position) < 6:
             return
         names = list(msg.name)
-        wanted = ["joint{}".format(i) for i in range(1, 7)]
+        wanted = ['joint{}'.format(i) for i in range(1, 7)]
         if all(n in names for n in wanted):
             positions = [msg.position[names.index(n)] for n in wanted]
         else:
             positions = list(msg.position[:6])
         angles = [round(math.degrees(p), 2) for p in positions]
         now = time.time()
-        previous = self.snapshot()["angles"]
+        previous = self.snapshot()['angles']
         if previous is None or max(abs(a - b) for a, b in zip(angles, previous)) > GZ_MOVING_EPS:
             self._last_move = now
         self._last_msg = now
-        self._update(angles=angles, coords=dh_coords(angles), connected=True, error=None,
-                     moving=now - self._last_move < 0.5)
+        self._update(
+            angles=angles,
+            coords=dh_coords(angles),
+            connected=True,
+            error=None,
+            moving=now - self._last_move < 0.5,
+        )
 
     def _on_temps(self, msg):
         self._set_temps([int(c) for c in msg.celsius] if msg.valid else None)
@@ -608,40 +648,47 @@ class RosArm(_Base):
         while not self._closed.wait(0.2):
             if self._last_msg and time.time() - self._last_msg > ROS_STALE_AFTER:
                 self._last_msg = 0.0
-                self._update(connected=False, moving=None,
-                             error="no /joint_states for {:.0f} s, is arm_driver running? (make logs)".format(
-                                 ROS_STALE_AFTER))
+                self._update(
+                    connected=False,
+                    moving=None,
+                    error='no /joint_states for {:.0f} s, is arm_driver running? (make logs)'.format(
+                        ROS_STALE_AFTER
+                    ),
+                )
 
     def _fresh_angles(self):
         if not self._last_msg or time.time() - self._last_msg > ROS_STATE_TIMEOUT:
             return None
-        return self.snapshot()["angles"]
+        return self.snapshot()['angles']
 
     def _notice(self, text):
-        self._update(notice={"t": time.time(), "text": text})
+        self._update(notice={'t': time.time(), 'text': text})
 
     # ---- low level ----------------------------------------------------------------
 
     def _ready(self):
         if self._cmd_pub is None:
-            raise RuntimeError(self._bridge.error or "ROS 2 not ready")
+            raise RuntimeError(self._bridge.error or 'ROS 2 not ready')
 
     def _service(self, name, data=None):
         self._ready()
-        srv = self._types["SetBool" if data is not None else "Trigger"]
+        srv = self._types['SetBool' if data is not None else 'Trigger']
         request = srv.Request(data=data) if data is not None else srv.Request()
         result = self._bridge.call(self._clients[name], request)
         if not result.success:
-            raise RuntimeError(result.message or name + " failed")
+            raise RuntimeError(result.message or name + ' failed')
         return result.message
 
     def _publish_angles(self, angles, speed):
-        ArmCommand = self._types["ArmCommand"]
-        self._cmd_pub.publish(ArmCommand(type=ArmCommand.ALL_ANGLES, angles_deg=[float(a) for a in angles],
-                                         speed=int(speed)))
+        ArmCommand = self._types['ArmCommand']
+        self._cmd_pub.publish(
+            ArmCommand(
+                type=ArmCommand.ALL_ANGLES, angles_deg=[float(a) for a in angles], speed=int(speed)
+            )
+        )
 
     def _publish_stop(self):
-        ArmCommand = self._types["ArmCommand"]
+        ArmCommand = self._types['ArmCommand']
         self._cmd_pub.publish(ArmCommand(type=ArmCommand.STOP))
 
     def _cancel(self):
@@ -652,8 +699,9 @@ class RosArm(_Base):
     def _start_move(self, target, speed):
         """Stream `target` in a worker thread."""
         token = self._cancel()
-        threading.Thread(target=self._stream, args=(token, list(target), speed),
-                         daemon=True).start()
+        threading.Thread(
+            target=self._stream, args=(token, list(target), speed), daemon=True
+        ).start()
         return token
 
     def _stream(self, token, target, speed):
@@ -666,22 +714,27 @@ class RosArm(_Base):
                     return
                 # Same fraction for every joint, so they all arrive together
                 scale = min(1.0, ROS_STEP_DEG / deviation)
-                self._publish_angles([round(a + (p - a) * scale, 1) for a, p in zip(angles, target)],
-                                     speed)
+                self._publish_angles(
+                    [round(a + (p - a) * scale, 1) for a, p in zip(angles, target)], speed
+                )
             if time.monotonic() >= end:
                 break
             self._closed.wait(ROS_RESEND_S)
         if token == self._motion and not self._closed.is_set():
             self._publish_stop()
-            self._notice("target not reached in {:.0f} s (or no feedback): arm stopped".format(ROS_MOVE_TIMEOUT))
+            self._notice(
+                'target not reached in {:.0f} s (or no feedback): arm stopped'.format(
+                    ROS_MOVE_TIMEOUT
+                )
+            )
 
     # ---- commands -------------------------------------------------------------------
 
     def _check_can_move(self):
         self._ready()
         if self._fresh_angles() is None:
-            raise RuntimeError("no fresh /joint_states from arm_driver")
-        check_awake(self.snapshot()["resting"])
+            raise RuntimeError('no fresh /joint_states from arm_driver')
+        check_awake(self.snapshot()['resting'])
 
     def stop_motion(self):
         self._ready()
@@ -690,7 +743,7 @@ class RosArm(_Base):
 
     def go_to_pose(self, name, speed=POSE_SPEED):
         if name not in POSES:
-            raise ValueError("unknown pose: " + name)
+            raise ValueError('unknown pose: ' + name)
         self._check_can_move()
         self._start_move(POSES[name], speed)
 
@@ -704,8 +757,8 @@ class RosArm(_Base):
         """Leave rest mode and power the servos on. The arm stays where it is."""
         self._ready()
         self._cancel()
-        self._service("set_read_only", False)
-        self._service("power_on")
+        self._service('set_read_only', False)
+        self._service('power_on')
         self._update(power_on=True, resting=False)
 
     def set_rest(self, on):
@@ -713,17 +766,17 @@ class RosArm(_Base):
         self._ready()
         if on:
             self._cancel()
-        self._service("set_read_only", bool(on))
+        self._service('set_read_only', bool(on))
         self._update(resting=bool(on))
 
     def set_gripper(self, closed):
         self._ready()
-        check_awake(self.snapshot()["resting"])
-        self._service("set_gripper", bool(closed))
-        self._update(gripper="closed" if closed else "open")
+        check_awake(self.snapshot()['resting'])
+        self._service('set_gripper', bool(closed))
+        self._update(gripper='closed' if closed else 'open')
 
     def set_led(self, r, g, b):
         self._ready()
-        ColorRGBA = self._types["ColorRGBA"]
+        ColorRGBA = self._types['ColorRGBA']
         self._led_pub.publish(ColorRGBA(r=r / 255.0, g=g / 255.0, b=b / 255.0, a=1.0))
         self._update(led=[int(r), int(g), int(b)])

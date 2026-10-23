@@ -3,12 +3,13 @@
 #include <fcntl.h>
 #include <termios.h>
 #include <unistd.h>
-#include <vector>
-#include <string>
-#include <iostream>
+
 #include <chrono>
-#include <thread>
 #include <cstdint>
+#include <iostream>
+#include <string>
+#include <thread>
+#include <vector>
 
 class MyCobot {
 private:
@@ -19,13 +20,13 @@ private:
     const uint8_t FOOTER = 0xFA;
 
     // Official Command IDs
-    const uint8_t CMD_POWER_ON           = 0x10;
-    const uint8_t CMD_POWER_OFF          = 0x11;
+    const uint8_t CMD_POWER_ON = 0x10;
+    const uint8_t CMD_POWER_OFF = 0x11;
     const uint8_t CMD_RELEASE_ALL_SERVOS = 0x13;
-    const uint8_t CMD_GET_ANGLES         = 0x20;
-    const uint8_t CMD_SEND_ANGLES        = 0x22;
-    const uint8_t CMD_SEND_ANGLE         = 0x21;
-    const uint8_t CMD_SET_COLOR          = 0x6A;
+    const uint8_t CMD_GET_ANGLES = 0x20;
+    const uint8_t CMD_SEND_ANGLES = 0x22;
+    const uint8_t CMD_SEND_ANGLE = 0x21;
+    const uint8_t CMD_SET_COLOR = 0x6A;
 
     bool write_bytes(const std::vector<uint8_t>& data) {
         if (fd < 0) return false;
@@ -39,11 +40,12 @@ private:
             int res = read(fd, &byte, 1);
             if (res > 0) return 1;
             auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-                std::chrono::steady_clock::now() - start).count();
+                               std::chrono::steady_clock::now() - start)
+                               .count();
             if (elapsed >= timeout_ms) break;
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
-        return 0; // Timeout
+        return 0;  // Timeout
     }
 
 public:
@@ -73,12 +75,13 @@ public:
         tty.c_cflag &= ~(PARENB | PARODD | CSTOPB | CRTSCTS);
 
         // Raw mode (disable character processing)
-        tty.c_iflag &= ~(IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR | ICRNL | IXON | IXOFF | IXANY);
+        tty.c_iflag &=
+            ~(IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR | ICRNL | IXON | IXOFF | IXANY);
         tty.c_lflag &= ~(ECHO | ECHONL | ICANON | ISIG | IEXTEN);
         tty.c_oflag &= ~OPOST;
 
-        tty.c_cc[VMIN]  = 0;
-        tty.c_cc[VTIME] = 1; // 100ms timeout
+        tty.c_cc[VMIN] = 0;
+        tty.c_cc[VTIME] = 1;  // 100ms timeout
 
         if (tcsetattr(fd, TCSANOW, &tty) != 0) {
             close(fd);
@@ -97,9 +100,7 @@ public:
         }
     }
 
-    bool is_connected() const {
-        return fd >= 0;
-    }
+    bool is_connected() const { return fd >= 0; }
 
     // Power on and engage servo torque
     void power_on() {
@@ -144,17 +145,15 @@ public:
 
         // Protocol packet: [0xFE, 0xFE, LEN=6, 0x21, JOINT, VAL_H, VAL_L, SPEED, 0xFA]
         int16_t raw_val = static_cast<int16_t>(angle * 100.0f);
-        std::vector<uint8_t> frame = {
-            HEADER,
-            HEADER,
-            6,
-            CMD_SEND_ANGLE,
-            static_cast<uint8_t>(joint_id),
-            static_cast<uint8_t>((raw_val >> 8) & 0xFF),
-            static_cast<uint8_t>(raw_val & 0xFF),
-            static_cast<uint8_t>(speed & 0xFF),
-            FOOTER
-        };
+        std::vector<uint8_t> frame = {HEADER,
+                                      HEADER,
+                                      6,
+                                      CMD_SEND_ANGLE,
+                                      static_cast<uint8_t>(joint_id),
+                                      static_cast<uint8_t>((raw_val >> 8) & 0xFF),
+                                      static_cast<uint8_t>(raw_val & 0xFF),
+                                      static_cast<uint8_t>(speed & 0xFF),
+                                      FOOTER};
 
         write_bytes(frame);
     }
@@ -184,11 +183,15 @@ public:
                         std::vector<uint8_t> payload(12);
                         bool ok = true;
                         for (int i = 0; i < 12; ++i) {
-                            if (!read_byte(payload[i], 50)) { ok = false; break; }
+                            if (!read_byte(payload[i], 50)) {
+                                ok = false;
+                                break;
+                            }
                         }
                         if (ok) {
                             for (int i = 0; i < 6; ++i) {
-                                int16_t val = (static_cast<int16_t>(payload[i * 2]) << 8) | payload[i * 2 + 1];
+                                int16_t val = (static_cast<int16_t>(payload[i * 2]) << 8) |
+                                              payload[i * 2 + 1];
                                 result.push_back(val / 100.0f);
                             }
                             return result;

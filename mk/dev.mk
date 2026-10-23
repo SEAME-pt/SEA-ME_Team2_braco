@@ -36,7 +36,7 @@ clean: _role ## Delete colcon's build/ install/ log/ and the ROS logs (~/.ros/lo
 	  $(COMPOSE) run --rm --no-deps -T $(DEV) bash -c 'rm -rf "$$HOME/.ros/log"' && echo "cleared ~/.ros/log in the containers"; fi
 
 # ---- host venv for the page (also used by mk/ci.mk) ------------------------------------------
-# web and the web tests only need the web packages, so they also work where requirements.txt (pymycobot, numpy)
+# web and the web tests only need the web packages, so they also work where requirements-dev.txt (pymycobot, numpy)
 # cannot be installed: the venv prefers $(PYTHON) and falls back to python3.
 $(VENV)/bin/python:
 	$(or $(shell command -v $(PYTHON) 2>/dev/null),python3) -m venv $(VENV)

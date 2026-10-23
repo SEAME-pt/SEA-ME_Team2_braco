@@ -24,7 +24,7 @@ from ultralytics import YOLO
 CAMERA_INDEX = 0
 PORT = 8080
 # Tried in order. Older ones are fallbacks for old ultralytics versions.
-MODEL_CANDIDATES = ["yolo26n.pt", "yolo11n.pt", "yolov8n.pt"]
+MODEL_CANDIDATES = ['yolo26n.pt', 'yolo11n.pt', 'yolov8n.pt']
 CONFIDENCE = 0.4
 IMAGE_SIZE = 320  # smaller = faster on the Jetson Nano
 FRAME_WIDTH = 640
@@ -50,33 +50,33 @@ def load_pt_model():
             model = YOLO(path)
             return model, path
         except Exception as error:
-            print(f"Could not load {path}: {error}")
-    print("No model could be loaded. Try: pip install -U ultralytics")
+            print(f'Could not load {path}: {error}')
+    print('No model could be loaded. Try: pip install -U ultralytics')
     sys.exit(1)
 
 
 def load_model():
     """Prefer a TensorRT engine if one was exported, else the .pt model."""
     for path in MODEL_CANDIDATES:
-        engine_path = Path(path).with_suffix(".engine")
+        engine_path = Path(path).with_suffix('.engine')
         if engine_path.exists():
             try:
-                model = YOLO(str(engine_path), task="detect")
-                print(f"Using TensorRT engine {engine_path}")
+                model = YOLO(str(engine_path), task='detect')
+                print(f'Using TensorRT engine {engine_path}')
                 return model
             except Exception as error:
-                print(f"Could not load {engine_path}: {error}")
+                print(f'Could not load {engine_path}: {error}')
     model, path = load_pt_model()
-    print(f"Using {path} (run with --export for a faster TensorRT engine)")
+    print(f'Using {path} (run with --export for a faster TensorRT engine)')
     return model
 
 
 def export_engine():
     """Export the best available model to TensorRT with FP16."""
     model, path = load_pt_model()
-    print(f"Exporting {path} to TensorRT, this takes several minutes...")
-    model.export(format="engine", half=True, imgsz=IMAGE_SIZE)
-    print("Done. Run the script again without --export to use the engine.")
+    print(f'Exporting {path} to TensorRT, this takes several minutes...')
+    model.export(format='engine', half=True, imgsz=IMAGE_SIZE)
+    print('Done. Run the script again without --export to use the engine.')
 
 
 def resolve_class_ids(model, class_names):
@@ -86,8 +86,8 @@ def resolve_class_ids(model, class_names):
     name_to_id = {name: class_id for class_id, name in model.names.items()}
     unknown = [name for name in class_names if name not in name_to_id]
     if unknown:
-        print("Unknown classes:", ", ".join(unknown))
-        print("Run with --list to see the available ones.")
+        print('Unknown classes:', ', '.join(unknown))
+        print('Run with --list to see the available ones.')
         sys.exit(1)
     return [name_to_id[name] for name in class_names]
 
@@ -101,7 +101,7 @@ def detection_loop(model, class_ids):
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, FRAME_HEIGHT)
     cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
     if not cap.isOpened():
-        print("Could not open camera", CAMERA_INDEX)
+        print('Could not open camera', CAMERA_INDEX)
         return
 
     fps = 0.0
@@ -112,20 +112,17 @@ def detection_loop(model, class_ids):
             time.sleep(0.05)
             continue
 
-        results = model(
-            frame, imgsz=IMAGE_SIZE, conf=CONFIDENCE, classes=class_ids, verbose=False
-        )
+        results = model(frame, imgsz=IMAGE_SIZE, conf=CONFIDENCE, classes=class_ids, verbose=False)
         annotated = results[0].plot()
 
         elapsed = time.time() - start
         if elapsed > 0:
             fps = 0.9 * fps + 0.1 * (1.0 / elapsed)
         cv2.putText(
-            annotated, f"{fps:.1f} FPS", (10, 25),
-            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2,
+            annotated, f'{fps:.1f} FPS', (10, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2
         )
 
-        ok, jpg = cv2.imencode(".jpg", annotated, [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY])
+        ok, jpg = cv2.imencode('.jpg', annotated, [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY])
         if not ok:
             continue
         with frame_ready:
@@ -135,19 +132,19 @@ def detection_loop(model, class_ids):
 
 class StreamHandler(BaseHTTPRequestHandler):
     def do_GET(self):
-        if self.path == "/stream":
+        if self.path == '/stream':
             self.send_stream()
         else:
             self.send_response(200)
-            self.send_header("Content-Type", "text/html")
-            self.send_header("Content-Length", str(len(INDEX_HTML)))
+            self.send_header('Content-Type', 'text/html')
+            self.send_header('Content-Length', str(len(INDEX_HTML)))
             self.end_headers()
             self.wfile.write(INDEX_HTML)
 
     def send_stream(self):
         self.send_response(200)
-        self.send_header("Content-Type", "multipart/x-mixed-replace; boundary=frame")
-        self.send_header("Cache-Control", "no-cache")
+        self.send_header('Content-Type', 'multipart/x-mixed-replace; boundary=frame')
+        self.send_header('Cache-Control', 'no-cache')
         self.end_headers()
         try:
             while True:
@@ -156,9 +153,7 @@ class StreamHandler(BaseHTTPRequestHandler):
                     jpeg = latest_jpeg
                 if jpeg is None:
                     continue
-                self.wfile.write(
-                    b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + jpeg + b"\r\n"
-                )
+                self.wfile.write(b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + jpeg + b'\r\n')
         except (BrokenPipeError, ConnectionResetError):
             pass
 
@@ -169,15 +164,15 @@ class StreamHandler(BaseHTTPRequestHandler):
 def main():
     args = sys.argv[1:]
 
-    if "--export" in args:
+    if '--export' in args:
         export_engine()
         return
 
     model = load_model()
 
-    if "--list" in args:
-        print("Available classes:")
-        print(", ".join(model.names.values()))
+    if '--list' in args:
+        print('Available classes:')
+        print(', '.join(model.names.values()))
         return
 
     class_ids = resolve_class_ids(model, args)
@@ -185,12 +180,12 @@ def main():
     worker = threading.Thread(target=detection_loop, args=(model, class_ids), daemon=True)
     worker.start()
 
-    print(f"Streaming on http://0.0.0.0:{PORT}")
+    print(f'Streaming on http://0.0.0.0:{PORT}')
     try:
-        ThreadingHTTPServer(("0.0.0.0", PORT), StreamHandler).serve_forever()
+        ThreadingHTTPServer(('0.0.0.0', PORT), StreamHandler).serve_forever()
     except KeyboardInterrupt:
         pass
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

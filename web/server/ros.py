@@ -13,7 +13,7 @@ feature then reports `error` instead of data.
 
 import threading
 
-NODE_NAME = "braco_web"
+NODE_NAME = 'braco_web'
 SPIN_PERIOD = 0.1
 
 
@@ -22,10 +22,10 @@ class RosBridge:
         self.name = name
         self.node = None
         self.available = False
-        self.error = "ROS 2 not started"
+        self.error = 'ROS 2 not started'
         self._lock = threading.Lock()
         self._started = False
-        self._finished = False   # setup ended, with or without a node
+        self._finished = False  # setup ended, with or without a node
         self._pending = []
         self._closed = threading.Event()
         self._thread = None
@@ -36,7 +36,7 @@ class RosBridge:
             if self._started:
                 return
             self._started = True
-            self.error = "ROS 2 starting"
+            self.error = 'ROS 2 starting'
         self._thread = threading.Thread(target=self._spin, daemon=True)
         self._thread.start()
 
@@ -55,15 +55,17 @@ class RosBridge:
         for fn in pending:
             try:
                 fn(self.node)
-            except Exception as e:   # one broken feature must not stop the others
-                print("braco: ROS setup of {} failed: {}".format(getattr(fn, "__qualname__", fn), e))
+            except Exception as e:  # one broken feature must not stop the others
+                print(
+                    'braco: ROS setup of {} failed: {}'.format(getattr(fn, '__qualname__', fn), e)
+                )
 
     def _spin(self):
         try:
             import rclpy
             from rclpy.executors import MultiThreadedExecutor
         except ImportError as e:
-            self.error = "rclpy not available, ROS 2 is not sourced here ({})".format(e)
+            self.error = 'rclpy not available, ROS 2 is not sourced here ({})'.format(e)
             self._finish()
             return
         try:
@@ -73,7 +75,7 @@ class RosBridge:
             executor = MultiThreadedExecutor(num_threads=4)
             executor.add_node(node)
         except Exception as e:
-            self.error = "ROS 2 failed to start: {}".format(e)
+            self.error = 'ROS 2 failed to start: {}'.format(e)
             self._finish()
             return
         self.node = node
@@ -85,7 +87,7 @@ class RosBridge:
                 executor.spin_once(timeout_sec=SPIN_PERIOD)
         finally:
             self.available = False
-            self.error = "ROS 2 stopped"
+            self.error = 'ROS 2 stopped'
             executor.shutdown()
             node.destroy_node()
             rclpy.try_shutdown()
@@ -93,16 +95,18 @@ class RosBridge:
     def call(self, client, request, timeout=5.0):
         """Call a service from any thread except the executor's; return the response."""
         if not client.wait_for_service(timeout_sec=min(1.0, timeout)):
-            raise RuntimeError("service {} is not available".format(client.srv_name))
+            raise RuntimeError('service {} is not available'.format(client.srv_name))
         future = client.call_async(request)
         done = threading.Event()
         future.add_done_callback(lambda _f: done.set())
         if not done.wait(timeout):
             future.cancel()
-            raise RuntimeError("service {} did not answer in {:.0f} s".format(client.srv_name, timeout))
+            raise RuntimeError(
+                'service {} did not answer in {:.0f} s'.format(client.srv_name, timeout)
+            )
         result = future.result()
         if result is None:
-            raise RuntimeError("service {} failed: {}".format(client.srv_name, future.exception()))
+            raise RuntimeError('service {} failed: {}'.format(client.srv_name, future.exception()))
         return result
 
     def close(self):

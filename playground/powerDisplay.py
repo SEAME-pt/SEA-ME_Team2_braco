@@ -8,17 +8,20 @@ bus = SMBus(0)
 LCD_ADDR = 0x3E
 RGB_ADDR = 0x60  # or 0x62 depending on revision
 
+
 def lcd_send_cmd(cmd):
     try:
         bus.write_byte_data(LCD_ADDR, 0x80, cmd)
     except Exception:
         pass
 
+
 def lcd_send_data(data):
     try:
         bus.write_byte_data(LCD_ADDR, 0x40, data)
     except Exception:
         pass
+
 
 def set_rgb(r, g, b):
     for addr in [0x60, 0x62, 0x6B]:
@@ -35,6 +38,7 @@ def set_rgb(r, g, b):
         except Exception:
             continue
     return False
+
 
 def init_lcd():
     time.sleep(0.05)
@@ -53,6 +57,7 @@ def init_lcd():
     # Entry mode
     lcd_send_cmd(0x06)
 
+
 def write_string(text, line=1):
     if line == 1:
         lcd_send_cmd(0x80)
@@ -61,10 +66,11 @@ def write_string(text, line=1):
     for char in text:
         lcd_send_data(ord(char))
 
-print("Initializing Waveshare LCD1602 RGB...")
+
+print('Initializing Waveshare LCD1602 RGB...')
 init_lcd()
 set_rgb(0, 255, 0)  # Green backlight
 
-write_string("JETSON NANO", 1)
-write_string("MYCOBOT 280", 2)
-print("Test command completed!")
+write_string('JETSON NANO', 1)
+write_string('MYCOBOT 280', 2)
+print('Test command completed!')

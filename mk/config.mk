@@ -36,7 +36,6 @@ PROJECT_FILES := $(COMPOSE_BASE) $(ENV_EXAMPLE) $(DOCKERFILE) $(CONFIG_DIR)/colc
 
 # Host side (no docker): Python venv for the web page tests, the CMake hello-world.
 # The interpreter version lives in .python-version (read by CI and uv/pyenv too);
-# numpy==1.24.4 in requirements.txt has no wheels past 3.11.
 PY_VERSION := $(shell cat .python-version)
 PYTHON     ?= python$(PY_VERSION)
 VENV       := .venv

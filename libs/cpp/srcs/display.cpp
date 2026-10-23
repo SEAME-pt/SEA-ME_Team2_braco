@@ -61,9 +61,7 @@ TerminalDisplay::TerminalDisplay(bool enabled, std::chrono::milliseconds refresh
 }
 
 TerminalDisplay::~TerminalDisplay() {
-    if (active_) {
-        writeAll(std::string(RESET) + CURSOR_SHOW + ALT_SCREEN_OFF);
-    }
+    if (active_) { writeAll(std::string(RESET) + CURSOR_SHOW + ALT_SCREEN_OFF); }
 }
 
 void TerminalDisplay::addMessage(const std::string& text) noexcept {
@@ -73,7 +71,7 @@ void TerminalDisplay::addMessage(const std::string& text) noexcept {
             return;
         }
         if (!messages_.empty() && messages_.back().first == text) {
-            ++messages_.back().second;   // same as last message: count it
+            ++messages_.back().second;  // same as last message: count it
             return;
         }
         messages_.emplace_back(text, 1);
@@ -108,8 +106,8 @@ void TerminalDisplay::render(const Status& s) {
     line();
 
     // Speed mode
-    std::snprintf(buf, sizeof(buf), "  %-7s  cap %3d %%   max coast %2.0f deg",
-                  s.modeName.c_str(), s.speedCap, s.maxCoast);
+    std::snprintf(buf, sizeof(buf), "  %-7s  cap %3d %%   max coast %2.0f deg", s.modeName.c_str(),
+                  s.speedCap, s.maxCoast);
     line(" Speed  " + swatch(s.r, s.g, s.b) + buf);
 
     // Arm state
@@ -167,8 +165,7 @@ void TerminalDisplay::render(const Status& s) {
     }
     line();
     line(std::string(DIM) +
-         " Sticks/D-pad/L1/R1 jog | A/B gripper | X home | Button 9 speed | Ctrl+C quit" +
-         RESET);
+         " Sticks/D-pad/L1/R1 jog | A/B gripper | X home | Button 9 speed | Ctrl+C quit" + RESET);
 
     out += CLEAR_BELOW;
     writeAll(out);
@@ -181,7 +178,7 @@ void TerminalDisplay::writeAll(const std::string& text) {
         ssize_t n = write(STDOUT_FILENO, text.data() + done, text.size() - done);
         if (n < 0) {
             if (errno == EINTR) continue;
-            return;   // terminal gone: give up silently
+            return;  // terminal gone: give up silently
         }
         done += static_cast<size_t>(n);
     }

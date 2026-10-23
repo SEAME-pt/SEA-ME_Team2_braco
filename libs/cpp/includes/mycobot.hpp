@@ -26,10 +26,10 @@ using Angles = std::array<double, 6>;  // J1..J6 in degrees
 using Coords = std::array<double, 6>;  // X, Y, Z (mm), RX, RY, RZ (deg)
 
 struct JointLimit {
-    double min;   // degrees
-    double max;   // degrees
+    double min;  // degrees
+    double max;  // degrees
 };
-using JointLimits = std::array<JointLimit, 6>;   // index 0 = J1 ... 5 = J6
+using JointLimits = std::array<JointLimit, 6>;  // index 0 = J1 ... 5 = J6
 
 // The one set of joint limits. Based on the limits enforced by the arm's
 // firmware (read from this arm with get_joint_min_angle() / get_joint_max_angle()
@@ -38,12 +38,12 @@ using JointLimits = std::array<JointLimit, 6>;   // index 0 = J1 ... 5 = J6
 // A box of per-joint limits cannot keep the tool off the table (that depends on
 // J2..J5 together), so poses are also checked with minHeightMm() below.
 constexpr JointLimits JOINT_LIMITS = {{
-    {-166.0, 166.0},   // J1
-    {-138.0, 138.0},   // J2
-    {-149.0, 149.0},   // J3
-    {-149.0, 149.0},   // J4
-    {-153.0, 158.0},   // J5
-    {-178.0, 178.0},   // J6
+    {-166.0, 166.0},  // J1
+    {-138.0, 138.0},  // J2
+    {-149.0, 149.0},  // J3
+    {-149.0, 149.0},  // J4
+    {-153.0, 158.0},  // J5
+    {-178.0, 178.0},  // J6
 }};
 
 // Fixed poses, shared by zero, park and the ROS 2 nodes of braco_bringup.
@@ -52,10 +52,10 @@ constexpr Angles ZERO_ANGLES = {0, 0, 0, 0, 0, 0};
 constexpr Angles PARK_ANGLES = {0, 131, -148, 146, 4.5, 0};
 
 // Table clearance, from the measured setup. Heights are above the table.
-constexpr double BASE_HEIGHT_MM = 140.0;    // table -> arm base (Jetson casing)
-constexpr double TOOL_LENGTH_MM = 130.0;    // J6 flange -> tip of camera + gripper
-                                            // (130 closed, 110 open: use the longer)
-constexpr double TABLE_MARGIN_MM = 20.0;    // lowest point must stay above this
+constexpr double BASE_HEIGHT_MM = 140.0;  // table -> arm base (Jetson casing)
+constexpr double TOOL_LENGTH_MM = 130.0;  // J6 flange -> tip of camera + gripper
+                                          // (130 closed, 110 open: use the longer)
+constexpr double TABLE_MARGIN_MM = 20.0;  // lowest point must stay above this
 
 // Height above the table (mm) of the lowest of the wrist (J4, J5, J6) and the
 // tool tip, for these joint angles. Forward kinematics of the myCobot 280 from
@@ -108,32 +108,32 @@ struct Pid {
     int i;
     int d;
 };
-using PidSet = std::array<Pid, 6>;   // index 0 = J1 ... 5 = J6
+using PidSet = std::array<Pid, 6>;  // index 0 = J1 ... 5 = J6
 
 // ---- Servo temperatures --------------------------------------------------------
-using ServoTemps = std::array<int, 6>;   // J1..J6 servo temperature in deg C
+using ServoTemps = std::array<int, 6>;  // J1..J6 servo temperature in deg C
 
 // The servos protect themselves from overheating at around 70 deg C; these
 // thresholds warn well before that.
-constexpr int TEMP_WARM_C = 55;   // getting warm: let the arm rest soon
-constexpr int TEMP_HOT_C = 65;    // close to the servos' own protection
+constexpr int TEMP_WARM_C = 55;  // getting warm: let the arm rest soon
+constexpr int TEMP_HOT_C = 65;   // close to the servos' own protection
 
 enum class TempLevel { Normal, Warm, Hot };
 
 struct TempCheck {
-    ServoTemps temps;   // all six temperatures
-    TempLevel level;    // level of the hottest joint
-    int hottestJoint;   // 1..6
+    ServoTemps temps;  // all six temperatures
+    TempLevel level;   // level of the hottest joint
+    int hottestJoint;  // 1..6
 };
 
 // Factory values read from this arm with pymycobot (get_servo_data 21/23/22).
 constexpr PidSet FACTORY_PID = {{
-    {15, 0, 20},   // J1
-    {32, 0, 8},    // J2
-    {32, 0, 8},    // J3
-    {25, 0, 25},   // J4
-    {25, 0, 25},   // J5
-    {25, 0, 25},   // J6
+    {15, 0, 20},  // J1
+    {32, 0, 8},   // J2
+    {32, 0, 8},   // J3
+    {25, 0, 25},  // J4
+    {25, 0, 25},  // J5
+    {25, 0, 25},  // J6
 }};
 
 // Safety bounds for setPid(): P and D at most 1.5 x factory, I at most 8.
@@ -154,10 +154,10 @@ public:
     MyCobot280& operator=(const MyCobot280&) = delete;
 
     // ---- Power -------------------------------------------------------------
-    void powerOn();                       // lock all joints (torque on)
-    void powerOff();                      // power off the servos
-    void releaseAllServos();              // free all joints (move by hand)
-    std::optional<bool> isPowerOn();      // nullopt if no valid reply
+    void powerOn();                   // lock all joints (torque on)
+    void powerOff();                  // power off the servos
+    void releaseAllServos();          // free all joints (move by hand)
+    std::optional<bool> isPowerOn();  // nullopt if no valid reply
 
     // ---- Motion (fire-and-forget, like pymycobot) --------------------------
     // Angles outside JOINT_LIMITS are clamped to the nearest limit. A pose whose
@@ -168,16 +168,16 @@ public:
     // sendAngle() checks the height with the last known angles (from getAngles()
     // or sendAngles()), reading them once if there are none yet.
     bool sendAngles(const Angles& angles, int speed);
-    bool sendAngle(int joint, double angle, int speed);   // joint 1..6
+    bool sendAngle(int joint, double angle, int speed);  // joint 1..6
     void stop();
-    std::optional<bool> isMoving();       // nullopt if no valid reply
+    std::optional<bool> isMoving();  // nullopt if no valid reply
 
     // ---- Feedback (nullopt if no valid reply after all retries) ------------
     std::optional<Angles> getAngles(int retries = 5);
     std::optional<Coords> getCoords(int retries = 5);
 
     // ---- Gripper and Atom LED ----------------------------------------------
-    void setGripperState(int state, int speed);   // 0 = open, 1 = close
+    void setGripperState(int state, int speed);  // 0 = open, 1 = close
     void setColor(uint8_t r, uint8_t g, uint8_t b);
 
     // ---- Servo PID (configuration only: never call from a control loop) ---
@@ -214,7 +214,7 @@ public:
 
 private:
     int fd_ = -1;
-    std::optional<Angles> lastAngles_;   // last angles read or commanded
+    std::optional<Angles> lastAngles_;  // last angles read or commanded
 
     // Clamp one angle to JOINT_LIMITS of `joint` (1..6); sets `clamped`.
     double limitAngle(int joint, double angle, bool& clamped) const;
@@ -223,18 +223,14 @@ private:
     void sendCommand(uint8_t cmd, const std::vector<uint8_t>& data = {});
 
     // Read until a complete frame for `cmd` arrives; return its data bytes.
-    std::optional<std::vector<uint8_t>> readReply(uint8_t cmd,
-                                                  std::chrono::milliseconds timeout);
+    std::optional<std::vector<uint8_t>> readReply(uint8_t cmd, std::chrono::milliseconds timeout);
 
     // Send a request and wait for a reply with exactly `expected_size` data
     // bytes, retrying up to `retries` times.
-    std::optional<std::vector<uint8_t>> query(uint8_t cmd,
-                                              size_t expected_size,
-                                              int retries = 5);
+    std::optional<std::vector<uint8_t>> query(uint8_t cmd, size_t expected_size, int retries = 5);
 
     // Send a request with data and return the reply's data bytes, any size.
-    std::optional<std::vector<uint8_t>> queryWithData(uint8_t cmd,
-                                                      const std::vector<uint8_t>& data,
+    std::optional<std::vector<uint8_t>> queryWithData(uint8_t cmd, const std::vector<uint8_t>& data,
                                                       int retries);
 
     // Write one servo data byte, then read it back. True if it matches.
@@ -242,7 +238,7 @@ private:
 
     static void appendInt16(std::vector<uint8_t>& out, int16_t value);  // big-endian
     static int16_t readInt16(const std::vector<uint8_t>& data, size_t offset);
-    static uint8_t clampSpeed(int speed);                                // 1..100
+    static uint8_t clampSpeed(int speed);  // 1..100
 };
 
 }  // namespace mycobot

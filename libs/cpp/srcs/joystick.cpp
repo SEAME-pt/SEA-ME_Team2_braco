@@ -20,9 +20,7 @@ Joystick::Joystick(const std::string& device) {
 }
 
 Joystick::~Joystick() {
-    if (fd_ >= 0) {
-        close(fd_);
-    }
+    if (fd_ >= 0) { close(fd_); }
 }
 
 std::vector<Event> Joystick::readEvents() {
@@ -31,7 +29,7 @@ std::vector<Event> Joystick::readEvents() {
         js_event raw{};
         ssize_t n = read(fd_, &raw, sizeof(raw));
         if (n < 0) {
-            if (errno == EAGAIN || errno == EINTR) break;   // no more events
+            if (errno == EAGAIN || errno == EINTR) break;  // no more events
             throw std::runtime_error(std::string("joystick read failed: ") + std::strerror(errno));
         }
         if (n != static_cast<ssize_t>(sizeof(raw))) break;  // partial/no data
