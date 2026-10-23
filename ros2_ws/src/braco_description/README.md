@@ -64,4 +64,6 @@ BSD-2-Clause): `mycobot_description/urdf/mycobot_280_jn` and `adaptive_gripper` 
 Changes: joint and link names,
 the vendor's invalid XML fixed, limits from `JOINT_LIMITS`, inertials, collision, gripper options, TF frames,
 the G-base (`mycobot_280_pi/G_base.dae` -> `meshes/arm/g_base.dae`), and `meshes/arm/link4.dae` rewritten from COLLADA `<polygons>` to `<triangles>` (same geometry): Gazebo loads
-`<polygons>` as an empty mesh and its physics crashes on the empty collision.
+`<polygons>` as an empty mesh and its physics crashes on the empty collision. Its 8 material bindings also pointed at a
+material that does not exist (`#a0000000-...`), so Gazebo and RViz drew it with a plain default material:
+they now point at its textured `Material_001-material`.
