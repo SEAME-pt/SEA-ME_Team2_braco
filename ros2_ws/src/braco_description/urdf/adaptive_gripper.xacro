@@ -14,9 +14,12 @@
 -->
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
 
-  <!-- UNMEASURED placeholders (weigh the gripper on a scale, see docs/urdf-sim-to-real.md) -->
-  <xacro:property name="gripper_base_mass" value="0.1"/>
-  <xacro:property name="finger_link_mass" value="0.01"/>
+  <!-- Total 110 g: the myCobot Adaptive Gripper's documented weight (retailer spec sheets; the
+       same listings give the 110 x 90 x 60 mm and 150 g clamp printed on our gripper's label).
+       The split is ESTIMATED: body 80 g (it holds the servo), each of the 6 finger parts 5 g.
+       Replace with a scale reading when one is available. -->
+  <xacro:property name="gripper_base_mass" value="0.080"/>
+  <xacro:property name="finger_link_mass" value="0.005"/>
 
   <xacro:macro name="finger_link" params="name mass xyz">
     <link name="${name}">

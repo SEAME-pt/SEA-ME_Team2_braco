@@ -23,13 +23,24 @@
   <xacro:property name="limit_min" value="${[-166.0, -138.0, -149.0, -149.0, -153.0, -178.0]}"/>
   <xacro:property name="limit_max" value="${[166.0, 138.0, 149.0, 149.0, 158.0, 178.0]}"/>
 
-  <!-- UNMEASURED placeholders: see docs/urdf-sim-to-real.md, "Open items".
-       velocity rad/s (to measure per joint), effort N*m (servo stall torque, datasheet),
-       masses kg (to weigh / vendor data). Nothing in the system depends on them yet. -->
-  <xacro:property name="joint_velocity" value="1.0"/>
-  <xacro:property name="joint_effort" value="1.0"/>
-  <xacro:property name="base_mass" value="0.4"/>
-  <xacro:property name="link_mass" value="0.1"/>
+  <!-- Joint velocity limits, rad/s, J1..J6: MEASURED on the real arm at speed 100
+       (sim_to_real.py velocity, middle 80 % of a -A..+A sweep; docs/urdf-sim-to-real.md).
+       joint3 measured 2.79 average but 2.72 peak (a 0.6 s sweep at 20 Hz joint states):
+       the lower one is used. The firmware speed setting scales linearly: rad/s = 0.0265 x speed. -->
+  <xacro:property name="joint_velocity" value="${[2.64, 2.44, 2.72, 2.69, 2.65, 2.60]}"/>
+
+  <!-- Effort limits, N*m, J1..J6: APPROXIMATION. Elephant Robotics does not publish the joint
+       servos' torque, so this is the lower bound the published spec implies: the static torque
+       to hold the arm (masses below) plus the rated 0.25 kg payload at tcp in each joint's worst
+       pose (J2 1.89, J3 1.15, J4 0.67, J5 0.57, with the camera plate), rounded up. J1 and J6 carry no gravity load and
+       take their neighbour's value. Replace with stall torques if a datasheet turns up. -->
+  <xacro:property name="joint_effort" value="${[1.9, 1.9, 1.2, 0.7, 0.6, 0.6]}"/>
+  <!-- Masses, kg. ESTIMATED from documented totals (no scale yet, see docs/urdf-sim-to-real.md):
+       whole arm 1.03 kg (myCobot 280 Jetson Nano spec sheet); moving links 1..6 about 0.65 kg
+       (the standard 280 is 850 g with a ~0.2 kg M5 base), split by mesh volume
+       (21 / 35 / 27 / 3 / 12 / 2 %); base_link (Jetson casing) the rest. -->
+  <xacro:property name="base_mass" value="0.38"/>
+  <xacro:property name="link_masses" value="${[0.14, 0.23, 0.17, 0.02, 0.08, 0.01]}"/>
 
   <!-- Solid cylinder around the link z axis, centred on the link frame. UNMEASURED: radius and
        length are rough; the point is a positive-definite inertia (Gazebo and MoveIt need one). -->
@@ -70,7 +81,7 @@
       <origin xyz="${xyz}" rpy="${rpy}"/>
       <axis xyz="0 0 1"/>
       <limit lower="${radians(limit_min[n - 1])}" upper="${radians(limit_max[n - 1])}"
-             velocity="${joint_velocity}" effort="${joint_effort}"/>
+             velocity="${joint_velocity[n - 1]}" effort="${joint_effort[n - 1]}"/>
     </joint>
   </xacro:macro>
 
@@ -84,17 +95,17 @@
       <xacro:insert_block name="origin"/>
     </joint>
 
-    <xacro:arm_link name="link1" mesh="link1" mass="${link_mass}"
+    <xacro:arm_link name="link1" mesh="link1" mass="${link_masses[0]}"
                     xyz="0 0 -0.06096" rpy="0 0 -1.5708"/>
-    <xacro:arm_link name="link2" mesh="link2" mass="${link_mass}"
+    <xacro:arm_link name="link2" mesh="link2" mass="${link_masses[1]}"
                     xyz="0 0 0.03256" rpy="0 -1.5708 0"/>
-    <xacro:arm_link name="link3" mesh="link3" mass="${link_mass}"
+    <xacro:arm_link name="link3" mesh="link3" mass="${link_masses[2]}"
                     xyz="0 0 0.03056" rpy="0 -1.5708 0"/>
-    <xacro:arm_link name="link4" mesh="link4" mass="${link_mass}"
+    <xacro:arm_link name="link4" mesh="link4" mass="${link_masses[3]}"
                     xyz="0 0 -0.03356" rpy="0 -1.5708 1.5708"/>
-    <xacro:arm_link name="link5" mesh="link5" mass="${link_mass}"
+    <xacro:arm_link name="link5" mesh="link5" mass="${link_masses[4]}"
                     xyz="0 0 -0.038" rpy="0 0 0"/>
-    <xacro:arm_link name="link6" mesh="link6" mass="${link_mass}"
+    <xacro:arm_link name="link6" mesh="link6" mass="${link_masses[5]}"
                     xyz="0 0 -0.012" rpy="0 0 ${flange_yaw}"/>
 
     <xacro:arm_joint n="1" parent="base_link" child="link1"
