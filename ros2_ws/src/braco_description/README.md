@@ -17,6 +17,7 @@ arm (zero pose, joint directions, forward kinematics) and the open measurements 
 | `scripts/braco_arm.py` | Runs a list of moves in Gazebo, then (`--real`) the same moves on the real arm |
 | `scripts/move_arm_example.py` | Example: a few poses, written once, run in Gazebo and on the arm |
 | `scripts/park.py` | The park pose (`PARK_ANGLES` of `mycobot.hpp`), in Gazebo and on the arm |
+| `scripts/sim_to_real.py` | Issue #25 checks against the real arm: `directions`, `fk`, `velocity` |
 | `test/test_urdf.py` | Keeps the URDF and the code in sync |
 
 `gazebo.launch.py` is a quick viewer: the model in Gazebo, moved through `/arm_controller/joint_trajectory`.

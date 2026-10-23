@@ -53,7 +53,9 @@ RESEND_S = 0.1          # well below the driver's 300 ms watchdog
 STATE_TIMEOUT_S = 0.5   # older /joint_states = no feedback
 LOOP_S = 0.02
 TOLERANCE_DEG = 2.0
-MOVE_TIMEOUT_S = 20.0
+MOVE_TIMEOUT_S = 120.0  # safety cap for one move; slow speeds and long moves take a while
+STALL_S = 5.0          # stop if the arm got no closer for this long (refused, blocked, ...)
+STALL_PROGRESS_DEG = 0.5
 DRIVER_TIMEOUT_S = 10.0
 CALL_TIMEOUT_S = 5.0
 SETTLE_TIMEOUT_S = 5.0  # Gazebo: after the trajectory, time for the arm to catch up
@@ -201,18 +203,35 @@ class RealArm(_Arm):
         return self._call(self.power_client, Trigger.Request(), 'power on')
 
     def move(self, degrees, seconds=None):
-        """Go to `degrees`; `seconds` is for Gazebo only, the real arm moves at self.speed."""
-        end = time.monotonic() + MOVE_TIMEOUT_S
+        """
+        Go to `degrees`; `seconds` is for Gazebo only, the real arm moves at self.speed.
+
+        Stops the arm and logs why if it gets no closer for STALL_S, loses its joint states,
+        or takes longer than MOVE_TIMEOUT_S.
+        """
+        start = time.monotonic()
+        end = start + MOVE_TIMEOUT_S
         next_send = 0.0
+        best, best_time = None, start
+        reason = 'took longer than %.0f s' % MOVE_TIMEOUT_S
         while time.monotonic() < end and rclpy.ok(context=self.context):
             self.spin(LOOP_S)
+            now = time.monotonic()
             current = self.fresh_angles()
             if current is None:
+                if now - max(self.angles_time, start) > STATE_TIMEOUT_S * 4:
+                    reason = 'no /joint_states from arm_driver for %.0f s' % (STATE_TIMEOUT_S * 4)
+                    break
                 continue
             deviation = max(abs(c - t) for c, t in zip(current, degrees))
             if deviation <= TOLERANCE_DEG:
                 return True
-            now = time.monotonic()
+            if best is None or deviation < best - STALL_PROGRESS_DEG:
+                best, best_time = deviation, now
+            elif now - best_time > STALL_S:
+                reason = ('no progress for %.0f s (move refused by the driver, e.g. the table '
+                          'check, or a joint blocked?)' % STALL_S)
+                break
             if now < next_send:
                 continue
             next_send = now + RESEND_S
@@ -224,6 +243,9 @@ class RealArm(_Arm):
             command.speed = self.speed
             self.command_pub.publish(command)
         self.stop()
+        now_at = [round(a, 1) for a in self.angles] if self.angles else None
+        self.log.error('real arm stopped: %s. Target %s, arm at %s'
+                       % (reason, [round(d, 1) for d in degrees], now_at))
         return False
 
     def stop(self):
