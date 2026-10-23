@@ -15,6 +15,7 @@ temperature_monitor:
   ros__parameters:
     stale_timeout_s: 5.0      # no temperatures for this long: "no feedback" on the LCD
     auto_rest_on_hot: true    # a servo at TEMP_HOT_C (65 C) puts the arm to rest, once per episode
+                              # (the episode ends when every joint is below 60 C: AutoRest::REARM_BELOW_C)
     park_on_hot: true         # ... by running park (fold, release the joints); false: rest mode only
     # park_command: [ros2, run, braco_bringup, park]   # what park_on_hot runs
 

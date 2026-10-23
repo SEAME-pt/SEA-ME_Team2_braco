@@ -14,7 +14,7 @@ figures. **Both files are kept in sync**: a change to one goes to the other in t
 > [status](#12-status-against-the-target-architecture) between *pending*, *differs* and *done*. If the code and this
 > document disagree, the code wins and this document is the bug.
 >
-> Last checked against the code: **2026-10-22** · [ADR-0001](ADR-0001-ros2-in-docker-on-jetson-nano.md) ·
+> Last checked against the code: **2026-10-23** · [ADR-0001](ADR-0001-ros2-in-docker-on-jetson-nano.md) ·
 > [ADR-0002](ADR-0002-unique-control.md) · [ADR-0003](ADR-0003-rest-per-temp.md)
 
 **Contents**
@@ -135,7 +135,8 @@ watchdog stops the arm.
 2. `temperature_monitor` classifies normal (up to 54 °C), warm (55–64 °C) or hot (65 °C or more), publishes
    `/diagnostics` and shows it on the LCD.
 3. At hot, once per hot episode, it runs `park` (`park_on_hot`): the arm folds, the joints are released so the
-   servos cool, and the arm ends in rest mode, also when park fails. With `park_on_hot: false` it only calls
+   servos cool, and the arm ends in rest mode, also when park fails. The episode ends only when every joint is
+   below 60 °C (hysteresis), so a reading that jitters around 65 °C does not park the arm again. With `park_on_hot: false` it only calls
    `set_read_only(true)`. In rest mode `arm_driver` drops the pending motion and refuses motion, gripper and power
    on, but keeps reading.
 4. The page shows the level from `/diagnostics`. When the arm has cooled down, someone runs `make resume`
@@ -170,8 +171,8 @@ watchdog stops the arm.
   Angles are clamped to `JOINT_LIMITS` (`mycobot.hpp`); poses that put the wrist or tool below the table margin are
   refused.
 - **Rest mode.** `/arm/set_read_only true`: motion, gripper and power on are refused; angles and temperatures keep
-  being published. `temperature_monitor` enters it by itself when a servo reaches 65 °C, once per hot episode,
-  after parking the arm (`park_on_hot`); leaving it is manual (`make resume`). See [arm-rest-mode.md](arm-rest-mode.md) and
+  being published. `temperature_monitor` enters it by itself when a servo reaches 65 °C, once per hot episode
+  (which ends below 60 °C), after parking the arm (`park_on_hot`); leaving it is manual (`make resume`). See [arm-rest-mode.md](arm-rest-mode.md) and
   [ADR-0003](ADR-0003-rest-per-temp.md).
 
 ### Who moves the arm ([ADR-0002](ADR-0002-unique-control.md))
@@ -543,7 +544,7 @@ PR that closes or opens a gap.
 | **One control owner** | `ArmCommand.source`, `TakeControl.srv`, latched `/arm/control_owner`; motion only from the owner, STOP from anyone ([ADR-0002](ADR-0002-unique-control.md)) |
 | **Clients follow the owner** | Page lease = control `web`; joystick takes it free or forced (button 8 for 1 s), `power_on` only as owner; zero/park force and release |
 | **One thermal authority** | `temperature_monitor` publishes the level on `/diagnostics`; the page reads it |
-| **Rest on overheat** | Once per hot episode, manual resume ([ADR-0003](ADR-0003-rest-per-temp.md)) |
+| **Rest on overheat** | Once per hot episode (from 65 °C until every joint is below 60 °C), manual resume ([ADR-0003](ADR-0003-rest-per-temp.md)) |
 | **braco layout** | `ros2_ws/src` with `braco_interfaces`, `braco_driver`, `braco_teleop`, `braco_camera`, `braco_bringup`; one launch and one `braco.yaml`; a README in every package, `mycobot_cpp` included |
 | **braco infrastructure** | `docker/Dockerfile`, `compose.yml` (project `braco`), `braco-image/*`, `braco.service` |
 | **One Makefile** | Split in `mk/`, idempotent `make up`, ~30 public commands |

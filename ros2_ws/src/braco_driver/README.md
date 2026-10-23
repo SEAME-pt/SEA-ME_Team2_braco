@@ -48,7 +48,7 @@ Reads `/arm/servo_temperatures` (never the port), shows them on the LCD1602 (`/d
 **Rest on overheat** ([ADR-0003](../../../docs/ADR-0003-rest-per-temp.md)): the first reading with a
 joint at 65 °C or above runs `park` (fold, release the joints so the servos cool, rest mode on; parameter
 `park_on_hot`, default `true`), once per episode (the episode ends when every joint is
-below 65 °C), logs it (if `park` cannot run or fails, it calls `/arm/set_read_only true` instead) and shows `REST: SERVO HOT` / `J4 66 C cooling` on the LCD. It never leaves rest mode:
+below 60 °C, so a reading that jitters around 65 °C does not park it again), logs it (if `park` cannot run or fails, it calls `/arm/set_read_only true` instead) and shows `REST: SERVO HOT` / `J4 66 C cooling` on the LCD. It never leaves rest mode:
 `make resume` does. Parameter `auto_rest_on_hot` (default `true`); the decision is `AutoRest`
 (`include/braco_driver/auto_rest.hpp`), tested by `test/test_control.cpp`.
 
