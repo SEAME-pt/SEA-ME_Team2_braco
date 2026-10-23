@@ -14,9 +14,11 @@
 
 // ArmMoves - small client of arm_driver for zero and park (C++ version of the old arm_moves.py).
 //
-// The programs cannot open /dev/ttyTHS1 like libs/cpp/srcs/zero.cpp and park.cpp do: arm_driver
+// The programs cannot open /dev/ttyTHS1 like mycobot_cpp/srcs/zero.cpp and park.cpp do: arm_driver
 // owns the port. Instead they:
 //   * wait for arm_driver (its /joint_states and services),
+//   * take the control as "script", forced (a person ran make zero / park on purpose: the web
+//     page or the joystick lose it), and give it back when done, also on failure (run()),
 //   * send bounded steps toward the pose (at most STEP_DEG ahead of the real angles, all joints
 //     arriving together), resent every RESEND, so the driver's watchdog stops the arm if the
 //     program dies half-way,
@@ -33,6 +35,7 @@
 #include <string>
 
 #include "braco_interfaces/msg/arm_command.hpp"
+#include "braco_interfaces/srv/take_control.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/joint_state.hpp"
 #include "std_srvs/srv/set_bool.hpp"
@@ -50,6 +53,11 @@ public:
 
   // Wait until arm_driver publishes angles and offers its services.
   bool waitForDriver(std::chrono::duration<double> timeout);
+
+  // Take the control from whoever has it (forced). False if arm_driver refused or did not answer.
+  bool takeControl();
+  // Give it back, if this program has it. Best effort: arm_driver frees it when idle anyway.
+  void releaseControl();
 
   bool powerOn();
   bool releaseServos();
@@ -82,7 +90,9 @@ private:
   rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr power_client_;
   rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr release_client_;
   rclcpp::Client<std_srvs::srv::SetBool>::SharedPtr rest_client_;
-  // Spins this node only (the free rclcpp::spin_some(node) is deprecated).
+  rclcpp::Client<braco_interfaces::srv::TakeControl>::SharedPtr control_client_;
+  bool has_control_ = false;
+  // Runs the callbacks while a move or a call waits (rclcpp::spin_some is deprecated)
   rclcpp::executors::SingleThreadedExecutor executor_;
 };
 
@@ -100,6 +110,7 @@ int run(int argc, char ** argv, const std::string & name, Action action)
       // Interrupted or failed: arm_driver's watchdog stops the arm.
       RCLCPP_ERROR(node->get_logger(), "%s", e.what());
     }
+    if (rclcpp::ok()) {node->releaseControl();}
   }
   rclcpp::shutdown();
   return code;

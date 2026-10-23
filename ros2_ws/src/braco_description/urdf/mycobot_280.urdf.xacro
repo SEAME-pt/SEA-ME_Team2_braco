@@ -9,7 +9,7 @@
       robot_state_publisher would silently ignore the states)
     * links renamed base_link, link1..link6 (the vendor names a link "joint1" like a joint)
     * the vendor file is not valid XML (a stray "1" in the joint 1 limit): fixed
-    * limits in radians come from JOINT_LIMITS in libs/cpp/includes/mycobot.hpp (see the
+    * limits in radians come from JOINT_LIMITS in ros2_ws/src/mycobot_cpp/includes/mycobot.hpp (see the
       properties below); test/test_urdf.py keeps them in sync
     * inertials added, velocity/effort set (see the UNMEASURED markers)
   Joint origins and mesh offsets are the vendor's, unchanged. Whether the model's zero pose
@@ -17,7 +17,7 @@
 -->
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
 
-  <!-- Position limits, degrees. Same numbers as JOINT_LIMITS in libs/cpp/includes/mycobot.hpp
+  <!-- Position limits, degrees. Same numbers as JOINT_LIMITS in ros2_ws/src/mycobot_cpp/includes/mycobot.hpp
        (the arm's firmware limits minus 1-2 deg): change them there first, test_urdf.py fails
        otherwise. -->
   <xacro:property name="limit_min" value="${[-166.0, -138.0, -149.0, -149.0, -153.0, -178.0]}"/>

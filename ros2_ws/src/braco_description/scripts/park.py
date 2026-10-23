@@ -29,7 +29,8 @@ import sys
 
 from braco_arm import run
 
-# PARK_ANGLES of libs/cpp/includes/mycobot.hpp, J1..J6 in degrees (test_urdf.py keeps them equal)
+# PARK_ANGLES of ros2_ws/src/mycobot_cpp/includes/mycobot.hpp, J1..J6 in degrees
+# (test_urdf.py keeps them equal)
 PARK_DEG = [0, 131, -148, 146, 4.5, 0]
 SECONDS = 4.0   # in Gazebo; the real arm moves at --speed
 

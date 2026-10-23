@@ -18,7 +18,7 @@ Keep the URDF and the code in sync.
 Processes braco.urdf.xacro and checks that
 
   * the arm joints are named joint1..joint6, as arm_driver publishes them in /joint_states
-  * the <limit> of every joint is JOINT_LIMITS of libs/cpp/includes/mycobot.hpp
+  * the <limit> of every joint is JOINT_LIMITS of ros2_ws/src/mycobot_cpp/includes/mycobot.hpp
   * every link with geometry has a positive mass and a positive-definite inertia
   * the frames the system uses exist (world, base_link, tool0, tcp, camera_optical_frame)
   * every mesh file, and every texture image a mesh points to, exists
@@ -37,10 +37,8 @@ import xacro
 PACKAGE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MYCOBOT_HPP_CANDIDATES = [
     os.environ.get('MYCOBOT_HPP', ''),
-    # this repository (ros2_ws/src/braco_description/test -> libs/cpp/includes)
-    os.path.join(PACKAGE_DIR, '..', '..', '..', 'libs', 'cpp', 'includes', 'mycobot.hpp'),
-    # inside the containers (docker-compose.yml mounts ../libs here)
-    '/opt/seame/libs/cpp/includes/mycobot.hpp',
+    # the mycobot_cpp package next to this one (ros2_ws/src/mycobot_cpp; /ws/src in the container)
+    os.path.join(PACKAGE_DIR, '..', 'mycobot_cpp', 'includes', 'mycobot.hpp'),
 ]
 ARM_JOINTS = ['joint%d' % n for n in range(1, 7)]
 
@@ -65,7 +63,7 @@ def floats(text):
 
 
 def mycobot_source(filename):
-    """Return the text of libs/cpp includes/mycobot.hpp or srcs/mycobot.cpp."""
+    """Return the text of mycobot_cpp includes/mycobot.hpp or srcs/mycobot.cpp."""
     for candidate in MYCOBOT_HPP_CANDIDATES:
         if candidate and os.path.isfile(candidate):
             if filename != 'mycobot.hpp':

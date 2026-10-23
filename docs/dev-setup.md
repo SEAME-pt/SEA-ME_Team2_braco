@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/SEAME-pt/SEA-ME_Team2_braco/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/SEAME-pt/SEA-ME_Team2_braco/actions/workflows/ci.yml)
 
-This guide documents how to set up the development environment on developer hardware to interface with our robot platform (**Elephant Robotics myCobot 280 Jetson Nano**). It details system toolchains, Python and C++ dependencies, and step-by-step verification using provided hello-world test suites.
+This guide documents how to set up the development environment on developer hardware to interface with our robot platform (**Elephant Robotics myCobot 280 Jetson Nano**). It details system toolchains, the host Python and C++ tools, and how to verify the link to the arm.
 
 > **Safety Notice:** Before powering on or executing any motion on the physical arm, review [Lab Safety Induction & Workstation Rules](safety.md). Ensure the robot is clamped to the workstation, the 350 mm perimeter is clear, and the arm is manually placed in the upright configuration ($0^\circ$) before engaging motor power.
 
@@ -64,169 +64,69 @@ After cloning the repository, prepare the machine once:
 make setup
 ```
 
-It creates `docker/.env` for this machine (PC or Jetson, detected), binds the commit message linters in `.githooks/`
-so commit message standards are maintained, and runs `make doctor`. Then `make up` turns the braco system on
-(see [docker/README.md](../docker/README.md)); `make` lists every command.
+It creates `docker/.env` for this machine (PC or Jetson, detected), on the PC the development venv (see
+[2.4](#24-host-python-web-page-and-dev-tools)), binds the git hooks in `.githooks/` (commit message format, and a code
+format check before every push, see [4.1](#41-code-formatting)), and runs `make doctor`. Then `make up` turns the
+braco system on (see [docker/README.md](../docker/README.md)); `make` lists every command.
 
-### 2.4 Python Software Installation
+### 2.4 Host Python (web page and dev tools)
 
-We recommend using a dedicated Python virtual environment for development:
+Everything that talks to the arm runs in the containers. On the host, Python is only needed for the web page, its
+tests and the development tools; `make web` and `make ci` create `.venv` from `web/requirements*.txt` by themselves:
 
-1. Create and activate a virtual environment:
-   ```bash
-   python3 -m venv .venv
-   source .venv/bin/activate
-   ```
+```bash
+make web    # the page with mock arm data on http://localhost:8080 (no arm, no ROS, no Docker)
+make ci     # format check, lint and the web page tests, as the CI `host` job
+```
 
-2. Install the required Python packages:
-   ```bash
-   pip install --upgrade pip
-   pip install pymycobot opencv-python pyserial pytest
-   ```
+On the PC, `make setup` also installs `requirements-dev.txt` in the same venv, for development only:
 
-* `pymycobot`: Elephant Robotics official Python SDK for kinematics, angle commands, and ATOM Matrix LED control.
-* `pyserial`: Backend serial communication.
-* `opencv-python`: Captures and inspects frames from the tool-mounted USB camera.
-* `pytest`: Unit testing framework.
+* `ruff`, `clang-format`: the code formatters used by `make format` and the pre-push hook ([4.1](#41-code-formatting)).
+* `pymycobot`, `pyserial`, `numpy`: the same versions as the container, so the editor resolves imports and
+  autocompletes.
 
-### 2.5 C++ Toolchain Installation
+The hook and `make format` use the venv without activating it. Activate it only to run `python` or `ruff` by hand:
 
-Direct C++ robot control utilizes standard POSIX serial communication (`<termios.h>`, `<fcntl.h>`, `<unistd.h>`) and C++14 threads (`-lpthread`):
+```bash
+source .venv/bin/activate
+```
 
-* **Compiler:** GCC/G++ $\ge 8.4$ (supports C++14 / C++17).
-* **Build System:** CMake $\ge 3.16$ and GNU Make.
-* The standalone header `tests/mycobot.hpp` is provided in the repository with zero external third-party library dependencies.
+### 2.5 C++ Toolchain (stand-alone tools)
+
+The myCobot 280 protocol lives in `ros2_ws/src/mycobot_cpp`, plain C++17 with POSIX serial (`<termios.h>`) and no
+ROS dependency. colcon builds it with the rest of the workspace (`make build`). Its stand-alone tools (`zero`, `park`,
+`pid_tool`, `temps_lcd`, `joystick_all_joints`, `joystick_display`) build with its own Makefile:
+
+```bash
+make -C ros2_ws/src/mycobot_cpp          # g++ and GNU Make; binaries land next to the Makefile
+```
+
+They open the serial port directly, so run them only with the system down (`make down`): with the system up the port
+belongs to `arm_driver` and they fail with "Device or resource busy".
 
 ---
 
-## 3. Python "Hello-World" Demo & Verification
+## 3. Verifying the Link to the Arm
 
-A runnable Python verification script is located in `tests/hello_world.py`. It establishes communication with the robot controller, queries current joint telemetry, and triggers the Atom Matrix LED indicator.
-
-### 3.1 Running the Python Demo
-
-Ensure the virtual environment is activated, then run:
+With the system up on the Jetson (`make up`):
 
 ```bash
-# Direct on the Jetson Nano:
-python3 tests/hello_world.py
-
-# Or on a workstation with a custom port:
-python3 tests/hello_world.py --port /dev/ttyUSB0 --baud 1000000
-```
-
-### 3.2 Expected Output & Verification Criteria
-
-Upon successful execution, the terminal should display:
-
-```text
-========================================
-   myCobot 280 Python Hello World Demo   
-========================================
-Connecting to port: /dev/ttyTHS1 at 1000000 baud...
-[INFO] Powering on servos...
-[INFO] Querying current joint angles...
-[OK] Received joint angles: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-[INFO] Setting Atom Matrix LED to green (0, 255, 0)...
-
-========================================
-Hello, myCobot! Python communication verified successfully.
-========================================
+make status   # containers, the arm as the page sees it (connected, angles, temperatures)
+make temps    # servo temperatures, read through arm_driver
 ```
 
 * **Pass Criteria:**
-  1. No `SerialException` or permission errors.
-  2. The Atom Matrix LED on the end-effector changes color to green.
-  3. Joint angles are returned as a list of 6 float values.
+  1. `make status` shows the arm connected and six joint angles.
+  2. `make temps` prints six temperatures.
+  3. The page at `http://<jetson>:8000` shows live angles.
 
-> **Hardware Verification Status:** This demo has been tested and verified directly on the physical myCobot 280 Jetson Nano robot. Serial communication was established on `/dev/ttyTHS1` at 1,000,000 baud, servo motor torque engaged, joint telemetry retrieved successfully, and the Atom Matrix LED illuminated green.
-
----
-
-## 4. C++ "Hello-World" Demo & Verification
-
-The C++ demo suite (`tests/hello_world.cpp` and `tests/mycobot.hpp`) tests low-level serial packet transmission (`0xFE 0xFE` protocol frames) directly.
-
-### 4.1 Direct Compilation with G++
-
-You can compile the demo directly using `g++`:
-
-```bash
-g++ -O2 -std=c++14 tests/hello_world.cpp -lpthread -o tests/hello_world
-```
-
-### 4.2 Compilation with CMake
-
-A minimal `CMakeLists.txt` is provided in the `tests/` directory:
-
-```cmake
-cmake_minimum_required(VERSION 3.16)
-project(mycobot_tests CXX)
-
-set(CMAKE_CXX_STANDARD 14)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
-# Output compiled executables directly to the tests directory
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
-
-find_package(Threads REQUIRED)
-
-add_executable(hello_world hello_world.cpp)
-target_include_directories(hello_world PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(hello_world PRIVATE Threads::Threads)
-```
-
-Setting `CMAKE_RUNTIME_OUTPUT_DIRECTORY` ensures the generated binary is placed directly in `tests/hello_world` matching the direct `g++` compilation output, even when building inside an out-of-source `tests/build` folder.
-
-To build with CMake:
-
-```bash
-mkdir -p tests/build
-cd tests/build
-cmake ..
-cmake --build .
-cd ../..
-```
-
-### 4.3 Running the C++ Demo
-
-Run the compiled executable, optionally passing the port path:
-
-```bash
-# On Jetson Nano (default: /dev/ttyTHS1):
-./tests/hello_world
-
-# Or on workstation / custom port:
-./tests/hello_world /dev/ttyUSB0
-```
-
-### 4.4 Expected Output & Verification Criteria
-
-```text
-========================================
-   myCobot 280 C++ Hello World Demo     
-========================================
-Target serial port: /dev/ttyTHS1 (Baud: 1000000)
-[OK] Serial connection established.
-[INFO] Powering on servos...
-[INFO] Reading current joint angles...
-[OK] Received joint angles: [ J1: 0° J2: 0° J3: 0° J4: 0° J5: 0° J6: 0° ]
-
-========================================
-Hello, myCobot! C++ communication verified successfully.
-========================================
-```
-
-* **Pass Criteria:**
-  1. Serial port opens successfully in 8N1 raw mode at `B1000000`.
-  2. Protocol request `0x20` is dispatched and parsed to valid joint coordinates.
-  3. Clean zero-exit return code (`echo $?` returns `0`).
-
-> **Hardware Verification Status:** This demo has been tested and verified directly on the physical myCobot 280 Jetson Nano robot. Serial connection to `/dev/ttyTHS1` opened at 1,000,000 baud, servo motors energized, and all 6 joint angles were read and parsed from the controller.
+> **History:** Sprint 0 verified the serial link with Python and C++ hello-world demos in `tests/` (run on the
+> physical arm on 2026-10-09, `/dev/ttyTHS1` at 1,000,000 baud). They were removed on 2026-10-22, once `arm_driver`
+> became the only owner of the port; they remain in the git history (`git show bf96fc1:tests/hello_world.py`).
 
 ---
 
-## 5. Continuous Integration (CI)
+## 4. Continuous Integration (CI)
 
 Every pull request and every push to `main` runs [`.github/workflows/ci.yml`](../.github/workflows/ci.yml). No robot,
 serial port or display is needed. Both jobs only call `make`, so a red check can be reproduced on a workstation with
@@ -234,8 +134,8 @@ the same commands:
 
 | Job | What it runs | Reproduce locally |
 |---|---|---|
-| `host` | `make ci`: host checks (venv with Python 3.11 from `.python-version`, imports, C++ hello-world build), `make lint` (compose files for both machines, shellcheck, hadolint) and the web page tests (pytest `web/tests`); creates `docker/.env` if missing | `make ci` |
-| `ros` | Builds the Dockerfile's `base` stage (Ubuntu 26.04 + ROS 2 Lyrical), then `rosdep install`, `colcon build` and `colcon test` of `ros2_ws/src` and `libs` in a throw-away container | `make ci-ros` (builds the image the first time) |
+| `host` | `make ci`: `make format-check` (C++ and Python formatting, see [4.1](#41-code-formatting)), `make lint` (compose files for both machines, shellcheck, hadolint) and the web page tests (pytest `web/tests`, in a venv from `web/requirements*.txt`); creates `docker/.env` if missing | `make ci` |
+| `ros` | Builds the Dockerfile's `base` stage (Ubuntu 26.04 + ROS 2 Lyrical), then `rosdep install`, `colcon build` and `colcon test` of `ros2_ws/src` (with `mycobot_cpp`) in a throw-away container | `make ci-ros` (builds the image the first time) |
 
 * shellcheck and hadolint need no install: without a local binary, `make lint` runs the images pinned in
   `SHELLCHECK_IMAGE` and `HADOLINT_IMAGE` through docker, so it never skips a check that CI runs.
@@ -244,9 +144,26 @@ the same commands:
 * The arm64 Jetson image is not built in CI (QEMU is too slow); build it by hand with `make jetson-image`.
 * `ci-ros` writes to `ros2_ws/build`, `install` and `log`, like `make build`, plus its ccache in `ros2_ws/.ccache`.
 
+### 4.1 Code Formatting
+
+C++ is formatted by clang-format (`.clang-format`) and Python by ruff (`.ruff.toml`). Both are pinned in
+`requirements-dev.txt`, so everyone formats the same way.
+
+| Command | What it does |
+|---|---|
+| `make format` | Fixes the formatting of every C++ and Python file |
+| `make format-check` | Only checks, changes nothing; prints `OK` or the files to fix |
+
+* The pre-push hook (`.githooks/pre-push`) runs `make format-check` and blocks the push if it fails. Fix with
+  `make format`, then commit and push again.
+* CI runs the same check (`make ci`, the `host` job), so a push that skipped the hook still fails on the PR.
+* `ros2_ws/src` is skipped, except `ros2_ws/src/mycobot_cpp` (plain C++, no ament linters): the ROS 2 packages are
+  checked by their own linters (`ament_uncrustify`, `ament_flake8`) in `make test`, because their style rules differ
+  from clang-format and ruff.
+
 ---
 
-## 6. Troubleshooting & FAQ
+## 5. Troubleshooting & FAQ
 
 | Problem | Cause | Solution |
 |---|---|---|
@@ -257,7 +174,7 @@ the same commands:
 
 ---
 
-## 7. Changelog
+## 6. Changelog
 
 | Date | Change | Author |
 |---|---|---|
@@ -266,3 +183,6 @@ the same commands:
 | *2026-10-09* | Fixed CMake output path to tests/ directory and recorded successful physical robot test verification | d-branco |
 | *2026-10-20* | Added the CI section (GitHub Action, issue #16) and its status badge | Petrichor |
 | *2026-10-21* | New make commands (issue #54): `make setup`, `make ci`, `make ci-ros`, `make park` ... | Denionline |
+| *2026-10-21* | Code formatting: `make format`, `make format-check` and the pre-push hook (issue #58) | carlaugu |
+| *2026-10-21* | Host venv: `make setup` creates it from `requirements-dev.txt` (container versions) | carlaugu |
+| *2026-10-22* | Root cleanup: `libs/cpp` moved to `ros2_ws/src/mycobot_cpp`; `tests/` (hello-world demos), `playground/`, `requirements.txt` and `.python-version` removed | Denionline |

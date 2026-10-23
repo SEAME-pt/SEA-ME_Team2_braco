@@ -34,7 +34,7 @@ variant `mycobot_280_jn` + `adaptive_gripper` for the model
 | Joints renamed from `joint2_to_joint1 ... joint6output_to_joint6` to `joint1..joint6` | `arm_driver` publishes `/joint_states` with `joint1..joint6`. With different names `robot_state_publisher` ignores the states **without any error** and the model never moves. |
 | Links renamed to `base_link`, `link1..link6` | The vendor also names the links `joint1..joint6` (easy to confuse with the joints). |
 | Vendor XML error fixed (`lower = "-2.932"1`) | The original file does not even parse. |
-| Limits taken from `JOINT_LIMITS` in `libs/cpp/includes/mycobot.hpp` | `<limit>` = `JOINT_LIMITS` (the firmware limit minus 1-2°, the same one `sendAngles` applies). There is only one set of limits in the code, so there is no `<safety_controller>`. |
+| Limits taken from `JOINT_LIMITS` in `ros2_ws/src/mycobot_cpp/includes/mycobot.hpp` | `<limit>` = `JOINT_LIMITS` (the firmware limit minus 1-2°, the same one `sendAngles` applies). There is only one set of limits in the code, so there is no `<safety_controller>`. |
 | `inertial` and `collision` added | The vendor only has `visual`. A positive inertia is required by Gazebo/MoveIt. |
 | Gripper mounted with `pi/2` instead of `1.579` | The vendor value is ~0.5° off 90°. |
 | Flange and everything on it turned -45° about the joint 6 axis (`flange_yaw` in `braco.urdf.xacro`) | Compared with the real arm at joint 6 = 0, the flange's LEGO hole grid (and so the gripper pinned to it) was 45° off in the vendor model. Turns the flange mesh and `tool0`, so the gripper, `tcp` and camera frames follow; positions do not change. |
@@ -42,7 +42,7 @@ variant `mycobot_280_jn` + `adaptive_gripper` for the model
 
 The joint origins and the mesh offsets are the vendor's, unchanged.
 
-The table-clearance check (`minHeightMm()` in `libs/cpp/srcs/mycobot.cpp`) was fixed. It used the joint origins of the
+The table-clearance check (`minHeightMm()` in `ros2_ws/src/mycobot_cpp/srcs/mycobot.cpp`) was fixed. It used the joint origins of the
 **M5** arm (J1 0.13156 m above a short base) with the 140 mm height of the Jetson casing top, so every height it
 computed was about 85 mm too high (arm straight out sideways: 96 mm instead of 11 mm, allowed instead of refused).
 It now uses the Jetson Nano origins of this URDF from the bottom of the casing (`BASE_HEIGHT_MM - CASING_HEIGHT_MM`);

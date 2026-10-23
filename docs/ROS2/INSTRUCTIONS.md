@@ -4,7 +4,7 @@ This guide takes you from nothing to a working ROS 2 workspace with every core p
 
 Read [README.md](README.md) first if the concepts (node, topic, QoS, lifecycle...) are new. For a quick list of commands see [CHEATSHEET.md](CHEATSHEET.md); when something breaks see [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
 
-> **Safety:** nothing in this guide moves the arm. Before running any node that talks to the hardware, read [docs/safety.md](../docs/safety.md).
+> **Safety:** nothing in this guide moves the arm. Before running any node that talks to the hardware, read [docs/safety.md](../safety.md).
 
 ---
 
@@ -46,12 +46,12 @@ Conventions in this guide:
 | Your machine | Use |
 |---|---|
 | Linux PC (any recent distro) | **Docker, section 1.1** |
-| Jetson Nano (JetPack 4.6, Ubuntu 20.04 host) | **Docker, section 1.2**. Do not install ROS 2 natively: Lyrical is not available for Ubuntu 20.04 (see [ADR-0001](../docs/ADR-0001-ros2-in-docker-on-jetson-nano.md)) |
+| Jetson Nano (JetPack 4.6, Ubuntu 20.04 host) | **Docker, section 1.2**. Do not install ROS 2 natively: Lyrical is not available for Ubuntu 20.04 (see [ADR-0001](../ADR-0001-ros2-in-docker-on-jetson-nano.md)) |
 | A PC running Ubuntu 26.04 that should have ROS natively | Section 2 (optional; Docker still recommended so everyone has the same environment) |
 | Windows | Docker inside WSL2 (Ubuntu), then section 1.1 from the WSL terminal. GUIs need WSLg |
 | macOS | Docker Desktop works for the CLI; GUIs (RViz2, rqt) are not supported by our setup |
 
-The Docker setup gives everyone the **same** ROS 2 Lyrical install on Ubuntu 26.04, on both the PC (`braco-image/pc` image: ROS desktop, RViz2, MoveIt 2, Gazebo, rqt, QA tools) and the Jetson (`braco-image/jetson` image: headless ROS base, serial tools, `pymycobot`). Full details are in [docker/README.md](../docker/README.md).
+The Docker setup gives everyone the **same** ROS 2 Lyrical install on Ubuntu 26.04, on both the PC (`braco-image/pc` image: ROS desktop, RViz2, MoveIt 2, Gazebo, rqt, QA tools) and the Jetson (`braco-image/jetson` image: headless ROS base, serial tools, `pymycobot`). Full details are in [docker/README.md](../../docker/README.md).
 
 ---
 

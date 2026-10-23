@@ -1,0 +1,979 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>braco architecture</title>
+<meta name="description" content="The official, always-current architecture of the braco software: ROS 2 packages, nodes, topics, deployment, make commands and Jetson resources.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@500;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Same design as the "Fluxo do braco em ROS 2" page: one central figure (the ROS 2 graph with the driver above and
+   the clients below), then scenarios, reference tables and the status against the target. */
+:root {
+  --bg: #f3f6f7; --surface: #ffffff; --fg: #15212b; --muted: #566573; --line: #c4cfd8;
+  --ros: #0b6c86; --ros-soft: #e1f0f4; --hw: #a85a06; --hw-soft: #fbeedd;
+  --warn: #b42318; --warn-soft: #fde8e6; --ok: #2c7a4b; --ok-soft: #e3f3e9; --note: #6a4fb3; --note-soft: #eee9fa;
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100;
+  --f-display: "Familjen Grotesk", "Helvetica Neue", Arial, sans-serif;
+  --f-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0e141a; --surface: #161f28; --fg: #e3e9ee; --muted: #93a3b1; --line: #2e3c49;
+  --ros: #5ab8d6; --ros-soft: #12303b; --hw: #e5a453; --hw-soft: #3a2a14;
+  --warn: #f2786c; --warn-soft: #3d1c19; --ok: #6cc690; --ok-soft: #173525; --note: #b29cf0; --note-soft: #2a2342;
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+  color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #0e141a; --surface: #161f28; --fg: #e3e9ee; --muted: #93a3b1; --line: #2e3c49;
+  --ros: #5ab8d6; --ros-soft: #12303b; --hw: #e5a453; --hw-soft: #3a2a14;
+  --warn: #f2786c; --warn-soft: #3d1c19; --ok: #6cc690; --ok-soft: #173525; --note: #b29cf0; --note-soft: #2a2342;
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+  color-scheme: dark; }
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f-body); font-size: 15px; line-height: 1.55; }
+.wrap { max-width: 1080px; margin: 0 auto; padding: 40px 16px 64px; display: grid; gap: 56px; }
+header { display: grid; gap: 10px; }
+.eyebrow { font-family: var(--f-mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+h1 { font-family: var(--f-display); font-weight: 700; font-size: clamp(30px, 5vw, 44px); line-height: 1.1; margin: 0; text-wrap: balance; }
+h2 { font-family: var(--f-display); font-weight: 700; font-size: 24px; margin: 0; text-wrap: balance; }
+h3 { font-family: var(--f-display); font-weight: 500; font-size: 17px; margin: 0; }
+p { margin: 0; max-width: 72ch; }
+a { color: var(--ros); }
+a:focus-visible { outline: 2px solid var(--ros); outline-offset: 2px; }
+.lede { color: var(--muted); font-size: 16px; }
+code { font-family: var(--f-mono); font-size: .9em; }
+section { display: grid; gap: 16px; scroll-margin-top: 16px; }
+.sechead { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.secnum { font-family: var(--f-mono); color: var(--ros); font-size: 13px; }
+ul.plain { margin: 0; padding-left: 20px; display: grid; gap: 6px; max-width: 76ch; }
+
+.answer { background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--ros); border-radius: 4px; padding: 16px 18px; display: grid; gap: 8px; }
+.answer.rule { border-left-color: var(--note); }
+.meta { display: flex; flex-wrap: wrap; gap: 8px 18px; font-family: var(--f-mono); font-size: 12px; color: var(--muted); }
+
+nav.toc { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 14px 16px; }
+nav.toc ol { margin: 0; padding: 0; list-style: none; columns: 3 220px; column-gap: 24px; }
+nav.toc li { padding: 3px 0; font-size: 14px; break-inside: avoid; }
+nav.toc li span { font-family: var(--f-mono); font-size: 12px; color: var(--ros); display: inline-block; width: 26px; }
+nav.toc a { color: var(--fg); text-decoration: none; }
+nav.toc a:hover { color: var(--ros); text-decoration: underline; }
+
+figure { margin: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; display: grid; }
+.scroll { overflow-x: auto; padding: 16px; }
+.scroll svg { display: block; width: 100%; min-width: 820px; height: auto; }
+figcaption { border-top: 1px solid var(--line); padding: 12px 16px; color: var(--muted); font-size: 14px; }
+.legend { display: flex; flex-wrap: wrap; gap: 16px; padding: 0 16px 14px; font-size: 13px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 18px; height: 10px; border-radius: 2px; display: inline-block; }
+
+/* SVG */
+svg text { font-family: var(--f-body); fill: var(--fg); font-size: 12px; }
+svg .t-b { font-weight: 600; font-size: 13px; }
+svg .t-h { font-family: var(--f-display); font-weight: 700; font-size: 16px; }
+svg .t-s { fill: var(--muted); font-size: 11px; }
+svg .t-l { fill: var(--muted); font-size: 10.5px; letter-spacing: .08em; }
+svg .t-m { font-family: var(--f-mono); font-size: 11px; }
+svg .t-ros { fill: var(--ros); } svg .t-hw { fill: var(--hw); } svg .t-note { fill: var(--note); }
+svg .box { fill: var(--surface); stroke: var(--line); stroke-width: 1.2; }
+svg .key { fill: var(--ros-soft); stroke: var(--ros); stroke-width: 2; }
+svg .future { fill: var(--surface); stroke: var(--note); stroke-width: 1.2; stroke-dasharray: 5 4; }
+svg .hwbox { fill: var(--hw-soft); stroke: var(--hw); stroke-width: 1.4; }
+svg .band { fill: var(--ros); fill-opacity: .12; stroke: var(--ros); stroke-width: 1.4; }
+svg .machine { fill: none; stroke: var(--muted); stroke-width: 1.2; }
+svg .w-ros { stroke: var(--ros); stroke-width: 1.8; fill: none; }
+svg .w-hw { stroke: var(--hw); stroke-width: 1.6; fill: none; }
+svg .w-fg { stroke: var(--fg); stroke-opacity: .6; stroke-width: 1.3; fill: none; }
+svg .w-note { stroke: var(--note); stroke-width: 1.4; stroke-dasharray: 5 4; fill: none; }
+svg .ah-ros { fill: var(--ros); } svg .ah-hw { fill: var(--hw); } svg .ah-fg { fill: var(--fg); fill-opacity: .6; } svg .ah-note { fill: var(--note); }
+svg .seg1 { fill: var(--s1); } svg .seg2 { fill: var(--s2); } svg .seg3 { fill: var(--s3); }
+svg .free { fill: none; stroke: var(--line); stroke-width: 1.2; stroke-dasharray: 4 3; }
+svg .grid { stroke: var(--line); stroke-width: 1; }
+svg .mark2g { stroke: var(--warn); stroke-width: 1.4; stroke-dasharray: 5 4; }
+svg .t-in { fill: #ffffff; font-size: 11px; font-weight: 600; }
+
+/* Cards */
+.scen { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
+.sc { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 16px; display: grid; gap: 10px; align-content: start; min-width: 0; }
+.sc ol { margin: 0; padding: 0; list-style: none; display: grid; counter-reset: s; }
+.sc li { counter-increment: s; display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 8px; font-size: 14px; padding: 6px 0; border-top: 1px dashed var(--line); }
+.sc li:first-child { border-top: 0; }
+.sc li::before { content: counter(s); font-family: var(--f-mono); font-size: 12px; color: var(--ros); padding-top: 2px; }
+.okgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 8px; }
+.okgrid div { background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 10px 12px; font-size: 14px; }
+.okgrid b { color: var(--ros); font-weight: 600; }
+
+.changes { display: grid; gap: 10px; }
+.ch { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 14px 16px; display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 14px; align-items: start; }
+@media (max-width: 600px) { .ch { grid-template-columns: minmax(0, 1fr); gap: 8px; } }
+.ch-body { display: grid; gap: 6px; min-width: 0; }
+.ch-body p { font-size: 14px; }
+.ch .where { font-family: var(--f-mono); font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.pill { font-family: var(--f-mono); font-size: 11px; padding: 3px 8px; border-radius: 99px; letter-spacing: .03em; justify-self: start; white-space: nowrap; }
+.p-warn { background: var(--warn-soft); color: var(--warn); }
+.p-hw { background: var(--hw-soft); color: var(--hw); }
+.p-note { background: var(--note-soft); color: var(--note); }
+.p-ok { background: var(--ok-soft); color: var(--ok); }
+.p-ros { background: var(--ros-soft); color: var(--ros); }
+
+/* Layout */
+.layout { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); }
+@media (max-width: 820px) { .layout { grid-template-columns: minmax(0, 1fr); } .rules { border-left: 0 !important; border-top: 1px solid var(--line); } }
+.layout pre { margin: 0; padding: 16px; font-family: var(--f-mono); font-size: 12.5px; line-height: 1.7; overflow-x: auto; color: var(--fg); }
+pre .c { color: var(--muted); }
+pre .p { color: var(--ros); font-weight: 500; }
+pre .n { color: var(--note); }
+.rules { border-left: 1px solid var(--line); padding: 16px; display: grid; gap: 14px; align-content: start; }
+.rules .rule { display: grid; gap: 4px; }
+.rules .rule p { font-size: 14px; color: var(--muted); }
+
+.tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; min-width: 620px; font-size: 14px; }
+th, td { text-align: left; padding: 9px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-family: var(--f-mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 500; }
+tr:last-child td { border-bottom: 0; }
+td code { overflow-wrap: anywhere; }
+td.num { font-family: var(--f-mono); font-size: 13px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+tr.future td { color: var(--muted); }
+tr.total td { font-weight: 600; }
+.subhead { font-family: var(--f-mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+
+/* Commands */
+.hero-cmd { display: grid; gap: 10px; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 18px; }
+.hero-cmd .big { font-family: var(--f-mono); font-size: 26px; color: var(--ros); font-weight: 500; }
+.groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
+.grp { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 14px 16px; display: grid; gap: 10px; align-content: start; min-width: 0; }
+.grp-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.grp-head span { font-size: 12px; color: var(--muted); font-family: var(--f-mono); }
+.cmds { margin: 0; padding: 0; list-style: none; display: grid; }
+.cmds li { display: grid; grid-template-columns: minmax(118px, auto) minmax(0, 1fr); gap: 10px; padding: 7px 0; border-top: 1px dashed var(--line); font-size: 14px; }
+.cmds li:first-child { border-top: 0; }
+.cmds code { color: var(--ros); font-size: 13px; }
+.cmds small { color: var(--muted); font-size: 12px; display: block; }
+.code { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 16px; font-family: var(--f-mono); font-size: 12.5px; line-height: 1.6; overflow-x: auto; margin: 0; color: var(--fg); }
+.code .c { color: var(--muted); } .code .k { color: var(--ros); }
+
+/* Resources */
+.assume { font-size: 14px; color: var(--muted); border-left: 3px solid var(--line); padding-left: 12px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.tile { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 14px 16px; display: grid; gap: 4px; }
+.tile .v { font-family: var(--f-display); font-size: 30px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.tile .k { font-size: 13px; color: var(--muted); }
+.legend2 { display: flex; flex-wrap: wrap; gap: 16px; padding: 14px 16px 0; font-size: 13px; }
+.legend2 span { display: inline-flex; align-items: center; gap: 6px; }
+
+footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line); padding-top: 16px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="eyebrow">SEA:ME Team 2 · braco · official architecture</div>
+    <h1>braco architecture</h1>
+    <p class="lede">How the braco software is split into ROS 2 packages, which process owns what, how the pieces talk to each other on the real arm (Jetson Nano) and in simulation (PC), where each file lives, how the system is started and what it costs on the Jetson. This page describes what is <b>implemented today</b>. The same content in Markdown: <a href="architecture.md">architecture.md</a>; <b>both files are kept in sync</b>.</p>
+    <div class="meta">
+      <span>Last checked against the code: 2026-10-23</span>
+      <span>Started as <a href="https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/30">issue #30</a></span>
+      <span><a href="ADR-0001-ros2-in-docker-on-jetson-nano.md">ADR-0001</a> · <a href="ADR-0002-unique-control.md">ADR-0002</a> · <a href="ADR-0003-rest-per-temp.md">ADR-0003</a></span>
+    </div>
+  </header>
+
+  <div class="answer rule">
+    <p><b>This page follows the code.</b> Every pull request that changes a node, a topic, a service, a parameter, a package, a folder, a <code>make</code> command or the deployment updates the matching section here in the same PR (the map is in <a href="#s13">section 13</a>), and moves the item in the <a href="#s12">status</a> between <i>pending</i>, <i>differs</i> and <i>done</i>. If the code and this page disagree, the code wins and this page is the bug.</p>
+  </div>
+
+  <nav class="toc" aria-label="Contents">
+    <ol>
+      <li><span>1</span><a href="#s1">Principles</a></li>
+      <li><span>2</span><a href="#s2">The system at a glance</a></li>
+      <li><span>3</span><a href="#s3">Scenarios</a></li>
+      <li><span>4</span><a href="#s4">ROS 2 graph and control</a></li>
+      <li><span>5</span><a href="#s5">Packages and folders</a></li>
+      <li><span>6</span><a href="#s6">Deployment</a></li>
+      <li><span>7</span><a href="#s7">Launch and parameters</a></li>
+      <li><span>8</span><a href="#s8">Make commands</a></li>
+      <li><span>9</span><a href="#s9">CPU and memory on the Jetson</a></li>
+      <li><span>10</span><a href="#s10">Simulation and upper layers</a></li>
+      <li><span>11</span><a href="#s11">Build and test</a></li>
+      <li><span>12</span><a href="#s12">Status against the target</a></li>
+      <li><span>13</span><a href="#s13">Changing the architecture</a></li>
+    </ol>
+  </nav>
+
+  <!-- 1 -->
+  <section id="s1">
+    <div class="sechead"><span class="secnum">1</span><h2>Principles</h2></div>
+    <div class="okgrid">
+      <div><b>One owner per device.</b> <code>arm_driver</code> is the only process that opens the myCobot 280 serial port (<code>/dev/ttyTHS1</code>, 1 Mbaud). Everyone else reaches the arm through its topics and services, so each client can start, stop or crash without touching the port. The page has no direct serial mode. Likewise <code>camera</code> is the only process that opens the eye-in-hand USB camera; the page (and later vision) subscribes to its frames.</div>
+      <div><b>The driver never moves the arm by itself.</b> Starting or stopping the system does not zero, park or power on the arm; those are explicit commands (<code>make zero</code>, <code>make park</code>, <code>make down PARK=1</code>). The one automatic move is the park on overheat, run by <code>temperature_monitor</code> (<a href="ADR-0003-rest-per-temp.md">ADR-0003</a>).</div>
+      <div><b>Safety lives next to the hardware.</b> Joint limits, the table margin, the watchdog, rest mode and the control owner are enforced in <code>arm_driver</code>, not in its clients: a buggy client cannot bypass them.</div>
+      <div><b>Faults are visible.</b> <code>arm_driver</code> is not respawned: if it dies the launch shuts down, <code>arm_routine.sh</code> ends and the container stops. <code>temperature_monitor</code>, <code>joystick_teleop</code> and <code>camera</code> are respawned; the arm never depends on the camera, whose node waits for it when it is unplugged.</div>
+      <div><b>One client moves the arm at a time.</b> The page, the joystick, zero/park and the mission take the control from <code>arm_driver</code> before moving; motion from anyone else is ignored, STOP never is (<a href="ADR-0002-unique-control.md">ADR-0002</a>).</div>
+      <div><b>One source for each fact.</b> The thermal level is computed once, by <code>temperature_monitor</code>, and published on <code>/diagnostics</code>; the page shows it and does not recompute it. The control owner is kept once, by <code>arm_driver</code>.</div>
+      <div><b>Same interface for real and simulated.</b> Everything above the driver uses <code>/joint_states</code> and <code>braco_interfaces</code>, so the mission and planning layers run unchanged on both (#37).</div>
+      <div><b>Logic without ROS where possible.</b> Serial protocol, joystick, LCD and teleop logic live in <code>mycobot_cpp</code> (<code>ros2_ws/src/mycobot_cpp</code>); the control owner and the auto-rest decision are plain headers in <code>braco_driver/include</code>. All unit-tested without a ROS graph.</div>
+    </div>
+  </section>
+
+  <!-- 2 -->
+  <section id="s2">
+    <div class="sechead"><span class="secnum">2</span><h2>The system at a glance</h2></div>
+    <figure>
+      <div class="scroll">
+      <svg viewBox="0 0 1000 640" role="img" aria-label="arm_driver above the ROS 2 graph, the only owner of the UART, with the gates STOP, rest mode, control owner and watchdog. Beside it, the camera node, the only owner of the USB camera. Below, the web page, the joystick, the temperature monitor and the planned braco_mission, all talking only through the graph.">
+        <defs>
+          <marker id="r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ah-ros"/></marker>
+          <marker id="h" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ah-hw"/></marker>
+          <marker id="f" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ah-fg"/></marker>
+          <marker id="n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ah-note"/></marker>
+        </defs>
+
+        <rect x="20" y="20" width="640" height="176" rx="6" class="key"/>
+        <text x="40" y="50" class="t-h">arm_driver</text>
+        <text x="40" y="70" class="t-s">the only process that opens the UART</text>
+        <text x="40" y="98" class="t-l">GATES OF A COMMAND</text>
+        <text x="40" y="118" class="t-m">1  STOP always passes</text>
+        <text x="40" y="136" class="t-m">2  rest mode</text>
+        <text x="40" y="154" class="t-m">3  control owner</text>
+        <text x="40" y="172" class="t-m">4  watchdog 300 ms</text>
+
+        <text x="270" y="50" class="t-l">PUBLISHES</text>
+        <text x="270" y="70" class="t-m">/joint_states</text>
+        <text x="270" y="87" class="t-m">/arm/servo_temperatures</text>
+        <text x="270" y="104" class="t-m">/arm/read_only</text>
+        <text x="270" y="121" class="t-m">/arm/servo_voltages</text>
+        <text x="270" y="138" class="t-m">/arm/control_owner</text>
+
+        <text x="460" y="50" class="t-l">RECEIVES</text>
+        <text x="460" y="70" class="t-m">/arm/command</text>
+        <text x="460" y="87" class="t-m">/arm/led</text>
+        <text x="460" y="104" class="t-m">srv /arm/power_on</text>
+        <text x="460" y="121" class="t-m">srv /arm/set_gripper</text>
+        <text x="460" y="138" class="t-m">srv /arm/set_read_only</text>
+        <text x="460" y="155" class="t-m">srv /arm/release_servos</text>
+        <text x="460" y="172" class="t-m">srv /arm/take_control</text>
+
+        <rect x="800" y="68" width="180" height="70" rx="4" class="hwbox"/>
+        <text x="890" y="96" text-anchor="middle" class="t-b">myCobot 280</text>
+        <text x="890" y="116" text-anchor="middle" class="t-m">/dev/ttyTHS1</text>
+        <line x1="662" y1="103" x2="798" y2="103" class="w-hw" marker-start="url(#h)" marker-end="url(#h)"/>
+        <text x="730" y="95" text-anchor="middle" class="t-m t-hw">UART 1 Mbaud</text>
+
+        <line x1="340" y1="198" x2="340" y2="246" class="w-ros" marker-start="url(#r)" marker-end="url(#r)"/>
+
+        <rect x="680" y="152" width="150" height="84" rx="4" class="box"/>
+        <text x="694" y="174" class="t-b">camera</text>
+        <text x="694" y="190" class="t-s">owns the USB camera</text>
+        <text x="694" y="208" class="t-m">/camera/image_raw/</text>
+        <text x="694" y="224" class="t-m">  compressed (JPEG)</text>
+        <line x1="755" y1="237" x2="755" y2="246" class="w-ros" marker-end="url(#r)"/>
+        <rect x="850" y="166" width="130" height="56" rx="4" class="hwbox"/>
+        <text x="915" y="189" text-anchor="middle" class="t-b">USB camera</text>
+        <text x="915" y="207" text-anchor="middle" class="t-m">/dev/video0</text>
+        <line x1="848" y1="194" x2="832" y2="194" class="w-hw" marker-end="url(#h)"/>
+
+        <rect x="20" y="248" width="960" height="44" rx="4" class="band"/>
+        <text x="500" y="268" text-anchor="middle" class="t-b t-ros">ROS 2 · DDS · domain 42</text>
+        <text x="500" y="284" text-anchor="middle" class="t-s">nodes of one ros2 launch; no client talks to another outside the graph</text>
+
+        <line x1="132" y1="294" x2="132" y2="328" class="w-ros" marker-start="url(#r)" marker-end="url(#r)"/>
+        <line x1="377" y1="294" x2="377" y2="328" class="w-ros" marker-start="url(#r)" marker-end="url(#r)"/>
+        <line x1="622" y1="294" x2="622" y2="328" class="w-ros" marker-start="url(#r)" marker-end="url(#r)"/>
+        <line x1="867" y1="294" x2="867" y2="328" class="w-note" marker-start="url(#n)" marker-end="url(#n)"/>
+
+        <rect x="20" y="330" width="225" height="196" rx="4" class="box"/>
+        <text x="36" y="354" class="t-b">braco_web</text>
+        <text x="36" y="372" class="t-s">rclpy node inside uvicorn</text>
+        <text x="36" y="396" class="t-l">SENDS</text>
+        <text x="36" y="412" class="t-m">/arm/command, /arm/led</text>
+        <text x="36" y="427" class="t-m">srv take_control</text>
+        <text x="36" y="442" class="t-m">srv power_on, gripper…</text>
+        <text x="36" y="464" class="t-l">READS</text>
+        <text x="36" y="478" class="t-m">/joint_states</text>
+        <text x="36" y="492" class="t-m">/arm/control_owner</text>
+        <text x="36" y="506" class="t-m">/diagnostics</text>
+        <text x="36" y="520" class="t-m">/camera/image_raw/compressed</text>
+
+        <rect x="265" y="330" width="225" height="196" rx="4" class="box"/>
+        <text x="281" y="354" class="t-b">joystick_teleop</text>
+        <text x="281" y="372" class="t-s">reopens js0 if unplugged</text>
+        <text x="281" y="396" class="t-l">SENDS</text>
+        <text x="281" y="412" class="t-m">/arm/command, /arm/led</text>
+        <text x="281" y="427" class="t-m">srv take_control</text>
+        <text x="281" y="442" class="t-m">srv set_gripper, power_on</text>
+        <text x="281" y="464" class="t-l">READS</text>
+        <text x="281" y="480" class="t-m">/joint_states</text>
+        <text x="281" y="495" class="t-m">/arm/control_owner</text>
+
+        <rect x="510" y="330" width="225" height="196" rx="4" class="box"/>
+        <text x="526" y="354" class="t-b" style="font-size:12.5px">temperature_monitor</text>
+        <text x="526" y="372" class="t-s">the thermal authority</text>
+        <text x="526" y="396" class="t-l">SENDS</text>
+        <text x="526" y="412" class="t-m">/diagnostics</text>
+        <text x="526" y="427" class="t-m">park, set_read_only at 65 °C</text>
+        <text x="526" y="464" class="t-l">READS</text>
+        <text x="526" y="480" class="t-m">/arm/servo_temperatures</text>
+
+        <rect x="755" y="330" width="225" height="196" rx="4" class="future"/>
+        <text x="771" y="354" class="t-b">braco_mission</text>
+        <text x="771" y="372" class="t-s t-note">planned (#43), same contract</text>
+        <text x="771" y="396" class="t-l">SENDS</text>
+        <text x="771" y="412" class="t-m">srv take_control</text>
+        <text x="771" y="427" class="t-m">FollowJointTrajectory</text>
+        <text x="771" y="464" class="t-l">READS</text>
+        <text x="771" y="480" class="t-m">/joint_states</text>
+        <text x="771" y="495" class="t-m">/diagnostics</text>
+
+        <rect x="20" y="572" width="225" height="50" rx="4" class="box"/>
+        <text x="132" y="602" text-anchor="middle" class="t-b">browsers</text>
+        <line x1="132" y1="570" x2="132" y2="528" class="w-fg" marker-start="url(#f)" marker-end="url(#f)"/>
+        <text x="140" y="553" class="t-m">HTTP · WS · MJPEG :8000</text>
+        <rect x="265" y="572" width="225" height="50" rx="4" class="hwbox"/>
+        <text x="377" y="594" text-anchor="middle" class="t-b">joystick</text>
+        <text x="377" y="611" text-anchor="middle" class="t-m">/dev/input/js0</text>
+        <line x1="377" y1="570" x2="377" y2="528" class="w-hw" marker-end="url(#h)"/>
+        <rect x="510" y="572" width="225" height="50" rx="4" class="hwbox"/>
+        <text x="622" y="594" text-anchor="middle" class="t-b">LCD1602</text>
+        <text x="622" y="611" text-anchor="middle" class="t-m">/dev/i2c-0</text>
+        <line x1="622" y1="528" x2="622" y2="570" class="w-hw" marker-end="url(#h)"/>
+      </svg>
+      </div>
+      <div class="legend">
+        <span><i class="sw" style="background:var(--ros)"></i>implemented, through ROS 2</span>
+        <span><i class="sw" style="background:var(--note)"></i>planned</span>
+        <span><i class="sw" style="background:var(--hw)"></i>physical device</span>
+      </div>
+      <figcaption>The clients do not know each other: each talks only to the graph, and the safety rules sit in one place, the gates of <code>arm_driver</code>. A motion command passes them in order: STOP is always obeyed; in rest mode motion is refused; motion from anyone but the control owner is ignored (and logged); and when motion commands stop for 300 ms the watchdog stops the arm.</figcaption>
+    </figure>
+  </section>
+
+  <!-- 3 -->
+  <section id="s3">
+    <div class="sechead"><span class="secnum">3</span><h2>Scenarios</h2></div>
+    <div class="scen">
+      <div class="sc">
+        <h3>An operator moves the arm from the page</h3>
+        <ol>
+          <li><span>The user takes the control on the page. With <code>ARM_SOURCE=ros</code> the page lease calls <code>take_control("web")</code>.</span></li>
+          <li><span><code>arm_driver</code> publishes <code>/arm/control_owner = web</code>. The joystick sees it and dims its LED.</span></li>
+          <li><span>The page streams <code>ALL_ANGLES</code> a few degrees ahead of the real angle, only while <code>/joint_states</code> is fresh.</span></li>
+          <li><span>If the page dies, the watchdog stops the arm within 300 ms. After 5 s without motion the owner goes back to free.</span></li>
+        </ol>
+      </div>
+      <div class="sc">
+        <h3>Someone picks up the joystick</h3>
+        <ol>
+          <li><span>With the control free, the first stick / X / A / B move calls <code>take_control("joystick")</code>.</span></li>
+          <li><span>If the page has the control, the joystick forces it by <b>holding button 8 for 1 s</b>: whoever stands next to the arm has priority.</span></li>
+          <li><span><code>arm_driver</code> changes the owner, drops the page's pending motion and stops the arm. The page shows "joystick in control"; taking the control from the page fails with <b>409</b> until it is free again.</span></li>
+          <li><span>The joystick calls <code>power_on</code> on connect only once it has the control.</span></li>
+        </ol>
+      </div>
+      <div class="sc">
+        <h3>A servo gets hot</h3>
+        <ol>
+          <li><span><code>arm_driver</code> publishes <code>/arm/servo_temperatures</code> (and <code>/arm/servo_voltages</code>) every 2 s, also in rest mode.</span></li>
+          <li><span><code>temperature_monitor</code> classifies normal (up to 54 °C), warm (55–64 °C) or hot (65 °C or more), publishes <code>/diagnostics</code> and shows it on the LCD.</span></li>
+          <li><span>At hot, once per hot episode, it runs <code>park</code> (<code>park_on_hot</code>): the arm folds, the joints are released so the servos cool, and the arm ends in rest mode, also when park fails. The episode ends only when every joint is below 60 °C (hysteresis), so a reading that jitters around 65 °C does not park the arm again. With <code>park_on_hot: false</code> it only calls <code>set_read_only(true)</code>. In rest mode <code>arm_driver</code> drops the pending motion and refuses motion, gripper and power on, but keeps reading.</span></li>
+          <li><span>The page shows the level from <code>/diagnostics</code>. When the arm has cooled down, someone runs <code>make resume</code> (<a href="arm-rest-mode.md">arm-rest-mode.md</a>).</span></li>
+        </ol>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4 -->
+  <section id="s4">
+    <div class="sechead"><span class="secnum">4</span><h2>ROS 2 graph and control (real arm, <code>sim:=false</code>)</h2></div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Name</th><th>Type</th><th>Publisher / server</th><th>Users</th></tr></thead>
+        <tbody>
+          <tr><td><code>/joint_states</code></td><td><code>sensor_msgs/JointState</code> (rad, <code>joint1..joint6</code>), 20 Hz</td><td><code>arm_driver</code></td><td>teleop, page, zero/park, MoveIt (planned)</td></tr>
+          <tr><td><code>/arm/command</code></td><td><code>braco_interfaces/ArmCommand</code> (with <code>source</code>)</td><td>teleop, page, zero/park</td><td><code>arm_driver</code> (the owner's motion, anyone's STOP)</td></tr>
+          <tr><td><code>/arm/led</code></td><td><code>std_msgs/ColorRGBA</code></td><td>teleop, page</td><td><code>arm_driver</code></td></tr>
+          <tr><td><code>/arm/servo_temperatures</code></td><td><code>braco_interfaces/ServoTemperatures</code>, every 2 s</td><td><code>arm_driver</code></td><td><code>temperature_monitor</code>, page</td></tr>
+          <tr><td><code>/arm/servo_voltages</code></td><td><code>braco_interfaces/ServoVoltages</code> (V per joint, <code>valid</code>), every 2 s</td><td><code>arm_driver</code></td><td>page (panel and history chart)</td></tr>
+          <tr><td><code>/arm/read_only</code></td><td><code>std_msgs/Bool</code>, latched</td><td><code>arm_driver</code></td><td>page</td></tr>
+          <tr><td><code>/arm/control_owner</code></td><td><code>std_msgs/String</code>, latched (<code>""</code> = free)</td><td><code>arm_driver</code></td><td>teleop, page</td></tr>
+          <tr><td><code>/diagnostics</code></td><td><code>diagnostic_msgs/DiagnosticArray</code></td><td><code>temperature_monitor</code></td><td>page (levels, ROS health)</td></tr>
+          <tr><td><code>/camera/image_raw/compressed</code></td><td><code>sensor_msgs/CompressedImage</code> (JPEG, up to 15 fps, sensor-data QoS)</td><td><code>camera</code></td><td>page (MJPEG on Arm and Control), vision (planned)</td></tr>
+          <tr><td><code>/arm/take_control</code></td><td><code>braco_interfaces/TakeControl</code></td><td><code>arm_driver</code></td><td>teleop, page, zero/park</td></tr>
+          <tr><td><code>/arm/power_on</code>, <code>/arm/release_servos</code></td><td><code>std_srvs/Trigger</code></td><td><code>arm_driver</code></td><td>teleop, page, zero/park</td></tr>
+          <tr><td><code>/arm/set_gripper</code>, <code>/arm/set_read_only</code></td><td><code>std_srvs/SetBool</code></td><td><code>arm_driver</code></td><td>teleop, page, zero/park, <code>temperature_monitor</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="changes">
+      <div class="ch">
+        <span class="pill p-ros">command</span>
+        <div class="ch-body">
+          <h3>Latest wins</h3>
+          <p><code>ArmCommand</code> carries <code>STOP</code>, <code>JOINTS</code> (one target per joint) or <code>ALL_ANGLES</code> (six angles, one speed). The newest command replaces any pending one, so a slow serial link never builds a queue. Clients stream short moves a few degrees ahead of the angle they read on <code>/joint_states</code>, and only while that feedback is fresh: if the client dies, the arm coasts very little.</p>
+        </div>
+      </div>
+      <div class="ch">
+        <span class="pill p-warn">safety</span>
+        <div class="ch-body">
+          <h3>Watchdog and limits</h3>
+          <p>When motion commands stop for <code>command_timeout_ms</code> (300 ms), <code>arm_driver</code> stops the arm. Angles are clamped to <code>JOINT_LIMITS</code> (<code>mycobot.hpp</code>); poses that put the wrist or tool below the table margin are refused.</p>
+        </div>
+      </div>
+      <div class="ch">
+        <span class="pill p-hw">rest</span>
+        <div class="ch-body">
+          <h3>Rest mode</h3>
+          <p><code>/arm/set_read_only true</code>: motion, gripper and power on are refused; angles and temperatures keep being published. <code>temperature_monitor</code> enters it by itself when a servo reaches 65 °C, once per hot episode (which ends below 60 °C), after parking the arm (<code>park_on_hot</code>); leaving it is manual (<code>make resume</code>). See <a href="arm-rest-mode.md">arm-rest-mode.md</a> and <a href="ADR-0003-rest-per-temp.md">ADR-0003</a>.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="subhead">Who moves the arm (<a href="ADR-0002-unique-control.md">ADR-0002</a>)</div>
+    <div class="tablewrap">
+      <table>
+        <tbody>
+          <tr><td><b>Owner</b></td><td><code>web</code>, <code>joystick</code>, <code>script</code> (zero/park) or <code>mission</code>, the <code>source</code> of its <code>ArmCommand</code>s; <code>""</code> = free</td></tr>
+          <tr><td><b>Take</b></td><td><code>/arm/take_control</code>: succeeds when free, already ours, or with <code>force</code> (drops the old owner's pending motion and stops the arm)</td></tr>
+          <tr><td><b>Motion</b></td><td>obeyed only from the owner; ignored (and logged) from anyone else</td></tr>
+          <tr><td><b>STOP</b></td><td>always obeyed, from anyone</td></tr>
+          <tr><td><b>Lose</b></td><td><code>release</code>, forced away, or <code>control_idle_s</code> (5 s) without motion</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Client</th><th>Takes the control</th><th>Gives it back</th></tr></thead>
+        <tbody>
+          <tr><td>Web page</td><td>with the page lease ("Take control"), renewed every second while the lease lasts; <b>409</b> while the joystick or zero/park has it</td><td>when the lease ends</td></tr>
+          <tr><td>Joystick</td><td>first stick / X / A / B with the control free; from another owner only by <b>holding button 8 for 1 s</b></td><td>5 s after the last move</td></tr>
+          <tr><td>zero / park</td><td>forced, before moving</td><td>at the end, also on failure</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 5 -->
+  <section id="s5">
+    <div class="sechead"><span class="secnum">5</span><h2>Packages and folders</h2></div>
+    <p>colcon builds one workspace, <code>ros2_ws/src</code> (mounted at <code>/ws</code> in every container; <code>make build</code> passes <code>--base-paths src</code>; flags in <a href="../docker/config/colcon-defaults.yaml">colcon-defaults.yaml</a>). Every package has its own README with its topics, parameters and how to run it by hand.</p>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Package</th><th>Kind</th><th>Role</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td><a href="../ros2_ws/src/mycobot_cpp/README.md"><code>mycobot_cpp</code></a></td><td>C++ library</td><td>myCobot 280 serial driver, joint limits and poses (<code>mycobot.hpp</code>), joystick, LCD1602, teleop logic; also the stand-alone tools (no ROS)</td><td><span class="pill p-ok">done</span></td></tr>
+          <tr><td><a href="../ros2_ws/src/braco_interfaces/README.md"><code>braco_interfaces</code></a></td><td>Interfaces</td><td><code>ArmCommand</code>, <code>JointTarget</code>, <code>ServoTemperatures</code>, <code>ServoVoltages</code>, <code>TakeControl</code></td><td><span class="pill p-ok">done</span></td></tr>
+          <tr><td><a href="../ros2_ws/src/braco_driver/README.md"><code>braco_driver</code></a></td><td>Nodes</td><td><code>arm_driver</code> (owns the port and the control), <code>temperature_monitor</code> (LCD, <code>/diagnostics</code>, rest on overheat)</td><td><span class="pill p-ok">done</span></td></tr>
+          <tr><td><a href="../ros2_ws/src/braco_teleop/README.md"><code>braco_teleop</code></a></td><td>Node</td><td><code>joystick_teleop</code>: jogs the arm through <code>arm_driver</code></td><td><span class="pill p-ok">done</span></td></tr>
+          <tr><td><a href="../ros2_ws/src/braco_camera/README.md"><code>braco_camera</code></a></td><td>Node (Python)</td><td><code>camera</code>: the eye-in-hand USB camera as JPEG frames</td><td><span class="pill p-ok">done</span></td></tr>
+          <tr><td><a href="../ros2_ws/src/braco_bringup/README.md"><code>braco_bringup</code></a></td><td>Launch + config</td><td><code>braco.launch.py</code>, <code>braco.yaml</code>, the container entrypoint, <code>zero</code> / <code>park</code></td><td><span class="pill p-ok">done</span> <code>sim:=true</code> reserved</td></tr>
+          <tr class="future"><td><a href="../ros2_ws/src/braco_description/README.md"><code>braco_description</code></a></td><td>Model</td><td>URDF of the myCobot 280</td><td><span class="pill p-note">placeholder #25</span></td></tr>
+          <tr class="future"><td><a href="../ros2_ws/src/braco_moveit_config/README.md"><code>braco_moveit_config</code></a></td><td>Config</td><td>MoveIt 2 for the arm</td><td><span class="pill p-note">placeholder #40</span></td></tr>
+          <tr class="future"><td><a href="../ros2_ws/src/braco_mission/README.md"><code>braco_mission</code></a></td><td>Nodes</td><td>Mission state machine, MoveIt 2 client</td><td><span class="pill p-note">placeholder #43</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <figure>
+      <div class="layout">
+<pre>SEA-ME_Team2_braco/
+├── Makefile                  <span class="c"># the one entry point</span>
+├── mk/                       <span class="c"># config system arm dev setup net ci</span>
+├── ros2_ws/src/              <span class="c"># ONE colcon workspace</span>
+│   ├── <span class="p">mycobot_cpp/</span>          <span class="c"># no ROS</span>
+│   │   ├── includes/  mycobot.hpp  joystick.hpp  lcd_display.hpp
+│   │   │              display.hpp  teleop_logic.hpp
+│   │   └── srcs/      library + tools (zero, park, pid_tool…)
+│   ├── <span class="p">braco_interfaces/</span>
+│   │   ├── msg/  ArmCommand  JointTarget  ServoTemperatures  ServoVoltages
+│   │   └── srv/  TakeControl
+│   ├── <span class="p">braco_driver/</span>
+│   │   ├── src/  arm_driver.cpp  temperature_monitor.cpp
+│   │   ├── include/braco_driver/  control.hpp  auto_rest.hpp
+│   │   └── test/ test_control.cpp
+│   ├── <span class="p">braco_teleop/</span>
+│   │   ├── src/  joystick_teleop.cpp
+│   │   └── test/ test_teleop_logic.cpp
+│   ├── <span class="p">braco_camera/</span>
+│   │   └── scripts/ camera.py         <span class="c"># USB camera -> /camera/image_raw/compressed</span>
+│   ├── <span class="p">braco_bringup/</span>
+│   │   ├── launch/  braco.launch.py     <span class="c"># sim:=true|false</span>
+│   │   ├── config/  braco.yaml          <span class="c"># tuning of every node</span>
+│   │   ├── scripts/ arm_routine.sh      <span class="c"># container entrypoint</span>
+│   │   └── src/     zero.cpp  park.cpp  arm_moves.cpp
+│   ├── <span class="n">braco_description/</span>      <span class="c"># placeholder #25</span>
+│   ├── <span class="n">braco_moveit_config/</span>    <span class="c"># placeholder #40</span>
+│   └── <span class="n">braco_mission/</span>          <span class="c"># placeholder #43</span>
+├── scripts/  bench.sh        <span class="c"># bench test (make bench)</span>
+├── web/                      <span class="c"># the braco page, a ROS 2 client</span>
+│   ├── server/   app.py  arm.py  camera.py  ros.py  session.py …
+│   ├── static/
+│   └── tests/
+├── docker/
+│   ├── Dockerfile  compose.yml  .env.example
+│   ├── compose/  nvidia.yml  dri.yml
+│   ├── config/  scripts/  tests/
+│   └── systemd/  braco.service
+├── docs/
+│   ├── architecture.html  architecture.md   <span class="c"># this page, two formats</span>
+│   ├── ADR-000N-*.md  safety.md  protocol_commands.md
+│   └── arm-rest-mode.md  dev-setup.md  ROS2/  inventory/
+├── .github/  .githooks/       <span class="c"># CI, PR template, commit and pre-push hooks</span>
+└── .clang-format  .ruff.toml  requirements-dev.txt   <span class="c"># formatters, host dev venv</span></pre>
+        <div class="rules">
+          <div class="rule"><h3>Package = braco_ + role</h3><p>One word after the prefix: <code>driver</code>, <code>teleop</code>, <code>mission</code>, <code>bringup</code>. The prefix avoids collisions with ROS packages and marks what belongs to the project.</p></div>
+          <div class="rule"><h3>One name per thing</h3><p>File, executable and node share the name: <code>arm_driver.cpp</code> runs as <code>arm_driver</code>. Topics and services of the arm live under <code>/arm/*</code>.</p></div>
+          <div class="rule"><h3>Outside ROS, generic folders</h3><p><code>web</code>, <code>docker</code>, <code>docs</code>, <code>mk</code>, <code>scripts</code>. Anyone opening the repo understands them without a legend. The root holds only these, <code>ros2_ws</code> and the <code>Makefile</code>.</p></div>
+          <div class="rule"><h3>mycobot_cpp keeps its name</h3><p>The library is the robot's protocol, not the product. It is a colcon package of the workspace like the others, but depends on nothing from ROS.</p></div>
+          <div class="rule"><h3>Infrastructure carries the braco brand</h3><p>Compose project <code>braco</code>, images <code>braco-image/pc</code> and <code>braco-image/jetson</code>, systemd unit <code>braco.service</code>.</p></div>
+        </div>
+      </div>
+      <figcaption>Purple folders are placeholders for the planned upper layers.</figcaption>
+    </figure>
+
+    <figure>
+      <div class="scroll">
+      <svg viewBox="0 0 1000 250" role="img" aria-label="Dependencies: braco_driver and braco_teleop depend on mycobot_cpp and braco_interfaces; braco_bringup exec-depends on driver, teleop and camera. braco_description, braco_moveit_config and braco_mission are planned and stay out of braco_bringup.">
+        <defs>
+          <marker id="d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="ah-ros"/></marker>
+          <marker id="dn" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="ah-note"/></marker>
+        </defs>
+        <rect x="40" y="20" width="200" height="44" rx="4" class="box"/><text x="140" y="47" text-anchor="middle" class="t-m t-b">mycobot_cpp</text>
+        <rect x="300" y="20" width="200" height="44" rx="4" class="box"/><text x="400" y="47" text-anchor="middle" class="t-m t-b">braco_interfaces</text>
+        <rect x="40" y="110" width="200" height="44" rx="4" class="key"/><text x="140" y="137" text-anchor="middle" class="t-m t-b">braco_driver</text>
+        <rect x="300" y="110" width="200" height="44" rx="4" class="key"/><text x="400" y="137" text-anchor="middle" class="t-m t-b">braco_teleop</text>
+        <rect x="170" y="196" width="200" height="44" rx="4" class="key"/><text x="270" y="223" text-anchor="middle" class="t-m t-b">braco_bringup</text>
+        <line x1="140" y1="66" x2="140" y2="108" class="w-ros" marker-end="url(#d)"/>
+        <line x1="180" y1="66" x2="360" y2="108" class="w-ros" marker-end="url(#d)"/>
+        <line x1="380" y1="66" x2="200" y2="108" class="w-ros" marker-end="url(#d)"/>
+        <line x1="400" y1="66" x2="400" y2="108" class="w-ros" marker-end="url(#d)"/>
+        <line x1="210" y1="194" x2="160" y2="156" class="w-ros" marker-end="url(#d)"/>
+        <line x1="330" y1="194" x2="380" y2="156" class="w-ros" marker-end="url(#d)"/>
+        <text x="120" y="182" class="t-s">exec_depend</text><text x="370" y="182" class="t-s">exec_depend</text>
+        <rect x="420" y="196" width="130" height="44" rx="4" class="key"/><text x="485" y="223" text-anchor="middle" class="t-m t-b">braco_camera</text>
+        <line x1="372" y1="218" x2="418" y2="218" class="w-ros" marker-end="url(#d)"/>
+
+        <rect x="560" y="110" width="130" height="44" rx="4" class="future"/><text x="625" y="130" text-anchor="middle" class="t-m">braco_</text><text x="625" y="145" text-anchor="middle" class="t-m">description</text>
+        <rect x="710" y="110" width="130" height="44" rx="4" class="future"/><text x="775" y="130" text-anchor="middle" class="t-m">braco_</text><text x="775" y="145" text-anchor="middle" class="t-m">moveit_config</text>
+        <rect x="860" y="110" width="120" height="44" rx="4" class="future"/><text x="920" y="137" text-anchor="middle" class="t-m">braco_mission</text>
+        <line x1="692" y1="132" x2="708" y2="132" class="w-note" marker-end="url(#dn)"/>
+        <line x1="842" y1="132" x2="858" y2="132" class="w-note" marker-end="url(#dn)"/>
+        <path d="M502,42 H920 V108" class="w-note" marker-end="url(#dn)"/>
+        <text x="770" y="196" text-anchor="middle" class="t-s t-note">planned · simulation and planning only</text>
+        <text x="770" y="214" text-anchor="middle" class="t-s t-note">never a dependency of braco_bringup</text>
+      </svg>
+      </div>
+      <figcaption><code>braco_bringup</code> lists every package the <b>real</b> system needs as an <code>exec_depend</code>. The Jetson builds only <code>--packages-up-to braco_bringup</code>, so a simulation-only package (Gazebo, MoveIt) must never become a dependency of <code>braco_bringup</code>, or the Nano starts building it (<code>WS_PACKAGES</code> in <a href="../mk/config.mk">mk/config.mk</a>).</figcaption>
+    </figure>
+  </section>
+
+  <!-- 6 -->
+  <section id="s6">
+    <div class="sechead"><span class="secnum">6</span><h2>Deployment</h2></div>
+    <figure>
+      <div class="scroll">
+      <svg viewBox="0 0 1000 360" role="img" aria-label="PC with dev and sim containers, Jetson with real and a throw-away dev container, linked by DDS domain 42 over the host network.">
+        <defs>
+          <marker id="p" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ah-ros"/></marker>
+        </defs>
+        <rect x="20" y="20" width="400" height="320" rx="6" class="machine"/>
+        <text x="40" y="46" class="t-h">PC</text><text x="80" y="46" class="t-m t-s">COMPOSE_PROFILES=pc · braco-image/pc</text>
+        <rect x="40" y="64" width="360" height="86" rx="4" class="box"/>
+        <text x="56" y="86" class="t-b">dev</text><text x="90" y="86" class="t-s">stays up</text>
+        <text x="56" y="106" class="t-m">shell · colcon build / test</text>
+        <text x="56" y="122" class="t-m">RViz2 · PlotJuggler · rqt</text>
+        <rect x="40" y="166" width="360" height="100" rx="4" class="key"/>
+        <text x="56" y="188" class="t-b">sim</text><text x="90" y="188" class="t-s">arm_routine.sh</text>
+        <text x="56" y="208" class="t-m">braco.launch.py sim:=true</text>
+        <text x="56" y="224" class="t-m t-note">  Gazebo arm (#34, reserved)</text>
+        <text x="56" y="244" class="t-m">web page :8000  ARM_SOURCE=gazebo</text>
+        <rect x="40" y="280" width="360" height="44" rx="4" class="future"/>
+        <text x="56" y="307" class="t-m t-note">MoveIt 2 · braco_mission  (planned)</text>
+
+        <rect x="580" y="20" width="400" height="320" rx="6" class="machine"/>
+        <text x="600" y="46" class="t-h">Jetson Nano</text><text x="700" y="46" class="t-m t-s">COMPOSE_PROFILES=jetson</text>
+        <rect x="600" y="64" width="360" height="176" rx="4" class="key"/>
+        <text x="616" y="86" class="t-b">real</text><text x="652" y="86" class="t-s">arm_routine.sh · braco.service at boot</text>
+        <text x="616" y="106" class="t-m">braco.launch.py sim:=false</text>
+        <text x="616" y="126" class="t-m">  arm_driver ──── /dev/ttyTHS1 ── arm</text>
+        <text x="616" y="144" class="t-m">  temperature_monitor ── /dev/i2c-0 LCD</text>
+        <text x="616" y="162" class="t-m">  joystick_teleop ── /dev/input/js0</text>
+        <text x="616" y="180" class="t-m">  camera ── /dev/video0 USB camera</text>
+        <text x="616" y="202" class="t-m">web page :8000  ARM_SOURCE=ros</text>
+        <text x="616" y="226" class="t-s">launch ends → container stops (no restart)</text>
+        <rect x="600" y="256" width="360" height="68" rx="4" class="box"/>
+        <text x="616" y="278" class="t-b">dev</text><text x="650" y="278" class="t-s">throw-away, run --rm</text>
+        <text x="616" y="300" class="t-m">build · zero · park</text>
+
+        <line x1="422" y1="180" x2="578" y2="180" class="w-ros" marker-start="url(#p)" marker-end="url(#p)"/>
+        <text x="500" y="166" text-anchor="middle" class="t-m t-ros">DDS domain 42</text>
+        <text x="500" y="200" text-anchor="middle" class="t-s">Fast DDS · host network</text>
+      </svg>
+      </div>
+      <figcaption>Both machines run the same image family (ROS 2 Lyrical on Ubuntu 26.04) and the same workspace, bind-mounted at <code>/ws</code>. <code>dev</code> builds; the system container (<code>real</code> or <code>sim</code>) runs what <code>dev</code> built.</figcaption>
+    </figure>
+    <ul class="plain">
+      <li><b>Heavy work stays on the PC.</b> <code>move_group</code> needs 300–600 MB and a full core while planning, so MoveIt 2 and the mission run on the PC and reach the arm on the Jetson through DDS. The Jetson runs only the nodes that need its devices.</li>
+      <li><code>make up</code> starts the system container; <code>arm_routine.sh</code> runs the launch and the web page side by side, stops both on <code>docker stop</code>, and ends the container when the launch ends.</li>
+      <li>The page's arm source: <code>ARM_SOURCE=ros</code> (real), <code>ARM_SOURCE=gazebo</code> (sim, PC only) or <code>ARM_MOCK=1</code> (<code>make web</code>, no arm, no ROS, no Docker). There is no mode that opens the serial port.</li>
+    </ul>
+  </section>
+
+  <!-- 7 -->
+  <section id="s7">
+    <div class="sechead"><span class="secnum">7</span><h2>Launch and parameters</h2></div>
+<pre class="code"><span class="k">ros2 launch</span> braco_bringup braco.launch.py              <span class="c"># sim:=false, the real arm (default)</span>
+<span class="k">ros2 launch</span> braco_bringup braco.launch.py sim:=true    <span class="c"># the simulated arm</span>
+<span class="k">ros2 launch</span> braco_bringup braco.launch.py --show-args</pre>
+    <p>The <b>wiring</b> (devices) comes from the launch arguments, filled by <code>docker/compose.yml</code> from <code>docker/.env</code>; the <b>tuning</b> comes from <a href="../ros2_ws/src/braco_bringup/config/braco.yaml">config/braco.yaml</a>.</p>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Argument</th><th>Default</th><th>Used by</th></tr></thead>
+        <tbody>
+          <tr><td><code>sim</code></td><td class="num">false</td><td><code>false</code>: <code>arm_driver</code>, <code>temperature_monitor</code>, <code>joystick_teleop</code>, <code>camera</code>. <code>true</code>: the Gazebo arm (#34); until then it starts nothing and logs why</td></tr>
+          <tr><td><code>port</code>, <code>baud</code></td><td class="num">/dev/ttyTHS1, 1000000</td><td><code>arm_driver</code></td></tr>
+          <tr><td><code>lcd_bus</code></td><td class="num">/dev/i2c-0</td><td><code>temperature_monitor</code></td></tr>
+          <tr><td><code>device</code></td><td class="num">/dev/input/js0</td><td><code>joystick_teleop</code></td></tr>
+          <tr><td><code>camera</code></td><td class="num">/dev/video0</td><td><code>camera</code>; the <code>real</code> container passes <code>/run/hostdev/$CAMERA_DEVICE</code> (host <code>/dev</code> mounted there, so the camera can be plugged in later)</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Node</th><th>Parameter</th><th>Value</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td rowspan="6"><code>arm_driver</code></td><td><code>state_rate_hz</code></td><td class="num">20.0</td><td><code>/joint_states</code> rate</td></tr>
+          <tr><td><code>temp_period_s</code></td><td class="num">2.0</td><td>servo temperature and voltage read period</td></tr>
+          <tr><td><code>command_timeout_ms</code></td><td class="num">300</td><td>watchdog</td></tr>
+          <tr><td><code>gripper_speed</code></td><td class="num">50</td><td>1..100</td></tr>
+          <tr><td><code>read_only</code></td><td class="num">false</td><td>start in rest mode</td></tr>
+          <tr><td><code>control_idle_s</code></td><td class="num">5.0</td><td>the owner loses the control after this long without motion</td></tr>
+          <tr><td rowspan="3"><code>temperature_monitor</code></td><td><code>stale_timeout_s</code></td><td class="num">5.0</td><td>no temperatures for this long: "no feedback" on the LCD</td></tr>
+          <tr><td><code>auto_rest_on_hot</code></td><td class="num">true</td><td>a servo at 65 °C puts the arm to rest, once per episode</td></tr>
+          <tr><td><code>park_on_hot</code></td><td class="num">true</td><td>... by running park (fold, release the joints); false: rest mode only</td></tr>
+          <tr><td rowspan="3"><code>joystick_teleop</code></td><td><code>state_timeout_ms</code></td><td class="num">150</td><td>older <code>/joint_states</code>: no jogging</td></tr>
+          <tr><td><code>debug</code></td><td class="num">false</td><td>log every joystick event</td></tr>
+          <tr><td><code>force_button</code>, <code>force_hold_s</code></td><td class="num">8, 1.0</td><td>hold to take the control from another owner</td></tr>
+          <tr><td rowspan="4"><code>camera</code></td><td><code>width</code>, <code>height</code></td><td class="num">640, 480</td><td>asked of the camera</td></tr>
+          <tr><td><code>fps</code></td><td class="num">15.0</td><td>the most it publishes</td></tr>
+          <tr><td><code>jpeg_quality</code></td><td class="num">80</td><td>only for cameras without MJPG (MJPG frames are passed on as they come)</td></tr>
+          <tr><td><code>reopen_s</code></td><td class="num">2.0</td><td>without a camera: try again this often</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 8 -->
+  <section id="s8">
+    <div class="sechead"><span class="secnum">8</span><h2>Make commands</h2></div>
+    <div class="hero-cmd">
+      <div class="subhead">One command turns the system on</div>
+      <div class="big">make up</div>
+      <p>On the Jetson it starts the real arm (driver, temperature, joystick, page); on the PC the simulation and the page. It can be repeated: each step (<code>.env</code>, checks, image, build) is skipped when it is already done, so <code>make up</code> after a code change only rebuilds what changed. No step moves the arm. <code>make</code> alone lists every command; the machine (<code>ROLE=pc|jetson</code>) comes from <code>COMPOSE_PROFILES</code> in <code>docker/.env</code> or is detected (arm64 + Tegra = Jetson).</p>
+    </div>
+    <div class="groups">
+      <div class="grp">
+        <div class="grp-head"><h3>System</h3><span>mk/system.mk</span></div>
+        <ul class="cmds">
+          <li><code>make up</code><span>Turn the system on, wait for the page and print its URL.</span></li>
+          <li><code>make down</code><span>Turn it off, without moving the arm.<small><code>PARK=1</code> parks the arm first.</small></span></li>
+          <li><code>make restart</code><span>Restart the system container, then like <code>up</code>.</span></li>
+          <li><code>make status</code><span>Containers, CPU/RAM per container, the arm as the page sees it; a few seconds of <code>tegrastats</code> on the Jetson.</span></li>
+          <li><code>make logs</code><span>Follow the system's log.<small><code>S=web</code>, <code>S=arm_driver</code>, <code>S=temperature_monitor</code>, <code>S=joystick_teleop</code>, <code>S=camera</code>.</small></span></li>
+        </ul>
+      </div>
+      <div class="grp">
+        <div class="grp-head"><h3>Arm</h3><span>mk/arm.mk · Jetson</span></div>
+        <ul class="cmds">
+          <li><code>make zero</code><span>Leave rest mode and move to the zero pose.</span></li>
+          <li><code>make park</code><span>Fold the arm, release the joints, enter rest mode.</span></li>
+          <li><code>make rest</code><span>Rest mode on: motion refused, still reading.</span></li>
+          <li><code>make resume</code><span>Rest mode off.</span></li>
+          <li><code>make temps</code><span>Print the servo temperatures once.</span></li>
+          <li><code>make bench</code><span>Bench test of control and auto-rest (<a href="../scripts/bench.sh">scripts/bench.sh</a>).<small>Asks before moving the arm; appends to <code>bench-report.log</code>.</small></span></li>
+        </ul>
+      </div>
+      <div class="grp">
+        <div class="grp-head"><h3>Development</h3><span>mk/dev.mk</span></div>
+        <ul class="cmds">
+          <li><code>make shell</code><span>Shell in <code>dev</code> with ROS sourced.</span></li>
+          <li><code>make run CMD='…'</code><span>Run a command in <code>dev</code>.</span></li>
+          <li><code>make build</code><span>colcon build of <code>ros2_ws/src</code>.</span></li>
+          <li><code>make test</code><span>colcon test and the results (PC only).</span></li>
+          <li><code>make web</code><span>The page with mock data on :8080, no ROS, no Docker.</span></li>
+          <li><code>make clean</code><span>Delete build/ install/ log/ and <code>~/.ros/log</code>.</span></li>
+        </ul>
+      </div>
+      <div class="grp">
+        <div class="grp-head"><h3>Setup</h3><span>mk/setup.mk · once per machine</span></div>
+        <ul class="cmds">
+          <li><code>make setup</code><span><code>.env</code>, git hooks, folders, then <code>doctor</code>.</span></li>
+          <li><code>make doctor</code><span>Check docker, files, devices; on the Jetson also desktop, power mode and swap.</span></li>
+          <li><code>make image</code><span>(Re)build this machine's image.</span></li>
+          <li><code>make boot-on</code><span>Start at boot (systemd <code>braco</code>).<small><code>make boot-off</code> undoes it.</small></span></li>
+          <li><code>make jetson-image</code><span>Build the arm64 image on the PC.<small><code>NANO=user@host</code> also copies it.</small></span></li>
+          <li><code>make reset</code><span>Clean + remove containers, volumes and images.</span></li>
+        </ul>
+      </div>
+      <div class="grp">
+        <div class="grp-head"><h3>Network</h3><span>mk/net.mk</span></div>
+        <ul class="cmds">
+          <li><code>make net-test</code><span>Talker + listener on this machine, PASS/FAIL.</span></li>
+          <li><code>make net-talk</code><span>Publish on one machine…</span></li>
+          <li><code>make net-listen</code><span>…and check on the other.</span></li>
+        </ul>
+      </div>
+      <div class="grp">
+        <div class="grp-head"><h3>CI</h3><span>mk/ci.mk · same as GitHub</span></div>
+        <ul class="cmds">
+          <li><code>make ci</code><span>The <code>host</code> job: format check, lint, page tests.</span></li>
+          <li><code>make ci-ros</code><span>The <code>ros</code> job: rosdep, build, test in a clean image.</span></li>
+          <li><code>make ci-image</code><span>Build that job's image.</span></li>
+          <li><code>make lint</code><span>Compose files, shellcheck, hadolint.</span></li>
+          <li><code>make format</code><span>clang-format (C++) and ruff (Python); <code>format-check</code> only checks (pre-push hook).</span></li>
+        </ul>
+      </div>
+    </div>
+    <p>Each machine has two compose services from the same image: <code>dev</code>, the tools container used by <code>shell</code>, <code>run</code> and <code>build</code> (on the Jetson a throw-away <code>run --rm</code>), and the system itself, <code>real</code> on the Jetson or <code>sim</code> on the PC.</p>
+  </section>
+
+  <!-- 9 -->
+  <section id="s9">
+    <div class="sechead"><span class="secnum">9</span><h2>CPU and memory on the Jetson</h2></div>
+    <p class="assume"><b>Estimates, not measurements.</b> They assume a 4 GB Jetson Nano (4 Cortex-A57 cores, RAM shared with the GPU), no desktop and the 10 W power mode, and come from what these processes usually take on aarch64 and from the rates in the code: state at 20 Hz, temperatures every 2 s, joystick at 50 Hz, page at 5 Hz. Replace them with numbers from <code>make status</code> (end of this section).</p>
+    <div class="tiles">
+      <div class="tile"><span class="v">~0.25 GB</span><span class="k">RAM of the braco system on: driver, temperature, joystick, launch and page</span></div>
+      <div class="tile"><span class="v">~0.2 core</span><span class="k">Average CPU in operation, about 5% of the 4 cores; ~0.4 with the page's ROS tab open</span></div>
+      <div class="tile"><span class="v">~1.6 GB</span><span class="k">Peak of <code>colcon build</code> with 2 g++ running: the moment with the highest out-of-memory risk</span></div>
+    </div>
+    <figure>
+      <div class="legend2">
+        <span><i class="sw" style="background:var(--s1)"></i>system (L4T + Docker)</span>
+        <span><i class="sw" style="background:var(--s2)"></i>braco on</span>
+        <span><i class="sw" style="background:var(--s3)"></i>MoveIt, if it ran on the Jetson</span>
+        <span><i class="sw" style="background:var(--s4)"></i>colcon build</span>
+        <span><i class="sw" style="border:1px dashed var(--line)"></i>free</span>
+      </div>
+      <div class="scroll">
+      <svg viewBox="0 0 1000 300" role="img" aria-label="Estimated memory of a 4 GB Jetson Nano in three cases: about 0.95 GB used in operation, 1.45 GB if MoveIt ran on the Jetson, and 2.55 GB during a build, above the limit of a 2 GB Nano.">
+        <defs>
+          <pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+            <rect width="6" height="6" style="fill:var(--s4)"/>
+            <line x1="0" y1="0" x2="0" y2="6" style="stroke:var(--fg);stroke-opacity:.28;stroke-width:2"/>
+          </pattern>
+        </defs>
+        <line x1="230" y1="34" x2="230" y2="246" class="grid"/>
+        <line x1="410" y1="34" x2="410" y2="246" class="grid" stroke-dasharray="2 4"/>
+        <line x1="770" y1="34" x2="770" y2="246" class="grid" stroke-dasharray="2 4"/>
+        <line x1="950" y1="34" x2="950" y2="246" class="grid"/>
+        <line x1="590" y1="30" x2="590" y2="246" class="mark2g"/>
+        <text x="596" y="26" class="t-s" style="fill:var(--warn)">limit of a 2 GB Nano</text>
+        <text x="230" y="266" text-anchor="middle" class="t-s">0</text>
+        <text x="410" y="266" text-anchor="middle" class="t-s">1 GB</text>
+        <text x="590" y="266" text-anchor="middle" class="t-s">2 GB</text>
+        <text x="770" y="266" text-anchor="middle" class="t-s">3 GB</text>
+        <text x="950" y="266" text-anchor="middle" class="t-s">4 GB</text>
+
+        <text x="20" y="66" class="t-b">Operation</text>
+        <text x="20" y="84" class="t-s">used ~0.95 GB</text>
+        <rect x="230" y="54" width="121" height="34" rx="2" class="seg1"><title>System: L4T without desktop ~600 MB + Docker ~100 MB</title></rect>
+        <rect x="353" y="54" width="42" height="34" rx="2" class="seg2"><title>braco on: ~250 MB</title></rect>
+        <rect x="397" y="54" width="553" height="34" rx="2" class="free"><title>Free: ~3.1 GB</title></rect>
+        <text x="291" y="75" text-anchor="middle" class="t-in">0.7</text>
+        <text x="374" y="75" text-anchor="middle" class="t-in">0.25</text>
+        <text x="673" y="75" text-anchor="middle" class="t-s">free ~3.1 GB</text>
+
+        <text x="20" y="136" class="t-b">+ MoveIt on the Jetson</text>
+        <text x="20" y="154" class="t-s">used ~1.45 GB (not planned)</text>
+        <rect x="230" y="124" width="121" height="34" rx="2" class="seg1"><title>System: ~700 MB</title></rect>
+        <rect x="353" y="124" width="42" height="34" rx="2" class="seg2"><title>braco on: ~250 MB</title></rect>
+        <rect x="397" y="124" width="86" height="34" rx="2" class="seg3"><title>move_group: 300 to 600 MB</title></rect>
+        <rect x="485" y="124" width="465" height="34" rx="2" class="free"><title>Free: ~2.6 GB</title></rect>
+        <text x="440" y="145" text-anchor="middle" class="t-in">0.5</text>
+        <text x="717" y="145" text-anchor="middle" class="t-s">free ~2.6 GB</text>
+
+        <text x="20" y="206" class="t-b">During a build</text>
+        <text x="20" y="224" class="t-s">used ~2.55 GB</text>
+        <rect x="230" y="194" width="121" height="34" rx="2" class="seg1"><title>System: ~700 MB</title></rect>
+        <rect x="353" y="194" width="42" height="34" rx="2" class="seg2"><title>braco on: ~250 MB</title></rect>
+        <rect x="397" y="194" width="279" height="34" rx="2" style="fill:url(#hatch)"><title>colcon build, 2 compiler jobs: ~800 MB per g++ with rclcpp, ~1.6 GB peak</title></rect>
+        <rect x="678" y="194" width="272" height="34" rx="2" class="free"><title>Free: ~1.5 GB (with a desktop: ~0.9 GB)</title></rect>
+        <text x="536" y="215" text-anchor="middle" class="t-in" style="fill:var(--fg)">1.6 GB</text>
+        <text x="814" y="215" text-anchor="middle" class="t-s">free ~1.5 GB</text>
+      </svg>
+      </div>
+      <figcaption>In operation braco uses little. The risk is the build: two <code>g++</code> compiling <code>rclcpp</code> code pass 1.5 GB together, which on a 2 GB Nano or with the desktop on leads to the OOM killer or to swapping on the SD card. Hover the bars for the values.</figcaption>
+    </figure>
+
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Process</th><th>RAM</th><th>Avg CPU (1 core = 100%)</th><th>What weighs</th></tr></thead>
+        <tbody>
+          <tr><td><code>arm_driver</code></td><td class="num">15–25 MB</td><td class="num">4–8%</td><td>Serial loop with 10 ms pauses, angles at 20 Hz, temperatures and voltages every 2 s; mostly waiting on the UART.</td></tr>
+          <tr><td><code>temperature_monitor</code></td><td class="num">10–20 MB</td><td class="num">&lt;1%</td><td>One message every 2 s and one I2C write to the LCD.</td></tr>
+          <tr><td><code>joystick_teleop</code></td><td class="num">10–20 MB</td><td class="num">1–3%</td><td>50 Hz timer; publishes only while a stick is off-centre.</td></tr>
+          <tr><td><code>camera</code> (Python + OpenCV)</td><td class="num">60–90 MB</td><td class="num">3–8% (estimate)</td><td>15 fps 640×480; MJPG frames are not decoded. The page relays them as MJPEG, ~0.8 MB/s per open tab with the camera.</td></tr>
+          <tr><td><code>ros2 launch</code> (Python)</td><td class="num">50–70 MB</td><td class="num">&lt;1%</td><td>Only supervises its children.</td></tr>
+          <tr><td>page (uvicorn + rclpy)</td><td class="num">100–150 MB</td><td class="num">5–15%</td><td>5 Hz telemetry per open tab; with the ROS tab open, graph introspection every 2 s (20–40%).</td></tr>
+          <tr><td>Docker + containerd</td><td class="num">80–120 MB</td><td class="num">1–2%</td><td>Outside the container, always on.</td></tr>
+          <tr class="total"><td>Total today</td><td class="num">~330–490 MB</td><td class="num">~15–38%</td><td>About 4–10% of the Nano's CPU.</td></tr>
+          <tr class="future"><td><code>robot_state_publisher</code> (planned)</td><td class="num">15–25 MB</td><td class="num">1–2%</td><td>TF from the URDF.</td></tr>
+          <tr class="future"><td><code>move_group</code> (planned, PC)</td><td class="num">300–600 MB</td><td class="num">&lt;2% idle</td><td>100% of a core for 0.1–2 s per plan: the heaviest process, kept on the PC.</td></tr>
+          <tr class="future"><td><code>braco_mission</code> (planned, PC)</td><td class="num">60–100 MB</td><td class="num">&lt;5%</td><td>State machine, mostly waiting on MoveIt.</td></tr>
+          <tr><td><code>colcon build</code></td><td class="num">0.6–1 GB per g++</td><td class="num">100% × jobs</td><td>10–25 min from scratch on the Nano, 1–3 min incremental.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="changes">
+      <div class="ch"><span class="pill p-warn">build</span><div class="ch-body"><h3>Build without running out of RAM</h3><p>On the Jetson: one package at a time, <code>MAKEFLAGS=-j2</code>, Release without tests. <code>make doctor</code> warns without swap and suggests a 4 GB swapfile. Or build on the PC with <code>make jetson-image</code>.</p><div class="where">mk/config.mk · mk/setup.mk</div></div></div>
+      <div class="ch"><span class="pill p-warn">memory</span><div class="ch-body"><h3>No desktop on the Jetson</h3><p>The Ubuntu desktop takes 0.5–1 GB that nobody uses. <code>make doctor</code> warns and suggests <code>sudo systemctl set-default multi-user.target</code>.</p><div class="where">mk/setup.mk</div></div></div>
+      <div class="ch"><span class="pill p-hw">CPU</span><div class="ch-body"><h3>10 W power mode</h3><p>In 5 W mode the Nano runs 2 cores at a lower clock, halving the headroom. <code>make doctor</code> warns when not in MAXN (<code>sudo nvpmodel -m 0</code>).</p><div class="where">mk/setup.mk</div></div></div>
+      <div class="ch"><span class="pill p-hw">disk</span><div class="ch-body"><h3>SD card limits</h3><p><code>CCACHE_MAXSIZE=1G</code> instead of the 5 GB default; <code>make clean</code> also deletes <code>~/.ros/log</code>, which otherwise grows without limit.</p><div class="where">docker/compose.yml · mk/dev.mk</div></div></div>
+      <div class="ch"><span class="pill p-note">measure</span><div class="ch-body"><h3>Replace the estimates with measurements</h3><p><code>make status</code> shows <code>docker stats</code> per container and a few seconds of <code>tegrastats</code>. Measure in three moments (arm idle, joystick in use, page's ROS tab open) and put the numbers in the table above.</p><div class="where">mk/system.mk · pending</div></div></div>
+    </div>
+  </section>
+
+  <!-- 10 -->
+  <section id="s10">
+    <div class="sechead"><span class="secnum">10</span><h2>Simulation and the planned upper layers</h2></div>
+    <figure>
+      <div class="scroll">
+      <svg viewBox="0 0 1000 220" role="img" aria-label="braco_mission sends goals to MoveIt 2, which produces a trajectory for arm_driver on the real arm or Gazebo with gz_ros2_control in simulation; MoveIt uses the model from braco_description.">
+        <defs>
+          <marker id="s" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="ah-note"/></marker>
+          <marker id="s2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="ah-ros"/></marker>
+        </defs>
+        <rect x="20" y="40" width="190" height="60" rx="4" class="future"/>
+        <text x="115" y="66" text-anchor="middle" class="t-m t-b">braco_mission</text><text x="115" y="86" text-anchor="middle" class="t-s t-note">#43</text>
+        <rect x="270" y="40" width="230" height="60" rx="4" class="future"/>
+        <text x="385" y="66" text-anchor="middle" class="t-m t-b">MoveIt 2</text><text x="385" y="86" text-anchor="middle" class="t-s t-note">braco_moveit_config #40</text>
+        <rect x="270" y="150" width="230" height="56" rx="4" class="future"/>
+        <text x="385" y="174" text-anchor="middle" class="t-m t-b">braco_description</text><text x="385" y="193" text-anchor="middle" class="t-s t-note">URDF #25</text>
+        <rect x="620" y="20" width="360" height="60" rx="4" class="key"/>
+        <text x="800" y="46" text-anchor="middle" class="t-b">real arm: arm_driver</text><text x="800" y="66" text-anchor="middle" class="t-s">trajectory path decided with #37</text>
+        <rect x="620" y="110" width="360" height="60" rx="4" class="future"/>
+        <text x="800" y="136" text-anchor="middle" class="t-b">sim: Gazebo + gz_ros2_control</text><text x="800" y="156" text-anchor="middle" class="t-s t-note">#34</text>
+        <line x1="212" y1="70" x2="268" y2="70" class="w-note" marker-end="url(#s)"/>
+        <line x1="385" y1="148" x2="385" y2="102" class="w-note" marker-end="url(#s)"/>
+        <path d="M502,70 H560 V50 H618" class="w-ros" marker-end="url(#s2)"/>
+        <path d="M560,70 V140 H618" class="w-note" marker-end="url(#s)"/>
+        <text x="530" y="62" text-anchor="middle" class="t-s">trajectory</text>
+      </svg>
+      </div>
+      <figcaption>The mission talks only to MoveIt 2 (and takes the control as <code>mission</code>), never to the serial port, so the same code runs on the real arm and in simulation.</figcaption>
+    </figure>
+    <ul class="plain">
+      <li><code>braco_description</code> holds the URDF; its joint limits must match <code>JOINT_LIMITS</code> in <code>mycobot.hpp</code>, and its joint names are the ones on <code>/joint_states</code> (<code>joint1..joint6</code>) on both the real arm and the simulation.</li>
+      <li><code>sim:=true</code> will start Gazebo with that model, publishing the same <code>/joint_states</code>.</li>
+      <li>How MoveIt's trajectories reach <code>arm_driver</code> on the real arm is decided with #37 and #40.</li>
+    </ul>
+  </section>
+
+  <!-- 11 -->
+  <section id="s11">
+    <div class="sechead"><span class="secnum">11</span><h2>Build and test</h2></div>
+<pre class="code"><span class="k">make build</span>    <span class="c"># colcon build of ros2_ws/src, in the dev container</span>
+<span class="k">make test</span>     <span class="c"># colcon test: gtest (teleop logic, control owner, auto rest) and ament lint (PC only)</span>
+<span class="k">make restart</span>  <span class="c"># run what was just built</span>
+<span class="k">make ci</span>       <span class="c"># the `host` CI job: format check, lint and the web page tests, no ROS</span>
+<span class="k">make ci-ros</span>   <span class="c"># the `ros` CI job: rosdep, build and test in a clean image</span></pre>
+    <ul class="plain">
+      <li><b>PC:</b> everything, <code>RelWithDebInfo</code>, with tests.</li>
+      <li><b>Jetson:</b> only <code>--packages-up-to braco_bringup</code>, <code>Release</code>, <code>BUILD_TESTING=OFF</code>, one package at a time.</li>
+      <li><b>CI</b> (<a href="../.github/workflows/ci.yml">ci.yml</a>) runs both jobs on every pull request.</li>
+    </ul>
+  </section>
+
+  <!-- 12 -->
+  <section id="s12">
+    <div class="sechead"><span class="secnum">12</span><h2>Status against the target architecture</h2></div>
+    <p>The target was agreed before the ROS 2 migration: single serial owner, one control owner, one thermal authority, the <code>braco_*</code> layout, one <code>make up</code>. This is where the gap between that target and the code is tracked; update it in the PR that closes or opens a gap.</p>
+
+    <div class="subhead">Done</div>
+    <div class="okgrid">
+      <div><b>Single serial owner.</b> Only <code>arm_driver</code> opens the UART; the page has no direct serial mode.</div>
+      <div><b>One control owner.</b> <code>ArmCommand.source</code>, <code>TakeControl.srv</code>, latched <code>/arm/control_owner</code>; motion only from the owner, STOP from anyone (<a href="ADR-0002-unique-control.md">ADR-0002</a>).</div>
+      <div><b>Clients follow the owner.</b> Page lease = control <code>web</code>; joystick takes it free or forced (button 8 for 1 s), <code>power_on</code> only as owner; zero/park force and release.</div>
+      <div><b>One thermal authority.</b> <code>temperature_monitor</code> publishes the level on <code>/diagnostics</code>; the page reads it.</div>
+      <div><b>Rest on overheat.</b> Once per hot episode (from 65 °C until every joint is below 60 °C), manual resume (<a href="ADR-0003-rest-per-temp.md">ADR-0003</a>).</div>
+      <div><b>braco layout.</b> <code>ros2_ws/src</code> with <code>braco_interfaces</code>, <code>braco_driver</code>, <code>braco_teleop</code>, <code>braco_camera</code>, <code>braco_bringup</code>; one launch and one <code>braco.yaml</code>; a README in every package, <code>mycobot_cpp</code> included.</div>
+      <div><b>braco infrastructure.</b> <code>docker/Dockerfile</code>, <code>compose.yml</code> (project <code>braco</code>), <code>braco-image/*</code>, <code>braco.service</code>.</div>
+      <div><b>One Makefile.</b> Split in <code>mk/</code>, idempotent <code>make up</code>, ~30 public commands.</div>
+      <div><b>Lean repository root.</b> <code>docker</code>, <code>docs</code>, <code>mk</code>, <code>ros2_ws</code>, <code>scripts</code> (operator scripts run by <code>make</code>), <code>web</code> and the <code>Makefile</code> (plus the formatter configs and <code>requirements-dev.txt</code>); <code>mycobot_cpp</code> in <code>ros2_ws/src</code> (one colcon base path, no extra mount); <code>tests/</code>, <code>playground/</code> and the root <code>requirements.txt</code> removed.</div>
+      <div><b>Jetson guards.</b> <code>doctor</code> checks, ccache limit, ROS log cleanup, <code>status</code> with <code>docker stats</code> and <code>tegrastats</code>.</div>
+    </div>
+
+    <div class="subhead">Differs from the target (accepted for now)</div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Target</th><th>Today</th><th>Why / next step</th></tr></thead>
+        <tbody>
+          <tr><td><code>mycobot_cpp/{include,src,tools}</code>, CMake only</td><td><code>ros2_ws/src/mycobot_cpp/{includes,srcs}</code> with a Makefile next to CMake</td><td>Folder rename not done yet; low value until the library changes.</td></tr>
+          <tr><td><code>teleop_logic.hpp</code> in <code>braco_teleop/include/</code></td><td>in <code>mycobot_cpp/includes/</code></td><td>Kept ROS-free in the library; the test lives in <code>braco_teleop/test/</code>.</td></tr>
+          <tr><td><code>braco_moveit</code></td><td><code>braco_moveit_config</code></td><td>MoveIt's own convention; decide when #40 starts.</td></tr>
+          <tr><td>zero / park / arm_moves as Python scripts</td><td>C++ programs in <code>braco_bringup/src/</code></td><td>They reuse the <code>mycobot_cpp</code> poses and limits.</td></tr>
+          <tr><td>ADRs in <code>docs/adr/NNNN-*.md</code></td><td><code>docs/ADR-NNNN-*.md</code></td><td>The page's Docs tab groups them by this prefix.</td></tr>
+          <tr><td><code>examples/ros2_basics_*</code> and <code>make demos</code></td><td>removed</td><td>The learning demos are no longer part of the system.</td></tr>
+          <tr><td>The page as an <code>ExecuteProcess</code> inside the launch</td><td>started by <code>arm_routine.sh</code> next to the launch</td><td>Optional; a matter of taste, not of correctness.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="subhead">Pending</div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Item</th><th>Issue</th></tr></thead>
+        <tbody>
+          <tr><td><code>braco_description</code>: URDF/xacro, meshes, RViz config</td><td><span class="pill p-note">#25</span></td></tr>
+          <tr><td><code>sim:=true</code>: Gazebo + <code>gz_ros2_control</code> with the same <code>/joint_states</code></td><td><span class="pill p-note">#34</span></td></tr>
+          <tr><td>How trajectories reach <code>arm_driver</code> on the real arm (<code>FollowJointTrajectory</code> or equivalent)</td><td><span class="pill p-note">#37</span></td></tr>
+          <tr><td><code>braco_moveit_config</code>: SRDF, kinematics, limits, controllers</td><td><span class="pill p-note">#40</span></td></tr>
+          <tr><td><code>braco_mission</code>: pick-and-place, pen drawing, taking the control as <code>mission</code></td><td><span class="pill p-note">#43</span></td></tr>
+          <tr><td>Measured CPU/RAM on the Jetson replacing the estimates of <a href="#s9">section 9</a></td><td><span class="pill p-note">—</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 13 -->
+  <section id="s13">
+    <div class="sechead"><span class="secnum">13</span><h2>Changing the architecture</h2></div>
+    <div class="scen">
+      <div class="sc">
+        <h3>Adding a package</h3>
+        <ol>
+          <li><span>Name it <code>braco_&lt;role&gt;</code> and put it in <code>ros2_ws/src</code>. Code with no ROS dependency goes in <code>mycobot_cpp</code>.</span></li>
+          <li><span><code>package.xml</code> format 3, Apache-2.0, maintainer set; <code>ament_lint_auto</code> as a test dependency.</span></li>
+          <li><span>A <code>README.md</code> with what it does, its topics/services/parameters and how to run it by hand.</span></li>
+          <li><span>Needed on the real arm? <code>exec_depend</code> of <code>braco_bringup</code>, started from <code>braco.launch.py</code> under <code>sim:=false</code>. Simulation or planning only? Keep it out of <code>braco_bringup</code>.</span></li>
+          <li><span>New message or service? In <code>braco_interfaces</code>, never in the package that uses it.</span></li>
+        </ol>
+      </div>
+    </div>
+    <div class="subhead">Keeping this page current: in the same PR as the code change, in both architecture.html and architecture.md</div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>You changed</th><th>Update</th></tr></thead>
+        <tbody>
+          <tr><td>a node, topic, service or message</td><td>sections 2 and 4, and the package README</td></tr>
+          <tr><td>who may move the arm, a safety gate, rest mode</td><td>sections 1, 3 and 4 (and an ADR if it is a new policy)</td></tr>
+          <tr><td>a parameter in <code>braco.yaml</code> or a launch argument</td><td>section 7</td></tr>
+          <tr><td>a package, a folder or a file name</td><td>section 5</td></tr>
+          <tr><td>a container, image, <code>.env</code> key or the start-up script</td><td>section 6</td></tr>
+          <tr><td>a <code>make</code> command</td><td>section 8</td></tr>
+          <tr><td>something that changes CPU/RAM on the Jetson, or a measurement</td><td>section 9</td></tr>
+          <tr><td>anything listed in section 12</td><td>move it between <i>pending</i>, <i>differs</i> and <i>done</i></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Then update the "Last checked against the code" date at the top.</p>
+  </section>
+
+  <footer>braco · SEA:ME Team 2 · <code>docs/architecture.html</code> · Why ROS 2 runs in Docker: <a href="ADR-0001-ros2-in-docker-on-jetson-nano.md">ADR-0001</a> · Containers and commands: <a href="../docker/README.md">docker/README.md</a> · ROS 2 concepts: <a href="ROS2/README.md">ROS2/README.md</a></footer>
+</div>
+</body>
+</html>
