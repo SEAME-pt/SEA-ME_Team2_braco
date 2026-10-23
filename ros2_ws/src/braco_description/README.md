@@ -14,8 +14,9 @@ arm (zero pose, joint directions, forward kinematics) and the open measurements 
 | `config/gazebo_controllers.yaml` | `joint_state_broadcaster` + `arm_controller` (joint trajectory) for Gazebo |
 | `meshes/` | Visual and collision meshes of Elephant Robotics (`LICENSE.elephantrobotics`) |
 | `launch/gazebo.launch.py` | Gazebo (gz sim) with the model holding its pose, plus the controllers |
-| `scripts/move_arm_example.py` | Example node: moves the Gazebo arm with the `follow_joint_trajectory` action |
-| `scripts/park.py` | Moves the Gazebo arm to the park pose (`PARK_ANGLES` of `mycobot.hpp`) |
+| `scripts/braco_arm.py` | Runs a list of moves in Gazebo, then (`--real`) the same moves on the real arm |
+| `scripts/move_arm_example.py` | Example: a few poses, written once, run in Gazebo and on the arm |
+| `scripts/park.py` | The park pose (`PARK_ANGLES` of `mycobot.hpp`), in Gazebo and on the arm |
 | `test/test_urdf.py` | Keeps the URDF and the code in sync |
 
 `gazebo.launch.py` is a quick viewer: the model in Gazebo, moved through `/arm_controller/joint_trajectory`.
@@ -32,10 +33,11 @@ ros2 topic pub --once /arm_controller/joint_trajectory trajectory_msgs/msg/Joint
   "{joint_names: [joint1, joint2, joint3, joint4, joint5, joint6],
     points: [{positions: [0.5, 0.3, -0.3, 0.0, 0.0, 0.0], time_from_start: {sec: 2}}]}"
 
-# example of code driving the Gazebo arm (Gazebo running, another shell)
+# moves in Gazebo (running, same ROS_DOMAIN_ID, e.g. 77), then --real: the same on the real arm
 ros2 run braco_description move_arm_example.py
-# the Gazebo arm to the park pose
-ros2 run braco_description park.py
+ros2 run braco_description park.py --real       # asks before the real arm moves; --yes skips
+# Gazebo and the real arm must be on different ROS domains (both publish /joint_states):
+# Gazebo on this shell's ROS_DOMAIN_ID, the real arm on --real-domain (default 42)
 
 # fingers with the vendor linkage (one slider): gripper_actuated:=true
 # check the model by hand

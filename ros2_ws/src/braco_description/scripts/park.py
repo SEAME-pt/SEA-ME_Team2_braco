@@ -14,35 +14,27 @@
 # limitations under the License.
 
 """
-Move the arm in Gazebo to the park pose (the folded pose of the real arm).
+Move the arm to the park pose: in Gazebo, then with --real on the real arm.
 
-Start Gazebo first, then in another shell:
+  ros2 launch braco_description gazebo.launch.py     # Gazebo (ROS_DOMAIN_ID=77)
+  ros2 run braco_description park.py                 # Gazebo only
+  ros2 run braco_description park.py --real          # Gazebo, then the real arm (asks first)
 
-  ros2 launch braco_description gazebo.launch.py
-  ros2 run braco_description park.py
-
-Simulation only: the real arm parks with `make park` on the Jetson (braco_bringup park).
+Only the move: `make park` on the Jetson also releases the joints and enters rest mode.
 """
 
-from move_arm_example import MoveArm  # same folder (src/scripts and install/lib)
-import rclpy
+import sys
+
+from braco_arm import run
 
 # PARK_ANGLES of libs/cpp/includes/mycobot.hpp, J1..J6 in degrees (test_urdf.py keeps them equal)
 PARK_DEG = [0, 131, -148, 146, 4.5, 0]
-SECONDS = 4.0
+SECONDS = 4.0   # in Gazebo; the real arm moves at --speed
 
 
 def main():
-    rclpy.init()
-    node = MoveArm('park')
-    try:
-        ok = node.move(PARK_DEG, SECONDS)
-        node.get_logger().info('park %s, arm at %s'
-                               % ('ok' if ok else 'FAILED', node.current_degrees()))
-    finally:
-        node.destroy_node()
-        rclpy.shutdown()
+    return run('park', [(PARK_DEG, SECONDS)], __doc__)
 
 
 if __name__ == '__main__':
-    main()
+    sys.exit(main())
