@@ -20,8 +20,11 @@
 #include <string>
 #include <thread>
 
+#include "mycobot.hpp"
+
 using namespace std::chrono_literals;
 using braco_interfaces::msg::ArmCommand;
+using braco_interfaces::srv::TakeControl;
 using Clock = std::chrono::steady_clock;
 
 namespace braco_bringup
@@ -36,11 +39,7 @@ constexpr auto STATE_TIMEOUT = 500ms;  // older /joint_states = no feedback
 constexpr auto LOOP_PERIOD = 20ms;
 constexpr auto CALL_TIMEOUT = 5s;
 constexpr double RAD_TO_DEG = 180.0 / M_PI;
-
-double round1(double x)
-{
-  return std::round(x * 10.0) / 10.0;
-}
+constexpr const char * SOURCE = "script";   // ArmCommand.source and the control owner name
 
 }  // namespace
 
@@ -53,6 +52,7 @@ ArmMoves::ArmMoves(const std::string & name)
   power_client_ = create_client<std_srvs::srv::Trigger>("arm/power_on");
   release_client_ = create_client<std_srvs::srv::Trigger>("arm/release_servos");
   rest_client_ = create_client<std_srvs::srv::SetBool>("arm/set_read_only");
+  control_client_ = create_client<TakeControl>("arm/take_control");
   executor_.add_node(get_node_base_interface());
 }
 
@@ -78,7 +78,9 @@ bool ArmMoves::waitForDriver(std::chrono::duration<double> timeout)
   const auto end = Clock::now() + timeout;
   while (Clock::now() < end && rclcpp::ok()) {
     executor_.spin_some();
-    if (angles() && power_client_->service_is_ready() && release_client_->service_is_ready()) {
+    if (angles() && power_client_->service_is_ready() && release_client_->service_is_ready() &&
+      control_client_->service_is_ready())
+    {
       return true;
     }
     std::this_thread::sleep_for(100ms);
@@ -103,6 +105,43 @@ bool ArmMoves::callTrigger(
     return false;
   }
   return true;
+}
+
+bool ArmMoves::takeControl()
+{
+  auto request = std::make_shared<TakeControl::Request>();
+  request->source = SOURCE;
+  request->force = true;
+  auto future = control_client_->async_send_request(request);
+  if (executor_.spin_until_future_complete(future, CALL_TIMEOUT) !=
+    rclcpp::FutureReturnCode::SUCCESS)
+  {
+    RCLCPP_ERROR(get_logger(), "take control failed: timeout");
+    return false;
+  }
+  const auto result = future.get();
+  if (!result->success) {
+    RCLCPP_ERROR(get_logger(), "take control failed: %s", result->message.c_str());
+    return false;
+  }
+  RCLCPP_INFO(get_logger(), "%s", result->message.c_str());
+  has_control_ = true;
+  return true;
+}
+
+void ArmMoves::releaseControl()
+{
+  if (!has_control_) {return;}
+  has_control_ = false;
+  auto request = std::make_shared<TakeControl::Request>();
+  request->source = SOURCE;
+  request->release = true;
+  auto future = control_client_->async_send_request(request);
+  if (executor_.spin_until_future_complete(future, CALL_TIMEOUT) !=
+    rclcpp::FutureReturnCode::SUCCESS)
+  {
+    RCLCPP_WARN(get_logger(), "release control: no answer (arm_driver frees it when idle)");
+  }
 }
 
 bool ArmMoves::powerOn()
@@ -148,22 +187,19 @@ bool ArmMoves::moveTo(
     std::this_thread::sleep_for(LOOP_PERIOD);
     const auto current = angles();
     if (!current) {continue;}
-    double deviation = 0.0;
-    for (size_t i = 0; i < pose.size(); ++i) {
-      deviation = std::max(deviation, std::abs((*current)[i] - pose[i]));
-    }
-    if (deviation <= tolerance_deg) {return true;}
+    // Same fraction for every joint, so they all arrive together (nothing = arrived)
+    const auto step = mycobot::stepToward(*current, pose, STEP_DEG, tolerance_deg);
+    if (!step) {return true;}
     const auto now = Clock::now();
     if (now < next_send) {continue;}
     next_send = now + RESEND;
-    // Same fraction for every joint, so they all arrive together
-    const double scale = std::min(1.0, STEP_DEG / deviation);
     ArmCommand command;
     command.type = ArmCommand::ALL_ANGLES;
     for (size_t i = 0; i < pose.size(); ++i) {
-      command.angles_deg[i] = round1((*current)[i] + (pose[i] - (*current)[i]) * scale);
+      command.angles_deg[i] = (*step)[i];
     }
     command.speed = static_cast<uint8_t>(speed);
+    command.source = SOURCE;
     command_pub_->publish(command);
   }
   stop();
@@ -174,6 +210,7 @@ void ArmMoves::stop()
 {
   ArmCommand command;
   command.type = ArmCommand::STOP;
+  command.source = SOURCE;
   command_pub_->publish(command);
 }
 

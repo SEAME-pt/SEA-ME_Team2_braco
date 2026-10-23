@@ -34,7 +34,7 @@
   <!-- world: the table surface. The arm stands on the G-shape base (a 150 x 110 mm plate,
        clamped to the table with its black grip), and base_link (the bottom of the Jetson casing)
        sits on top of the plate, 2 mm down in its pocket. Measured: table -> top of the casing
-       = 140 mm (BASE_HEIGHT_MM in libs/cpp/includes/mycobot.hpp), minus the 109.7 mm casing
+       = 140 mm (BASE_HEIGHT_MM in ros2_ws/src/mycobot_cpp/includes/mycobot.hpp), minus the 109.7 mm casing
        (CASING_HEIGHT_MM) = 30.3 mm; the vendor mounts it at 30 mm (mycobot_280_pi URDF).
        test_urdf.py keeps g_base_height and mycobot.hpp within 1 mm. -->
   <xacro:property name="g_base_height" value="0.030"/>
