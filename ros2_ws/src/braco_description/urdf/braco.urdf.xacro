@@ -1,0 +1,179 @@
+<?xml version="1.0"?>
+<!--
+  braco: the whole robot. myCobot 280 + adaptive gripper + camera mount, with the TF frames
+  the rest of the system uses (REP-103/105):
+
+    world -> g_base -> base_link -> link1 ... link6 -> tool0 -> gripper_base ...
+                                                        tool0 -> tcp
+                                                        tool0 -> camera_mount -> camera_link
+                                                                                  -> camera_optical_frame
+
+  Offsets marked MEASURE are not measured yet: they are zero or a rough value until someone
+  puts calipers on the real hardware (docs/urdf-sim-to-real.md, "Open items").
+
+  Arguments:
+    gripper_actuated  false (default): fingers fixed open, the real driver publishes no gripper state
+                      true: vendor finger linkage (one master joint + five mimic joints)
+    gazebo            false (default): plain model (real arm)
+                      true: add the gz_ros2_control system (braco.gazebo.xacro, launch/gazebo.launch.py)
+-->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="braco">
+
+  <xacro:arg name="gripper_actuated" default="false"/>
+  <xacro:arg name="gazebo" default="false"/>
+
+  <xacro:include filename="$(find braco_description)/urdf/mycobot_280.urdf.xacro"/>
+  <xacro:include filename="$(find braco_description)/urdf/adaptive_gripper.xacro"/>
+  <xacro:include filename="$(find braco_description)/urdf/braco.gazebo.xacro"/>
+
+  <xacro:if value="$(arg gazebo)">
+    <xacro:braco_gazebo
+      controllers="$(find braco_description)/config/gazebo_controllers.yaml"/>
+  </xacro:if>
+
+  <!-- world: the table surface. The arm stands on the G-shape base (a 150 x 110 mm plate,
+       clamped to the table with its black grip), and base_link (the bottom of the Jetson casing)
+       sits on top of the plate, 2 mm down in its pocket. Measured: table -> top of the casing
+       = 140 mm (BASE_HEIGHT_MM in ros2_ws/src/mycobot_cpp/includes/mycobot.hpp), minus the 109.7 mm casing
+       (CASING_HEIGHT_MM) = 30.3 mm; the vendor mounts it at 30 mm (mycobot_280_pi URDF).
+       test_urdf.py keeps g_base_height and mycobot.hpp within 1 mm. -->
+  <xacro:property name="g_base_height" value="0.030"/>
+  <!-- Plate thickness, from the vendor mesh (meshes/arm/g_base.dae, Elephant Robotics
+       mycobot_280_pi/G_base.dae). Only for the collision box and the inertia. -->
+  <xacro:property name="g_base_thickness" value="0.032"/>
+  <!-- UNMEASURED: weigh the plate. It is fixed to the world, so only the positive-mass rule
+       of the model (Gazebo, MoveIt) needs it. -->
+  <xacro:property name="g_base_mass" value="0.5"/>
+
+  <!-- tcp: the point between the fingertips, along the tool0 z axis. Rough: the flange-to-tip
+       length of the closed gripper with camera (TOOL_LENGTH_MM in mycobot.hpp). MEASURE to the
+       middle of the closed fingertips. -->
+  <xacro:property name="tcp_length" value="0.130"/>
+
+  <!-- Camera: Elephant Robotics' camera flange (in the arm's box, docs/inventory), a 83 x 34 mm
+       plate, 16 mm thick with the camera module. Its LEGO hole grid goes on the flange's and the
+       gripper pins onto the same holes on its front face: flange -> camera plate -> gripper. The
+       lens is at the other end of the plate, on the gripper side. Mesh and mount from the vendor
+       (mycobot_280_pi/camera_flange.dae, mycobot_280_pi_with_camera_flange.urdf); the plate's
+       direction (tool0 +x) matches the real arm's photos at the zero pose. -->
+  <xacro:property name="camera_plate_thickness" value="0.0163"/>
+  <!-- ESTIMATED (no scale): the plate and the USB camera module. -->
+  <xacro:property name="camera_mass" value="0.040"/>
+  <!-- camera_link at the lens, in camera_mount (= tool0 axes), from the vendor mesh: lens centre
+       41.5 mm out along the plate, the lens glass 12 mm from the flange face. It looks along
+       tool0 +z, like the gripper; camera_link follows REP-103 (x forward), so x = tool0 z.
+       The roll of the image (camera_link about its x) is not known from the model: the hand-eye
+       calibration sets it. -->
+  <xacro:property name="camera_xyz" value="0.0415 0 0.012"/>
+  <xacro:property name="camera_rpy" value="0 ${-pi / 2} 0"/>
+
+  <!-- Flange angle about the joint 6 axis, degrees. The flange's LEGO hole grid on the real arm
+       is turned 45 deg from the vendor model at joint 6 = 0 (compared side by side with the real
+       arm). Turns the flange mesh and tool0, and with tool0 everything on it (gripper, tcp,
+       camera), so the gripper's pins stay in the flange holes. Positions do not change.
+       Checked in Gazebo against the real arm: -45. -->
+  <xacro:property name="flange_yaw" value="-45"/>
+
+  <link name="world"/>
+
+  <!-- G-base: its frame is on the table, under the arm's axis. The vendor mesh is turned 90 deg
+       so its long side runs along y, like the Jetson casing. Collision is a box of the same size
+       (the mesh has 40k vertices and the plate never moves). -->
+  <link name="g_base">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 ${pi / 2}"/>
+      <geometry>
+        <mesh filename="package://braco_description/meshes/arm/g_base.dae"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 ${g_base_thickness / 2}" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.110 0.150 ${g_base_thickness}"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="0 0 ${g_base_thickness / 2}" rpy="0 0 0"/>
+      <mass value="${g_base_mass}"/>
+      <inertia ixx="${g_base_mass * (0.150 ** 2 + g_base_thickness ** 2) / 12}" ixy="0" ixz="0"
+               iyy="${g_base_mass * (0.110 ** 2 + g_base_thickness ** 2) / 12}" iyz="0"
+               izz="${g_base_mass * (0.110 ** 2 + 0.150 ** 2) / 12}"/>
+    </inertial>
+  </link>
+  <joint name="world_to_g_base" type="fixed">
+    <parent link="world"/>
+    <child link="g_base"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint>
+
+  <xacro:mycobot_280 parent="g_base" flange_yaw="${radians(flange_yaw)}">
+    <origin xyz="0 0 ${g_base_height}" rpy="0 0 0"/>
+  </xacro:mycobot_280>
+
+  <!-- tool0: the flange, z pointing out of it (REP-103 / ROS-Industrial name). link6 turned by
+       flange_yaw about z, so x and y follow the flange holes. -->
+  <link name="tool0"/>
+  <joint name="link6_to_tool0" type="fixed">
+    <parent link="link6"/>
+    <child link="tool0"/>
+    <origin xyz="0 0 0" rpy="0 0 ${radians(flange_yaw)}"/>
+  </joint>
+
+  <!-- The gripper on the camera plate's front face: the vendor's flange mount (0.034) moved out by
+       the plate's thickness. -->
+  <xacro:adaptive_gripper parent="tool0" actuated="$(arg gripper_actuated)">
+    <origin xyz="0 0 ${0.034 + camera_plate_thickness}" rpy="${pi / 2} 0 0"/>
+  </xacro:adaptive_gripper>
+
+  <link name="tcp"/>
+  <joint name="tool0_to_tcp" type="fixed">
+    <parent link="tool0"/>
+    <child link="tcp"/>
+    <origin xyz="0 0 ${tcp_length}" rpy="0 0 0"/>
+  </joint>
+
+  <!-- camera_mount: the camera plate, frame on tool0's axes. The visual origin is the vendor's
+       joint (0 0 0.01, rpy pi/2 0 0) times its mesh offset (0.024 -0.008 0, rpy 0 pi 0). -->
+  <link name="camera_mount">
+    <visual>
+      <origin xyz="0.024 0 0.002" rpy="${pi / 2} 0 ${pi}"/>
+      <geometry>
+        <mesh filename="package://braco_description/meshes/arm/camera_flange.dae"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0.024 0.0005 0.010" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.083 0.034 0.016"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="0.024 0 0.010" rpy="0 0 0"/>
+      <mass value="${camera_mass}"/>
+      <inertia ixx="${camera_mass * (0.034 ** 2 + 0.016 ** 2) / 12}" ixy="0" ixz="0"
+               iyy="${camera_mass * (0.083 ** 2 + 0.016 ** 2) / 12}" iyz="0"
+               izz="${camera_mass * (0.083 ** 2 + 0.034 ** 2) / 12}"/>
+    </inertial>
+  </link>
+  <joint name="tool0_to_camera_mount" type="fixed">
+    <parent link="tool0"/>
+    <child link="camera_mount"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint>
+
+  <link name="camera_link"/>
+  <joint name="camera_mount_to_camera_link" type="fixed">
+    <parent link="camera_mount"/>
+    <child link="camera_link"/>
+    <origin xyz="${camera_xyz}" rpy="${camera_rpy}"/>
+  </joint>
+
+  <!-- Optical frame: z forward, x right, y down (REP-103). Rotated from camera_link. -->
+  <link name="camera_optical_frame"/>
+  <joint name="camera_link_to_optical" type="fixed">
+    <parent link="camera_link"/>
+    <child link="camera_optical_frame"/>
+    <origin xyz="0 0 0" rpy="${-pi / 2} 0 ${-pi / 2}"/>
+  </joint>
+
+</robot>
