@@ -475,7 +475,7 @@
         <instance_geometry url="#mesh-a0df5e7a-1778-406a-8936-30c9d1380801">
           <bind_material>
             <technique_common>
-              <instance_material symbol="material-a0000000-0000-0000-0000-000000000000" target="#a0000000-0000-0000-0000-000000000000" />
+              <instance_material symbol="material-a0000000-0000-0000-0000-000000000000" target="#Material_001-material" />
             </technique_common>
           </bind_material>
         </instance_geometry>
@@ -484,7 +484,7 @@
         <instance_geometry url="#mesh-aa1ed416-d21b-4906-9d13-a6e547b53987">
           <bind_material>
             <technique_common>
-              <instance_material symbol="material-a0000000-0000-0000-0000-000000000000" target="#a0000000-0000-0000-0000-000000000000" />
+              <instance_material symbol="material-a0000000-0000-0000-0000-000000000000" target="#Material_001-material" />
             </technique_common>
           </bind_material>
         </instance_geometry>
@@ -493,7 +493,7 @@
         <instance_geometry url="#mesh-a48026c5-e292-4aac-9bc7-05b4945ab4fa">
           <bind_material>
             <technique_common>
-              <instance_material symbol="material-a0000000-0000-0000-0000-000000000000" target="#a0000000-0000-0000-0000-000000000000" />
+              <instance_material symbol="material-a0000000-0000-0000-0000-000000000000" target="#Material_001-material" />
             </technique_common>
           </bind_material>
         </instance_geometry>
@@ -510,7 +510,7 @@
         <instance_geometry url="#mesh-a0ec2a07-c575-44a5-9e27-ecb947ec1cf5">
           <bind_material>
             <technique_common>
-              <instance_material symbol="material-a0000000-0000-0000-0000-000000000000" target="#a0000000-0000-0000-0000-000000000000" />
+              <instance_material symbol="material-a0000000-0000-0000-0000-000000000000" target="#Material_001-material" />
             </technique_common>
           </bind_material>
         </instance_geometry>
@@ -519,7 +519,7 @@
         <instance_geometry url="#mesh-cde9bf4d-7a70-42a0-91fd-7f276ccb1d5e">
           <bind_material>
             <technique_common>
-              <instance_material symbol="material-a0000000-0000-0000-0000-000000000000" target="#a0000000-0000-0000-0000-000000000000" />
+              <instance_material symbol="material-a0000000-0000-0000-0000-000000000000" target="#Material_001-material" />
             </technique_common>
           </bind_material>
         </instance_geometry>
@@ -528,7 +528,7 @@
         <instance_geometry url="#mesh-a9b85901-ca50-40aa-8731-34558c8adbcd">
           <bind_material>
             <technique_common>
-              <instance_material symbol="material-a0000000-0000-0000-0000-000000000000" target="#a0000000-0000-0000-0000-000000000000" />
+              <instance_material symbol="material-a0000000-0000-0000-0000-000000000000" target="#Material_001-material" />
             </technique_common>
           </bind_material>
         </instance_geometry>
@@ -537,7 +537,7 @@
         <instance_geometry url="#mesh-adc2a502-a838-45ff-83c0-bbe81b5e1486">
           <bind_material>
             <technique_common>
-              <instance_material symbol="material-a0000000-0000-0000-0000-000000000000" target="#a0000000-0000-0000-0000-000000000000" />
+              <instance_material symbol="material-a0000000-0000-0000-0000-000000000000" target="#Material_001-material" />
             </technique_common>
           </bind_material>
         </instance_geometry>
@@ -546,7 +546,7 @@
         <instance_geometry url="#mesh-afd97542-ac63-4614-a794-0c90eafc405c">
           <bind_material>
             <technique_common>
-              <instance_material symbol="material-a0000000-0000-0000-0000-000000000000" target="#a0000000-0000-0000-0000-000000000000" />
+              <instance_material symbol="material-a0000000-0000-0000-0000-000000000000" target="#Material_001-material" />
             </technique_common>
           </bind_material>
         </instance_geometry>

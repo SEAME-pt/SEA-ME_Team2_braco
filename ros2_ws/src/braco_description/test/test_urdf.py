@@ -203,6 +203,19 @@ def test_mesh_textures_exist():
             assert os.path.isfile(os.path.join(os.path.dirname(path), image)), (mesh, image)
 
 
+def test_mesh_materials_are_bound():
+    # A material binding pointing at a missing material makes Gazebo and RViz fall back to a
+    # plain default material (the vendor's link4.dae had that).
+    robot = load_urdf()
+    prefix = 'package://braco_description/'
+    for mesh in {m.get('filename')[len(prefix):] for m in robot.iter('mesh')}:
+        with open(os.path.join(PACKAGE_DIR, mesh), encoding='utf-8') as f:
+            text = f.read()
+        materials = set(re.findall(r'<material [^>]*id="([^"]+)"', text))
+        for target in re.findall(r'<instance_material [^>]*target="#([^"]+)"', text):
+            assert target in materials, (mesh, target)
+
+
 def test_meshes_are_triangulated():
     # Gazebo loads COLLADA <polygons> as an empty mesh, and an empty collision mesh crashes
     # its physics. RViz does not mind, so only this test catches it.
