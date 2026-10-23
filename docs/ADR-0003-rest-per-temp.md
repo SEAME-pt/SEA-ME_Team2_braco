@@ -32,6 +32,8 @@ Question: who decides that a hot arm must rest, and how does it come back?
 * Nobody may need to be watching the LCD or the page for that to happen
 * Coming back must be a person's decision (they know whether the arm cooled down)
 * No fight with a person who resumes on purpose (for example to park a hot arm)
+* A servo hovering at the limit (1 °C steps, one reading every 2 s) must not trigger
+  the reaction again on every upward crossing
 * Keep `arm_driver` a serial bridge with simple, local rules
 
 ## Considered Options
@@ -47,9 +49,14 @@ episode", because it already computes the level for the LCD and `/diagnostics`,
 and the driver already has the rest mode it needs.
 
 * **When:** the first reading with any joint at `TEMP_HOT_C` (65 °C) or above
-  starts an *episode* and puts the arm to rest, **once**. The episode ends when
-  every joint is below `TEMP_HOT_C` again; the next hot reading starts a new one.
-  The decision is `AutoRest` (`braco_driver/include/braco_driver/auto_rest.hpp`,
+  starts an *episode* and puts the arm to rest, **once**. The episode ends only
+  when every joint is below `AutoRest::REARM_BELOW_C` (60 °C); the next hot
+  reading after that starts a new one. The 5 °C gap is hysteresis: readings that
+  jitter around the limit (65, 64, 65, …) stay one episode, so `park` does not run
+  again on every crossing. Ending the episode at 65 °C instead would re-park a
+  cooling arm (briefly leaving rest mode and re-energising servos that sagged
+  from the park pose) and take the control away from a person who resumed on
+  purpose, every time the reading crossed the limit. The decision is `AutoRest` (`braco_driver/include/braco_driver/auto_rest.hpp`,
   no ROS, unit tested). If the request cannot be sent (driver not reachable) or is
   refused, the next hot reading tries again.
 * **Seen:** the log says which joint and how hot; the LCD shows
@@ -85,8 +92,9 @@ on the real arm they come from `/diagnostics`, so there is one definition of
 
 ### Confirmation
 
-* `test/test_control.cpp` (gtest): rest once per episode, a new episode after
-  cooling below 65 °C, retry after a failed request
+* `test/test_control.cpp` (gtest): rest once per episode, readings jittering
+  between 64 and 65 °C stay one episode, a new episode only after cooling below
+  60 °C, retry after a failed request
 * Bench (Jetson, `make bench`, step 5): a simulated hot servo (a fake `ServoTemperatures`, or a lower
   limit) → the arm parks, the joints are released, rest mode on, LCD warns, `make resume` → motion accepted again
 
@@ -112,4 +120,6 @@ on the real arm they come from `/diagnostics`, so there is one definition of
 ## More Information
 
 * Issue [#55](https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/55)
+* 2026-10-23: the episode end moved from "below 65 °C" to "below 60 °C" (hysteresis),
+  found in the review of PR #64. The decision itself is unchanged.
 * Related: [ADR-0002](ADR-0002-unique-control.md) (one control owner), [safety.md](safety.md)
