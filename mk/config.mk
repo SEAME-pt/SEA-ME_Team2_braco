@@ -18,11 +18,12 @@ SYSTEMD_DEST := /etc/systemd/system/braco.service
 WS_DIR       := ros2_ws
 WS_SRC       := $(WS_DIR)/src
 WS_BAGS      := $(WS_DIR)/bags
-LIBS_DIR     := libs
-# Where compose.yml mounts docker/tests and ../libs inside the containers.
+# The plain C++ arm library (no ament linters): formatted by clang-format like the code outside ros2_ws/src.
+CPP_PKG      := $(WS_SRC)/mycobot_cpp
+# Where compose.yml mounts docker/tests inside the containers.
 CONTAINER_TESTS    := /opt/seame/tests
-CONTAINER_LIBS     := /opt/seame/libs
-WS_BASE_PATHS      := src $(CONTAINER_LIBS)
+# Every package colcon builds lives in ros2_ws/src (mycobot_cpp included), mounted at /ws.
+WS_BASE_PATHS      := src
 
 # Folders that must exist before a container bind-mounts ros2_ws. Created by make as YOUR user;
 # if Docker creates them instead they end up owned by root.
@@ -34,14 +35,11 @@ PROJECT_FILES := $(COMPOSE_BASE) $(ENV_EXAMPLE) $(DOCKERFILE) $(CONFIG_DIR)/colc
                  $(addprefix $(SCRIPTS_DIR)/,apt-install-optional.sh env.sh install-plotjuggler.sh \
                                              install-ros-apt-source.sh ros_entrypoint.sh smoke-test.sh)
 
-# Host side (no docker): Python venv for the web page tests, the CMake hello-world.
-# The interpreter version lives in .python-version (read by CI and uv/pyenv too);
-PY_VERSION := $(shell cat .python-version)
-PYTHON     ?= python$(PY_VERSION)
+# Host side (no docker): Python venv for the web page and its tests (web/requirements*.txt) and the dev tools
+# (requirements-dev.txt: the formatters, plus the container's arm libraries for the editor).
+PYTHON     ?= python3
 VENV       := .venv
 PIP        := $(VENV)/bin/pip
-CPP_DIR    := tests
-CPP_BUILD  := $(CPP_DIR)/build
 
 # ---- which machine is this? ------------------------------------------------------------------
 # Read KEY from .env. The shell environment wins over .env, exactly as it does for docker compose.
@@ -79,7 +77,7 @@ SYSTEM        := $(SYSTEM_$(ROLE))
 DEV           := dev
 IMAGE         := $(IMAGE_PREFIX)/$(ROLE):$(IMAGE_TAG)
 
-# Every compose call goes through docker/ (so .env, ../ros2_ws and ../libs resolve) with this machine's profile.
+# Every compose call goes through docker/ (so .env and ../ros2_ws resolve) with this machine's profile.
 # compose.yml also uses COMPOSE_PROFILES to pick the image of `dev`, which is why it is passed explicitly.
 # GPU=nvidia|dri adds the matching override file (PC only); without it, compose uses COMPOSE_FILE from .env.
 DC      := docker compose --project-directory $(DOCKER_DIR) $(if $(GPU),-f $(COMPOSE_BASE) -f $(COMPOSE_DIR)/$(GPU).yml)
