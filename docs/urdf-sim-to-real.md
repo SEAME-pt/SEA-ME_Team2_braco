@@ -72,7 +72,11 @@ world -> g_base -> base_link -> link1 -> link2 -> link3 -> link4 -> link5 -> lin
 - `camera_optical_frame`: z forward, x right, y down (rotation `-pi/2, 0, -pi/2` from `camera_link`).
   The position of `camera_mount` relative to `tool0` is **zero (to measure)**.
 
-PDF/PNG of the tree: `urdf_to_graphviz /tmp/braco.urdf` (needs `liburdfdom-tools`, added to the `pc-dev` Dockerfile).
+Frame tree PDFs (in [`urdf-sim-to-real/`](urdf-sim-to-real/)):
+
+- [`urdf_tree.pdf`](urdf-sim-to-real/urdf_tree.pdf): links and joints of the URDF
+  (`xacro urdf/braco.urdf.xacro > /tmp/braco.urdf && urdf_to_graphviz /tmp/braco.urdf braco_urdf_tree`)
+- [`tf_frames.pdf`](urdf-sim-to-real/tf_frames.pdf): the live TF tree with Gazebo running (`ros2 run tf2_tools view_frames`)
 
 ## Limits
 
@@ -101,7 +105,19 @@ which mean nothing). Nothing in the system depends on these two numbers yet.
 
 The vendor does not publish masses.
 
-## Zero pose (model prediction)
+## Zero pose
+
+`make zero` on the real arm and Gazebo with every joint at 0, from the same viewpoints:
+
+| | Real arm | Gazebo |
+|---|---|---|
+| Front | <img src="urdf-sim-to-real/zero_real_front.webp" width="260"> | <img src="urdf-sim-to-real/zero_gazebo_front.webp" width="420"> |
+| Back | <img src="urdf-sim-to-real/zero_real_back.webp" width="260"> | <img src="urdf-sim-to-real/zero_gazebo_back.webp" width="420"> |
+
+**Result: the zero poses match.** The arm stands upright with the same zig-zag of the links (left, right, left in the
+front view), on the G-base, and the gripper on the flange is turned the same way (after the 45° flange correction).
+No joint origin had to change, so `ZERO_TOOL0` in `test/test_urdf.py` stays. At zero the real arm reads within about
+1° of 0 on every joint (servo offsets).
 
 With every joint at 0, the model's kinematics give (frame `world`, in mm):
 
@@ -109,38 +125,44 @@ With every joint at 0, the model's kinematics give (frame `world`, in mm):
 |---|---|---|---|
 | `tool0` (flange) | 45.6 | -64.6 | 466.1 (436.1 above `base_link`) |
 
-The z axis of `tool0` points to **world +x** (horizontal, forward): the flange faces forward in the zero pose. The model
-is the prediction; it still has to be checked against the real arm (below).
+The z axis of `tool0` points to **world +x** (horizontal, forward): the flange faces forward in the zero pose. The
+position is checked against the real arm with `get_coords()` (FK table below).
 
 ## Open items (need the hardware)
 
-Tick them here as they are measured and update the URDF and the tables above.
+Tick them here as they are measured and update the URDF and the tables above. `scripts/sim_to_real.py` runs the checks
+against the real arm (Gazebo on this shell's `ROS_DOMAIN_ID`, e.g. 77; the real arm on 42):
+`ros2 run braco_description sim_to_real.py directions | fk | velocity`.
 
-- [ ] **Velocity** of each joint: command speed 100 across a known angle (e.g. J1 from -90 to +90°) and time it from
-  `/joint_states` (`ros2 topic echo` or PlotJuggler). Fill in `joint_velocity` per joint in `mycobot_280.urdf.xacro`.
+- [ ] **Velocity** of each joint (`sim_to_real.py velocity`): each joint across a known range at speeds 25/50/75/100,
+  timed from `/joint_states`. Fill in `joint_velocity` per joint in `mycobot_280.urdf.xacro`.
 - [ ] **Effort**: servo stall torque (datasheet), marked as an approximation.
 - [ ] **Masses**: weigh the gripper and the camera + flange; arm masses (vendor, or the total split). Update
   `base_mass`, `link_mass`, `gripper_base_mass`.
 - [ ] **Offsets** with calipers (photograph the measurements): `camera_xyz`/`camera_rpy`, `tcp_length`.
-- [ ] **Zero pose**: `make zero` on the Jetson; on the PC, Gazebo with all joints at 0 (the default when it starts).
-  Side-by-side photos (Gazebo vs. real arm) from the same viewpoint.
-  If the model's zero does not look like the arm's (±pi/2 rotations in the origins), fix the origins and update `ZERO_TOOL0`
-  in `test/test_urdf.py`.
-- [ ] **Sign of each joint**: command +30° (0.5236 rad) on one joint, on the real arm and in Gazebo; does Gazebo move
-  the same joint in the same direction?
+- [x] **Zero pose**: `make zero` on the Jetson; on the PC, Gazebo with all joints at 0. Photos in "Zero pose" above:
+  they match.
+- [x] **Sign of each joint** (`sim_to_real.py directions`): +30° on one joint, in Gazebo and on the real arm; does
+  Gazebo move the same joint in the same direction? **All six match.**
 
   | Joint | Same joint? | Same direction? | Note |
   |---|---|---|---|
-  | joint1..joint6 | | | |
+  | joint1 | yes | yes |  |
+  | joint2 | yes | yes |  |
+  | joint3 | yes | yes |  |
+  | joint4 | yes | yes |  |
+  | joint5 | yes | yes |  |
+  | joint6 | yes | yes |  |
 
-- [ ] **FK vs. `get_coords()`**: put Gazebo at the real arm's angles, then `ros2 run tf2_ros tf2_echo base_link tool0`
-  against `mc.get_coords()` on the real arm (X, Y, Z within a few mm).
+- [ ] **FK vs. `get_coords()`** (`sim_to_real.py fk`): puts Gazebo at the real arm's angles and prints the model's
+  `tool0` in `base_link` (what `tf2_echo base_link tool0` shows), against `mc.get_coords()` on the real arm (X, Y, Z
+  within a few mm).
 
   | Pose | Model FK (mm) | `get_coords()` (mm) | Error (mm) |
   |---|---|---|---|
   | zero | 45.6 / -64.6 / 436.1 | | |
 
-- [ ] `ros2 run tf2_tools view_frames` with Gazebo running, and attach the PDF.
+- [x] `ros2 run tf2_tools view_frames` with Gazebo running, and attach the PDF: see "Frame tree" above.
 
 ## Known gaps
 
