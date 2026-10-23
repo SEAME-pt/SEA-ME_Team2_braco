@@ -1,7 +1,7 @@
-# mk/ci.mk - what .github/workflows/ci.yml runs, reproducible here: ci ci-ros lint.
+# mk/ci.mk - what .github/workflows/ci.yml runs, reproducible here: ci ci-ros lint format format-check.
 #
-#   host job   make ci       host checks (venv, imports, C++ hello-world build), format check, lint, web page tests
-#   ros job    make ci-ros   rosdep, colcon build and colcon test of ros2_ws/src + libs (make ci-image builds its image)
+#   host job   make ci       format check, lint, web page tests
+#   ros job    make ci-ros   rosdep, colcon build and colcon test of ros2_ws/src (make ci-image builds its image)
 #
 # No robot and no display needed.
 
@@ -31,17 +31,19 @@ HADOLINT_IMAGE   := hadolint/hadolint:v2.12.0
 HADOLINT_FLAGS   := $(addprefix --ignore ,DL3008 DL3013 DL3059 DL3006 DL3042 DL3045 SC1091 SC2086 SC2016)
 
 # format / format-check: clang-format (C++) and ruff (Python, .ruff.toml) on the files git tracks. The ROS 2
-# packages ($(WS_SRC)) are left to ament_uncrustify and ament_flake8 (make test). format-check is the pre-push hook.
-CPP_FILES = $(shell git ls-files -- '*.cpp' '*.hpp' '*.h' '*.cc' ':!$(WS_SRC)')
+# packages in $(WS_SRC) are left to ament_uncrustify and ament_flake8 (make test), except $(CPP_PKG), which has no
+# ament linters. format-check is the pre-push hook.
+CPP_GLOBS = '*.cpp' '*.hpp' '*.h' '*.cc'
+CPP_FILES = $(shell git ls-files -- $(CPP_GLOBS) ':!$(WS_SRC)') $(shell git ls-files -- $(addprefix $(CPP_PKG)/,$(CPP_GLOBS)))
 PY_FILES  = $(shell git ls-files '*.py')
 # Use the venv's pinned ruff and clang-format (make setup) even when the venv is not activated.
 format format-check: export PATH := $(CURDIR)/$(VENV)/bin:$(PATH)
 
-.PHONY: ci ci-image ci-ros lint format format-check _host-check
+.PHONY: ci ci-image ci-ros lint format format-check
 
 ##@ CI (.github/workflows/ci.yml)
 
-ci: _host-check format-check lint $(VENV)/.web-test-installed ## The `host` CI job: host checks, format check, lint, web page tests
+ci: format-check lint $(VENV)/.web-test-installed ## The `host` CI job: format check, lint, web page tests
 	$(VENV)/bin/python -m pytest web/tests -q
 
 ci-image: ## Build the `ros` CI job's image (Dockerfile stage CI_TARGET=base) as CI_IMAGE, for your UID/GID
@@ -51,7 +53,7 @@ ci-image: ## Build the `ros` CI job's image (Dockerfile stage CI_TARGET=base) as
 ci-ros: ## The `ros` CI job: rosdep + colcon build + colcon test in a throw-away container (CI_IMAGE built if missing)
 	@docker image inspect $(CI_IMAGE) >/dev/null 2>&1 || $(MAKE) --no-print-directory ci-image
 	docker run --rm -e CCACHE_DIR=/ws/.ccache -e CCACHE_MAXSIZE=500M -v $(CURDIR)/$(WS_DIR):/ws \
-	    -v $(CURDIR)/$(LIBS_DIR):$(CONTAINER_LIBS):ro $(CI_IMAGE) bash -c '$(CI_ROS_SH)'
+	    $(CI_IMAGE) bash -c '$(CI_ROS_SH)'
 
 lint: $(ENV_FILE) ## Compose files (both machines, GPU overrides), shellcheck and hadolint (binaries or their docker images)
 	@echo "== compose =="
@@ -70,27 +72,17 @@ lint: $(ENV_FILE) ## Compose files (both machines, GPU overrides), shellcheck an
 	  { docker image inspect $(HADOLINT_IMAGE) >/dev/null 2>&1 || docker pull -q $(HADOLINT_IMAGE) >/dev/null; } && \
 	  docker run --rm -i $(HADOLINT_IMAGE) hadolint $(HADOLINT_FLAGS) - < $(DOCKERFILE) && echo "  hadolint ($(HADOLINT_IMAGE)): clean"; fi
 
-format: ## Fix the formatting of all C++ (clang-format) and Python (ruff) files
+format: $(VENV)/.installed ## Fix the formatting of all C++ (clang-format) and Python (ruff) files
 	@clang-format -i $(CPP_FILES)
 	@ruff format -q $(PY_FILES)
 	@printf '\033[0;32mOK:\033[0m all files formatted\n'
 
-format-check: ## Check the formatting without changing files (used by the pre-push hook)
+format-check: $(VENV)/.installed ## Check the formatting without changing files (used by the pre-push hook)
 	@clang-format --dry-run --Werror $(CPP_FILES)
 	@ruff format --check -q $(PY_FILES)
 	@printf '\033[0;32mOK:\033[0m formatting is correct\n'
 
-# Hardware-free checks on the host: the venv from requirements-dev.txt, imports, the C++ hello-world build.
-_host-check: $(VENV)/.installed
-	$(VENV)/bin/python -c 'import ast; ast.parse(open("tests/hello_world.py").read())'
-	$(VENV)/bin/python -c 'import numpy, pymycobot, serial'
-	cmake -S $(CPP_DIR) -B $(CPP_BUILD)
-	cmake --build $(CPP_BUILD)
-
-$(VENV)/.installed: requirements-dev.txt .python-version
-	@$(PYTHON) -c 'import sys; v="%d.%d" % sys.version_info[:2]; sys.exit(0 if v == "$(PY_VERSION)" else "need Python $(PY_VERSION), $(PYTHON) is " + v + " (install it, e.g. uv python install $(PY_VERSION), or set PYTHON=/path/to/python$(PY_VERSION))")'
-	rm -rf $(VENV)
-	$(PYTHON) -m venv $(VENV)
-	$(PIP) install --upgrade pip
+# The dev tools on the host (requirements-dev.txt): the formatters, and the container's arm libraries for the editor.
+$(VENV)/.installed: $(VENV)/bin/python requirements-dev.txt
 	$(PIP) install -r requirements-dev.txt
 	touch $@

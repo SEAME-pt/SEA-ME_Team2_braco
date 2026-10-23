@@ -1,4 +1,4 @@
-// Arm reference data, copied from libs/cpp/includes/mycobot.hpp and
+// Arm reference data, copied from ros2_ws/src/mycobot_cpp/includes/mycobot.hpp and
 // docs/protocol_commands.md. Keep in sync when those change.
 
 export const JOINTS = ["J1", "J2", "J3", "J4", "J5", "J6"];
@@ -14,6 +14,8 @@ export const FACTORY_PID = [
   [15, 0, 20], [32, 0, 8], [32, 0, 8], [25, 0, 25], [25, 0, 25], [25, 0, 25],
 ];
 
+// Reference only (the help text and the chart's grid lines): the level of each servo
+// comes from the server, from temperature_monitor's /diagnostics on the real arm.
 export const TEMP_WARM_C = 55;
 export const TEMP_HOT_C = 65;
 
@@ -43,12 +45,6 @@ export const COMMANDS = [
   { code: "0x53", name: "GET_SERVO_DATA", py: "mc.get_servo_data(j, addr)", cpp: "getPid(j)", desc: "Reads servo data" },
   { code: "0x66", name: "SET_GRIPPER_STATE", py: "mc.set_gripper_state(st, s)", cpp: "setGripperState(st, s)", desc: "0 = open, 1 = close", write: true },
   { code: "0x6A", name: "SET_COLOR", py: "mc.set_color(r, g, b)", cpp: "setColor(r, g, b)", desc: "Atom LED", write: true },
+  { code: "0xE3", name: "GET_SERVO_VOLTAGES", py: "mc.get_servo_voltages()", cpp: "getVoltages()", desc: "Supply voltage of each servo (0.1 V steps)" },
   { code: "0xE5", name: "GET_SERVO_TEMPS", py: "mc.get_servo_temps()", cpp: "getTemps()", desc: "Temperature of each servo (°C)" },
 ];
-
-export function tempLevel(c) {
-  if (c == null) return null;
-  if (c >= TEMP_HOT_C) return "hot";
-  if (c >= TEMP_WARM_C) return "warm";
-  return "normal";
-}

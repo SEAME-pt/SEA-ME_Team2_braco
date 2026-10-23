@@ -156,6 +156,16 @@ export function holderName() {
   return live.lease?.holder?.name || null;
 }
 
+// arm_driver's control owner when it is not the page ("joystick", "script", "mission"), else null.
+// While one of them has the arm, the page cannot take control (409).
+export function outsideOwner() {
+  const owner = live.telemetry?.control_owner;
+  return owner && owner !== "web" ? owner : null;
+}
+
+// How an outside owner is shown: "the joystick", "zero/park", ...
+export const OWNER_NAMES = { joystick: "the joystick", script: "zero/park", mission: "the mission" };
+
 // ---- Commands -----------------------------------------------------------------
 
 // POST with this tab's id. Resolves to { ok, data, error } and never throws.
@@ -170,7 +180,9 @@ export async function post(url, body) {
     if (res.ok) return { ok: true, data };
     const detail = typeof data.detail === "string" ? data.detail
       : Array.isArray(data.detail) ? data.detail.map((d) => d.msg).join("; ") : res.statusText;
-    const prefix = res.status === 423 ? "Locked: " : res.status === 409 ? "Busy: " : "";
+    // 409 is also "the joystick has the arm": that message speaks for itself
+    const busy = res.status === 409 && !/controlled by/.test(detail);
+    const prefix = res.status === 423 ? "Locked: " : busy ? "Busy: " : "";
     return { ok: false, status: res.status, error: prefix + detail };
   } catch (e) {
     return { ok: false, error: e.message };

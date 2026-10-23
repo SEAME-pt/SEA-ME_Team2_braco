@@ -73,9 +73,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         iproute2 iputils-ping net-tools openssh-client picocom \
         python3-pip python3-dev python3-numpy python3-yaml python3-serial \
         python3-fastapi python3-uvicorn python3-websockets \
+        python3-opencv \
  && rm -rf /var/lib/apt/lists/*
 # (fastapi/uvicorn: the braco web page, served by the `real` container on the Jetson and by
-#  the `sim` container on the PC, so both images need them)
+#  the `sim` container on the PC, so both images need them; opencv: the camera node, braco_camera)
 
 # Same version on PC and Jetson because both inherit this layer. (pymycobot also pulls pyserial and
 # numpy - already provided by apt above - and bleak.) It must live in the system Python so that
