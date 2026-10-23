@@ -22,7 +22,7 @@ anything dies.
 | pub | `/arm/command` (`source: joystick`), `/arm/led` |
 | client | `/arm/take_control`, `/arm/power_on` (when a joystick connects, once it has the control), `/arm/set_gripper` |
 
-**Control** ([ADR-0002](../../../docs/ADR-0002-controle-unico.md)): only the control owner moves the arm. With
+**Control** ([ADR-0002](../../../docs/ADR-0002-unique-control.md)): only the control owner moves the arm. With
 the control free, the first stick move (or X, A, B) takes it. While the web page or zero/park has it, the
 joystick is ignored and the LED is dimmed; hold **button 8 for 1 s** (`force_button`, `force_hold_s`) to take
 it anyway. Letting go does not release it: `arm_driver` frees it 5 s after the last move. A joystick without

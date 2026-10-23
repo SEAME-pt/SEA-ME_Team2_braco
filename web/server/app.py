@@ -12,7 +12,7 @@ activity log live in memory.
 
 The page is a plain ROS 2 client of arm_driver: it never opens the serial port.
 With ARM_SOURCE=ros the control lease is also arm_driver's control owner "web"
-(docs/ADR-0002-controle-unico.md): taking it fails with 409 while the
+(docs/ADR-0002-unique-control.md): taking it fails with 409 while the
 joystick or zero/park has the arm.
 
 Environment (one of ARM_MOCK / ARM_SOURCE is required):

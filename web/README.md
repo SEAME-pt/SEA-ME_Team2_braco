@@ -21,7 +21,7 @@ is in sync**: who is online, who controls the arm, what each person did, and the
   needs control, and runs one at a time (a second one while the first is running is refused as *busy*).
 - **STOP works for everybody**, operator or not, and stops the arm whoever moves it (the joystick too).
 - **The page is one client among others.** On the real arm, taking control also asks `arm_driver` for the arm
-  ([ADR-0002](../docs/ADR-0002-controle-unico.md)): while the **joystick** or `make zero` / `make park` has it,
+  ([ADR-0002](../docs/ADR-0002-unique-control.md)): while the **joystick** or `make zero` / `make park` has it,
   *Take control* is refused (409) and the page shows "the joystick is in control". While the page has it, the
   joystick is ignored unless someone holds its button 8 for about 1 s; then the page's control ends at once.
 - **Speed is shared**: one value held by the server, shown to everybody, changed only by the operator (viewers see

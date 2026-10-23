@@ -139,5 +139,5 @@ ever seen on the bench.
 ## More Information
 
 * Issue [#55](https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/55)
-* Related: [ADR-0003](ADR-0003-repouso-por-temperatura.md) (rest mode on overheat),
+* Related: [ADR-0003](ADR-0003-rest-per-temp.md) (rest mode on overheat),
   [arm-rest-mode.md](arm-rest-mode.md)

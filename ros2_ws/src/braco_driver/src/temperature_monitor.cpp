@@ -27,7 +27,7 @@
 //     |J4 66 C cooling |      (|SERVO HOT! J4| / |66 C - rest arm| with auto_rest_on_hot false)
 //   With no fresh data for stale_timeout_s the LCD shows "NO FEEDBACK".
 //
-// Auto rest (docs/ADR-0003-repouso-por-temperatura.md): the first hot reading of an episode runs
+// Auto rest (docs/ADR-0003-rest-per-temp.md): the first hot reading of an episode runs
 // park (fold the arm, release the joints so the servos cool, rest mode on), once; the episode
 // ends when every joint is below TEMP_HOT_C. With park_on_hot false, or if park cannot run or
 // fails, it only calls /arm/set_read_only true. Leaving rest is manual (make resume): the
