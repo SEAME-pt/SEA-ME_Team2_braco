@@ -23,8 +23,8 @@ constexpr uint8_t RGB_ADDR = 0x60;
 // LCD controller: first byte selects command or character data
 constexpr uint8_t LCD_CMD = 0x80;
 constexpr uint8_t LCD_DATA = 0x40;
-constexpr uint8_t LCD_ROW0 = 0x80;   // "set cursor" command, row 0, column 0
-constexpr uint8_t LCD_ROW1 = 0xC0;   // "set cursor" command, row 1, column 0
+constexpr uint8_t LCD_ROW0 = 0x80;  // "set cursor" command, row 0, column 0
+constexpr uint8_t LCD_ROW1 = 0xC0;  // "set cursor" command, row 1, column 0
 
 // Backlight driver registers. Colour order as in Waveshare's RGB1602
 // library; if colours come out swapped, swap these three values.
@@ -38,9 +38,7 @@ constexpr uint8_t REG_RED = 0x04;
 // Placeholder that never matches a printable character: forces a full rewrite.
 const std::string UNKNOWN_LINE(LcdDisplay::COLS, '\0');
 
-void sleepMs(int ms) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(ms));
-}
+void sleepMs(int ms) { std::this_thread::sleep_for(std::chrono::milliseconds(ms)); }
 
 // Exactly 16 printable ASCII characters (the LCD has no other glyphs).
 std::string fit(const std::string& text) {
@@ -61,18 +59,17 @@ std::string center(const std::string& text) {
 // Always 15 characters for -168..168, so no value is ever cut off.
 std::string angleRow(const std::array<double, 6>& a, int first) {
     char buf[32];
-    std::snprintf(buf, sizeof(buf), "%5ld%5ld%5ld",
-                  std::lround(a[first]), std::lround(a[first + 1]), std::lround(a[first + 2]));
+    std::snprintf(buf, sizeof(buf), "%5ld%5ld%5ld", std::lround(a[first]),
+                  std::lround(a[first + 1]), std::lround(a[first + 2]));
     return buf;
 }
 
 // Three labelled temperatures, e.g. "1:31  2:33  3:35" (exactly 16 characters).
 std::string tempRow(const std::array<int, 6>& t, int first) {
-    auto c = [](int v) { return v < 0 ? 0 : (v > 99 ? 99 : v); };   // keep 2 digits
-    char buf[80];   // large enough for any int, so no truncation warnings
-    std::snprintf(buf, sizeof(buf), "%d:%2d  %d:%2d  %d:%2d",
-                  first + 1, c(t[first]), first + 2, c(t[first + 1]),
-                  first + 3, c(t[first + 2]));
+    auto c = [](int v) { return v < 0 ? 0 : (v > 99 ? 99 : v); };  // keep 2 digits
+    char buf[80];  // large enough for any int, so no truncation warnings
+    std::snprintf(buf, sizeof(buf), "%d:%2d  %d:%2d  %d:%2d", first + 1, c(t[first]), first + 2,
+                  c(t[first + 1]), first + 3, c(t[first + 2]));
     return buf;
 }
 
@@ -102,11 +99,10 @@ LcdDisplay::~LcdDisplay() {
 
 // Same sequence as the Python driver that lit the backlight on this module.
 bool LcdDisplay::initBacklight() {
-    bool good = writeReg(RGB_ADDR, REG_MODE1, 0x00) &&
-                writeReg(RGB_ADDR, REG_MODE2, 0x00) &&
+    bool good = writeReg(RGB_ADDR, REG_MODE1, 0x00) && writeReg(RGB_ADDR, REG_MODE2, 0x00) &&
                 writeReg(RGB_ADDR, REG_OUTPUT, 0xAA);
     for (uint8_t reg = 0x02; good && reg <= 0x05; ++reg) {
-        good = writeReg(RGB_ADDR, reg, 0xFF);   // all channels fully on
+        good = writeReg(RGB_ADDR, reg, 0xFF);  // all channels fully on
     }
     if (good) backlight_ = {255, 255, 255};
     return good;
@@ -115,15 +111,16 @@ bool LcdDisplay::initBacklight() {
 // Same command sequence and delays as the Python driver.
 bool LcdDisplay::initLcd() {
     sleepMs(50);
-    if (!command(0x38)) return false;   // function set: 8-bit, 2 lines
+    if (!command(0x38)) return false;  // function set: 8-bit, 2 lines
     sleepMs(5);
-    if (!command(0x39)) return false;   // extended instruction set
+    if (!command(0x39)) return false;  // extended instruction set
     sleepMs(5);
     if (!command(0x14) || !command(0x74) || !command(0x54) || !command(0x6F)) return false;
     sleepMs(200);
-    if (!command(0x38) || !command(0x0C) || !command(0x01)) return false;   // normal set, display on, clear
+    if (!command(0x38) || !command(0x0C) || !command(0x01))
+        return false;  // normal set, display on, clear
     sleepMs(10);
-    return command(0x06);   // entry mode: cursor moves right
+    return command(0x06);  // entry mode: cursor moves right
 }
 
 // ------------------------------------------------------------------ drawing
@@ -168,13 +165,13 @@ void LcdDisplay::show(const Status& status, bool force) noexcept {
 bool LcdDisplay::updateLine(int row, const std::string& text) {
     const std::string want = fit(text);
     std::string& have = shown_[row];
-    int cursor = -1;   // column the LCD cursor is at, -1 = unknown
+    int cursor = -1;  // column the LCD cursor is at, -1 = unknown
 
     for (int col = 0; col < COLS; ++col) {
         if (have[col] == want[col]) continue;
         if (cursor != col &&
             !command(static_cast<uint8_t>((row == 0 ? LCD_ROW0 : LCD_ROW1) | col))) {
-            have = UNKNOWN_LINE;   // unsure what is shown now: rewrite next time
+            have = UNKNOWN_LINE;  // unsure what is shown now: rewrite next time
             return false;
         }
         if (!data(static_cast<uint8_t>(want[col]))) {
@@ -182,7 +179,7 @@ bool LcdDisplay::updateLine(int row, const std::string& text) {
             return false;
         }
         have[col] = want[col];
-        cursor = col + 1;   // the LCD advances the cursor by itself
+        cursor = col + 1;  // the LCD advances the cursor by itself
     }
     return true;
 }
@@ -194,7 +191,7 @@ bool LcdDisplay::setBacklight(uint8_t r, uint8_t g, uint8_t b) {
         backlight_ = {r, g, b};
         return true;
     }
-    backlight_ = {-1, -1, -1};   // unknown: retry next time
+    backlight_ = {-1, -1, -1};  // unknown: retry next time
     return false;
 }
 
@@ -210,12 +207,8 @@ bool LcdDisplay::writeReg(uint8_t addr, uint8_t reg, uint8_t value) {
     return write(fd_, buf, sizeof(buf)) == static_cast<ssize_t>(sizeof(buf));
 }
 
-bool LcdDisplay::command(uint8_t cmd) {
-    return writeReg(LCD_ADDR, LCD_CMD, cmd);
-}
+bool LcdDisplay::command(uint8_t cmd) { return writeReg(LCD_ADDR, LCD_CMD, cmd); }
 
-bool LcdDisplay::data(uint8_t ch) {
-    return writeReg(LCD_ADDR, LCD_DATA, ch);
-}
+bool LcdDisplay::data(uint8_t ch) { return writeReg(LCD_ADDR, LCD_DATA, ch); }
 
 }  // namespace ui

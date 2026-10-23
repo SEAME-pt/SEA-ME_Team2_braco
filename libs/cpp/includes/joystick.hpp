@@ -11,14 +11,14 @@
 
 namespace input {
 
-constexpr uint8_t TYPE_BUTTON = 0x01;   // JS_EVENT_BUTTON
-constexpr uint8_t TYPE_AXIS = 0x02;     // JS_EVENT_AXIS
+constexpr uint8_t TYPE_BUTTON = 0x01;  // JS_EVENT_BUTTON
+constexpr uint8_t TYPE_AXIS = 0x02;    // JS_EVENT_AXIS
 
 struct Event {
-    uint32_t timeMs;   // kernel timestamp in milliseconds
-    int16_t value;     // axis: -32767..32767, button: 0 = released, 1 = pressed
-    uint8_t type;      // TYPE_BUTTON or TYPE_AXIS
-    uint8_t number;    // axis or button number
+    uint32_t timeMs;  // kernel timestamp in milliseconds
+    int16_t value;    // axis: -32767..32767, button: 0 = released, 1 = pressed
+    uint8_t type;     // TYPE_BUTTON or TYPE_AXIS
+    uint8_t number;   // axis or button number
 };
 
 class Joystick {

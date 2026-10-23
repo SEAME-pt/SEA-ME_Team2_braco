@@ -34,7 +34,7 @@ jobs:
           python-version-file: .python-version
           cache: pip
           cache-dependency-path: |
-            requirements.txt
+            requirements-dev.txt
             web/requirements*.txt
 
       # shellcheck and hadolint need no install step: without a local binary, make lint runs the images pinned in

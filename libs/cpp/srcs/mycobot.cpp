@@ -20,13 +20,15 @@ using namespace std::chrono_literals;
 
 namespace {
 
-constexpr auto REPLY_TIMEOUT = 500ms;   // max wait for one reply
-constexpr auto RETRY_DELAY = 100ms;     // pause between retries
+constexpr auto REPLY_TIMEOUT = 500ms;  // max wait for one reply
+constexpr auto RETRY_DELAY = 100ms;    // pause between retries
 
 speed_t toTermiosBaud(int baud) {
     switch (baud) {
-        case 1000000: return B1000000;
-        case 115200:  return B115200;
+        case 1000000:
+            return B1000000;
+        case 115200:
+            return B115200;
         default:
             throw std::invalid_argument("unsupported baud rate: " + std::to_string(baud));
     }
@@ -44,9 +46,7 @@ struct Transform {
     double t[3];
 };
 
-Transform identity() {
-    return {{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}, {0, 0, 0}};
-}
+Transform identity() { return {{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}, {0, 0, 0}}; }
 
 Transform operator*(const Transform& a, const Transform& b) {
     Transform out{};
@@ -80,12 +80,12 @@ struct JointOrigin {
 
 constexpr double HALF_PI = 1.5707963267948966;
 constexpr JointOrigin JOINT_ORIGINS[6] = {
-    {{0, 0, 0.13156}, {0, 0, 0}},                       // J1
-    {{0, 0, 0}, {0, HALF_PI, -HALF_PI}},                // J2
-    {{-0.1104, 0, 0}, {0, 0, 0}},                       // J3
-    {{-0.096, 0, 0.06462}, {0, 0, -HALF_PI}},           // J4
-    {{0, -0.07318, 0}, {HALF_PI, -HALF_PI, 0}},         // J5
-    {{0, 0.0456, 0}, {-HALF_PI, 0, 0}},                 // J6 (flange)
+    {{0, 0, 0.13156}, {0, 0, 0}},                // J1
+    {{0, 0, 0}, {0, HALF_PI, -HALF_PI}},         // J2
+    {{-0.1104, 0, 0}, {0, 0, 0}},                // J3
+    {{-0.096, 0, 0.06462}, {0, 0, -HALF_PI}},    // J4
+    {{0, -0.07318, 0}, {HALF_PI, -HALF_PI, 0}},  // J5
+    {{0, 0.0456, 0}, {-HALF_PI, 0, 0}},          // J6 (flange)
 };
 
 }  // namespace
@@ -96,7 +96,7 @@ double minHeightMm(const Angles& angles) {
     double lowest = 1e9;
     for (int i = 0; i < 6; ++i) {
         pose = pose * jointTransform(JOINT_ORIGINS[i].xyz, JOINT_ORIGINS[i].rpy, angles[i] * DEG);
-        if (i >= 3) lowest = std::min(lowest, pose.t[2] * 1000.0 + BASE_HEIGHT_MM);   // J4, J5, J6
+        if (i >= 3) lowest = std::min(lowest, pose.t[2] * 1000.0 + BASE_HEIGHT_MM);  // J4, J5, J6
     }
     // The tool points along the flange z axis.
     const double tip_z = pose.t[2] + pose.r[2][2] * TOOL_LENGTH_MM / 1000.0;
@@ -109,9 +109,7 @@ MyCobot280::MyCobot280(const std::string& port, int baud) {
     speed_t termios_baud = toTermiosBaud(baud);
 
     fd_ = open(port.c_str(), O_RDWR | O_NOCTTY);
-    if (fd_ < 0) {
-        throw systemError("could not open " + port);
-    }
+    if (fd_ < 0) { throw systemError("could not open " + port); }
 
     // Exclusive access: a second (non-root) opener, e.g. an old script run on the host while
     // arm_driver is up, now gets EBUSY at once instead of interleaving bytes with the driver.
@@ -123,14 +121,14 @@ MyCobot280::MyCobot280(const std::string& port, int baud) {
         close(fd_);
         throw systemError("tcgetattr failed on " + port);
     }
-    cfmakeraw(&tty);                    // 8N1, no echo, no line processing
+    cfmakeraw(&tty);  // 8N1, no echo, no line processing
     cfsetispeed(&tty, termios_baud);
     cfsetospeed(&tty, termios_baud);
     tty.c_cflag |= (CLOCAL | CREAD);
-    tty.c_cflag &= ~CSTOPB;             // 1 stop bit
-    tty.c_cflag &= ~CRTSCTS;            // no hardware flow control
-    tty.c_cc[VMIN] = 0;                 // read() returns after the timeout...
-    tty.c_cc[VTIME] = 1;                // ...of 100 ms if nothing arrives
+    tty.c_cflag &= ~CSTOPB;   // 1 stop bit
+    tty.c_cflag &= ~CRTSCTS;  // no hardware flow control
+    tty.c_cc[VMIN] = 0;       // read() returns after the timeout...
+    tty.c_cc[VTIME] = 1;      // ...of 100 ms if nothing arrives
     if (tcsetattr(fd_, TCSANOW, &tty) != 0) {
         close(fd_);
         throw systemError("tcsetattr failed on " + port);
@@ -139,24 +137,16 @@ MyCobot280::MyCobot280(const std::string& port, int baud) {
 }
 
 MyCobot280::~MyCobot280() {
-    if (fd_ >= 0) {
-        close(fd_);
-    }
+    if (fd_ >= 0) { close(fd_); }
 }
 
 // -------------------------------------------------------------------- power
 
-void MyCobot280::powerOn() {
-    sendCommand(protocol::POWER_ON);
-}
+void MyCobot280::powerOn() { sendCommand(protocol::POWER_ON); }
 
-void MyCobot280::powerOff() {
-    sendCommand(protocol::POWER_OFF);
-}
+void MyCobot280::powerOff() { sendCommand(protocol::POWER_OFF); }
 
-void MyCobot280::releaseAllServos() {
-    sendCommand(protocol::RELEASE_ALL_SERVOS);
-}
+void MyCobot280::releaseAllServos() { sendCommand(protocol::RELEASE_ALL_SERVOS); }
 
 std::optional<bool> MyCobot280::isPowerOn() {
     auto data = query(protocol::IS_POWER_ON, 1);
@@ -211,7 +201,7 @@ bool MyCobot280::sendAngle(int joint, double angle, int speed) {
     const double a = limitAngle(joint, angle, clamped);
 
     if (!lastAngles_) lastAngles_ = getAngles();
-    if (!lastAngles_) return true;   // pose unknown: cannot prove the move is safe
+    if (!lastAngles_) return true;  // pose unknown: cannot prove the move is safe
     Angles target = *lastAngles_;
     target[joint - 1] = a;
     if (!heightAllowed(target, lastAngles_)) return true;
@@ -225,9 +215,7 @@ bool MyCobot280::sendAngle(int joint, double angle, int speed) {
     return clamped;
 }
 
-void MyCobot280::stop() {
-    sendCommand(protocol::STOP);
-}
+void MyCobot280::stop() { sendCommand(protocol::STOP); }
 
 std::optional<bool> MyCobot280::isMoving() {
     auto data = query(protocol::IS_MOVING, 1);
@@ -242,9 +230,7 @@ std::optional<Angles> MyCobot280::getAngles(int retries) {
     if (!data) return std::nullopt;
 
     Angles angles{};
-    for (size_t i = 0; i < 6; ++i) {
-        angles[i] = readInt16(*data, 2 * i) / 100.0;
-    }
+    for (size_t i = 0; i < 6; ++i) { angles[i] = readInt16(*data, 2 * i) / 100.0; }
     lastAngles_ = angles;
     return angles;
 }
@@ -255,10 +241,10 @@ std::optional<Coords> MyCobot280::getCoords(int retries) {
 
     Coords coords{};
     for (size_t i = 0; i < 3; ++i) {
-        coords[i] = readInt16(*data, 2 * i) / 10.0;        // X, Y, Z (mm)
+        coords[i] = readInt16(*data, 2 * i) / 10.0;  // X, Y, Z (mm)
     }
     for (size_t i = 3; i < 6; ++i) {
-        coords[i] = readInt16(*data, 2 * i) / 100.0;       // RX, RY, RZ (deg)
+        coords[i] = readInt16(*data, 2 * i) / 100.0;  // RX, RY, RZ (deg)
     }
     return coords;
 }
@@ -278,7 +264,7 @@ void MyCobot280::setColor(uint8_t r, uint8_t g, uint8_t b) {
 
 namespace {
 
-constexpr auto SERVO_WRITE_SETTLE = 200ms;   // pause before reading a written value back
+constexpr auto SERVO_WRITE_SETTLE = 200ms;  // pause before reading a written value back
 constexpr int SERVO_WRITE_ATTEMPTS = 3;
 
 void checkJoint(int joint) {
@@ -297,11 +283,11 @@ std::optional<int> MyCobot280::getServoData(int joint, uint8_t address, int retr
 
     // Reply formats seen across firmware versions; anything else is refused.
     switch (data->size()) {
-        case 1:   // value
+        case 1:  // value
             return (*data)[0];
-        case 2:   // 16-bit value, high byte first
+        case 2:  // 16-bit value, high byte first
             return (static_cast<int>((*data)[0]) << 8) | (*data)[1];
-        case 3:   // joint, address, value (echo of the request)
+        case 3:  // joint, address, value (echo of the request)
             if ((*data)[0] == id && (*data)[1] == address) return (*data)[2];
             return std::nullopt;
         default:
@@ -328,21 +314,21 @@ void MyCobot280::checkPidBounds(int joint, const Pid& pid) {
         throw std::invalid_argument(j + ": PID values cannot be negative");
     }
     if (pid.p > maxP) {
-        throw std::invalid_argument(j + ": P " + std::to_string(pid.p) +
-                                    " above safe maximum " + std::to_string(maxP));
+        throw std::invalid_argument(j + ": P " + std::to_string(pid.p) + " above safe maximum " +
+                                    std::to_string(maxP));
     }
     if (pid.i > PID_MAX_I) {
-        throw std::invalid_argument(j + ": I " + std::to_string(pid.i) +
-                                    " above safe maximum " + std::to_string(PID_MAX_I));
+        throw std::invalid_argument(j + ": I " + std::to_string(pid.i) + " above safe maximum " +
+                                    std::to_string(PID_MAX_I));
     }
     if (pid.d > maxD) {
-        throw std::invalid_argument(j + ": D " + std::to_string(pid.d) +
-                                    " above safe maximum " + std::to_string(maxD));
+        throw std::invalid_argument(j + ": D " + std::to_string(pid.d) + " above safe maximum " +
+                                    std::to_string(maxD));
     }
 }
 
 bool MyCobot280::setPid(int joint, const Pid& pid) {
-    checkPidBounds(joint, pid);   // throws before anything is sent
+    checkPidBounds(joint, pid);  // throws before anything is sent
 
     // Only write once reading works: proves the protocol before changing anything.
     const auto current = getPid(joint);
@@ -384,12 +370,12 @@ std::optional<ServoTemps> MyCobot280::getTemps(int retries) {
     if (!data) return std::nullopt;
 
     ServoTemps temps{};
-    if (data->size() == 6) {            // one byte per joint
+    if (data->size() == 6) {  // one byte per joint
         for (size_t i = 0; i < 6; ++i) temps[i] = (*data)[i];
-    } else if (data->size() == 12) {    // 16-bit value per joint, high byte first
+    } else if (data->size() == 12) {  // 16-bit value per joint, high byte first
         for (size_t i = 0; i < 6; ++i) temps[i] = readInt16(*data, 2 * i);
     } else {
-        return std::nullopt;            // unknown format: refuse to guess
+        return std::nullopt;  // unknown format: refuse to guess
     }
     return temps;
 }
@@ -404,7 +390,7 @@ std::optional<TempCheck> MyCobot280::checkTemps(int retries) {
     const auto temps = getTemps(retries);
     if (!temps) return std::nullopt;
 
-    int hottest = 0;   // index of the hottest joint
+    int hottest = 0;  // index of the hottest joint
     for (int i = 1; i < 6; ++i) {
         if ((*temps)[i] > (*temps)[hottest]) hottest = i;
     }
@@ -428,30 +414,26 @@ void MyCobot280::sendCommand(uint8_t cmd, const std::vector<uint8_t>& data) {
         }
         sent += static_cast<size_t>(n);
     }
-    tcdrain(fd_);   // wait until the bytes have left the UART
+    tcdrain(fd_);  // wait until the bytes have left the UART
 }
 
-std::optional<std::vector<uint8_t>> MyCobot280::readReply(
-        uint8_t cmd, std::chrono::milliseconds timeout) {
+std::optional<std::vector<uint8_t>> MyCobot280::readReply(uint8_t cmd,
+                                                          std::chrono::milliseconds timeout) {
     std::vector<uint8_t> buf;
     const auto deadline = std::chrono::steady_clock::now() + timeout;
 
     while (std::chrono::steady_clock::now() < deadline) {
         uint8_t tmp[64];
         ssize_t n = read(fd_, tmp, sizeof(tmp));
-        if (n < 0 && errno != EINTR && errno != EAGAIN) {
-            throw systemError("serial read failed");
-        }
-        if (n > 0) {
-            buf.insert(buf.end(), tmp, tmp + n);
-        }
+        if (n < 0 && errno != EINTR && errno != EAGAIN) { throw systemError("serial read failed"); }
+        if (n > 0) { buf.insert(buf.end(), tmp, tmp + n); }
 
         // Look for: HEADER HEADER len cmd data... FOOTER
         for (size_t i = 0; i + 4 < buf.size(); ++i) {
             if (buf[i] != protocol::HEADER || buf[i + 1] != protocol::HEADER) continue;
             const size_t len = buf[i + 2];
             const size_t footer = i + 2 + len;
-            if (len < 2 || footer >= buf.size()) continue;   // incomplete or invalid
+            if (len < 2 || footer >= buf.size()) continue;  // incomplete or invalid
             if (buf[i + 3] == cmd && buf[footer] == protocol::FOOTER) {
                 return std::vector<uint8_t>(buf.begin() + i + 4, buf.begin() + footer);
             }
@@ -460,29 +442,26 @@ std::optional<std::vector<uint8_t>> MyCobot280::readReply(
     return std::nullopt;
 }
 
-std::optional<std::vector<uint8_t>> MyCobot280::query(
-        uint8_t cmd, size_t expected_size, int retries) {
+std::optional<std::vector<uint8_t>> MyCobot280::query(uint8_t cmd, size_t expected_size,
+                                                      int retries) {
     for (int attempt = 0; attempt < std::max(1, retries); ++attempt) {
-        tcflush(fd_, TCIFLUSH);   // drop stale bytes from earlier commands
+        tcflush(fd_, TCIFLUSH);  // drop stale bytes from earlier commands
         sendCommand(cmd);
         auto data = readReply(cmd, REPLY_TIMEOUT);
-        if (data && data->size() == expected_size) {
-            return data;
-        }
+        if (data && data->size() == expected_size) { return data; }
         std::this_thread::sleep_for(RETRY_DELAY);
     }
     return std::nullopt;
 }
 
-std::optional<std::vector<uint8_t>> MyCobot280::queryWithData(
-        uint8_t cmd, const std::vector<uint8_t>& data, int retries) {
+std::optional<std::vector<uint8_t>> MyCobot280::queryWithData(uint8_t cmd,
+                                                              const std::vector<uint8_t>& data,
+                                                              int retries) {
     for (int attempt = 0; attempt < std::max(1, retries); ++attempt) {
         tcflush(fd_, TCIFLUSH);
         sendCommand(cmd, data);
         auto reply = readReply(cmd, REPLY_TIMEOUT);
-        if (reply && !reply->empty()) {
-            return reply;
-        }
+        if (reply && !reply->empty()) { return reply; }
         std::this_thread::sleep_for(RETRY_DELAY);
     }
     return std::nullopt;
@@ -492,7 +471,7 @@ std::optional<std::vector<uint8_t>> MyCobot280::queryWithData(
 
 void MyCobot280::appendInt16(std::vector<uint8_t>& out, int16_t value) {
     const uint16_t v = static_cast<uint16_t>(value);
-    out.push_back(static_cast<uint8_t>(v >> 8));     // high byte first
+    out.push_back(static_cast<uint8_t>(v >> 8));  // high byte first
     out.push_back(static_cast<uint8_t>(v & 0xFF));
 }
 

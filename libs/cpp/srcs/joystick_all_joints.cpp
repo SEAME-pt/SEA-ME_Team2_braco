@@ -33,9 +33,6 @@
 //   ./joystick_all_joints           control the arm
 //   ./joystick_all_joints --debug   print events, targets, hold corrections
 
-#include "joystick.hpp"
-#include "mycobot.hpp"
-
 #include <signal.h>
 
 #include <algorithm>
@@ -54,6 +51,9 @@
 #include <set>
 #include <string>
 #include <thread>
+
+#include "joystick.hpp"
+#include "mycobot.hpp"
 
 using namespace std::chrono_literals;
 
@@ -75,16 +75,16 @@ struct SpeedMode {
 };
 
 const std::array<SpeedMode, 5> SPEED_MODES = {{
-    {"12%",   12,  5.0,  10, 0,   0,   255},   // blue
-    {"30%",   30,  10.0, 20, 0,   255, 0},     // green
-    {"50%",   50,  15.0, 30, 128, 0,   255},   // purple
-    {"75%",   75,  20.0, 40, 255, 255, 255},   // white
-    {"100%",  100, 25.0, 50, 255, 0,   0},     // red
+    {"12%", 12, 5.0, 10, 0, 0, 255},       // blue
+    {"30%", 30, 10.0, 20, 0, 255, 0},      // green
+    {"50%", 50, 15.0, 30, 128, 0, 255},    // purple
+    {"75%", 75, 20.0, 40, 255, 255, 255},  // white
+    {"100%", 100, 25.0, 50, 255, 0, 0},    // red
 }};
-constexpr size_t START_MODE = 1;     // 1 = medium
+constexpr size_t START_MODE = 1;  // 1 = medium
 
-constexpr double MIN_SPEED = 3.0;    // speed just outside the deadzone
-constexpr double STICK_EXPO = 1.8;   // >1 = more resolution near centre
+constexpr double MIN_SPEED = 3.0;   // speed just outside the deadzone
+constexpr double STICK_EXPO = 1.8;  // >1 = more resolution near centre
 constexpr int GRIPPER_SPEED = 50;
 
 // ---- Step-ahead lead -------------------------------------------------------
@@ -103,7 +103,7 @@ constexpr int HOME_MAX_BAD_READS = 3;
 
 // ---- Idle-joint hold -------------------------------------------------------
 constexpr double HOLD_TOLERANCE_DEG = 1.5;
-constexpr double HOLD_RESEND_PERIOD = 0.3;   // seconds
+constexpr double HOLD_RESEND_PERIOD = 0.3;  // seconds
 constexpr int HOLD_SPEED = 10;
 
 // ---- Input -----------------------------------------------------------------
@@ -131,22 +131,22 @@ struct AxisMap {
 
 // axis number -> (joint 1..6, direction)
 const std::map<int, AxisMap> AXIS_TO_JOINT = {
-    {0, {1, -1}},   // left stick X  -> joint 1 (base yaw) [inverted]
-    {1, {2, 1}},    // left stick Y  -> joint 2 (shoulder pitch)
-    {3, {4, -1}},   // right stick vertical   -> joint 4
-    {2, {5, -1}},   // right stick horizontal -> joint 5
-    {7, {3, 1}},    // d-pad Y       -> joint 3 (elbow)
+    {0, {1, -1}},  // left stick X  -> joint 1 (base yaw) [inverted]
+    {1, {2, 1}},   // left stick Y  -> joint 2 (shoulder pitch)
+    {3, {4, -1}},  // right stick vertical   -> joint 4
+    {2, {5, -1}},  // right stick horizontal -> joint 5
+    {7, {3, 1}},   // d-pad Y       -> joint 3 (elbow)
 };
 
 // Analog trigger axes: ignored completely, never move a joint.
 const std::set<int> TRIGGER_AXES = {4, 5};
 
-constexpr int BUTTON_GRIPPER_CLOSE = 0;   // A
-constexpr int BUTTON_GRIPPER_OPEN = 1;    // B
-constexpr int BUTTON_HOME = 3;            // X
-constexpr int BUTTON_L1 = 6;              // J6 negative
-constexpr int BUTTON_R1 = 7;              // J6 positive
-constexpr int BUTTON_SPEED_MODE = 9;      // cycle speed mode
+constexpr int BUTTON_GRIPPER_CLOSE = 0;  // A
+constexpr int BUTTON_GRIPPER_OPEN = 1;   // B
+constexpr int BUTTON_HOME = 3;           // X
+constexpr int BUTTON_L1 = 6;             // J6 negative
+constexpr int BUTTON_R1 = 7;             // J6 positive
+constexpr int BUTTON_SPEED_MODE = 9;     // cycle speed mode
 
 // Axes that change while button 9 is held, or within this window of its
 // press/release, are ignored until they return to centre.
@@ -158,34 +158,28 @@ constexpr int64_t SPEED_BUTTON_GUARD_MS = 250;
 
 volatile std::sig_atomic_t g_quit = 0;
 
-void onSignal(int) {
-    g_quit = 1;
-}
+void onSignal(int) { g_quit = 1; }
 
 struct Motion {
     int direction;
     double speed;
     double lead;
 };
-using Wanted = std::map<int, Motion>;   // joint -> motion (sorted by joint)
+using Wanted = std::map<int, Motion>;  // joint -> motion (sorted by joint)
 
 struct Shaped {
     double target;
     int speed;
 };
 
-void pause(std::chrono::milliseconds d) {
-    std::this_thread::sleep_for(d);
-}
+void pause(std::chrono::milliseconds d) { std::this_thread::sleep_for(d); }
 
 double nowSeconds() {
-    return std::chrono::duration<double>(
-        std::chrono::steady_clock::now().time_since_epoch()).count();
+    return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch())
+        .count();
 }
 
-double round1(double v) {
-    return std::round(v * 10.0) / 10.0;
-}
+double round1(double v) { return std::round(v * 10.0) / 10.0; }
 
 int valueOr0(const std::map<int, int>& m, int key) {
     auto it = m.find(key);
@@ -224,8 +218,7 @@ double stickRatio(int raw) {
 
 // Map a 0..1 command ratio to (speed, lead) for the given mode.
 Motion motionForRatio(double ratio, const SpeedMode& mode, int direction) {
-    return {direction,
-            MIN_SPEED + ratio * (mode.maxSpeed - MIN_SPEED),
+    return {direction, MIN_SPEED + ratio * (mode.maxSpeed - MIN_SPEED),
             LEAD_MIN_DEG + ratio * (mode.leadMax - LEAD_MIN_DEG)};
 }
 
@@ -237,24 +230,21 @@ double bumperRatio(const SpeedMode& mode) {
 
 // Scale speed and lead by the distance left to the limit we move toward.
 // Returns nothing if the joint is already at the limit.
-std::optional<Shaped> shapeNearLimit(const mycobot::JointLimit& lim, double angle,
-                                     int direction, double speed, double lead) {
+std::optional<Shaped> shapeNearLimit(const mycobot::JointLimit& lim, double angle, int direction,
+                                     double speed, double lead) {
     const double remaining = direction > 0 ? (lim.max - angle) : (angle - lim.min);
     if (remaining <= AT_LIMIT_DEG) return std::nullopt;
 
-    const double factor = remaining >= SLOW_ZONE_DEG
-                              ? 1.0
-                              : std::max(MIN_LIMIT_FACTOR, remaining / SLOW_ZONE_DEG);
+    const double factor =
+        remaining >= SLOW_ZONE_DEG ? 1.0 : std::max(MIN_LIMIT_FACTOR, remaining / SLOW_ZONE_DEG);
     const int shapedSpeed = std::max(1, static_cast<int>(std::lround(speed * factor)));
-    lead = std::min(lead * factor, remaining);   // never step past the limit
+    lead = std::min(lead * factor, remaining);  // never step past the limit
     return Shaped{angle + direction * lead, shapedSpeed};
 }
 
 // Desired motion per joint. Axes in `blocked` never produce motion.
-Wanted wantedMotion(const std::map<int, int>& axisState,
-                    const std::map<int, int>& buttonState,
-                    const SpeedMode& mode,
-                    const std::set<int>& blocked) {
+Wanted wantedMotion(const std::map<int, int>& axisState, const std::map<int, int>& buttonState,
+                    const SpeedMode& mode, const std::set<int>& blocked) {
     Wanted wanted;
 
     const bool l1 = valueOr0(buttonState, BUTTON_L1) == 1;
@@ -262,7 +252,7 @@ Wanted wantedMotion(const std::map<int, int>& axisState,
     const int bumperDir = (l1 && !r1) ? -1 : ((r1 && !l1) ? 1 : 0);
     if (bumperDir != 0) {
         wanted[6] = motionForRatio(bumperRatio(mode), mode, bumperDir);
-        if (BUMPERS_EXCLUSIVE) return wanted;   // ignore sticks while J6 rotates
+        if (BUMPERS_EXCLUSIVE) return wanted;  // ignore sticks while J6 rotates
     }
 
     for (const auto& [axis, map] : AXIS_TO_JOINT) {
@@ -287,8 +277,8 @@ void setLed(mycobot::MyCobot280& mc, const SpeedMode& mode) {
 }
 
 void printMode(const char* prefix, const SpeedMode& mode) {
-    std::printf("%s%s (cap %d %%, max coast %.0f deg)\n",
-                prefix, mode.name, mode.maxSpeed, mode.leadMax);
+    std::printf("%s%s (cap %d %%, max coast %.0f deg)\n", prefix, mode.name, mode.maxSpeed,
+                mode.leadMax);
 }
 
 // ---- Main control loop -----------------------------------------------------
@@ -297,16 +287,17 @@ void controlLoop(input::Joystick& js, mycobot::MyCobot280& mc, bool debug) {
     size_t modeIndex = START_MODE;
     const SpeedMode* mode = &SPEED_MODES[modeIndex];
     setLed(mc, *mode);
-    std::printf("Ready. Speed mode: %s (cap %d %%, max coast %.0f deg). "
-                "Button 9 changes speed, X homes, Ctrl+C quits.\n",
-                mode->name, mode->maxSpeed, mode->leadMax);
+    std::printf(
+        "Ready. Speed mode: %s (cap %d %%, max coast %.0f deg). "
+        "Button 9 changes speed, X homes, Ctrl+C quits.\n",
+        mode->name, mode->maxSpeed, mode->leadMax);
 
     std::map<int, int> axisState;
     std::map<int, int> buttonState;
-    std::set<int> active;                  // joints commanded on the previous tick
-    std::map<int, double> hold;            // idle joint -> latched angle
-    std::map<int, double> lastHoldSend;    // joint -> time of last hold command
-    std::set<int> limitReported;           // joints whose "at limit" was printed
+    std::set<int> active;                // joints commanded on the previous tick
+    std::map<int, double> hold;          // idle joint -> latched angle
+    std::map<int, double> lastHoldSend;  // joint -> time of last hold command
+    std::set<int> limitReported;         // joints whose "at limit" was printed
     bool homing = false;
     int badReads = 0;
     std::map<int, int64_t> axisChangedMs;  // axis -> joystick time of last event
@@ -344,7 +335,7 @@ void controlLoop(input::Joystick& js, mycobot::MyCobot280& mc, bool debug) {
             const int value = ev.value;
 
             if (ev.type == input::TYPE_AXIS) {
-                if (TRIGGER_AXES.count(number)) continue;   // never a joint command
+                if (TRIGGER_AXES.count(number)) continue;  // never a joint command
                 axisState[number] = value;
                 axisChangedMs[number] = tMs;
                 const bool nearSpeedBtn =
@@ -356,7 +347,7 @@ void controlLoop(input::Joystick& js, mycobot::MyCobot280& mc, bool debug) {
                     }
                     blockedAxes.insert(number);
                 } else if (blockedAxes.count(number) && std::abs(value) <= AXIS_DEADZONE) {
-                    blockedAxes.erase(number);   // back at centre -> usable
+                    blockedAxes.erase(number);  // back at centre -> usable
                     if (debug) std::printf("axis   %d unblocked\n", number);
                 }
                 if (debug) std::printf("axis   %d = %d\n", number, value);
@@ -496,9 +487,8 @@ void controlLoop(input::Joystick& js, mycobot::MyCobot280& mc, bool debug) {
                             std::inserter(released, released.begin()));
 
         std::set<int> stillReported;
-        std::set_intersection(limitReported.begin(), limitReported.end(),
-                              moving.begin(), moving.end(),
-                              std::inserter(stillReported, stillReported.begin()));
+        std::set_intersection(limitReported.begin(), limitReported.end(), moving.begin(),
+                              moving.end(), std::inserter(stillReported, stillReported.begin()));
         limitReported = stillReported;
 
         // 6a. Latch idle joints (at session start or on release)
@@ -524,9 +514,7 @@ void controlLoop(input::Joystick& js, mycobot::MyCobot280& mc, bool debug) {
             auto it = lastHoldSend.find(j);
             const double lastSend = it == lastHoldSend.end() ? 0.0 : it->second;
             if (std::abs(drift) > HOLD_TOLERANCE_DEG && now - lastSend >= HOLD_RESEND_PERIOD) {
-                if (debug) {
-                    std::printf("hold J%d: drift %+.1f, back to %.1f\n", j, drift, held);
-                }
+                if (debug) { std::printf("hold J%d: drift %+.1f, back to %.1f\n", j, drift, held); }
                 mc.sendAngle(j, round1(held), HOLD_SPEED);
                 lastHoldSend[j] = now;
                 pause(COMMAND_GAP);
@@ -553,9 +541,7 @@ void controlLoop(input::Joystick& js, mycobot::MyCobot280& mc, bool debug) {
             pause(COMMAND_GAP);
         }
 
-        if (moving != active) {
-            std::printf(">>> jogging joints %s\n", fmtJoints(moving).c_str());
-        }
+        if (moving != active) { std::printf(">>> jogging joints %s\n", fmtJoints(moving).c_str()); }
         active = moving;
         pause(LOOP_PERIOD);
     }
@@ -573,7 +559,7 @@ int main(int argc, char** argv) {
     std::setvbuf(stdout, nullptr, _IOLBF, 0);
 
     // Ctrl+C, kill and terminal hang-up all end the loop and stop the arm
-    struct sigaction sa {};
+    struct sigaction sa{};
     sa.sa_handler = onSignal;
     sigemptyset(&sa.sa_mask);
     sigaction(SIGINT, &sa, nullptr);
@@ -597,7 +583,7 @@ int main(int argc, char** argv) {
             controlLoop(js, mc, debug);
             std::printf("\nQuitting.\n");
         } catch (const std::exception& e) {
-            std::printf("\nStopping: %s\n", e.what());   // e.g. joystick unplugged
+            std::printf("\nStopping: %s\n", e.what());  // e.g. joystick unplugged
             exitCode = 1;
         }
 

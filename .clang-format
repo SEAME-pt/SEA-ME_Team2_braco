@@ -1,0 +1,19 @@
+---
+Language: Cpp
+BasedOnStyle: Google
+
+# Close to the code as it was written: 4-space indent, { on the same line, & next to the type.
+IndentWidth: 4
+AccessModifierOffset: -4
+ConstructorInitializerIndentWidth: 4
+ContinuationIndentWidth: 4
+BreakBeforeBraces: Attach
+DerivePointerAlignment: false
+PointerAlignment: Left
+ColumnLimit: 100
+ReflowComments: false
+
+# Compact: short functions, ifs and blocks stay on one line.
+AllowShortFunctionsOnASingleLine: All
+AllowShortIfStatementsOnASingleLine: WithoutElse
+AllowShortBlocksOnASingleLine: Always
