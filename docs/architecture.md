@@ -207,7 +207,7 @@ package has its own README with its topics, parameters and how to run it by hand
 | [`braco_teleop`](../ros2_ws/src/braco_teleop/README.md) | Node | `joystick_teleop`: jogs the arm through `arm_driver` | done |
 | [`braco_camera`](../ros2_ws/src/braco_camera/README.md) | Node (Python) | `camera`: the eye-in-hand USB camera as JPEG frames | done |
 | [`braco_bringup`](../ros2_ws/src/braco_bringup/README.md) | Launch + config | `braco.launch.py`, `braco.yaml`, the container entrypoint, `zero` / `park` | done, `sim:=true` reserved |
-| [`braco_description`](../ros2_ws/src/braco_description/README.md) | Model | URDF of the myCobot 280 | placeholder #25 |
+| [`braco_description`](../ros2_ws/src/braco_description/README.md) | Model + tools | URDF of the myCobot 280 with G-base, camera flange and gripper; `gazebo.launch.py` (Gazebo viewer); `sim_to_real.py` (checks against the real arm) | done (#25) |
 | [`braco_moveit_config`](../ros2_ws/src/braco_moveit_config/README.md) | Config | MoveIt 2 for the arm | placeholder #40 |
 | [`braco_mission`](../ros2_ws/src/braco_mission/README.md) | Nodes | Mission state machine, MoveIt 2 client | placeholder #43 |
 
@@ -239,7 +239,10 @@ SEA-ME_Team2_braco/
 │   │   ├── config/  braco.yaml          # tuning of every node
 │   │   ├── scripts/ arm_routine.sh      # container entrypoint
 │   │   └── src/     zero.cpp  park.cpp  arm_moves.cpp
-│   ├── braco_description/      # placeholder #25
+│   ├── braco_description/
+│   │   ├── urdf/    braco.urdf.xacro  mycobot_280  adaptive_gripper  braco.gazebo
+│   │   ├── meshes/  config/  launch/ gazebo.launch.py
+│   │   └── scripts/ braco_arm.py  park.py  move_arm_example.py  sim_to_real.py
 │   ├── braco_moveit_config/    # placeholder #40
 │   └── braco_mission/          # placeholder #43
 ├── scripts/  bench.sh        # bench test of control and auto-rest (make bench)
@@ -326,6 +329,10 @@ Both machines run the same image family (ROS 2 Lyrical on Ubuntu 26.04) and the 
   on `docker stop`, and ends the container when the launch ends.
 - The page's arm source: `ARM_SOURCE=ros` (real), `ARM_SOURCE=gazebo` (sim, PC only) or `ARM_MOCK=1` (`make web`,
   no arm, no ROS, no Docker). There is no mode that opens the serial port.
+- Gazebo's own transport stays on the machine: `compose.yml` sets `GZ_IP=127.0.0.1` (override in `.env`). With the
+  host network it otherwise picks an interface by itself and, behind a VPN or a firewall, its processes never find
+  each other. ROS 2 (DDS) is not affected. Run a simulation on its own `ROS_DOMAIN_ID` (e.g. 77) when the real arm
+  is on the network: both publish `/joint_states`.
 
 ---
 
@@ -501,7 +508,7 @@ on a 2 GB Nano or with the desktop on leads to the OOM killer or to swapping on 
      #43           braco_moveit_config #40 └┄┄► sim: Gazebo + gz_ros2_control  #34
                         ▲
                         ┊
-                   braco_description  URDF #25
+                   braco_description  URDF
 ```
 
 The mission talks only to MoveIt 2 (and takes the control as `mission`), never to the serial port, so the same code
@@ -509,7 +516,9 @@ runs on the real arm and in simulation.
 
 - `braco_description` holds the URDF; its joint limits must match `JOINT_LIMITS` in `mycobot.hpp`, and its joint
   names are the ones on `/joint_states` (`joint1..joint6`) on both the real arm and the simulation.
-- `sim:=true` will start Gazebo with that model, publishing the same `/joint_states`.
+- `sim:=true` will start Gazebo with that model, publishing the same `/joint_states`. Until then
+  `braco_description`'s `gazebo.launch.py` shows it in Gazebo with `gz_ros2_control` (`/arm_controller`,
+  `FollowJointTrajectory`), and `scripts/braco_arm.py` runs the same moves there and, with `--real`, on the arm.
 - How MoveIt's trajectories reach `arm_driver` on the real arm is decided with #37 and #40.
 
 ---
@@ -550,6 +559,7 @@ PR that closes or opens a gap.
 | **One Makefile** | Split in `mk/`, idempotent `make up`, ~30 public commands |
 | **Lean repository root** | `docker`, `docs`, `mk`, `ros2_ws`, `scripts` (operator scripts run by `make`), `web` and the `Makefile` (plus the formatter configs and `requirements-dev.txt`); `mycobot_cpp` in `ros2_ws/src` (one colcon base path, no extra mount); `tests/`, `playground/` and the root `requirements.txt` removed |
 | **Jetson guards** | `doctor` checks, ccache limit, ROS log cleanup, `status` with `docker stats` and `tegrastats` |
+| **Validated URDF** | `braco_description`: joint names, limits, zero pose, joint directions and FK (within 1.5 mm of `get_coords()`) checked on the real arm; measured joint velocities; table check in `mycobot_cpp` uses the same kinematics ([report](urdf-sim-to-real.md), #25) |
 
 ### Differs from the target (accepted for now)
 
@@ -567,7 +577,6 @@ PR that closes or opens a gap.
 
 | Item | Issue |
 |---|---|
-| `braco_description`: URDF/xacro, meshes, RViz config | #25 |
 | `sim:=true`: Gazebo + `gz_ros2_control` with the same `/joint_states` | #34 |
 | How trajectories reach `arm_driver` on the real arm (`FollowJointTrajectory` or equivalent) | #37 |
 | `braco_moveit_config`: SRDF, kinematics, limits, controllers | #40 |

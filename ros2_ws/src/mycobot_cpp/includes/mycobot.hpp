@@ -47,7 +47,7 @@ constexpr JointLimits JOINT_LIMITS = {{
 }};
 
 // Fixed poses, shared by zero, park and the ROS 2 nodes of braco_bringup.
-// Park folds the arm (wrist 245 mm above the table); J3 -148 is just inside its limit.
+// Park folds the arm (wrist 160 mm above the table); J3 -148 is just inside its limit.
 constexpr Angles ZERO_ANGLES = {0, 0, 0, 0, 0, 0};
 constexpr Angles PARK_ANGLES = {0, 131, -148, 146, 4.5, 0};
 
@@ -62,14 +62,16 @@ std::optional<Angles> stepToward(const Angles& current, const Angles& pose, doub
                                  double tolerance_deg);
 
 // Table clearance, from the measured setup. Heights are above the table.
-constexpr double BASE_HEIGHT_MM = 140.0;  // table -> arm base (Jetson casing)
-constexpr double TOOL_LENGTH_MM = 130.0;  // J6 flange -> tip of camera + gripper
-                                          // (130 closed, 110 open: use the longer)
-constexpr double TABLE_MARGIN_MM = 20.0;  // lowest point must stay above this
+constexpr double BASE_HEIGHT_MM = 140.0;    // table -> top of the Jetson casing, G-base included
+constexpr double CASING_HEIGHT_MM = 109.7;  // Jetson casing, bottom -> top (vendor mesh); the
+                                            // kinematics start at its bottom, 30.3 mm up
+constexpr double TOOL_LENGTH_MM = 130.0;    // J6 flange -> tip of camera + gripper
+                                            // (130 closed, 110 open: use the longer)
+constexpr double TABLE_MARGIN_MM = 20.0;    // lowest point must stay above this
 
 // Height above the table (mm) of the lowest of the wrist (J4, J5, J6) and the
-// tool tip, for these joint angles. Forward kinematics of the myCobot 280 from
-// Elephant Robotics' URDF. Only height is checked: the casing footprint and the
+// tool tip, for these joint angles. Forward kinematics of the myCobot 280 Jetson
+// Nano, the same joint origins as braco_description (test_urdf.py checks them). Only height is checked: the casing footprint and the
 // sideways size of the gripper are not modelled.
 double minHeightMm(const Angles& angles);
 
