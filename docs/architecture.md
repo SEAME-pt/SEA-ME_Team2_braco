@@ -70,6 +70,52 @@ figures. **Both files are kept in sync**: a change to one goes to the other in t
 
 ## 2. The system at a glance
 
+### Node graph
+
+The nodes that plan, command or stop motion. Solid boxes run today; dashed boxes are planned.
+
+```
+ ┌┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┐   srv /arm/take_control("mission")
+ ┊ braco_mission            #43 ┊ ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┐
+ ┊ pick-and-place, pen drawing  ┊                                              ┊
+ └┄┄┄┄┄┄┄┄┄┄┄┄┄┄┬┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┘                                              ┊
+                ┊ MoveGroup action (goal pose)                                 ┊
+ ┌┄┄┄┄┄┄┄┄┄┄┄┄┄┄▼┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┐                                              ┊
+ ┊ move_group (MoveIt 2)    #40 ┊ ◄── /joint_states                            ┊
+ └┄┄┄┄┄┄┄┄┄┄┄┄┄┄┬┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┘                                              ┊
+                ┊ FollowJointTrajectory on /arm_controller                     ┊
+ ┌──────────────▼────────────────────────────────────┐                         ┊
+ │ ros2_control   controller_manager                 │                         ┊
+ │   arm_controller   joint_trajectory_controller    │                         ┊
+ │   joint_state_broadcaster ──► /joint_states       │                         ┊
+ │ sim:  GazeboSimSystem in Gazebo             done  │                         ┊
+ │ real: braco SystemInterface            #35 / #37  │                         ┊
+ └──────────────┬────────────────────────────────────┘                         ┊
+                ┊ real arm: how it reaches the UART, #35 / #37                 ┊
+ ┌──────────────▼────────────────────────────────────┐                         ┊
+ │ arm_driver                lifecycle target #6     │ ◄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┘
+ │ gates: 1 STOP · 2 rest · 3 owner · 4 watchdog     │ ── UART ──► Atom ──► servos
+ └──────────────▲──────────────────────────▲─────────┘
+                │ STOP on /arm/command     ┊ deactivate (lifecycle transition)
+ ┌──────────────┴──────────────┐ ┌┄┄┄┄┄┄┄┄┄┴┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┐
+ │ today: page, joystick,      │ ┊ e-stop node         #14 ┊
+ │ zero / park, any client     │ ┊ cuts actuation, aborts  ┊
+ └─────────────────────────────┘ ┊ the active goals        ┊
+                                 └┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┘
+```
+
+| Node | Layer | Role | Status |
+|---|---|---|---|
+| `braco_mission` | 1 | Mission state machine; takes the control as `mission`, sends goal poses to MoveIt 2 | planned #43 |
+| `move_group` (MoveIt 2) | 1 | Plans collision-free trajectories from `/joint_states` and the URDF | planned #40 |
+| ros2_control (`controller_manager`, `arm_controller`, `joint_state_broadcaster`) | 3 | Executes `FollowJointTrajectory` and publishes `/joint_states`; one controller config for sim and real | done in sim; real arm #35 / #37 |
+| `arm_driver` | 3 | Only owner of the UART; every command passes its gates (STOP, rest, owner, watchdog) | done; lifecycle #6 |
+| e-stop | 1 → 3 | **Today:** gate 1 of `arm_driver`, a `STOP` on `/arm/command` from any client is always obeyed. **Planned:** a dedicated node that forces `arm_driver` (and the other motion nodes) to *deactivate* and aborts the active goals, also mid-trajectory | gate done; node #14 |
+
+The rest of the graph (topics, services, who uses them) is in [section 4](#4-ros-2-graph-and-control-real-arm-simfalse).
+
+### Processes and devices today
+
 ```
  ┌────────────────────────────────────────────────────────────────────┐
  │ arm_driver                 the only process that opens the UART    │      UART 1 Mbaud     ┌─────────────┐
@@ -525,7 +571,9 @@ runs on the real arm and in simulation.
 - `sim:=true` will start Gazebo with that model, publishing the same `/joint_states`. Until then
   `braco_description`'s `gazebo.launch.py` shows it in Gazebo with `gz_ros2_control` (`/arm_controller`,
   `FollowJointTrajectory`), and `scripts/braco_arm.py` runs the same moves there and, with `--real`, on the arm.
-- How MoveIt's trajectories reach `arm_driver` on the real arm is decided with #37 and #40.
+- How MoveIt's trajectories reach `arm_driver` on the real arm is decided with #35, #37 and #40: the target is the
+  same ros2_control controller config as in simulation, with a braco `SystemInterface` as its hardware
+  ([node graph](#node-graph)).
 
 ---
 
