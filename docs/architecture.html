@@ -222,6 +222,88 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
   <!-- 2 -->
   <section id="s2">
     <div class="sechead"><span class="secnum">2</span><h2>The system at a glance</h2></div>
+    <div class="subhead" id="node-graph">Node graph</div>
+    <figure>
+      <div class="scroll">
+      <svg viewBox="0 0 1000 600" role="img" aria-label="Node graph. braco_mission (planned) sends a goal pose to move_group (MoveIt 2, planned), which sends FollowJointTrajectory to ros2_control: GazeboSimSystem in simulation, done; a braco SystemInterface on the real arm, planned. On the real arm this reaches arm_driver, whose gates are STOP, rest, owner and watchdog, and which talks to the Atom and the servos over the UART. The mission takes the control from arm_driver. Today any client sends STOP on /arm/command; the planned e-stop node will force arm_driver to deactivate.">
+        <defs>
+          <marker id="gr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ah-ros"/></marker>
+          <marker id="gn" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ah-note"/></marker>
+          <marker id="gh" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ah-hw"/></marker>
+        </defs>
+        <rect x="40" y="20" width="300" height="60" rx="4" class="future"/>
+        <text x="56" y="45" class="t-b">braco_mission</text>
+        <text x="56" y="65" class="t-s t-note">#43 · pick-and-place, pen drawing</text>
+        <path d="M342,50 H560 V418 H462" class="w-note" marker-end="url(#gn)"/>
+        <text x="352" y="42" class="t-m">srv /arm/take_control("mission")</text>
+
+        <line x1="190" y1="82" x2="190" y2="128" class="w-note" marker-end="url(#gn)"/>
+        <text x="200" y="110" class="t-s">MoveGroup action (goal pose)</text>
+
+        <rect x="40" y="130" width="300" height="60" rx="4" class="future"/>
+        <text x="56" y="155" class="t-b">move_group (MoveIt 2)</text>
+        <text x="56" y="175" class="t-s t-note">#40 · plans from /joint_states and the URDF</text>
+        <line x1="440" y1="160" x2="344" y2="160" class="w-ros" marker-end="url(#gr)"/>
+        <text x="446" y="164" class="t-m">/joint_states</text>
+
+        <line x1="190" y1="192" x2="190" y2="238" class="w-note" marker-end="url(#gn)"/>
+        <text x="200" y="220" class="t-s">FollowJointTrajectory on /arm_controller</text>
+
+        <rect x="40" y="240" width="420" height="110" rx="4" class="box"/>
+        <text x="56" y="264" class="t-b">ros2_control</text>
+        <text x="160" y="264" class="t-s">controller_manager</text>
+        <text x="56" y="286" class="t-m">arm_controller (joint_trajectory_controller)</text>
+        <text x="56" y="304" class="t-m">joint_state_broadcaster → /joint_states</text>
+        <text x="56" y="324" class="t-m t-ros">sim:  GazeboSimSystem in Gazebo · done</text>
+        <text x="56" y="341" class="t-m t-note">real: braco SystemInterface · #35 / #37</text>
+
+        <line x1="190" y1="352" x2="190" y2="398" class="w-note" marker-end="url(#gn)"/>
+        <text x="200" y="380" class="t-s">real arm: how it reaches the UART, #35 / #37</text>
+
+        <rect x="40" y="400" width="420" height="70" rx="4" class="key"/>
+        <text x="56" y="426" class="t-b">arm_driver</text>
+        <text x="444" y="426" text-anchor="end" class="t-s t-note">lifecycle target #6</text>
+        <text x="56" y="452" class="t-m">gates: 1 STOP · 2 rest · 3 owner · 4 watchdog</text>
+
+        <rect x="760" y="420" width="200" height="60" rx="4" class="hwbox"/>
+        <text x="860" y="445" text-anchor="middle" class="t-b">Atom → servos</text>
+        <text x="860" y="465" text-anchor="middle" class="t-m">UART 1 Mbaud</text>
+        <line x1="462" y1="452" x2="758" y2="452" class="w-hw" marker-start="url(#gh)" marker-end="url(#gh)"/>
+
+        <line x1="170" y1="528" x2="170" y2="472" class="w-ros" marker-end="url(#gr)"/>
+        <text x="178" y="504" class="t-m">STOP on /arm/command</text>
+        <line x1="400" y1="528" x2="400" y2="472" class="w-note" marker-end="url(#gn)"/>
+        <text x="408" y="504" class="t-s">deactivate (lifecycle transition)</text>
+
+        <rect x="40" y="530" width="260" height="56" rx="4" class="box"/>
+        <text x="56" y="554" class="t-b">today: any client</text>
+        <text x="56" y="574" class="t-s">page, joystick, zero / park</text>
+        <rect x="330" y="530" width="300" height="56" rx="4" class="future"/>
+        <text x="346" y="554" class="t-b">e-stop node</text>
+        <text x="346" y="574" class="t-s t-note">#14 · cuts actuation, aborts the active goals</text>
+      </svg>
+      </div>
+      <div class="legend">
+        <span><i class="sw" style="background:var(--ros)"></i>implemented, through ROS 2</span>
+        <span><i class="sw" style="background:var(--note)"></i>planned</span>
+        <span><i class="sw" style="background:var(--hw)"></i>physical device</span>
+      </div>
+      <figcaption>The nodes that plan, command or stop motion. The rest of the graph (topics, services, who uses them) is in <a href="#s4">section 4</a>.</figcaption>
+    </figure>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Node</th><th>Layer</th><th>Role</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr class="future"><td><code>braco_mission</code></td><td>1</td><td>Mission state machine; takes the control as <code>mission</code>, sends goal poses to MoveIt 2</td><td><span class="pill p-note">planned #43</span></td></tr>
+          <tr class="future"><td><code>move_group</code> (MoveIt 2)</td><td>1</td><td>Plans collision-free trajectories from <code>/joint_states</code> and the URDF</td><td><span class="pill p-note">planned #40</span></td></tr>
+          <tr><td>ros2_control (<code>controller_manager</code>, <code>arm_controller</code>, <code>joint_state_broadcaster</code>)</td><td>3</td><td>Executes <code>FollowJointTrajectory</code> and publishes <code>/joint_states</code>; one controller config for sim and real</td><td><span class="pill p-ok">done in sim</span> <span class="pill p-note">real #35 / #37</span></td></tr>
+          <tr><td><code>arm_driver</code></td><td>3</td><td>Only owner of the UART; every command passes its gates (STOP, rest, owner, watchdog)</td><td><span class="pill p-ok">done</span> <span class="pill p-note">lifecycle #6</span></td></tr>
+          <tr><td>e-stop</td><td>1 → 3</td><td><b>Today:</b> gate 1 of <code>arm_driver</code>, a <code>STOP</code> on <code>/arm/command</code> from any client is always obeyed. <b>Planned:</b> a dedicated node that forces <code>arm_driver</code> (and the other motion nodes) to <i>deactivate</i> and aborts the active goals, also mid-trajectory</td><td><span class="pill p-ok">gate done</span> <span class="pill p-note">node #14</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="subhead">Processes and devices today</div>
     <figure>
       <div class="scroll">
       <svg viewBox="0 0 1000 640" role="img" aria-label="arm_driver above the ROS 2 graph, the only owner of the UART, with the gates STOP, rest mode, control owner and watchdog. Beside it, the camera node, the only owner of the USB camera. Below, the web page, the joystick, the temperature monitor and the planned braco_mission, all talking only through the graph.">
@@ -873,7 +955,7 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
     <ul class="plain">
       <li><code>braco_description</code> holds the URDF; its joint limits must match <code>JOINT_LIMITS</code> in <code>mycobot.hpp</code>, and its joint names are the ones on <code>/joint_states</code> (<code>joint1..joint6</code>) on both the real arm and the simulation.</li>
       <li><code>sim:=true</code> will start Gazebo with that model, publishing the same <code>/joint_states</code>. Until then <code>braco_description</code>'s <code>gazebo.launch.py</code> shows it in Gazebo with <code>gz_ros2_control</code> (<code>/arm_controller</code>, <code>FollowJointTrajectory</code>), and <code>scripts/braco_arm.py</code> runs the same moves there and, with <code>--real</code>, on the arm.</li>
-      <li>How MoveIt's trajectories reach <code>arm_driver</code> on the real arm is decided with #37 and #40.</li>
+      <li>How MoveIt's trajectories reach <code>arm_driver</code> on the real arm is decided with #35, #37 and #40: the target is the same ros2_control controller config as in simulation, with a braco <code>SystemInterface</code> as its hardware (<a href="#node-graph">node graph</a>).</li>
     </ul>
   </section>
 
