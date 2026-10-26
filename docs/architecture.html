@@ -94,7 +94,6 @@ svg .free { fill: none; stroke: var(--line); stroke-width: 1.2; stroke-dasharray
 svg .grid { stroke: var(--line); stroke-width: 1; }
 svg .mark2g { stroke: var(--warn); stroke-width: 1.4; stroke-dasharray: 5 4; }
 svg .t-in { fill: #ffffff; font-size: 11px; font-weight: 600; }
-
 /* Cards */
 .scen { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
 .sc { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 16px; display: grid; gap: 10px; align-content: start; min-width: 0; }
@@ -176,7 +175,7 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
     <h1>braco architecture</h1>
     <p class="lede">How the braco software is split into ROS 2 packages, which process owns what, how the pieces talk to each other on the real arm (Jetson Nano) and in simulation (PC), where each file lives, how the system is started and what it costs on the Jetson. This page describes what is <b>implemented today</b>. The same content in Markdown: <a href="architecture.md">architecture.md</a>; <b>both files are kept in sync</b>.</p>
     <div class="meta">
-      <span>Last checked against the code: 2026-10-23</span>
+      <span>Last checked against the code: 2026-10-26</span>
       <span>Started as <a href="https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/30">issue #30</a></span>
       <span><a href="ADR-0001-ros2-in-docker-on-jetson-nano.md">ADR-0001</a> · <a href="ADR-0002-unique-control.md">ADR-0002</a> · <a href="ADR-0003-rest-per-temp.md">ADR-0003</a></span>
     </div>
@@ -214,7 +213,8 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
       <div><b>Faults are visible.</b> <code>arm_driver</code> is not respawned: if it dies the launch shuts down, <code>arm_routine.sh</code> ends and the container stops. <code>temperature_monitor</code>, <code>joystick_teleop</code> and <code>camera</code> are respawned; the arm never depends on the camera, whose node waits for it when it is unplugged.</div>
       <div><b>One client moves the arm at a time.</b> The page, the joystick, zero/park and the mission take the control from <code>arm_driver</code> before moving; motion from anyone else is ignored, STOP never is (<a href="ADR-0002-unique-control.md">ADR-0002</a>).</div>
       <div><b>One source for each fact.</b> The thermal level is computed once, by <code>temperature_monitor</code>, and published on <code>/diagnostics</code>; the page shows it and does not recompute it. The control owner is kept once, by <code>arm_driver</code>.</div>
-      <div><b>Same interface for real and simulated.</b> Everything above the driver uses <code>/joint_states</code> and <code>braco_interfaces</code>, so the mission and planning layers run unchanged on both (#37).</div>
+      <div><b>Same interface for real and simulated.</b> Everything above the hardware abstraction uses <code>/joint_states</code>, <code>braco_interfaces</code> and the <code>FollowJointTrajectory</code> action, with the same topic, frame and action names on both, so the mission and planning layers cannot tell the simulation from the real arm and run unchanged on both (#37). Only the hardware abstraction layer changes with <code>sim:=true|false</code>.</div>
+      <div><b>Every node that moves the arm is a lifecycle node</b> <i>(target, not yet implemented)</i>. <code>arm_driver</code> opens the serial port on <i>configure</i>, accepts motion only while <i>active</i>, and <i>deactivate</i> cuts actuation (#6). The same holds for the other nodes that command motion, so the e-stop can force them all out of <i>active</i> (#14). Today every node is a plain node; see <a href="#s12">section 12</a>.</div>
       <div><b>Logic without ROS where possible.</b> Serial protocol, joystick, LCD and teleop logic live in <code>mycobot_cpp</code> (<code>ros2_ws/src/mycobot_cpp</code>); the control owner and the auto-rest decision are plain headers in <code>braco_driver/include</code>. All unit-tested without a ROS graph.</div>
     </div>
   </section>
@@ -924,6 +924,8 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
           <tr><td>ADRs in <code>docs/adr/NNNN-*.md</code></td><td><code>docs/ADR-NNNN-*.md</code></td><td>The page's Docs tab groups them by this prefix.</td></tr>
           <tr><td><code>examples/ros2_basics_*</code> and <code>make demos</code></td><td>removed</td><td>The learning demos are no longer part of the system.</td></tr>
           <tr><td>The page as an <code>ExecuteProcess</code> inside the launch</td><td>started by <code>arm_routine.sh</code> next to the launch</td><td>Optional; a matter of taste, not of correctness.</td></tr>
+          <tr><td>Every node that moves the arm is a lifecycle node</td><td>plain <code>rclcpp</code> / <code>rclpy</code> nodes; <code>arm_driver</code> opens the port on start-up</td><td><code>arm_driver</code> first (#6), then the e-stop on top of it (#14).</td></tr>
+          <tr><td>The e-stop is a dedicated node that deactivates the motion nodes</td><td>STOP on <code>/arm/command</code>, gate 1 of <code>arm_driver</code>, from any client</td><td>#14, after #6.</td></tr>
         </tbody>
       </table>
     </div>
@@ -934,6 +936,9 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
         <thead><tr><th>Item</th><th>Issue</th></tr></thead>
         <tbody>
           <tr><td><code>sim:=true</code>: Gazebo + <code>gz_ros2_control</code> with the same <code>/joint_states</code></td><td><span class="pill p-note">#34</span></td></tr>
+          <tr><td><code>arm_driver</code> as a lifecycle node: port on <i>configure</i>, motion only while <i>active</i>, <i>deactivate</i> cuts actuation</td><td><span class="pill p-note">#6</span></td></tr>
+          <tr><td>E-stop node: forces the motion nodes to <i>deactivate</i> and aborts the active goals, also mid-trajectory</td><td><span class="pill p-note">#14</span></td></tr>
+          <tr><td>ros2_control <code>SystemInterface</code> for the real arm and <code>joint_trajectory_controller</code></td><td><span class="pill p-note">#35</span></td></tr>
           <tr><td>How trajectories reach <code>arm_driver</code> on the real arm (<code>FollowJointTrajectory</code> or equivalent)</td><td><span class="pill p-note">#37</span></td></tr>
           <tr><td><code>braco_moveit_config</code>: SRDF, kinematics, limits, controllers</td><td><span class="pill p-note">#40</span></td></tr>
           <tr><td><code>braco_mission</code>: pick-and-place, pen drawing, taking the control as <code>mission</code></td><td><span class="pill p-note">#43</span></td></tr>
@@ -964,6 +969,7 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
         <thead><tr><th>You changed</th><th>Update</th></tr></thead>
         <tbody>
           <tr><td>a node, topic, service or message</td><td>sections 2 and 4, and the package README</td></tr>
+          <tr><td>a layer, a node that moves or stops the arm, a lifecycle state</td><td>section 2 (layers and node graph) and section 1</td></tr>
           <tr><td>who may move the arm, a safety gate, rest mode</td><td>sections 1, 3 and 4 (and an ADR if it is a new policy)</td></tr>
           <tr><td>a parameter in <code>braco.yaml</code> or a launch argument</td><td>section 7</td></tr>
           <tr><td>a package, a folder or a file name</td><td>section 5</td></tr>
