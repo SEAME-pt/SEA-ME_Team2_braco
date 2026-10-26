@@ -39,8 +39,10 @@ std::runtime_error systemError(const std::string& what) {
 }
 
 // Forward kinematics for the height check. Joint frames from Elephant Robotics'
-// official URDF (mycobot_280_m5): each joint is a fixed origin (xyz in m, rpy in
-// rad, applied as Rz*Ry*Rx) followed by a rotation about its own z axis.
+// official URDF of the Jetson Nano arm (mycobot_280_jn, the same origins as
+// ros2_ws/src/braco_description, kept equal by its test_urdf.py): each joint is a
+// fixed origin (xyz in m, rpy in rad, applied as Rz*Ry*Rx) followed by a rotation
+// about its own z axis.
 struct Transform {
     double r[3][3];
     double t[3];
@@ -80,8 +82,8 @@ struct JointOrigin {
 
 constexpr double HALF_PI = 1.5707963267948966;
 constexpr JointOrigin JOINT_ORIGINS[6] = {
-    {{0, 0, 0.13156}, {0, 0, 0}},                // J1
-    {{0, 0, 0}, {0, HALF_PI, -HALF_PI}},         // J2
+    {{0, 0, 0.15756}, {0, 0, 0}},                // J1 (from the bottom of the casing)
+    {{0, 0, -0.001}, {0, HALF_PI, -HALF_PI}},    // J2
     {{-0.1104, 0, 0}, {0, 0, 0}},                // J3
     {{-0.096, 0, 0.06462}, {0, 0, -HALF_PI}},    // J4
     {{0, -0.07318, 0}, {HALF_PI, -HALF_PI, 0}},  // J5
@@ -92,15 +94,17 @@ constexpr JointOrigin JOINT_ORIGINS[6] = {
 
 double minHeightMm(const Angles& angles) {
     constexpr double DEG = 3.14159265358979323846 / 180.0;
+    // The chain starts at the bottom of the Jetson casing.
+    constexpr double ORIGIN_MM = BASE_HEIGHT_MM - CASING_HEIGHT_MM;
     Transform pose = identity();
     double lowest = 1e9;
     for (int i = 0; i < 6; ++i) {
         pose = pose * jointTransform(JOINT_ORIGINS[i].xyz, JOINT_ORIGINS[i].rpy, angles[i] * DEG);
-        if (i >= 3) lowest = std::min(lowest, pose.t[2] * 1000.0 + BASE_HEIGHT_MM);  // J4, J5, J6
+        if (i >= 3) lowest = std::min(lowest, pose.t[2] * 1000.0 + ORIGIN_MM);  // J4, J5, J6
     }
     // The tool points along the flange z axis.
     const double tip_z = pose.t[2] + pose.r[2][2] * TOOL_LENGTH_MM / 1000.0;
-    return std::min(lowest, tip_z * 1000.0 + BASE_HEIGHT_MM);
+    return std::min(lowest, tip_z * 1000.0 + ORIGIN_MM);
 }
 
 std::optional<Angles> stepToward(const Angles& current, const Angles& pose, double lead_deg,
