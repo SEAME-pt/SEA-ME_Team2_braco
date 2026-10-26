@@ -70,6 +70,60 @@ figures. **Both files are kept in sync**: a change to one goes to the other in t
 
 ## 2. The system at a glance
 
+Three views of the same system: the layers it is built in, the graph of nodes that move the arm (today and
+planned), and the processes and devices that run on the real arm today.
+
+### Layers
+
+```
+  REAL ARM  (sim:=false · Jetson)                  SIMULATION  (sim:=true · PC)
+ ┌─────────────────────────────────────────────────────────────────────────────────────────────────┐   ┐
+ │ 1 MISSION AND CLIENTS  ·  decide what the arm does                                              │   │
+ │   braco_web · joystick_teleop · temperature_monitor · zero / park                               │   │
+ │   braco_mission #43 ┄► move_group (MoveIt 2) #40              planned, PC                       │   │
+ └─────────────────────────────────────────────────────────────────────────────────────────────────┘   │
+      ▲▼  publish · call services · send action goals ↓     /joint_states · /diagnostics ↑             │  identical
+ ┌─────────────────────────────────────────────────────────────────────────────────────────────────┐   │  sim and real
+ │ 2 ROS 2 MIDDLEWARE  ·  the contract between layers                                              │   │
+ │   DDS · domain 42 · /joint_states · /arm/command · /arm/* services · /diagnostics               │   │
+ │   braco_interfaces types · FollowJointTrajectory (planned on the real arm)                      │   │
+ └─────────────────────────────────────────────────────────────────────────────────────────────────┘   ┘
+      ▲▼  /arm/command, services ↓  /joint_states ↑      ▲▼  FollowJointTrajectory ↓  /joint_states ↑  ┐
+ ┌──────────────────────────────────────────────┐   ┌──────────────────────────────────────────────┐   │
+ │ 3 HARDWARE ABSTRACTION                       │   │ 3 HARDWARE ABSTRACTION                       │   │
+ │   arm_driver: gates, limits, UART owner      │   │   gz_ros2_control                            │   │
+ │   camera: USB camera owner                   │   │     controller_manager                       │   │
+ │   mycobot_cpp: protocol, no ROS              │   │     arm_controller                           │   │
+ │   SystemInterface #35 (planned)              │   │     joint_state_broadcaster                  │   │
+ └──────────────────────────────────────────────┘   └──────────────────────────────────────────────┘   │
+      ▲▼  serial protocol · UART 1 Mbaud                 ▲▼  gz_ros2_control plugin                    │
+ ┌──────────────────────────────────────────────┐   ┌──────────────────────────────────────────────┐   │
+ │ 4 ARM SERVO CONTROLLER                       │   │ 4 ARM SERVO CONTROLLER                       │   │  switched by
+ │   Atom (ESP32, firmware 7.3)                 │   │   Gazebo physics                             │   │  sim:=true|false
+ │   runs the myCobot protocol                  │   │   steps the model                            │   │
+ └──────────────────────────────────────────────┘   └──────────────────────────────────────────────┘   │
+      ▲▼  servo bus: angles ↓  angle, temp, V ↑          ▲▼  joint commands ↓  joint state ↑           │
+ ┌──────────────────────────────────────────────┐   ┌──────────────────────────────────────────────┐   │
+ │ 5 SENSORS AND ACTUATORS                      │   │ 5 SENSORS AND ACTUATORS                      │   │
+ │   6 servos: angle, temperature, voltage      │   │   simulated joint1..joint6                   │   │
+ │   gripper                                    │   │   simulated gripper                          │   │
+ │   USB camera · joystick · LCD1602 *          │   │   joints from the URDF                       │   │
+ │   * wired to the Jetson, skip layer 4        │   │                                              │   │
+ └──────────────────────────────────────────────┘   └──────────────────────────────────────────────┘   ┘
+```
+
+How to read it: each layer only talks to the one right below it, through what the arrows name. Layers 1 and 2
+are the same in simulation and on the real arm; layers 3 to 5 are swapped by `sim:=true|false`, so code above
+layer 3 cannot tell which one it runs on.
+
+| Layer | Responsibility | Real arm (`sim:=false`) | Simulation (`sim:=true`) | Talks to the layer below through | Lives in | Status |
+|---|---|---|---|---|---|---|
+| **1 Mission and clients** | Decide *what* the arm does. Never open a device; take the control before moving ([ADR-0002](ADR-0002-unique-control.md)) | `braco_web`, `joystick_teleop`, `temperature_monitor`, `zero` / `park`; planned: `braco_mission`, `move_group` | the same nodes, on the PC | topics, services, action goals (layer 2) | `web/`, `braco_teleop`, `braco_driver`, `braco_bringup`, `braco_mission`, `braco_moveit_config` | clients done; mission #43, MoveIt #40 |
+| **2 ROS 2 middleware** | The contract between the layers: names and types every layer agrees on. Identical in sim and real (#37) | DDS domain 42; `/joint_states`, `/arm/command`, `/arm/*` services, `/diagnostics` | the same names; `FollowJointTrajectory` on `/arm_controller` | subscriptions, service and action servers in layer 3 | `braco_interfaces` | done; `FollowJointTrajectory` on the real arm #35 / #37 |
+| **3 Hardware abstraction** | Turn the contract into device access and enforce safety. The only layer that changes with `sim` | `arm_driver` (UART owner, gates, limits, watchdog), `camera` (USB camera owner), `mycobot_cpp` (protocol, no ROS) | `gz_ros2_control`: `controller_manager`, `arm_controller`, `joint_state_broadcaster` | myCobot serial protocol, UART 1 Mbaud (real); the gz_ros2_control plugin (sim) | `braco_driver`, `braco_camera`, `mycobot_cpp`, `braco_description` (sim) | done; lifecycle #6, ros2_control `SystemInterface` #35 |
+| **4 Arm servo controller** | The arm's own board: receives the protocol and drives the servo bus. braco does not change its firmware | Atom (ESP32, firmware 7.3) in the myCobot 280 | Gazebo physics | servo bus: target angles down; angle, temperature and voltage up | vendor firmware; protocol in [protocol_commands.md](protocol_commands.md) | given |
+| **5 Sensors and actuators** | What moves and what senses | six joint servos (angle, temperature, voltage), gripper; USB camera, joystick and LCD1602 wired straight to the Jetson (they skip layer 4) | simulated `joint1..joint6` and gripper, from the URDF | — | `braco_description` (model), [inventory](inventory/inventory.md) | given |
+
 ### Node graph
 
 The nodes that plan, command or stop motion. Solid boxes run today; dashed boxes are planned.

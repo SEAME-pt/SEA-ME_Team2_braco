@@ -94,6 +94,13 @@ svg .free { fill: none; stroke: var(--line); stroke-width: 1.2; stroke-dasharray
 svg .grid { stroke: var(--line); stroke-width: 1; }
 svg .mark2g { stroke: var(--warn); stroke-width: 1.4; stroke-dasharray: 5 4; }
 svg .t-in { fill: #ffffff; font-size: 11px; font-weight: 600; }
+svg .badge { fill: var(--ros); }
+svg .chip { stroke-width: 1.1; }
+svg .chip-ros { fill: var(--ros-soft); stroke: var(--ros); }
+svg .chip-hw { fill: var(--hw-soft); stroke: var(--hw); }
+svg .chip-note { fill: var(--surface); stroke: var(--note); stroke-dasharray: 4 3; }
+svg .chip-plain { fill: var(--surface); stroke: var(--line); }
+
 /* Cards */
 .scen { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
 .sc { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 16px; display: grid; gap: 10px; align-content: start; min-width: 0; }
@@ -222,6 +229,154 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
   <!-- 2 -->
   <section id="s2">
     <div class="sechead"><span class="secnum">2</span><h2>The system at a glance</h2></div>
+    <p>Three views of the same system: the layers it is built in, the graph of nodes that move the arm (today and planned), and the processes and devices that run on the real arm today.</p>
+
+    <div class="subhead" id="layers">Layers</div>
+    <figure>
+      <div class="scroll">
+      <svg viewBox="0 0 1008 722" role="img" aria-label="Five layers stacked from top to bottom. 1 Mission and clients: braco_web, joystick_teleop, temperature_monitor, zero and park, planned braco_mission and MoveIt 2. 2 ROS 2 middleware: DDS, /joint_states, /arm/command, services, /diagnostics, braco_interfaces, planned FollowJointTrajectory. Layers 1 and 2 are identical in simulation and on the real arm. From layer 3 down the system is switched by sim: 3 Hardware abstraction is arm_driver, camera and mycobot_cpp on the real arm (planned ros2_control SystemInterface) and gz_ros2_control in simulation; 4 Arm servo controller is the Atom board over a 1 Mbaud UART, or Gazebo physics; 5 Sensors and actuators are six servos, the gripper, and the USB camera, joystick and LCD wired to the Jetson, or the simulated joints. Between layers, labels show what crosses each boundary.">
+        <defs>
+          <marker id="lr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ah-ros"/></marker>
+        </defs>
+        <text x="20" y="30" class="t-l">LAYER</text>
+        <text x="252" y="30" class="t-l">REAL ARM · sim:=false · JETSON</text>
+        <text x="564" y="30" class="t-l">SIMULATION · sim:=true · PC</text>
+        <line x1="252" y1="38" x2="552" y2="38" class="w-hw"/>
+        <line x1="564" y1="38" x2="864" y2="38" class="w-fg"/>
+        <circle cx="36" cy="82" r="12" class="badge"/>
+        <text x="36" y="86" text-anchor="middle" class="t-in">1</text>
+        <text x="56" y="87" class="t-b">Mission and clients</text>
+        <text x="56" y="105" class="t-s">decide what the arm does</text>
+        <rect x="252" y="58" width="612" height="84" rx="6" class="box"/>
+        <rect x="266" y="74" width="76" height="22" rx="11" class="chip chip-ros"/>
+        <text x="274" y="89" class="t-m">braco_web</text>
+        <rect x="348" y="74" width="116" height="22" rx="11" class="chip chip-ros"/>
+        <text x="356" y="89" class="t-m">joystick_teleop</text>
+        <rect x="470" y="74" width="142" height="22" rx="11" class="chip chip-ros"/>
+        <text x="478" y="89" class="t-m">temperature_monitor</text>
+        <rect x="618" y="74" width="89" height="22" rx="11" class="chip chip-ros"/>
+        <text x="626" y="89" class="t-m">zero / park</text>
+        <rect x="713" y="74" width="129" height="22" rx="11" class="chip chip-note"/>
+        <text x="721" y="89" class="t-m">braco_mission #43</text>
+        <rect x="266" y="102" width="182" height="22" rx="11" class="chip chip-note"/>
+        <text x="274" y="117" class="t-m">move_group (MoveIt 2) #40</text>
+        <line x1="276" y1="146" x2="276" y2="178" class="w-ros" marker-start="url(#lr)" marker-end="url(#lr)"/>
+        <text x="288" y="166" class="t-m t-ros">publish · call services · send action goals ↓      /joint_states · /diagnostics ↑</text>
+        <circle cx="36" cy="206" r="12" class="badge"/>
+        <text x="36" y="210" text-anchor="middle" class="t-in">2</text>
+        <text x="56" y="211" class="t-b">ROS 2 middleware</text>
+        <text x="56" y="229" class="t-s">the contract between layers</text>
+        <rect x="252" y="182" width="612" height="84" rx="6" class="band"/>
+        <rect x="266" y="198" width="116" height="22" rx="11" class="chip chip-plain"/>
+        <text x="274" y="213" class="t-m">DDS · domain 42</text>
+        <rect x="388" y="198" width="102" height="22" rx="11" class="chip chip-ros"/>
+        <text x="396" y="213" class="t-m">/joint_states</text>
+        <rect x="496" y="198" width="96" height="22" rx="11" class="chip chip-ros"/>
+        <text x="504" y="213" class="t-m">/arm/command</text>
+        <rect x="598" y="198" width="116" height="22" rx="11" class="chip chip-ros"/>
+        <text x="606" y="213" class="t-m">/arm/* services</text>
+        <rect x="720" y="198" width="96" height="22" rx="11" class="chip chip-ros"/>
+        <text x="728" y="213" class="t-m">/diagnostics</text>
+        <rect x="266" y="226" width="122" height="22" rx="11" class="chip chip-ros"/>
+        <text x="274" y="241" class="t-m">braco_interfaces</text>
+        <rect x="394" y="226" width="156" height="22" rx="11" class="chip chip-note"/>
+        <text x="402" y="241" class="t-m">FollowJointTrajectory</text>
+        <line x1="276" y1="270" x2="276" y2="302" class="w-ros" marker-start="url(#lr)" marker-end="url(#lr)"/>
+        <text x="288" y="290" class="t-m t-ros">/arm/command, services ↓   /joint_states ↑</text>
+        <line x1="588" y1="270" x2="588" y2="302" class="w-ros" marker-start="url(#lr)" marker-end="url(#lr)"/>
+        <text x="600" y="290" class="t-m t-ros">FollowJointTrajectory ↓   /joint_states ↑</text>
+        <circle cx="36" cy="330" r="12" class="badge"/>
+        <text x="36" y="334" text-anchor="middle" class="t-in">3</text>
+        <text x="56" y="335" class="t-b">Hardware abstraction</text>
+        <text x="56" y="353" class="t-s">contract → device access</text>
+        <rect x="252" y="306" width="300" height="128" rx="6" class="box"/>
+        <text x="266" y="328" class="t-s">owns the devices, enforces the safety gates</text>
+        <rect x="266" y="340" width="82" height="22" rx="11" class="chip chip-ros"/>
+        <text x="274" y="355" class="t-m">arm_driver</text>
+        <rect x="354" y="340" width="56" height="22" rx="11" class="chip chip-ros"/>
+        <text x="362" y="355" class="t-m">camera</text>
+        <rect x="266" y="368" width="149" height="22" rx="11" class="chip chip-plain"/>
+        <text x="274" y="383" class="t-m">mycobot_cpp (no ROS)</text>
+        <rect x="266" y="396" width="142" height="22" rx="11" class="chip chip-note"/>
+        <text x="274" y="411" class="t-m">SystemInterface #35</text>
+        <rect x="564" y="306" width="300" height="128" rx="6" class="box"/>
+        <text x="578" y="328" class="t-s">gz_ros2_control</text>
+        <rect x="578" y="340" width="136" height="22" rx="11" class="chip chip-ros"/>
+        <text x="586" y="355" class="t-m">controller_manager</text>
+        <rect x="720" y="340" width="109" height="22" rx="11" class="chip chip-ros"/>
+        <text x="728" y="355" class="t-m">arm_controller</text>
+        <rect x="578" y="368" width="169" height="22" rx="11" class="chip chip-ros"/>
+        <text x="586" y="383" class="t-m">joint_state_broadcaster</text>
+        <line x1="276" y1="438" x2="276" y2="470" class="w-ros" marker-start="url(#lr)" marker-end="url(#lr)"/>
+        <text x="288" y="458" class="t-m t-ros">serial protocol · UART 1 Mbaud</text>
+        <line x1="588" y1="438" x2="588" y2="470" class="w-ros" marker-start="url(#lr)" marker-end="url(#lr)"/>
+        <text x="600" y="458" class="t-m t-ros">gz_ros2_control plugin</text>
+        <circle cx="36" cy="498" r="12" class="badge"/>
+        <text x="36" y="502" text-anchor="middle" class="t-in">4</text>
+        <text x="56" y="503" class="t-b">Arm servo controller</text>
+        <text x="56" y="521" class="t-s">the arm&#x27;s own board</text>
+        <rect x="252" y="474" width="300" height="84" rx="6" class="box"/>
+        <text x="266" y="496" class="t-s">runs the myCobot protocol</text>
+        <rect x="266" y="508" width="189" height="22" rx="11" class="chip chip-hw"/>
+        <text x="274" y="523" class="t-m">Atom (ESP32, firmware 7.3)</text>
+        <rect x="564" y="474" width="300" height="84" rx="6" class="box"/>
+        <text x="578" y="496" class="t-s">steps the model</text>
+        <rect x="578" y="508" width="109" height="22" rx="11" class="chip chip-plain"/>
+        <text x="586" y="523" class="t-m">Gazebo physics</text>
+        <line x1="276" y1="562" x2="276" y2="594" class="w-ros" marker-start="url(#lr)" marker-end="url(#lr)"/>
+        <text x="288" y="582" class="t-m t-ros">servo bus: target angles ↓   angle, temp, V ↑</text>
+        <line x1="588" y1="562" x2="588" y2="594" class="w-ros" marker-start="url(#lr)" marker-end="url(#lr)"/>
+        <text x="600" y="582" class="t-m t-ros">joint commands ↓   joint state ↑</text>
+        <circle cx="36" cy="622" r="12" class="badge"/>
+        <text x="36" y="626" text-anchor="middle" class="t-in">5</text>
+        <text x="56" y="627" class="t-b">Sensors and actuators</text>
+        <text x="56" y="645" class="t-s">what moves and what senses</text>
+        <rect x="252" y="598" width="300" height="112" rx="6" class="box"/>
+        <text x="266" y="620" class="t-s">* wired straight to the Jetson</text>
+        <rect x="266" y="632" width="176" height="22" rx="11" class="chip chip-hw"/>
+        <text x="274" y="647" class="t-m">6 servos: angle, temp, V</text>
+        <rect x="448" y="632" width="63" height="22" rx="11" class="chip chip-hw"/>
+        <text x="456" y="647" class="t-m">gripper</text>
+        <rect x="266" y="660" width="96" height="22" rx="11" class="chip chip-hw"/>
+        <text x="274" y="675" class="t-m">USB camera *</text>
+        <rect x="368" y="660" width="82" height="22" rx="11" class="chip chip-hw"/>
+        <text x="376" y="675" class="t-m">joystick *</text>
+        <rect x="456" y="660" width="76" height="22" rx="11" class="chip chip-hw"/>
+        <text x="464" y="675" class="t-m">LCD1602 *</text>
+        <rect x="564" y="598" width="300" height="112" rx="6" class="box"/>
+        <text x="578" y="620" class="t-s">from the URDF</text>
+        <rect x="578" y="632" width="176" height="22" rx="11" class="chip chip-plain"/>
+        <text x="586" y="647" class="t-m">simulated joint1..joint6</text>
+        <rect x="578" y="660" width="129" height="22" rx="11" class="chip chip-plain"/>
+        <text x="586" y="675" class="t-m">simulated gripper</text>
+        <path d="M878,60 h8 V264 h-8" class="w-ros"/>
+        <text x="900" y="158" class="t-s">identical</text>
+        <text x="900" y="174" class="t-s">sim and real</text>
+        <path d="M878,308 h8 V708 h-8" class="w-hw"/>
+        <text x="900" y="504" class="t-s">switched by</text>
+        <text x="900" y="520" class="t-s">sim:=true|false</text>
+      </svg>
+      </div>
+      <div class="legend">
+        <span><i class="sw" style="background:var(--ros)"></i>implemented, through ROS 2</span>
+        <span><i class="sw" style="background:var(--note)"></i>planned</span>
+        <span><i class="sw" style="background:var(--hw)"></i>physical device</span>
+      </div>
+      <figcaption>Each layer talks only to the one below it, through what the blue arrows name. Layers 1 and 2 are identical on the real arm and in simulation; layers 3 to 5 are switched by <code>sim</code>.</figcaption>
+    </figure>
+   <div class="tablewrap">
+      <table style="min-width:1320px">
+        <thead><tr><th>Layer</th><th>Responsibility</th><th>Real arm (<code>sim:=false</code>)</th><th>Simulation (<code>sim:=true</code>)</th><th>Talks to the layer below through</th><th>Lives in</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td><b>1 Mission and clients</b></td><td>Decide <i>what</i> the arm does. Never open a device; take the control before moving (<a href="ADR-0002-unique-control.md">ADR-0002</a>)</td><td><code>braco_web</code>, <code>joystick_teleop</code>, <code>temperature_monitor</code>, <code>zero</code> / <code>park</code>; planned: <code>braco_mission</code>, <code>move_group</code></td><td>the same nodes, on the PC</td><td>topics, services, action goals (layer 2)</td><td><code>web/</code>, <code>braco_teleop</code>, <code>braco_driver</code>, <code>braco_bringup</code>, <code>braco_mission</code>, <code>braco_moveit_config</code></td><td>clients done; mission #43, MoveIt #40</td></tr>
+          <tr><td><b>2 ROS 2 middleware</b></td><td>The contract between the layers: names and types every layer agrees on. Identical in sim and real (#37)</td><td>DDS domain 42; <code>/joint_states</code>, <code>/arm/command</code>, <code>/arm/*</code> services, <code>/diagnostics</code></td><td>the same names; <code>FollowJointTrajectory</code> on <code>/arm_controller</code></td><td>subscriptions, service and action servers in layer 3</td><td><code>braco_interfaces</code></td><td>done; <code>FollowJointTrajectory</code> on the real arm #35 / #37</td></tr>
+          <tr><td><b>3 Hardware abstraction</b></td><td>Turn the contract into device access and enforce safety. The only layer that changes with <code>sim</code></td><td><code>arm_driver</code> (UART owner, gates, limits, watchdog), <code>camera</code> (USB camera owner), <code>mycobot_cpp</code> (protocol, no ROS)</td><td><code>gz_ros2_control</code>: <code>controller_manager</code>, <code>arm_controller</code>, <code>joint_state_broadcaster</code></td><td>myCobot serial protocol, UART 1 Mbaud (real); the gz_ros2_control plugin (sim)</td><td><code>braco_driver</code>, <code>braco_camera</code>, <code>mycobot_cpp</code>, <code>braco_description</code> (sim)</td><td>done; lifecycle #6, ros2_control <code>SystemInterface</code> #35</td></tr>
+          <tr><td><b>4 Arm servo controller</b></td><td>The arm's own board: receives the protocol and drives the servo bus. braco does not change its firmware</td><td>Atom (ESP32, firmware 7.3) in the myCobot 280</td><td>Gazebo physics</td><td>servo bus: target angles down; angle, temperature and voltage up</td><td>vendor firmware; protocol in <a href="protocol_commands.md">protocol_commands.md</a></td><td>given</td></tr>
+          <tr><td><b>5 Sensors and actuators</b></td><td>What moves and what senses</td><td>six joint servos (angle, temperature, voltage), gripper; USB camera, joystick and LCD1602 wired straight to the Jetson (they skip layer 4)</td><td>simulated <code>joint1..joint6</code> and gripper, from the URDF</td><td>—</td><td><code>braco_description</code> (model), <a href="inventory/inventory.md">inventory</a></td><td>given</td></tr>
+        </tbody>
+      </table>
+    </div>
+
     <div class="subhead" id="node-graph">Node graph</div>
     <figure>
       <div class="scroll">
