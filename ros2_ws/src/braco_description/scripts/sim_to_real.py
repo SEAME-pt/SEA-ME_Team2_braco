@@ -39,7 +39,7 @@ import time
 import xml.etree.ElementTree as ET
 
 from ament_index_python.packages import get_package_share_directory
-from braco_arm import JOINTS, RealArm, SimArm
+from braco_arm import JOINTS, RealArm, SimArm, SOURCE
 from braco_interfaces.msg import ArmCommand
 from rclpy.utilities import remove_ros_args
 
@@ -162,6 +162,7 @@ def _time_move(real, joint, target, speed):
             command.type = ArmCommand.ALL_ANGLES
             command.angles_deg = [float(v) for v in target]
             command.speed = speed
+            command.source = SOURCE
             real.command_pub.publish(command)
         current = real.fresh_angles()
         if current is None or (last is not None and real.angles_time <= last[1]):
@@ -275,6 +276,7 @@ def main():
         print('\ninterrupted: real arm stopped')
         return 1
     finally:
+        real.release_control()
         sim.close()
         real.close()
 

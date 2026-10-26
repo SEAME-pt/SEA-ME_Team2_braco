@@ -83,7 +83,9 @@ python3 /ws/src/braco_description/scripts/my_test.py
 ```
 
 **6. Then on the real arm (optional).** With the Jetson up (`make up` there), `--real` runs the same moves on the
-arm after Gazebo, and asks first. Check first that the PC sees the arm: `ROS_DOMAIN_ID=42 ros2 node list` shows
+arm after Gazebo, and asks first. Like `make zero` / `make park`, the script takes the arm's control as `script`
+(forced: it takes it from the web page or the joystick, [ADR-0002](../../../docs/ADR-0002-unique-control.md)) and
+gives it back when it ends. Check first that the PC sees the arm: `ROS_DOMAIN_ID=42 ros2 node list` shows
 `/arm_driver`.
 
 ```bash

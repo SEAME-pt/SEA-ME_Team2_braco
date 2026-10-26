@@ -19,10 +19,11 @@ Used by park.py and move_arm_example.py. A move is (six angles in degrees, secon
 
   Gazebo:    the arm_controller follow_joint_trajectory action (gazebo.launch.py)
   Real arm:  arm_driver on the Jetson, like braco_bringup's ArmMoves (zero, park): wait for
-             the driver, leave rest mode, power on, then send targets at most STEP_DEG ahead of
-             the real angles every RESEND_S, so the driver's 300 ms watchdog stops the arm if
-             this program dies; stop on timeout. The driver's table-clearance check still
-             applies to every target.
+             the driver, leave rest mode, take the control as "script" (forced, ADR-0002: the
+             driver only obeys the owner; given back at the end), power on, then send targets
+             at most STEP_DEG ahead of the real angles every RESEND_S, so the driver's 300 ms
+             watchdog stops the arm if this program dies; stop on timeout. The driver's
+             table-clearance check still applies to every target.
 
 Gazebo and the real arm both publish /joint_states, so they must be on different ROS domains:
 Gazebo on the shell's ROS_DOMAIN_ID (e.g. 77), the real arm on --real-domain (default 42).
@@ -35,6 +36,7 @@ import sys
 import time
 
 from braco_interfaces.msg import ArmCommand
+from braco_interfaces.srv import TakeControl
 from control_msgs.action import FollowJointTrajectory
 import rclpy
 from rclpy.action import ActionClient
@@ -49,6 +51,7 @@ JOINTS = ['joint1', 'joint2', 'joint3', 'joint4', 'joint5', 'joint6']
 
 # Real arm, the same values as braco_bringup's arm_moves.cpp, zero.cpp and park.cpp
 STEP_DEG = 15.0         # max lead of a target over the real angles
+SOURCE = 'script'       # ArmCommand.source and the control owner name, like arm_moves.cpp
 RESEND_S = 0.1          # well below the driver's 300 ms watchdog
 STATE_TIMEOUT_S = 0.5   # older /joint_states = no feedback
 LOOP_S = 0.02
@@ -166,6 +169,8 @@ class RealArm(_Arm):
         self.power_client = self.node.create_client(Trigger, 'arm/power_on')
         self.rest_client = self.node.create_client(SetBool, 'arm/set_read_only')
         self.release_client = self.node.create_client(Trigger, 'arm/release_servos')
+        self.control_client = self.node.create_client(TakeControl, 'arm/take_control')
+        self.has_control = False
 
     def _call(self, client, request, what):
         if not client.wait_for_service(timeout_sec=CALL_TIMEOUT_S):
@@ -190,6 +195,23 @@ class RealArm(_Arm):
         """Free all joints: the arm goes limp, so only from a resting pose (park)."""
         return self._call(self.release_client, Trigger.Request(), 'release servos')
 
+    def take_control(self):
+        """arm_driver only obeys the control owner: motion from any other source is ignored."""
+        request = TakeControl.Request()
+        request.source = SOURCE
+        request.force = True
+        self.has_control = self._call(self.control_client, request, 'take control')
+        return self.has_control
+
+    def release_control(self):
+        if not self.has_control:
+            return
+        self.has_control = False
+        request = TakeControl.Request()
+        request.source = SOURCE
+        request.release = True
+        self._call(self.control_client, request, 'release control')
+
     def prepare(self):
         end = time.monotonic() + DRIVER_TIMEOUT_S
         while time.monotonic() < end:
@@ -201,7 +223,7 @@ class RealArm(_Arm):
                            '(make up)?' % self.domain)
             return False
         self.set_rest(False)   # leave rest mode (set by park), or power on is refused
-        return self._call(self.power_client, Trigger.Request(), 'power on')
+        return self.take_control() and self._call(self.power_client, Trigger.Request(), 'power on')
 
     def move(self, degrees, seconds=None):
         """
@@ -246,6 +268,7 @@ class RealArm(_Arm):
             command.type = ArmCommand.ALL_ANGLES
             command.angles_deg = [round(c + (t - c) * scale, 1) for c, t in zip(current, degrees)]
             command.speed = self.speed
+            command.source = SOURCE
             self.command_pub.publish(command)
         self.stop()
         now_at = [round(a, 1) for a in self.angles] if self.angles else None
@@ -333,5 +356,6 @@ def run(name, moves, description='', after_real=None, after_real_note=''):
         real.log.warning('interrupted: arm stopped')
         ok = False
     finally:
+        real.release_control()
         real.close()
     return 0 if ok else 1
