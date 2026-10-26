@@ -14,7 +14,7 @@ figures. **Both files are kept in sync**: a change to one goes to the other in t
 > [status](#12-status-against-the-target-architecture) between *pending*, *differs* and *done*. If the code and this
 > document disagree, the code wins and this document is the bug.
 >
-> Last checked against the code: **2026-10-23** · [ADR-0001](ADR-0001-ros2-in-docker-on-jetson-nano.md) ·
+> Last checked against the code: **2026-10-26** · [ADR-0001](ADR-0001-ros2-in-docker-on-jetson-nano.md) ·
 > [ADR-0002](ADR-0002-unique-control.md) · [ADR-0003](ADR-0003-rest-per-temp.md)
 
 **Contents**
@@ -54,8 +54,14 @@ figures. **Both files are kept in sync**: a change to one goes to the other in t
   ([ADR-0002](ADR-0002-unique-control.md)).
 - **One source for each fact.** The thermal level is computed once, by `temperature_monitor`, and published on
   `/diagnostics`; the page shows it and does not recompute it. The control owner is kept once, by `arm_driver`.
-- **Same interface for real and simulated.** Everything above the driver uses `/joint_states` and
-  `braco_interfaces`, so the mission and planning layers run unchanged on both (#37).
+- **Same interface for real and simulated.** Everything above the hardware abstraction uses `/joint_states`,
+  `braco_interfaces` and the `FollowJointTrajectory` action, with the same topic, frame and action names on both,
+  so the mission and planning layers cannot tell the simulation from the real arm and run unchanged on both (#37).
+  Only the hardware abstraction layer changes with `sim:=true|false`.
+- **Every node that moves the arm is a lifecycle node** *(target, not yet implemented)*. `arm_driver` opens the
+  serial port on *configure*, accepts motion only while *active*, and *deactivate* cuts actuation (#6). The same
+  holds for the other nodes that command motion, so the e-stop can force them all out of *active* (#14). Today
+  every node is a plain node; see [section 12](#12-status-against-the-target-architecture).
 - **Logic without ROS where possible.** Serial protocol, joystick, LCD and teleop logic live in `mycobot_cpp`
   (`ros2_ws/src/mycobot_cpp`); the control owner and the auto-rest decision are plain headers in `braco_driver/include`. All
   unit-tested without a ROS graph.
@@ -572,12 +578,17 @@ PR that closes or opens a gap.
 | ADRs in `docs/adr/NNNN-*.md` | `docs/ADR-NNNN-*.md` | The page's Docs tab groups them by this prefix |
 | `examples/ros2_basics_*` and `make demos` | removed | The learning demos are no longer part of the system |
 | The page as an `ExecuteProcess` inside the launch | started by `arm_routine.sh` next to the launch | Optional; a matter of taste, not of correctness |
+| Every node that moves the arm is a lifecycle node | plain `rclcpp` / `rclpy` nodes; `arm_driver` opens the port on start-up | `arm_driver` first (#6), then the e-stop on top of it (#14) |
+| The e-stop is a dedicated node that deactivates the motion nodes | STOP on `/arm/command`, gate 1 of `arm_driver`, from any client | #14, after #6 |
 
 ### Pending
 
 | Item | Issue |
 |---|---|
 | `sim:=true`: Gazebo + `gz_ros2_control` with the same `/joint_states` | #34 |
+| `arm_driver` as a lifecycle node: port on *configure*, motion only while *active*, *deactivate* cuts actuation | #6 |
+| E-stop node: forces the motion nodes to *deactivate* and aborts the active goals, also mid-trajectory | #14 |
+| ros2_control `SystemInterface` for the real arm and `joint_trajectory_controller` | #35 |
 | How trajectories reach `arm_driver` on the real arm (`FollowJointTrajectory` or equivalent) | #37 |
 | `braco_moveit_config`: SRDF, kinematics, limits, controllers | #40 |
 | `braco_mission`: pick-and-place, pen drawing, taking the control as `mission` | #43 |
@@ -603,6 +614,7 @@ In the same PR as the code change, in **both** `architecture.md` and `architectu
 | You changed | Update |
 |---|---|
 | a node, topic, service or message | sections 2 and 4, and the package README |
+| a layer, a node that moves or stops the arm, a lifecycle state | section 2 (layers and node graph) and section 1 |
 | who may move the arm, a safety gate, rest mode | sections 1, 3 and 4 (and an ADR if it is a new policy) |
 | a parameter in `braco.yaml` or a launch argument | section 7 |
 | a package, a folder or a file name | section 5 |
