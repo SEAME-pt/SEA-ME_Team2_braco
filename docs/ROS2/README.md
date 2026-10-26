@@ -112,7 +112,7 @@ All four are served by `arm_driver`.
 | `/arm/set_gripper` | `std_srvs/srv/SetBool` | `joystick_teleop` (A / B), `braco_web` | `true` closes, `false` opens. Refused in rest mode |
 | `/arm/set_read_only` | `std_srvs/srv/SetBool` | `arm_zero` (false), `arm_park` (true), `make rest` / `make resume`, `braco_web` (rest on/off, wake up) | Rest mode: motion, gripper and power on are refused, angles and temperatures keep being published |
 
-braco uses **no actions** yet. Long motions (zero, park) are short programs that stream `/arm/command` and watch `/joint_states` until the pose is reached. Actions arrive with MoveIt 2 (#40, #43); see [10. Actions](#10-actions-long-running-goals).
+braco uses **no actions** yet. Long motions (zero, park) are short programs that stream `/arm/command` and watch `/joint_states` until the pose is reached. Actions arrive with MoveIt 2; see [10. Actions](#10-actions-long-running-goals).
 
 ### Packages
 
@@ -125,8 +125,8 @@ All in [`ros2_ws/src/`](../../ros2_ws/src/).
 | [`braco_teleop`](../../ros2_ws/src/braco_teleop/README.md) | In use | `joystick_teleop`; the jogging logic without ROS and its tests |
 | [`braco_bringup`](../../ros2_ws/src/braco_bringup/README.md) | In use | `braco.launch.py`, `config/braco.yaml`, `arm_routine.sh`, `zero`, `park` |
 | [`braco_description`](../../ros2_ws/src/braco_description/README.md) | Empty, #25 | URDF model, meshes, RViz view |
-| [`braco_moveit_config`](../../ros2_ws/src/braco_moveit_config/README.md) | Empty, #40 | MoveIt 2 configuration (runs on the PC) |
-| [`braco_mission`](../../ros2_ws/src/braco_mission/README.md) | Empty, #43 | Tasks (pick-and-place, drawing) as a state machine over MoveIt 2 |
+| [`braco_moveit_config`](../../ros2_ws/src/braco_moveit_config/README.md) | Empty | MoveIt 2 configuration (runs on the PC) |
+| [`braco_mission`](../../ros2_ws/src/braco_mission/README.md) | Empty | Tasks (pick-and-place, drawing) as a state machine over MoveIt 2 |
 
 ### How the system starts
 
@@ -145,7 +145,7 @@ make up ──► `real` container ──► arm_routine.sh ──┬──► r
 
 ### ROS 2 features braco does not use yet
 
-The [Reference](#reference-ros-2-concepts) covers more than the code uses today. Not used yet: actions, lifecycle nodes (`arm_driver` is a plain `rclcpp::Node`), tf2 and the URDF (#25), `ros2_control`, MoveIt 2 (#40), Gazebo (#34), the camera.
+The [Reference](#reference-ros-2-concepts) covers more than the code uses today. Not used yet: actions, lifecycle nodes (`arm_driver` is a plain `rclcpp::Node`), tf2 and the URDF (#25), `ros2_control`, MoveIt 2, Gazebo (#34), the camera.
 
 ---
 

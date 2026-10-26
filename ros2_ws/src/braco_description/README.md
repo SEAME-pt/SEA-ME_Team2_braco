@@ -22,7 +22,7 @@ arm (zero pose, joint directions, forward kinematics) and the open measurements 
 
 `gazebo.launch.py` is a quick viewer: the model in Gazebo, moved through `/arm_controller/joint_trajectory`.
 The full simulation bringup (`sim:=true` in `braco_bringup`, the web page and teleop driving the simulated arm)
-is issues #34/#37.
+is issue #34.
 
 ## Run Gazebo, step by step
 
