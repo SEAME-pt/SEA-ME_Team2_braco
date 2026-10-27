@@ -69,13 +69,12 @@ It creates `docker/.env` for this machine (PC or Jetson, detected), on the PC th
 format check before every push, see [4.1](#41-code-formatting)), and runs `make doctor`. Then `make up` turns the
 braco system on (see [docker/README.md](../docker/README.md)); `make` lists every command.
 
-### 2.4 Host Python (web page and dev tools)
+### 2.4 Host Python (web page tests and dev tools)
 
-Everything that talks to the arm runs in the containers. On the host, Python is only needed for the web page, its
-tests and the development tools; `make web` and `make ci` create `.venv` from `web/requirements*.txt` by themselves:
+Everything that talks to the arm runs in the containers, the web page too (`make web`). On the host, Python is only
+needed for the page's tests and the development tools; `make ci` creates `.venv` from `web/requirements*.txt` by itself:
 
 ```bash
-make web    # the page with mock arm data on http://localhost:8080 (no arm, no ROS, no Docker)
 make ci     # format check, lint and the web page tests, as the CI `host` job
 ```
 
