@@ -40,6 +40,9 @@ CI_RUN = docker run --rm -e CCACHE_DIR=/ws/.ccache -e CCACHE_MAXSIZE=500M -v $(C
 COV_MIN_CXX   := 80
 COV_MIN_PY    := 80
 COV_MIN_WEB   := 80
+# The totals also go to the GitHub Actions job summary (scripts/coverage_summary.py, from the JSON reports), on the
+# host: the container does not see $GITHUB_STEP_SUMMARY. Outside Actions the table is dropped. Written on failure too.
+STEP_SUMMARY  := "$${GITHUB_STEP_SUMMARY:-/dev/null}"
 COVERAGE_PKGS := mycobot_cpp braco_driver braco_teleop braco_bringup braco_camera
 COV_DIRS      := --build-base coverage/build --install-base coverage/install
 COV_FLAGS     := -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_FLAGS=--coverage -DCMAKE_CXX_FLAGS=--coverage \
@@ -56,14 +59,16 @@ CI_COV_SH := set -eo pipefail; sudo apt-get update -qq; sudo apt-get install -y 
              colcon --log-base coverage/log test --base-paths $(WS_BASE_PATHS) --packages-select $(COVERAGE_PKGS) \
                  $(COV_DIRS) --ctest-args -L "gtest|pytest"; \
              colcon test-result --test-result-base coverage/build --verbose; \
-             mkdir -p coverage/html; st=0; \
+             mkdir -p coverage/html; rm -f coverage/cxx.json coverage/python.json; st=0; \
              gcovr -r /ws/src coverage/build --exclude ".*/test/.*" --exclude ".*/scripts/.*" --txt --print-summary \
-                 --html-details coverage/html/index.html --fail-under-line $(COV_MIN_CXX) | cut -c1-64 || st=1; \
+                 --html-details coverage/html/index.html --json-summary coverage/cxx.json \
+                 --fail-under-line $(COV_MIN_CXX) | cut -c1-64 || st=1; \
              python3 -m coverage combine --keep --data-file=coverage/.coverage \
                  coverage/build/*/pytest_cov/*/.coverage >/dev/null; \
              r=0; python3 -m coverage report $(COV_PY) --fail-under=$(COV_MIN_PY) || r=$$?; \
              if [ $$r -eq 1 ]; then echo "ROS Python: nothing to measure outside scripts/ and test/"; \
-             else python3 -m coverage html $(COV_PY) -q -d coverage/html/python; [ $$r -eq 0 ] || st=1; fi; \
+             else python3 -m coverage html $(COV_PY) -q -d coverage/html/python; \
+                 python3 -m coverage json $(COV_PY) -q -o coverage/python.json; [ $$r -eq 0 ] || st=1; fi; \
              exit $$st
 
 # cppcheck: run directly, because ament_cppcheck skips every file ("performance issues" with cppcheck >= 2.0, it
@@ -118,8 +123,12 @@ format format-check: export PATH := $(CURDIR)/$(VENV)/bin:$(PATH)
 # The web tests measure the coverage of web/server (lines and branches); the table lists the lines no test runs,
 # and the job fails below COV_MIN_WEB.
 ci: format-check lint $(VENV)/.web-test-installed ## The `host` CI job: format check, lint, web page tests (with coverage)
+	@rm -f coverage.json
 	$(VENV)/bin/python -m pytest web/tests -q --cov=web/server --cov-branch --cov-report=term-missing:skip-covered \
-		--cov-fail-under=$(COV_MIN_WEB)
+		--cov-fail-under=$(COV_MIN_WEB); st=$$?; \
+	$(VENV)/bin/python -m coverage json -q -o coverage.json || true; \
+	$(VENV)/bin/python scripts/coverage_summary.py --coverage-py "Web (web/server)" coverage.json $(COV_MIN_WEB) \
+		>> $(STEP_SUMMARY); exit $$st
 
 ci-image: ## Build the `ros` CI job's image (Dockerfile stage CI_TARGET=base) as CI_IMAGE, for your UID/GID
 	@docker buildx version >/dev/null 2>&1 || { echo "$(BUILDX_MISSING)" >&2; exit 1; }
@@ -131,7 +140,9 @@ ci-ros: ## The `ros` CI job: rosdep + colcon build + colcon test in a throw-away
 
 coverage: ## GoogleTests and pytests of ros2_ws with coverage (gcovr, pytest-cov); report in ros2_ws/coverage/html
 	@docker image inspect $(CI_IMAGE) >/dev/null 2>&1 || $(MAKE) --no-print-directory ci-image
-	$(CI_RUN) bash -c '$(CI_COV_SH)'
+	$(CI_RUN) bash -c '$(CI_COV_SH)'; st=$$?; \
+	python3 scripts/coverage_summary.py --gcovr "C++ (ros2_ws)" $(WS_DIR)/coverage/cxx.json $(COV_MIN_CXX) \
+		--coverage-py "ROS Python (ros2_ws)" $(WS_DIR)/coverage/python.json $(COV_MIN_PY) >> $(STEP_SUMMARY); exit $$st
 
 cppcheck: ## cppcheck on every C++ package of ros2_ws/src (ament_cppcheck skips them all), in the ci-ros image
 	@docker image inspect $(CI_IMAGE) >/dev/null 2>&1 || $(MAKE) --no-print-directory ci-image
