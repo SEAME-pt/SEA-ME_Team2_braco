@@ -111,9 +111,9 @@ def test_mock_arm_stop_freezes_angles(monkeypatch):
 
 def test_list_docs_includes_repo_docs():
     paths = {d['path'] for d in docs.list_docs()}
-    assert {'docs/safety.md', 'docs/dev-setup.md', 'docs/protocol_commands.md'} <= paths
+    assert {'docs/guides/safety.md', 'docs/guides/dev-setup.md', 'docs/hardware/protocol_commands.md'} <= paths
     assert 'docker/README.md' in paths and 'web/README.md' in paths
-    safety = next(d for d in docs.list_docs() if d['path'] == 'docs/safety.md')
+    safety = next(d for d in docs.list_docs() if d['path'] == 'docs/guides/safety.md')
     assert safety['title'].startswith('Lab Safety')
     assert safety['group'] == 'Safety'
     assert '.github/PULL_REQUEST_TEMPLATE.md' in paths
@@ -121,11 +121,11 @@ def test_list_docs_includes_repo_docs():
 
 def test_list_docs_includes_html_pages_in_docs():
     listed = docs.list_docs()
-    arch = next(d for d in listed if d['path'] == 'docs/architecture.html')
+    arch = next(d for d in listed if d['path'] == 'docs/architecture/architecture.html')
     assert arch['title'] == 'braco architecture'
     assert arch['group'] == 'Architecture and decisions'
     assert not any(d['path'].startswith('web/') and d['path'].endswith('.html') for d in listed)
-    assert docs.read_doc('docs/architecture.html').startswith('<!doctype html>')
+    assert docs.read_doc('docs/architecture/architecture.html').startswith('<!doctype html>')
 
 
 def test_list_docs_skips_caches_and_groups_in_order():
@@ -152,7 +152,7 @@ def test_read_doc_rejects_paths_outside_docs(path):
 
 
 def test_read_doc_reads_nested_doc():
-    assert docs.read_doc('docs/inventory/inventory.md')
+    assert docs.read_doc('docs/hardware/inventory/inventory.md')
 
 
 # ---- github.py ------------------------------------------------------------------
@@ -470,8 +470,8 @@ def test_websocket_streams_snapshots(client):
 
 def test_docs_api(client):
     listed = client.get('/api/docs').json()
-    assert any(d['path'] == 'docs/safety.md' for d in listed)
-    r = client.get('/api/docs/docs/safety.md')
+    assert any(d['path'] == 'docs/guides/safety.md' for d in listed)
+    r = client.get('/api/docs/docs/guides/safety.md')
     assert r.status_code == 200 and r.text.startswith('# Lab Safety')
 
 
