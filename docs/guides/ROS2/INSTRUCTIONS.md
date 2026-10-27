@@ -1,401 +1,164 @@
-# ROS 2: Installation and Usage, Step by Step
+# ROS 2: Hands-on Guide
 
-This guide takes you from nothing to a working ROS 2 workspace with every core pattern from Sprint 0 ([issue #18](https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/18)): publisher/subscriber with explicit QoS in C++ and Python, service, action, lifecycle node, launch file, and inspection with the CLI and `rqt_graph`.
+From zero to a working ROS 2 workspace with the core patterns: publisher/subscriber with QoS (C++ and Python), service, action, lifecycle node, launch file, parameters, and inspection tools.
 
-Read [README.md](README.md) first if the concepts (node, topic, QoS, lifecycle...) are new. For a quick list of commands see [CHEATSHEET.md](CHEATSHEET.md); when something breaks see [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
+- Concepts: [README.md](README.md) · Commands: [CHEATSHEET.md](CHEATSHEET.md) · Problems: [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
+- **Safety:** nothing here moves the arm. Before running anything on the hardware, read [safety.md](../safety.md).
 
-> **Safety:** nothing in this guide moves the arm. Before running any node that talks to the hardware, read [docs/safety.md](../safety.md).
-
----
-
-## Table of contents
-
-- [0. Which installation path to use](#0-which-installation-path-to-use)
-- [1. Install with the project's Docker setup (recommended)](#1-install-with-the-projects-docker-setup-recommended)
-  - [1.1 On the PC](#11-on-the-pc)
-  - [1.2 On the Jetson Nano](#12-on-the-jetson-nano)
-  - [1.3 Daily use of the containers](#13-daily-use-of-the-containers)
-- [2. Alternative: native install on Ubuntu 26.04](#2-alternative-native-install-on-ubuntu-2604)
-- [3. Verify the installation](#3-verify-the-installation)
-- [4. First steps with the ros2 CLI (turtlesim)](#4-first-steps-with-the-ros2-cli-turtlesim)
-- [5. Create the workspace and the packages](#5-create-the-workspace-and-the-packages)
-- [6. Create a custom interfaces package](#6-create-a-custom-interfaces-package)
-- [7. Publisher and subscriber with explicit QoS](#7-publisher-and-subscriber-with-explicit-qos)
-- [8. Service server and client](#8-service-server-and-client)
-- [9. Action server and client](#9-action-server-and-client)
-- [10. Lifecycle node](#10-lifecycle-node)
-- [11. Build files (CMakeLists.txt, setup.py, package.xml)](#11-build-files-cmakeliststxt-setuppy-packagexml)
-- [12. Build and run everything](#12-build-and-run-everything)
-- [13. Launch file](#13-launch-file)
-- [14. Parameters](#14-parameters)
-- [15. Inspect the system: ros2 CLI and rqt_graph](#15-inspect-the-system-ros2-cli-and-rqt_graph)
-- [16. Run across two machines (PC and Jetson)](#16-run-across-two-machines-pc-and-jetson)
-- [17. Record and replay with rosbag2](#17-record-and-replay-with-rosbag2)
-- [18. Push the examples to the repo](#18-push-the-examples-to-the-repo)
-
-Conventions in this guide:
-
-- `host$` is a terminal on your machine (outside Docker), in the repo root unless noted.
-- `container$` is a terminal inside the ROS 2 container (`make shell`).
-- `ROS_DISTRO` is `lyrical`. If you ever use another distro, replace `lyrical` in package names.
+Conventions: `host$` = your machine, repo root. `nano$` = the Jetson, repo root. `container$` = inside `make shell`. ROS distro: `lyrical`.
 
 ---
 
-## 0. Which installation path to use
+## Contents
 
-| Your machine | Use |
-|---|---|
-| Linux PC (any recent distro) | **Docker, section 1.1** |
-| Jetson Nano (JetPack 4.6, Ubuntu 20.04 host) | **Docker, section 1.2**. Do not install ROS 2 natively: Lyrical is not available for Ubuntu 20.04 (see [ADR-0001](../ADR-0001-ros2-in-docker-on-jetson-nano.md)) |
-| A PC running Ubuntu 26.04 that should have ROS natively | Section 2 (optional; Docker still recommended so everyone has the same environment) |
-| Windows | Docker inside WSL2 (Ubuntu), then section 1.1 from the WSL terminal. GUIs need WSLg |
-| macOS | Docker Desktop works for the CLI; GUIs (RViz2, rqt) are not supported by our setup |
-
-The Docker setup gives everyone the **same** ROS 2 Lyrical install on Ubuntu 26.04, on both the PC (`braco-image/pc` image: ROS desktop, RViz2, MoveIt 2, Gazebo, rqt, QA tools) and the Jetson (`braco-image/jetson` image: headless ROS base, serial tools, `pymycobot`). Full details are in [docker/README.md](../../docker/README.md).
+1. [Set up](#1-set-up)
+2. [First steps with turtlesim](#2-first-steps-with-turtlesim)
+3. [Create the packages](#3-create-the-packages)
+4. [Custom interfaces](#4-custom-interfaces)
+5. [Publisher and subscriber with QoS](#5-publisher-and-subscriber-with-qos)
+6. [Service server and client](#6-service-server-and-client)
+7. [Action server and client](#7-action-server-and-client)
+8. [Lifecycle node](#8-lifecycle-node)
+9. [Build files](#9-build-files)
+10. [Build and run](#10-build-and-run)
+11. [Launch file](#11-launch-file)
+12. [Parameters](#12-parameters)
+13. [Inspect the system](#13-inspect-the-system)
+14. [PC and Jetson together](#14-pc-and-jetson-together)
+15. [Record and replay (rosbag2)](#15-record-and-replay-rosbag2)
+16. [Clean up](#16-clean-up)
 
 ---
 
-## 1. Install with the project's Docker setup (recommended)
+## 1. Set up
 
-### 1.1 On the PC
+ROS 2 runs in Docker on both machines (why: [ADR-0001](../../decisions/ADR-0001-ros2-in-docker-on-jetson-nano.md); details: [docker/README.md](../../../docker/README.md)). Do not install ROS natively on the Jetson: Lyrical does not exist for Ubuntu 20.04.
 
-**Step 1. Install Docker Engine and Docker Compose v2.20 or newer.**
+### 1.1 PC
 
-On Ubuntu/Debian, follow <https://docs.docker.com/engine/install/ubuntu/>. In short:
-
-```bash
-host$ sudo apt-get update
-host$ sudo apt-get install -y ca-certificates curl
-host$ sudo install -m 0755 -d /etc/apt/keyrings
-host$ sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
-host$ echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] \
-  https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
-  | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-host$ sudo apt-get update
-host$ sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-```
-
-**Step 2. Let your user run Docker without sudo**, then log out and back in (or reboot):
+**1. Install** [Docker Engine](https://docs.docker.com/engine/install/) with Compose v2.20+, then:
 
 ```bash
-host$ sudo usermod -aG docker $USER
+host$ sudo usermod -aG docker $USER          # log out and back in
+host$ sudo apt-get install -y make git x11-xserver-utils
+host$ docker compose version                  # v2.20 or newer
 ```
 
-Check:
-
-```bash
-host$ docker run --rm hello-world
-host$ docker compose version          # must be v2.20 or newer
-```
-
-**Step 3. Install the X11 helper** (needed so RViz2, rqt and Gazebo can open windows):
-
-```bash
-host$ sudo apt-get install -y x11-xserver-utils make git
-```
-
-**Step 4. Clone the repo** (skip if you already have it):
+**2. Clone and prepare:**
 
 ```bash
 host$ git clone git@github.com:SEAME-pt/SEA-ME_Team2_braco.git
 host$ cd SEA-ME_Team2_braco
+host$ make setup              # answer "dev"; creates docker/.env, venv, git hooks, then runs make doctor
 ```
 
-All `make` commands below are run **from the repo root** (`make` lists them).
+Fix any `[FAIL]` from `make doctor` before continuing.
 
-**Step 5. Create your `.env`** (fills in your user ID, group IDs and the machine role):
+**3. Start and verify** (the first run builds the image: tens of minutes):
 
 ```bash
-host$ make setup ROLE=pc
+host$ make up                 # starts the `dev` container (SIM=1 also starts the Gazebo simulation)
+host$ make net-test           # C++ talker + Python listener: PASS
+host$ make shell              # (pc-dev) dev@host:/ws$
 ```
 
-Open `docker/.env` and check:
+`/ws` in the container is `ros2_ws/` in the repo: files in `/ws/src` are your files on the host. Edit on the host, build and run in the container.
 
-- `COMPOSE_PROFILES=pc`
-- `USER_UID` / `USER_GID` match `id -u` / `id -g`
-- `ROS_DOMAIN_ID=42` and `RMW_IMPLEMENTATION=rmw_fastrtps_cpp` — **these must be identical on every machine that should talk to each other**. If several teams share the lab network, agree on different domain IDs per team. `ROS_DOMAIN_ID` is the real arm's domain; the PC's own containers use `PC_ROS_DOMAIN_ID` (77), so from the PC reach the arm with `ROS_DOMAIN_ID=42 ros2 ...`.
+> The PC's containers use **domain 77** (`PC_ROS_DOMAIN_ID`), the real arm **domain 42** (`ROS_DOMAIN_ID`). To reach the arm from the PC: `ROS_DOMAIN_ID=42 ros2 ...`.
 
-**Step 6. Check the host:**
+### 1.2 Jetson Nano
 
 ```bash
-host$ make doctor
-```
-
-Every line should be `[ ok ]`. Fix any `[FAIL]` before continuing ([TROUBLESHOOTING.md](TROUBLESHOOTING.md) lists the usual causes).
-
-**Step 7. Turn the system on.** The first build downloads Ubuntu 26.04 and ROS 2 and takes a while (tens of minutes, depending on your connection):
-
-```bash
-host$ make up
-```
-
-`make up` creates `ros2_ws/src` and `ros2_ws/bags` as your user, builds the `braco-image/pc` image if missing, builds the workspace if a source changed, and starts two containers in the background: `dev` (your tools: `make shell`, `make build`, ...) and `sim` (the braco system on the simulated arm, with the web page on port 8000). Running it again only does what is missing.
-
-**Step 8. Verify:**
-
-```bash
-host$ make run CMD=seame-smoke-test    # checks packages, pymycobot, RMW loopback
-host$ make net-test                   # C++ talker + Python listener, prints PASS/FAIL
-```
-
-**Step 9. Open a shell inside the container:**
-
-```bash
-host$ make shell
-(pc-dev) dev@host:/ws$ echo $ROS_DISTRO
-lyrical
-```
-
-You are now in `/ws`, which is the folder `ros2_ws` of the repo, mounted into the container. Anything you put in `/ws/src` is saved in the repo on the host.
-
-### 1.2 On the Jetson Nano
-
-Connect to the Nano (keyboard and screen, or `ssh user@<nano-ip>`). Docker 24 and Compose v2.29 are already installed on our Nano (see ADR-0001).
-
-**Step 1. Free the arm's UART** (on stock JetPack the serial console holds `/dev/ttyTHS1`). Only needed once:
-
-```bash
-nano$ sudo systemctl disable --now nvgetty
-```
-
-Log out and back in.
-
-**Step 2. Clone the repo and create the `.env`:**
-
-```bash
+nano$ sudo systemctl disable --now nvgetty      # once: frees the arm's UART /dev/ttyTHS1; log out and in
 nano$ git clone git@github.com:SEAME-pt/SEA-ME_Team2_braco.git
 nano$ cd SEA-ME_Team2_braco
-nano$ make setup ROLE=jetson
-nano$ make doctor
+nano$ make setup                                # answer "jetson"
 ```
 
-Check in `.env`: `COMPOSE_PROFILES=jetson`, `MYCOBOT_PORT=/dev/ttyTHS1`, `MYCOBOT_BAUD=1000000`, and the same `ROS_DOMAIN_ID` / `RMW_IMPLEMENTATION` as the PC.
-
-**Step 3. Get the image.** Two options:
-
-- **Build on the Nano** (slow, and build only one image at a time: parallel builds froze Docker on this device):
-
-  ```bash
-  nano$ make image
-  ```
-
-- **Or build on the PC and ship it** (faster). On the PC:
-
-  ```bash
-  host$ make jetson-image NANO=user@<nano-ip>    # slow: emulated arm64 build, then copied over ssh
-  ```
-
-  It registers QEMU on the PC the first time, and is tagged on the Nano with its usual name.
-
-**Step 4. Start and verify** (`make up` builds the workspace in a throw-away `dev` container, starts `real`, the real arm with its web page, and waits until the page sees the arm):
+Get the image, either:
 
 ```bash
-nano$ make up
-nano$ make run CMD=seame-smoke-test
+nano$ make image                                # build on the Nano (slow)
+host$ make jetson-image NANO=user@<nano-ip>     # or: build on the PC and copy it (faster)
+```
+
+Then:
+
+```bash
+nano$ make up                                   # builds the workspace and starts `real` (the arm)
 nano$ make net-test
-nano$ make shell
 ```
 
-The Jetson image has **no GUI tools**. Inspect the Jetson's nodes from the PC (section 16).
+The Jetson has no GUI tools: inspect its nodes from the PC ([section 14](#14-pc-and-jetson-together)).
 
-### 1.3 Daily use of the containers
+### 1.3 Daily commands
 
-| What | Command (from the repo root) |
+| What | Command |
 |---|---|
-| Turn the system on (idempotent) | `make up` |
-| Open a shell (ROS + workspace sourced) | `make shell` (open as many as you want, one per terminal) |
-| Run one command | `make run CMD='ros2 topic list'` |
-| Build the workspace | `make build` (on the Jetson only the real system's packages, one at a time, `MAKEFLAGS=-j2`; `make up` builds only when sources changed) |
-| Run the workspace tests (linters) | `make test`, then `make run CMD='colcon test-result --verbose'` (see [12.6](#126-run-the-tests-linters)) |
-| Install package dependencies | `make run CMD='rosdep install --from-paths src --ignore-src -y'` |
-| Turn it off | `make down` (`PARK=1` parks the arm first, on the Jetson) |
-| See all targets | `make` |
+| Start / stop | `make up` / `make down` |
+| Shell (ROS sourced; one per terminal) | `make shell` |
+| One command | `make run CMD='ros2 topic list'` |
+| Build / test the workspace | `make build` / `make test` |
+| Install dependencies | `make run CMD='rosdep install --from-paths src --ignore-src -y'` |
+| All commands | `make` |
 
-Without `make` (from `docker/`): `docker compose exec dev bash`. A bare `docker compose exec dev <command>` does **not** source ROS; prefix it with `ros_entrypoint.sh`.
-
-Packages installed with `sudo apt-get install` inside a running container disappear when the container is recreated. Anything permanent must be added to `docker/Dockerfile`.
+Packages installed with `apt` inside a container are lost when it is recreated. Permanent ones go in `docker/Dockerfile`.
 
 ---
 
-## 2. Alternative: native install on Ubuntu 26.04
+## 2. First steps with turtlesim
 
-Only on a PC running **Ubuntu 26.04** (Lyrical binaries exist only for it). This follows the official "Installing on Ubuntu (deb packages)" page; check <https://docs.ros.org/en/lyrical/Installation.html> in case it changed.
-
-**Step 1. UTF-8 locale:**
+Learn the CLI with something visible (PC only). Each command in its own `make shell`:
 
 ```bash
-locale                                         # check for UTF-8
-sudo apt update && sudo apt install -y locales
-sudo locale-gen en_US en_US.UTF-8
-sudo update-locale LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8
-export LANG=en_US.UTF-8
-```
+container$ ros2 run turtlesim turtlesim_node          # a window opens
+container$ ros2 run turtlesim turtle_teleop_key       # drive with the arrow keys
 
-**Step 2. Enable the Universe repository:**
-
-```bash
-sudo apt install -y software-properties-common
-sudo add-apt-repository universe
-```
-
-**Step 3. Add the ROS 2 apt repository** with the `ros2-apt-source` package:
-
-```bash
-sudo apt update && sudo apt install -y curl
-export ROS_APT_SOURCE_VERSION=$(curl -s https://api.github.com/repos/ros-infrastructure/ros-apt-source/releases/latest | grep -F "tag_name" | awk -F\" '{print $4}')
-curl -L -o /tmp/ros2-apt-source.deb \
-  "https://github.com/ros-infrastructure/ros-apt-source/releases/download/${ROS_APT_SOURCE_VERSION}/ros2-apt-source_${ROS_APT_SOURCE_VERSION}.$(. /etc/os-release && echo ${UBUNTU_CODENAME:-${VERSION_CODENAME}})_all.deb"
-sudo dpkg -i /tmp/ros2-apt-source.deb
-```
-
-**Step 4. Update and upgrade** (ROS packages are built against current Ubuntu libraries; skipping this can break the install):
-
-```bash
-sudo apt update
-sudo apt upgrade
-```
-
-**Step 5. Install ROS 2 and the development tools:**
-
-```bash
-sudo apt install -y ros-lyrical-desktop     # ROS, RViz2, rqt, demos. Use ros-lyrical-ros-base for no GUI
-sudo apt install -y ros-dev-tools           # colcon, rosdep, vcstool...
-sudo apt install -y ros-lyrical-rclcpp-lifecycle
-```
-
-**Step 6. Initialise rosdep:**
-
-```bash
-sudo rosdep init
-rosdep update
-```
-
-**Step 7. Source ROS in every new terminal.** Add it to `~/.bashrc` so you do not forget:
-
-```bash
-echo "source /opt/ros/lyrical/setup.bash" >> ~/.bashrc
-echo "export ROS_DOMAIN_ID=42" >> ~/.bashrc
-echo "export RMW_IMPLEMENTATION=rmw_fastrtps_cpp" >> ~/.bashrc
-source ~/.bashrc
-```
-
-Use the same `ROS_DOMAIN_ID` and `RMW_IMPLEMENTATION` as the containers if you want a native PC to talk to them.
-
-**Step 8. Create a workspace folder.** The rest of this guide uses `/ws`; natively use e.g. `~/ros2_ws` and replace `/ws` by that path:
-
-```bash
-mkdir -p ~/ros2_ws/src
-```
-
-To remove a native install later: `sudo apt remove ~nros-lyrical-* && sudo apt autoremove`, then remove `ros2-apt-source`.
-
----
-
-## 3. Verify the installation
-
-In **two terminals** (two `make shell`, or two native shells):
-
-```bash
-# terminal 1
-container$ ros2 run demo_nodes_cpp talker
-[INFO] [talker]: Publishing: 'Hello World: 1'
-[INFO] [talker]: Publishing: 'Hello World: 2'
-
-# terminal 2
-container$ ros2 run demo_nodes_py listener
-[INFO] [listener]: I heard: [Hello World: 1]
-```
-
-If the listener prints messages, C++ (`rclcpp`), Python (`rclpy`) and the middleware work. Stop both with `Ctrl+C`. In the Docker setup, `make net-test` does exactly this automatically.
-
-Also useful:
-
-```bash
-container$ ros2 doctor --report | less      # environment and network report
-container$ printenv | grep -E 'ROS|RMW'     # active ROS variables
-```
-
----
-
-## 4. First steps with the ros2 CLI (turtlesim)
-
-Optional but recommended before writing code: it teaches the CLI with something visible. Turtlesim is installed in the PC image.
-
-```bash
-# terminal 1
-container$ ros2 run turtlesim turtlesim_node        # a window with a turtle opens
-
-# terminal 2: drive it with the arrow keys
-container$ ros2 run turtlesim turtle_teleop_key
-
-# terminal 3: explore
-container$ ros2 node list                            # /turtlesim, /teleop_turtle
-container$ ros2 topic list -t                        # /turtle1/cmd_vel [geometry_msgs/msg/Twist] ...
-container$ ros2 topic echo /turtle1/pose             # live position
+container$ ros2 node list
+container$ ros2 topic list -t
+container$ ros2 topic echo /turtle1/pose
 container$ ros2 topic pub --rate 1 /turtle1/cmd_vel geometry_msgs/msg/Twist \
-           "{linear: {x: 2.0}, angular: {z: 1.8}}"   # the turtle drives in circles
-container$ ros2 service list
+           "{linear: {x: 2.0}, angular: {z: 1.8}}"     # drives in circles
 container$ ros2 service call /spawn turtlesim/srv/Spawn "{x: 2, y: 2, theta: 0.2, name: 'turtle2'}"
-container$ ros2 action list -t                       # /turtle1/rotate_absolute
 container$ ros2 action send_goal --feedback /turtle1/rotate_absolute \
            turtlesim/action/RotateAbsolute "{theta: 1.57}"
-container$ ros2 param list /turtlesim
 container$ ros2 param set /turtlesim background_r 150
-container$ ros2 run rqt_graph rqt_graph                # picture of the graph
+container$ ros2 run rqt_graph rqt_graph
 ```
 
-If no window opens, run `xhost +local:` on the host (`make up` does it for you) and check `DISPLAY` (see [TROUBLESHOOTING.md](TROUBLESHOOTING.md)).
+No window? See [TROUBLESHOOTING.md → GUI tools](TROUBLESHOOTING.md#gui-tools-rqt-rqt_graph-rviz2-gazebo).
 
 ---
 
-## 5. Create the workspace and the packages
+## 3. Create the packages
 
-We create three packages in `ros2_ws/src` (`/ws/src` in the container):
+Three learning packages. **Do not commit them** ([section 16](#16-clean-up)).
 
 ```
 ros2_ws/src/
-├── ros2_basics_interfaces/   ament_cmake   custom service and action definitions
-├── ros2_basics_cpp/    ament_cmake   C++ nodes: talker, listener, service server/client, lifecycle node
-└── ros2_basics_py/     ament_python  Python nodes: the same, plus action server/client and a launch file
+├── ros2_basics_interfaces/   ament_cmake    service and action definitions
+├── ros2_basics_cpp/          ament_cmake    C++: talker, listener, service, lifecycle
+└── ros2_basics_py/           ament_python   Python: the same, plus action and launch file
 ```
-
-> These packages are for learning only: they are not part of the repository, so create them in your own
-> `ros2_ws/src` and do not commit them (or delete them when you are done).
-
-Run in the container:
 
 ```bash
 container$ cd /ws/src
+container$ M="--maintainer-name Team2 --maintainer-email team2@example.com --license Apache-2.0"
 
-container$ ros2 pkg create ros2_basics_interfaces \
-    --build-type ament_cmake --license Apache-2.0
-
-container$ ros2 pkg create ros2_basics_cpp \
-    --build-type ament_cmake --license Apache-2.0 \
+container$ ros2 pkg create ros2_basics_interfaces --build-type ament_cmake $M
+container$ ros2 pkg create ros2_basics_cpp --build-type ament_cmake $M \
     --dependencies rclcpp rclcpp_lifecycle std_msgs ros2_basics_interfaces
-
-container$ ros2 pkg create ros2_basics_py \
-    --build-type ament_python --license Apache-2.0 \
+container$ ros2 pkg create ros2_basics_py --build-type ament_python $M \
     --dependencies rclpy std_msgs action_msgs ros2_basics_interfaces
+
+container$ rm -rf ros2_basics_interfaces/include ros2_basics_interfaces/src ros2_basics_cpp/include
 ```
 
-`ros2 pkg create` generates the skeleton: `package.xml`, `CMakeLists.txt` or `setup.py`, and empty folders. Open `package.xml` in each package and fill in `<description>` and `<maintainer>` (or pass `--maintainer-name "Your Name" --maintainer-email you@example.com` to `ros2 pkg create`: without `--maintainer-email` it derives an address from the name, and a name with characters like `:` gives an invalid e-mail that makes the build fail with `Invalid email`).
-
-The interfaces package does not need `include/` or `src/`:
-
-```bash
-container$ rm -rf /ws/src/ros2_basics_interfaces/include /ws/src/ros2_basics_interfaces/src
-```
-
-> Edit the files from the host with your usual editor (VS Code etc.): `ros2_ws/src` on the host is `/ws/src` in the container. Build and run inside the container.
+Always pass `--maintainer-email`: without it, a derived invalid address fails the build (`Invalid email`).
 
 ---
 
-## 6. Create a custom interfaces package
-
-Interface packages must be `ament_cmake`, even if only Python uses them.
-
-**Step 1. Create the definition files:**
+## 4. Custom interfaces
 
 ```bash
 container$ mkdir -p /ws/src/ros2_basics_interfaces/srv /ws/src/ros2_basics_interfaces/action
@@ -404,28 +167,26 @@ container$ mkdir -p /ws/src/ros2_basics_interfaces/srv /ws/src/ros2_basics_inter
 `ros2_basics_interfaces/srv/AddTwoInts.srv`:
 
 ```text
-# Request
 int64 a
 int64 b
 ---
-# Response
 int64 sum
 ```
 
 `ros2_basics_interfaces/action/Fibonacci.action`:
 
 ```text
-# Goal: how many numbers of the sequence to compute
+# Goal
 int32 order
 ---
-# Result: the full sequence
+# Result
 int32[] sequence
 ---
-# Feedback: the sequence computed so far
+# Feedback
 int32[] partial_sequence
 ```
 
-**Step 2. `ros2_basics_interfaces/CMakeLists.txt`** (replace the generated one):
+`ros2_basics_interfaces/CMakeLists.txt` (replace the generated one):
 
 ```cmake
 cmake_minimum_required(VERSION 3.10)
@@ -443,7 +204,7 @@ ament_export_dependencies(rosidl_default_runtime)
 ament_package()
 ```
 
-**Step 3. `ros2_basics_interfaces/package.xml`**: add these lines inside `<package>`, after `<buildtool_depend>ament_cmake</buildtool_depend>`:
+`ros2_basics_interfaces/package.xml`: add after `<buildtool_depend>ament_cmake</buildtool_depend>`:
 
 ```xml
   <buildtool_depend>rosidl_default_generators</buildtool_depend>
@@ -452,32 +213,19 @@ ament_package()
   <member_of_group>rosidl_interface_packages</member_of_group>
 ```
 
-**Step 4. Build and check:**
+Build and check:
 
 ```bash
-container$ cd /ws
-container$ colcon build --packages-select ros2_basics_interfaces
-container$ source install/setup.bash
+container$ cd /ws && colcon build --packages-select ros2_basics_interfaces && source install/setup.bash
 container$ ros2 interface show ros2_basics_interfaces/srv/AddTwoInts
 container$ ros2 interface show ros2_basics_interfaces/action/Fibonacci
 ```
 
 ---
 
-## 7. Publisher and subscriber with explicit QoS
+## 5. Publisher and subscriber with QoS
 
-Both languages use the same topic (`chatter`), type (`std_msgs/msg/String`) and QoS, so a C++ talker works with a Python listener and the other way round.
-
-QoS chosen (see [README.md §8](README.md#8-quality-of-service-qos)):
-
-| Policy | Value |
-|---|---|
-| History | `KEEP_LAST` |
-| Depth | 10 |
-| Reliability | `RELIABLE` |
-| Durability | `VOLATILE` |
-
-### 7.1 Python
+Topic `chatter`, type `std_msgs/msg/String`, QoS `KEEP_LAST` 10, `RELIABLE`, `VOLATILE` ([README §8](README.md#8-quality-of-service-qos)). Same in both languages, so they interoperate.
 
 `ros2_basics_py/ros2_basics_py/talker.py`:
 
@@ -568,8 +316,6 @@ if __name__ == '__main__':
     main()
 ```
 
-### 7.2 C++
-
 `ros2_basics_cpp/src/talker.cpp`:
 
 ```cpp
@@ -659,37 +405,11 @@ int main(int argc, char ** argv)
 }
 ```
 
-### 7.3 QoS experiments (do these, they explain most real bugs)
-
-After building (section 12), with `listener_py` (or `listener_cpp`) running:
-
-**a) Incompatible reliability.** Publish best-effort to a reliable subscriber:
-
-```bash
-container$ ros2 topic pub --qos-reliability best_effort /chatter std_msgs/msg/String "{data: 'lost'}"
-```
-
-The listener receives **nothing** and logs a warning similar to *"New publisher discovered on topic '/chatter', offering incompatible QoS. No messages will be received from it. Last incompatible policy: RELIABILITY"*. Now publish reliable:
-
-```bash
-container$ ros2 topic pub --qos-reliability reliable /chatter std_msgs/msg/String "{data: 'received'}"
-```
-
-**b) Durability (late joiners).** Change the talker's durability to `TRANSIENT_LOCAL`, keep the listener `VOLATILE`, start the talker, wait 5 s, then start the listener: it only gets new messages. Now set **both** to `TRANSIENT_LOCAL` and repeat: the listener first receives the last 10 messages (the depth) it missed. Finally, `VOLATILE` talker + `TRANSIENT_LOCAL` listener: incompatible, nothing arrives.
-
-**c) See the QoS of every endpoint:**
-
-```bash
-container$ ros2 topic info -v /chatter
-```
-
 ---
 
-## 8. Service server and client
+## 6. Service server and client
 
-Service `add_two_ints` of type `ros2_basics_interfaces/srv/AddTwoInts`.
-
-### 8.1 Python
+Service `add_two_ints`, type `ros2_basics_interfaces/srv/AddTwoInts`.
 
 `ros2_basics_py/ros2_basics_py/add_two_ints_server.py`:
 
@@ -777,9 +497,7 @@ if __name__ == '__main__':
     sys.exit(main())
 ```
 
-Note `call_async` + `spin_until_future_complete`: the client never blocks inside a callback, which is what avoids deadlocks ([README.md §14](README.md#14-executors-callbacks-and-threading)).
-
-### 8.2 C++
+`call_async` + `spin_until_future_complete` never blocks inside a callback, which avoids deadlocks ([README §14](README.md#14-executors-callbacks-and-threading)).
 
 `ros2_basics_cpp/src/add_two_ints_server.cpp`:
 
@@ -878,13 +596,11 @@ int main(int argc, char ** argv)
 
 ---
 
-## 9. Action server and client
+## 7. Action server and client
 
-Action `fibonacci` of type `ros2_basics_interfaces/action/Fibonacci`: computes the sequence one number per second, publishes feedback, can be canceled, rejects goals that are too large.
+Action `fibonacci`: one number per second, with feedback and cancellation; rejects `order` outside 1–50. Python only; for C++ follow the [official tutorial](https://docs.ros.org/en/lyrical/Tutorials/Intermediate/Writing-an-Action-Server-Client/Cpp.html) with the same type.
 
-The examples are in Python. For C++ (`rclcpp_action`), follow the official tutorial "Writing an action server and client (C++)" at <https://docs.ros.org/en/lyrical/Tutorials/Intermediate/Writing-an-Action-Server-Client/Cpp.html> using the same `ros2_basics_interfaces/action/Fibonacci` type; it is good practice for whoever implements the arm's motion action later.
-
-> Use `get_logger().warning(...)`, not `.warn(...)`: older tutorials use `.warn`, which no longer exists in Lyrical (`AttributeError: 'RcutilsLogger' object has no attribute 'warn'`) and crashes the node the first time that line runs.
+> Use `get_logger().warning(...)`. `.warn(...)` no longer exists in Lyrical and crashes the node.
 
 `ros2_basics_py/ros2_basics_py/fibonacci_server.py`:
 
@@ -1036,11 +752,9 @@ if __name__ == '__main__':
 
 ---
 
-## 10. Lifecycle node
+## 8. Lifecycle node
 
-A talker that only publishes while **Active**. It creates its publisher and timer in `configure`, starts publishing on `activate`, stops on `deactivate`, and releases everything on `cleanup`/`shutdown`.
-
-### 10.1 Python
+A talker that publishes on `lifecycle_chatter` only while **Active**: resources created on `configure`, publishing on `activate`, paused on `deactivate`, released on `cleanup`/`shutdown`.
 
 `ros2_basics_py/ros2_basics_py/managed_talker.py`:
 
@@ -1119,8 +833,6 @@ def main(args=None):
 if __name__ == '__main__':
     main()
 ```
-
-### 10.2 C++
 
 `ros2_basics_cpp/src/managed_talker.cpp`:
 
@@ -1216,11 +928,9 @@ int main(int argc, char ** argv)
 
 ---
 
-## 11. Build files (CMakeLists.txt, setup.py, package.xml)
+## 9. Build files
 
-### 11.1 `ros2_basics_cpp/CMakeLists.txt`
-
-Replace the generated file:
+### `ros2_basics_cpp/CMakeLists.txt` (replace the generated one)
 
 ```cmake
 cmake_minimum_required(VERSION 3.10)
@@ -1264,33 +974,13 @@ endif()
 ament_package()
 ```
 
-Every `.cpp` file must start with a license header, or `colcon test` fails the `copyright` and `cpplint` linters. The examples above leave it out to stay short; add it at the top of each file:
+- Executables must install to `lib/<package>`, or `ros2 run` cannot find them.
+- Use `target_link_libraries`; `ament_target_dependencies` (older tutorials) is deprecated.
+- For `make test` to pass: start every `.cpp` with an Apache-2.0 license header (`// Copyright 2026 SEA:ME Team 2` ...), and print `int64` with `PRId64`, never `long long`.
 
-```cpp
-// Copyright 2026 SEA:ME Team 2
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// ... (the rest of the standard Apache-2.0 header)
-```
+### `ros2_basics_py/setup.py` (edit the generated one)
 
-cpplint also rejects `long long`: print `int64` fields with `PRId64` from `<cinttypes>`, as the service examples do.
-
-Executables must be installed to `lib/<package>` or `ros2 run` will not find them. `ament_target_dependencies` (seen in older tutorials) is deprecated; use `target_link_libraries` with the exported targets as above.
-
-### 11.2 `ros2_basics_cpp/package.xml`
-
-`ros2 pkg create --dependencies ...` already added:
-
-```xml
-  <depend>rclcpp</depend>
-  <depend>rclcpp_lifecycle</depend>
-  <depend>std_msgs</depend>
-  <depend>ros2_basics_interfaces</depend>
-```
-
-### 11.3 `ros2_basics_py/setup.py`
-
-Edit the generated file: add the launch files to `data_files` and every node to `entry_points`:
+Add the launch files to `data_files` and every node to `console_scripts`:
 
 ```python
 from glob import glob
@@ -1312,7 +1002,7 @@ setup(
     package_data={'': ['py.typed']},
     install_requires=['setuptools'],
     zip_safe=True,
-    maintainer='SEA:ME Team 2',
+    maintainer='Team2',
     maintainer_email='team2@example.com',
     description='ROS 2 basics in Python: topics with QoS, service, action, lifecycle',
     license='Apache-2.0',
@@ -1335,11 +1025,11 @@ setup(
 )
 ```
 
-Replace `maintainer_email` with a real address. Every new Python node needs a line in `console_scripts`, then a rebuild. Keep the generated `extras_require={'test': ['pytest']}`: without it `colcon test` runs no tests for this package (`NO TESTS RAN`), so the flake8/pep257/mypy linters are silently skipped.
+Keep `extras_require`: without it `colcon test` silently skips the Python linters (`NO TESTS RAN`).
 
-### 11.4 `ros2_basics_py/package.xml`
+### `ros2_basics_py/package.xml`
 
-In addition to the generated `<depend>` lines, add the runtime dependencies of the launch file:
+Add the launch file's runtime dependencies:
 
 ```xml
   <exec_depend>launch</exec_depend>
@@ -1347,91 +1037,59 @@ In addition to the generated `<depend>` lines, add the runtime dependencies of t
   <exec_depend>ros2_basics_cpp</exec_depend>
 ```
 
-### 11.5 Final layout
-
-```
-ros2_ws/src/
-├── ros2_basics_interfaces/
-│   ├── CMakeLists.txt
-│   ├── LICENSE                    (generated by ros2 pkg create --license)
-│   ├── package.xml
-│   ├── srv/AddTwoInts.srv
-│   └── action/Fibonacci.action
-├── ros2_basics_cpp/
-│   ├── CMakeLists.txt
-│   ├── LICENSE
-│   ├── package.xml
-│   └── src/                       (every .cpp starts with the Apache-2.0 header, see 11.1)
-│       ├── talker.cpp
-│       ├── listener.cpp
-│       ├── add_two_ints_server.cpp
-│       ├── add_two_ints_client.cpp
-│       └── managed_talker.cpp
-└── ros2_basics_py/
-    ├── LICENSE
-    ├── package.xml
-    ├── setup.py
-    ├── setup.cfg
-    ├── resource/ros2_basics_py
-    ├── launch/basics.launch.py
-    ├── test/                      (generated lint tests: copyright, flake8, mypy, pep257, xmllint)
-    └── ros2_basics_py/
-        ├── __init__.py
-        ├── py.typed               (generated in Lyrical; marks the package as typed for mypy)
-        ├── talker.py
-        ├── listener.py
-        ├── add_two_ints_server.py
-        ├── add_two_ints_client.py
-        ├── fibonacci_server.py
-        ├── fibonacci_client.py
-        └── managed_talker.py
-```
-
-The `include/ros2_basics_cpp/` folder that `ros2 pkg create` generates can be deleted: these nodes have no headers.
+(`ros2_basics_cpp/package.xml` already has its dependencies from `ros2 pkg create`.)
 
 ---
 
-## 12. Build and run everything
+## 10. Build and run
 
-### 12.1 Build
-
-```bash
-container$ cd /ws
-container$ rosdep install --from-paths src --ignore-src -y   # or, from the host: make run CMD='rosdep install --from-paths src --ignore-src -y'
-container$ colcon build                                      # or, from the host: make build
-container$ source install/setup.bash
-```
-
-- **Always build from the workspace root** (`/ws`), never from inside `src/`.
-- **After every build, source `install/setup.bash`** in each terminal where you run nodes (new `make shell` terminals do it automatically if `install/` exists).
-- On the Jetson: `colcon build --parallel-workers 2` (4 GB RAM).
-- Build one package and the ones it depends on: `colcon build --packages-up-to ros2_basics_py`.
-- Our images use `--symlink-install` by default, so editing a `.py` file does **not** need a rebuild. Adding a new node (new `entry_points` line) does.
-- If the build state gets confused: `rm -rf build install log` (or `make clean` from the host) and build again.
-
-Check what got installed:
+### Build
 
 ```bash
+container$ cd /ws                     # always build from the workspace root
+container$ colcon build               # or from the host: make build
+container$ source install/setup.bash  # in every terminal, after every build
 container$ ros2 pkg executables ros2_basics_cpp
 container$ ros2 pkg executables ros2_basics_py
 ```
 
-### 12.2 Run the topic examples
+- `--symlink-install` is on by default: editing a `.py` needs no rebuild, adding a node does.
+- One package and its dependencies: `colcon build --packages-up-to ros2_basics_py`.
+- Confused build: `make clean`, then build again.
 
-Each command in its own terminal (`make shell`):
+Each `ros2 run` below in its own `make shell`.
+
+### Topics
 
 ```bash
 container$ ros2 run ros2_basics_cpp talker
-container$ ros2 run ros2_basics_py listener        # C++ → Python
-```
-
-Try every combination (Python talker → C++ listener, two listeners at once, two talkers). Change the rate without recompiling:
-
-```bash
+container$ ros2 run ros2_basics_py listener       # C++ → Python works
 container$ ros2 run ros2_basics_cpp talker --ros-args -p publish_rate_hz:=5.0
 ```
 
-### 12.3 Run the service examples
+Try other combinations (Python → C++, two listeners).
+
+### QoS experiments
+
+With a listener running:
+
+```bash
+container$ ros2 topic pub --qos-reliability best_effort /chatter std_msgs/msg/String "{data: 'lost'}"
+container$ ros2 topic pub --qos-reliability reliable    /chatter std_msgs/msg/String "{data: 'received'}"
+container$ ros2 topic info -v /chatter            # QoS of every endpoint
+```
+
+The `best_effort` message never arrives: the listener warns about incompatible QoS (`RELIABILITY`).
+
+Durability: set the talker to `TRANSIENT_LOCAL` and start the listener 5 s later:
+
+| Talker | Listener | Result |
+|---|---|---|
+| `TRANSIENT_LOCAL` | `VOLATILE` | Only new messages |
+| `TRANSIENT_LOCAL` | `TRANSIENT_LOCAL` | The last 10 missed messages first |
+| `VOLATILE` | `TRANSIENT_LOCAL` | Incompatible: nothing |
+
+### Services
 
 ```bash
 container$ ros2 run ros2_basics_cpp add_two_ints_server
@@ -1440,85 +1098,47 @@ container$ ros2 run ros2_basics_cpp add_two_ints_client 40 2      # Result: 42
 container$ ros2 service call /add_two_ints ros2_basics_interfaces/srv/AddTwoInts "{a: 7, b: 8}"
 ```
 
-### 12.4 Run the action examples
+### Actions
 
 ```bash
 container$ ros2 run ros2_basics_py fibonacci_server
-container$ ros2 run ros2_basics_py fibonacci_client 8             # feedback every second, then the result
-container$ ros2 run ros2_basics_py fibonacci_client 100           # rejected (order > 50)
-container$ ros2 action send_goal --feedback /fibonacci ros2_basics_interfaces/action/Fibonacci "{order: 5}"
+container$ ros2 run ros2_basics_py fibonacci_client 8             # feedback every second, then result
+container$ ros2 run ros2_basics_py fibonacci_client 100           # rejected
+container$ ros2 action send_goal --feedback /fibonacci ros2_basics_interfaces/action/Fibonacci "{order: 30}"
 ```
 
-To test **cancellation**, start a long goal with the CLI (`{order: 30}`) and press `Ctrl+C` in that terminal: `ros2 action send_goal` cancels the goal, and the server logs `Goal canceled`.
+Press `Ctrl+C` during the last one: the goal is canceled (`Goal canceled` on the server).
 
-### 12.5 Run the lifecycle example
+### Lifecycle
 
 ```bash
-# terminal 1
-container$ ros2 run ros2_basics_cpp managed_talker               # or ros2_basics_py managed_talker
-
-# terminal 2: watch the output topic
+container$ ros2 run ros2_basics_cpp managed_talker
 container$ ros2 topic echo /lifecycle_chatter
 
-# terminal 3: drive the state machine
-container$ ros2 lifecycle nodes                                  # /managed_talker_cpp
-container$ ros2 lifecycle get /managed_talker_cpp                # unconfigured [1]
-container$ ros2 lifecycle list /managed_talker_cpp               # available transitions
-container$ ros2 lifecycle set /managed_talker_cpp configure      # → inactive: nothing published yet
-container$ ros2 lifecycle set /managed_talker_cpp activate       # → active: terminal 2 starts printing
-container$ ros2 lifecycle set /managed_talker_cpp deactivate     # → inactive: printing stops
-container$ ros2 lifecycle set /managed_talker_cpp activate       # → active again
-container$ ros2 lifecycle set /managed_talker_cpp deactivate
-container$ ros2 lifecycle set /managed_talker_cpp cleanup        # → unconfigured
-container$ ros2 lifecycle set /managed_talker_cpp shutdown       # → finalized
+container$ ros2 lifecycle get /managed_talker_cpp                 # unconfigured
+container$ ros2 lifecycle set /managed_talker_cpp configure       # topic exists, nothing published
+container$ ros2 lifecycle set /managed_talker_cpp activate        # messages flow
+container$ ros2 lifecycle set /managed_talker_cpp deactivate      # messages stop
+container$ ros2 lifecycle set /managed_talker_cpp cleanup         # unconfigured
+container$ ros2 lifecycle set /managed_talker_cpp shutdown        # finalized
 ```
 
-Things to observe:
+`ros2 lifecycle list /managed_talker_cpp` shows the valid transitions; invalid ones are refused. `ros2 topic echo /managed_talker_cpp/transition_event` shows each change.
 
-- Before `configure`, `ros2 topic list` does not show `/lifecycle_chatter`.
-- After `configure` the topic exists but no data flows.
-- An invalid transition (e.g. `activate` from `unconfigured`) is refused.
-- Watch the transitions being announced: `ros2 topic echo /managed_talker_cpp/transition_event`.
-
-### 12.6 Run the tests (linters)
-
-`ros2 pkg create` adds the standard ament linters to every package, and they are what reviewers and CI check before a merge. Run them after every change:
+### Tests (linters)
 
 ```bash
-host$ make build && make test                         # colcon test for every package
-host$ make run CMD='colcon test-result --all'         # one line per test file
-host$ make run CMD='colcon test-result --verbose'     # only the failures, with the message
+host$ make build && make test                                   # all packages, with a summary
+host$ make run CMD='colcon test-result --verbose'               # only the failures
 ```
 
-Inside the container: `colcon test --packages-select ros2_basics_py` tests one package; the full pytest output is in `/ws/log/latest_test/<package>/stdout_stderr.log`.
-
-The expected result for the three example packages:
-
-```
-Summary: 33 tests, 0 errors, 0 failures, 6 skipped
-```
-
-The 6 skipped are normal: `cppcheck` disables itself with the cppcheck version in the image, and the generated Python `test_copyright.py` is marked as skipped.
-
-What each linter checks:
-
-| Package | Linter | Checks |
-|---|---|---|
-| C++ | `copyright` | Every source file starts with a license header |
-| C++ | `cpplint` | Google C++ style (header, `long` types, includes...) |
-| C++ | `uncrustify` | Formatting; `ament_uncrustify --reformat src/` fixes it for you |
-| C++ | `lint_cmake`, `xmllint` | `CMakeLists.txt` and `package.xml` |
-| Python | `flake8` | PEP 8 and import order: standard library, then third party (incl. `rclpy`, your own packages, `std_msgs`) sorted alphabetically |
-| Python | `pep257` | Docstrings: one-line docstrings end with a period |
-| Python | `mypy`, `xmllint` | Types; `package.xml` |
-
-If a package reports `NO TESTS RAN`, its `setup.py` lost the `extras_require` test entry (see 11.3). The errors found while testing this guide and their fixes are listed in [TROUBLESHOOTING.md → Tests and linters](TROUBLESHOOTING.md#tests-and-linters-colcon-test).
+A few skipped tests are normal. Failures and their fixes: [TROUBLESHOOTING.md → Tests and linters](TROUBLESHOOTING.md#tests-and-linters-colcon-test).
 
 ---
 
-## 13. Launch file
+## 11. Launch file
 
-Starts the C++ talker, the Python listener, the service server and the action server together.
+Starts the C++ talker, Python listener, service server and action server together.
 
 `ros2_basics_py/launch/basics.launch.py`:
 
@@ -1548,179 +1168,101 @@ def generate_launch_description():
 ```
 
 ```bash
-container$ mkdir -p /ws/src/ros2_basics_py/launch     # then create the file above
 container$ cd /ws && colcon build --packages-select ros2_basics_py && source install/setup.bash
 container$ ros2 launch ros2_basics_py basics.launch.py
 container$ ros2 launch ros2_basics_py basics.launch.py publish_rate_hz:=4.0
 container$ ros2 launch ros2_basics_py basics.launch.py --show-args
 ```
 
-`Ctrl+C` stops all nodes started by the launch file.
-
 ---
 
-## 14. Parameters
-
-The talkers declare `publish_rate_hz`. Practice the parameter tools:
+## 12. Parameters
 
 ```bash
 container$ ros2 run ros2_basics_py talker
 container$ ros2 param list /talker_py
 container$ ros2 param get /talker_py publish_rate_hz
-container$ ros2 param describe /talker_py publish_rate_hz
 container$ ros2 param dump /talker_py > /ws/talker_params.yaml
 container$ ros2 run ros2_basics_py talker --ros-args --params-file /ws/talker_params.yaml
 ```
 
-`ros2 param set /talker_py publish_rate_hz 5.0` changes the stored value, but our talker reads it only at startup, so the rate does not change. To react at runtime, register a callback with `add_on_set_parameters_callback` (same name in Python and C++) and recreate the timer there. Good exercise.
+`ros2 param set` changes the value, but the talker only reads it at startup. Exercise: react at runtime with `add_on_set_parameters_callback` and recreate the timer.
 
 ---
 
-## 15. Inspect the system: ros2 CLI and rqt_graph
+## 13. Inspect the system
 
-Start the launch file from section 13, then explore in another terminal.
-
-### Nodes
+Run the launch file (section 11), then:
 
 ```bash
 container$ ros2 node list
-container$ ros2 node info /listener_py           # its subscriptions, publishers, services, actions
-```
-
-### Topics
-
-```bash
-container$ ros2 topic list -t                    # names and types
-container$ ros2 topic info -v /chatter           # publishers, subscribers and their QoS
-container$ ros2 topic echo /chatter              # print messages
-container$ ros2 topic echo /chatter --once       # print one and exit
-container$ ros2 topic hz /chatter                # publish rate
-container$ ros2 topic bw /chatter                # bandwidth
+container$ ros2 node info /listener_py
+container$ ros2 topic list -t
+container$ ros2 topic echo /chatter --once
+container$ ros2 topic hz /chatter
 container$ ros2 topic pub --once /chatter std_msgs/msg/String "{data: 'from CLI'}"
-```
-
-### Services and actions
-
-```bash
 container$ ros2 service list -t
-container$ ros2 service type /add_two_ints
-container$ ros2 action list -t
-container$ ros2 action info /fibonacci           # its clients and servers
-```
-
-### Interfaces
-
-```bash
-container$ ros2 interface show std_msgs/msg/String
+container$ ros2 action info /fibonacci
 container$ ros2 interface package ros2_basics_interfaces
-```
-
-### rqt_graph (PC only)
-
-```bash
-container$ ros2 run rqt_graph rqt_graph       # or: rqt --standalone rqt_graph
-```
-
-- Press the refresh button after starting new nodes.
-- Choose **"Nodes/Topics (all)"** in the top-left menu to see every topic.
-- Uncheck **"Hide: Dead sinks / Leaf topics"** to see topics nobody subscribes to.
-- Hidden by default: the `/rosout` logging topic and the CLI's own nodes.
-
-Save a screenshot of the graph for the issue: **File → Save as** (or a normal screenshot). A good place for it in the repo is `ROS2/images/`.
-
-### rqt (other plugins)
-
-```bash
-container$ rqt
-```
-
-Useful plugins: *Topics → Topic Monitor*, *Services → Service Caller*, *Configuration → Parameter Reconfigure*, *Logging → Console*, *Visualization → Plot*.
-
-### Logs
-
-Every node writes to the console and to `~/.ros/log/`. Change the verbosity per node:
-
-```bash
 container$ ros2 run ros2_basics_cpp talker --ros-args --log-level debug
 ```
 
+GUIs (PC only):
+
+```bash
+container$ ros2 run rqt_graph rqt_graph   # refresh after new nodes; "Nodes/Topics (all)" shows every topic
+container$ rqt                            # Topic Monitor, Service Caller, Console, Plot...
+```
+
 ---
 
-## 16. Run across two machines (PC and Jetson)
+## 14. PC and Jetson together
 
-Requirements: both on the same network (same subnet), same `ROS_DOMAIN_ID` and `RMW_IMPLEMENTATION` in `docker/.env`, both containers up.
+Requirements: same subnet, same `ROS_DOMAIN_ID` and `RMW_IMPLEMENTATION` in both `docker/.env`, both machines `make up`.
 
-**Step 1. Basic connectivity:**
+**1. Connectivity test:**
 
 ```bash
 host$ ping <jetson-ip>
-```
-
-**Step 2. Project test** (from `docker/` on each machine):
-
-```bash
 nano$ make net-talk
-host$ make net-listen         # PASS if it hears the Jetson's talker
+host$ make net-listen          # PASS
 ```
 
-Then the other way round.
+Then swap the roles.
 
-**Step 3. Our nodes across machines** (after building the workspace on both; `git pull` on the Nano so it has the same code):
+**2. Your nodes across machines** (same code on both: `git pull`). The Jetson's `make build` only builds the arm packages, so build the example there by hand:
 
 ```bash
 nano$ make shell
-container$ ros2 run ros2_basics_cpp talker             # on the Jetson
+container$ colcon build --packages-up-to ros2_basics_cpp --parallel-workers 1 && source install/setup.bash
+container$ ros2 run ros2_basics_cpp talker
 
 host$ make shell
-container$ ros2 run ros2_basics_py listener            # on the PC
-container$ ros2 run rqt_graph rqt_graph                 # shows the Jetson's node too
+container$ ROS_DOMAIN_ID=42 ros2 run ros2_basics_py listener     # the Jetson's domain
+container$ ROS_DOMAIN_ID=42 ros2 run rqt_graph rqt_graph
 ```
 
-If nothing arrives: check the firewall (`sudo ufw status`; allow UDP between the machines), multicast (set `ROS_STATIC_PEERS` with the other machine's IP in `docker/compose.yml`), and the domain/RMW values. More in [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
+Nothing arrives? Check the firewall (UDP between the machines), the domain/RMW values, or set `ROS_STATIC_PEERS` in `docker/compose.yml`. See [TROUBLESHOOTING.md → Between machines](TROUBLESHOOTING.md#communication-between-machines-pc--jetson).
 
 ---
 
-## 17. Record and replay with rosbag2
+## 15. Record and replay (rosbag2)
 
 ```bash
-container$ ros2 bag record -s mcap -o /ws/bags/chatter_test /chatter     # Ctrl+C to stop
+container$ ros2 bag record -s mcap -o /ws/bags/chatter_test /chatter    # Ctrl+C to stop
 container$ ros2 bag info /ws/bags/chatter_test
-container$ ros2 bag play /ws/bags/chatter_test                          # republishes the messages
-container$ ros2 bag record -s mcap -a -o /ws/bags/everything            # all topics (careful with images)
+container$ ros2 bag play /ws/bags/chatter_test
 ```
 
-`ros2_ws/bags` is ignored by git; bags are not committed. On the PC, open bags in PlotJuggler (`plotjuggler4`) to plot numeric fields.
+`ros2_ws/bags` is not committed. On the PC, plot numeric fields with `plotjuggler4`.
 
 ---
 
-## 18. Push the examples to the repo
+## 16. Clean up
 
-The arm packages live in `ros2_ws/src/` and **are** tracked by git; the tutorial packages are not. Generated folders (`ros2_ws/build`, `install`, `log`, `bags`) are ignored by the root `.gitignore`.
-
-**Step 1. Check that everything builds and the linters pass:**
+The tutorial packages are for learning only. When done:
 
 ```bash
-host$ make build
-host$ make test
+host$ rm -rf ros2_ws/src/ros2_basics_interfaces ros2_ws/src/ros2_basics_cpp ros2_ws/src/ros2_basics_py
+host$ make clean
 ```
-
-**Step 2. Commit on the issue's branch.** The commit hook (`.githooks/commit-msg`) requires the format `<type>(<scope>): <description>` with type one of `fix feat test style docs build ops chore perf refactor`:
-
-```bash
-host$ git checkout 18-ros-2-basics-topics-services-actions-lifecycle
-host$ git add ros2_ws/src
-host$ git status                           # make sure no build/ install/ log/ folders are staged
-host$ git commit -m "feat(ros2): add ROS 2 basics examples (QoS pub/sub, service, action, lifecycle)"
-host$ git push
-```
-
-**Step 3. Open the pull request** and tick the issue's checklist:
-
-| Issue #18 item | Where it is done |
-|---|---|
-| Publisher and subscriber with explicit QoS (C++ and Python) | Section 7: `talker`/`listener` in `ros2_basics_cpp` and `ros2_basics_py` |
-| Service and action server and client | Sections 8 and 9 |
-| Lifecycle node with configure, activate, deactivate transitions | Section 10, exercised in 12.5 |
-| Inspect with ros2 topic, node and rqt_graph; push examples to the repo | Sections 15 and 18 |
-
-The issue says **every member** builds these patterns once: each member can follow this guide in their own copy and compare their result with the committed examples.
