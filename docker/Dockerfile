@@ -247,6 +247,7 @@ RUN apt-get update \
         ros-${ROS_DISTRO}-rqt-controller-manager \
         ros-${ROS_DISTRO}-foxglove-bridge \
         ros-${ROS_DISTRO}-turtlesim \
+        liburdfdom-tools \
  && rm -rf /var/lib/apt/lists/*
 
 # --- 5. PlotJuggler 4 (github.com/PlotJuggler/PlotJuggler) -------------------------------------

@@ -1,0 +1,43 @@
+<?xml version="1.0"?>
+<!--
+  Gazebo (gz sim) additions to the braco model: a gz_ros2_control system with a position
+  command interface on joint1..joint6, so the arm holds its pose instead of falling under
+  gravity. Included by braco.urdf.xacro only with gazebo:=true; the real arm never sees it.
+
+  Quick viewer for issue #25. The full simulation bringup (sim:=true in braco_bringup,
+  /arm/command bridged to the controllers) is issues #34/#37.
+-->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- One arm joint, position-controlled, starting at 0 (the zero pose). -->
+  <xacro:macro name="gazebo_joint" params="n">
+    <joint name="joint${n}">
+      <command_interface name="position"/>
+      <state_interface name="position">
+        <param name="initial_value">0.0</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+    </joint>
+  </xacro:macro>
+
+  <xacro:macro name="braco_gazebo" params="controllers">
+    <ros2_control name="GazeboSimSystem" type="system">
+      <hardware>
+        <plugin>gz_ros2_control/GazeboSimSystem</plugin>
+      </hardware>
+      <xacro:gazebo_joint n="1"/>
+      <xacro:gazebo_joint n="2"/>
+      <xacro:gazebo_joint n="3"/>
+      <xacro:gazebo_joint n="4"/>
+      <xacro:gazebo_joint n="5"/>
+      <xacro:gazebo_joint n="6"/>
+    </ros2_control>
+
+    <gazebo>
+      <plugin filename="gz_ros2_control-system" name="gz_ros2_control::GazeboSimROS2ControlPlugin">
+        <parameters>${controllers}</parameters>
+      </plugin>
+    </gazebo>
+  </xacro:macro>
+
+</robot>
