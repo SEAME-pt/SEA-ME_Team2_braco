@@ -13,7 +13,7 @@
 #   mk/system.mk   up down restart status logs
 #   mk/arm.mk      zero park rest resume temps bench            (Jetson)
 #   mk/dev.mk      shell run build test web clean
-#   mk/setup.mk    setup doctor image boot-on boot-off jetson-image reset
+#   mk/setup.mk    setup doctor image boot-on boot-off jetson-image re
 #   mk/net.mk      net-test net-talk net-listen
 #   mk/ci.mk       ci ci-image ci-ros lint format format-check
 
@@ -30,5 +30,5 @@ include mk/ci.mk
 .PHONY: help
 help: ## Show this help
 	@printf 'braco - this machine: ROLE=%s (system: %s, image %s)\n' "$(ROLE)" "$(SYSTEM)" "$(IMAGE)"
-	@printf 'usage: make <command> [ROLE=pc|jetson] [GPU=nvidia|dri] [CMD=...] [S=...] [PARK=1] [FORCE=1]\n'
+	@printf 'usage: make <command> [ROLE=pc|jetson] [GPU=nvidia|dri|none] [CMD=...] [S=...] [PARK=1] [FORCE=1]\n'
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z0-9_-]+:.*## / {printf "  \033[36m%-13s\033[0m %s\n", $$1, $$2} /^##@/ {printf "\n\033[1m%s\033[0m\n", substr($$0, 5)}' $(MAKEFILE_LIST)

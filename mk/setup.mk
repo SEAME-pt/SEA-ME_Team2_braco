@@ -1,10 +1,10 @@
-# mk/setup.mk - preparing a machine: setup doctor image boot-on boot-off jetson-image reset.
+# mk/setup.mk - preparing a machine: setup role doctor image boot-on boot-off jetson-image re fclean.
 
 IMAGE_ARGS ?=
 NANO       ?=
 JETSON_TAG := $(IMAGE_TAG)-arm64
 
-.PHONY: setup doctor image boot-on boot-off jetson-image reset
+.PHONY: setup role doctor image boot-on boot-off jetson-image re fclean
 
 ##@ Setup (once per machine)
 
@@ -43,27 +43,59 @@ jetson-image: _role ## On a PC: build the Jetson image (arm64 via QEMU, slow); N
 	  echo "done. On the Nano: make up"; \
 	else echo "built $(IMAGE_PREFIX)/jetson:$(JETSON_TAG). Copy it with: make jetson-image NANO=user@host"; fi
 
-reset: _role ## Full reset: clean + remove the containers, cache volumes and images (FORCE=1 skips the prompt)
-	$(call confirm,Remove the containers, volumes, images and build output of ROLE=$(ROLE)?)
+# Only this machine's image and containers (its COMPOSE_PROFILES): the PC never touches the Jetson's, and back.
+re: _role ## Rebuild from zero: remove containers, cache volumes, image and build output, then make up (FORCE=1: no prompt)
+	$(call confirm,Remove the containers, volumes, image and build output of ROLE=$(ROLE) and rebuild them?)
 	$(COMPOSE) down -v --remove-orphans --rmi all
 	rm -rf $(WS_DIR)/build $(WS_DIR)/install $(WS_DIR)/log $(HOME)/.ros/log
+	@$(MAKE) --no-print-directory up
+
+# EVERY container, image, volume and network on this machine, braco's or not (other projects too). No rebuild:
+# make up afterwards. The default networks (bridge, host, none) cannot be removed: those errors are hidden.
+fclean: ## Remove ALL Docker containers, images, volumes and networks of this machine, not only braco's (FORCE=1: no prompt)
+	$(call confirm,Remove ALL Docker containers + images + volumes + networks on this machine (not only braco)?)
+	-docker ps -qa | xargs -r docker stop
+	-docker ps -qa | xargs -r docker rm
+	-docker images -qa | xargs -r docker rmi -f
+	-docker volume ls -q | xargs -r docker volume rm
+	-docker network ls -q | xargs -r docker network rm 2>/dev/null
+
+# ---- dev or jetson: asked once, kept in docker/.env as COMPOSE_PROFILES (pc or jetson) ------------
+# Enter keeps the detected machine. Without a terminal (boot service, CI) or with ROLE=... it does not ask.
+define ASK_ROLE
+role=$(ROLE); \
+if [ "$(origin ROLE)" != "command line" ] && [ -t 0 ]; then \
+  printf 'Is this machine the dev PC or the jetson? [dev/jetson] (Enter: %s) ' "$(if $(filter jetson,$(ROLE)),jetson,dev)"; \
+  read -r ans; case "$$ans" in "") ;; dev|pc) role=pc ;; jetson) role=jetson ;; \
+    *) echo "answer dev or jetson" >&2; exit 1 ;; esac; \
+fi
+endef
+
+role: ## Ask again whether this machine is the dev PC or the jetson (saved in docker/.env; make up then uses it)
+	@[ -f $(ENV_FILE) ] || { $(MAKE) --no-print-directory $(ENV_FILE); exit $$?; }
+	@$(ASK_ROLE); \
+	sed -i "s/^COMPOSE_PROFILES=.*/COMPOSE_PROFILES=$$role/" $(ENV_FILE); \
+	echo "saved: this machine is $$( [ $$role = pc ] && echo 'the dev PC (COMPOSE_PROFILES=pc)' || echo 'the jetson (COMPOSE_PROFILES=jetson)')"; \
+	[ $$role = "$(ROLE)" ] || echo "make down first if the other machine's containers are running here, then make up"
 
 # ---- docker/.env, created once from .env.example with this machine's ids -----------------------
+# Made before any command (MACHINE_STAMP in mk/config.mk): make then starts over and reads the answer.
 $(ENV_FILE): $(ENV_EXAMPLE)
 	@if [ "$$(id -u)" = 0 ]; then echo "Run make as your normal user, not root/sudo (UID 0 would break the image's user)." >&2; exit 1; fi
 	@if [ -f $@ ]; then echo "$(ENV_EXAMPLE) is newer than $@: compare them (touch $@ to silence this)"; touch $@; else \
+	  $(ASK_ROLE); \
 	  sed -e "s/^USER_UID=.*/USER_UID=$$(id -u)/" -e "s/^USER_GID=.*/USER_GID=$$(id -g)/" \
-	      -e "s/^COMPOSE_PROFILES=.*/COMPOSE_PROFILES=$(ROLE)/" $(ENV_EXAMPLE) > $@.tmp && \
+	      -e "s/^COMPOSE_PROFILES=.*/COMPOSE_PROFILES=$$role/" $(ENV_EXAMPLE) > $@.tmp && \
 	  for pair in DIALOUT_GID:dialout VIDEO_GID:video RENDER_GID:render I2C_GID:i2c INPUT_GID:input; do \
 	    var=$${pair%%:*}; grp=$${pair##*:}; gid=$$(getent group $$grp 2>/dev/null | cut -d: -f3); \
 	    if [ -n "$$gid" ]; then sed "s/^$$var=.*/$$var=$$gid/" $@.tmp > $@.tmp2 && mv $@.tmp2 $@.tmp; \
-	    elif [ "$(ROLE)" = jetson ] && { [ $$grp = i2c ] || [ $$grp = input ]; }; then \
+	    elif [ "$$role" = jetson ] && { [ $$grp = i2c ] || [ $$grp = input ]; }; then \
 	      echo "warning: no '$$grp' group on this host - $$var left empty, the real container cannot use the device (see make doctor)" >&2; fi; \
 	  done; mv $@.tmp $@; \
-	  echo "created $@ for ROLE=$(ROLE) (uid $$(id -u), gid $$(id -g))"; fi
+	  echo "created $@ for ROLE=$$role (uid $$(id -u), gid $$(id -g))"; fi
 
 # ---- make doctor (QUIET=1 prints only the problems: what `make up` uses) ------------------------
-DOCTOR_RUN = ROLE=$(ROLE) ARCH=$(ARCH) UNAME_M=$(UNAME_M) IS_JETSON=$(IS_JETSON) MYCOBOT_PORT=$(MYCOBOT_PORT) \
+DOCTOR_RUN = ROLE=$(ROLE) GPU=$(GPU_FILE) ARCH=$(ARCH) UNAME_M=$(UNAME_M) IS_JETSON=$(IS_JETSON) MYCOBOT_PORT=$(MYCOBOT_PORT) \
              ENV_FILE=$(ENV_FILE) WS_DIRS="$(WS_DIRS)" PROJECT_FILES="$(PROJECT_FILES)" sh -c "$$DOCTOR_SH"
 
 define DOCTOR_SH
@@ -103,6 +135,10 @@ case "$$ROLE" in
   pc)
     if [ -n "$$IS_JETSON" ]; then warn "this host looks like a Jetson but ROLE=pc: did you mean ROLE=jetson?"; fi
     if [ -n "$$DISPLAY" ] && [ -d /tmp/.X11-unix ]; then ok "DISPLAY=$$DISPLAY and X11 socket directory present"; else ok "no DISPLAY: RViz2 and Gazebo windows will not open (the page still works)"; fi
+    if [ "$$GPU" = nvidia ]; then
+      if docker info 2>/dev/null | grep -qiE 'Runtimes:.*nvidia|cdi: nvidia.com/gpu'; then ok "NVIDIA container runtime (GPU=nvidia, the PC default)"
+      else bad "docker has no NVIDIA runtime: install nvidia-container-toolkit (sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart docker), or GPU=dri / GPU=none"; fi
+    fi
     ;;
   jetson)
     if [ "$$ARCH" = arm64 ]; then ok "arm64 host"; else bad "host is $$UNAME_M, not arm64: the real arm runs on the Jetson (build its image here with make jetson-image)"; fi
