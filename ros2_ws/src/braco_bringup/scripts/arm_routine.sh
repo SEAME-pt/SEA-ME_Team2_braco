@@ -26,6 +26,8 @@ WEB_PORT=${WEB_PORT:-8000}
 SIM=${SIM:-false}
 if [ "$SIM" = true ]; then ARM_SOURCE=gazebo; else ARM_SOURCE=ros; fi
 
+# Reached through the trap below, which shellcheck does not follow (SC2317 before 0.11, SC2329 from 0.11).
+# shellcheck disable=SC2317,SC2329
 on_stop() {
     trap - TERM INT
     echo "arm_routine: stopping"

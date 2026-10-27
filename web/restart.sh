@@ -31,6 +31,8 @@ PY
 }
 
 old=$(pids)
+# $old and $(pids) unquoted on purpose: one PID per line, split into one kill argument each.
+# shellcheck disable=SC2086,SC2046
 if [ -n "$old" ]; then
     kill -TERM $old 2>/dev/null
     for _ in 1 2 3 4 5; do [ -z "$(pids)" ] && break; sleep 1; done
