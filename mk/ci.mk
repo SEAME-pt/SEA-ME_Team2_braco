@@ -2,9 +2,9 @@
 #
 #   host job   make ci       format check, lint, web page tests
 #   ros job    make ci-ros   rosdep, colcon build and colcon test of ros2_ws/src (make ci-image builds its image)
-#              make coverage the GoogleTests only, built with --coverage, then a gcovr report (same image)
 #              make cppcheck cppcheck on the C++ packages (same image)
 #              make tidy     clang-tidy on the C++ packages, from the ci-ros build (same image)
+#   coverage   make coverage the GoogleTests only, built with --coverage, then a gcovr report (same image)
 #
 # No robot and no display needed.
 

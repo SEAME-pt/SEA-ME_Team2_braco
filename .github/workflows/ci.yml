@@ -1,10 +1,11 @@
-# CI for every PR and every push to main (issue #16). Both jobs call the Makefile, so a failure can be
+# CI for every PR and every push to main (issue #16). Every job calls the Makefile, so a failure can be
 # reproduced locally with the same command:
 #
 #   host  make ci        (lint, web page tests; no robot, no docker image)
 #   ros   make ci-ros    (rosdep, colcon build, colcon test of ros2_ws/src)
 #         make cppcheck  (cppcheck on the C++ packages, same image)
 #         make tidy      (clang-tidy on the C++ packages, from the ci-ros build)
+#   coverage  make coverage  (the GoogleTests built with --coverage, gcovr report; same image as ros)
 #
 # The Jetson (arm64) image is not built here: a QEMU build is too slow, use make jetson-image by hand.
 name: CI
@@ -113,3 +114,55 @@ jobs:
       - name: make tidy
         if: ${{ !cancelled() && steps.image.outcome == 'success' }}
         run: make tidy CI_IMAGE=${{ env.CI_IMAGE }}
+
+  # A Debug build with --coverage in ros2_ws/coverage/, which shares nothing with ros's build/: as its own job it runs
+  # alongside ros instead of after it, and a branch protection rule can require it by name.
+  coverage:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      CI_IMAGE: braco-image/ci:lyrical
+    steps:
+      - uses: actions/checkout@v5
+
+      - id: ids
+        run: |
+          echo "uid=$(id -u)" >> "$GITHUB_OUTPUT"
+          echo "gid=$(id -g)" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      # The ros job's image and layer cache. Only ros writes the cache back: two jobs exporting the same scope at
+      # the same time would only race to store the same layers.
+      - name: Build the CI image (Dockerfile stage base)
+        uses: docker/build-push-action@v6
+        with:
+          context: docker
+          target: base
+          load: true
+          tags: ${{ env.CI_IMAGE }}
+          build-args: |
+            USER_UID=${{ steps.ids.outputs.uid }}
+            USER_GID=${{ steps.ids.outputs.gid }}
+          cache-from: type=gha,scope=ci-base
+
+      # Its own ccache: the --coverage objects never match ros's. The build tree is not cached; make coverage
+      # deletes the old counters, but a fresh tree is the simpler guarantee.
+      - uses: actions/cache@v4
+        with:
+          path: ros2_ws/.ccache
+          key: coverage-${{ hashFiles('docker/Dockerfile', 'docker/config/**', 'docker/scripts/**') }}-${{ github.sha }}
+          restore-keys: coverage-${{ hashFiles('docker/Dockerfile', 'docker/config/**', 'docker/scripts/**') }}-
+
+      - name: make coverage
+        run: make coverage CI_IMAGE=${{ env.CI_IMAGE }}
+
+      # gcovr's HTML report, per file and line. Also uploaded when a test failed, if gcovr got that far.
+      - name: Upload the coverage report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v5
+        with:
+          name: coverage
+          path: ros2_ws/coverage/html/
+          if-no-files-found: warn
+          retention-days: 14
