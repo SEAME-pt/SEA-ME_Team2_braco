@@ -3,6 +3,7 @@
 # Start small: bugs, performance and the static analyzer. Off:
 #   bugprone-easily-swappable-parameters  every (int joint, double angle)-style signature; not actionable
 #   bugprone-reserved-identifier          the ROS include guards (PKG__FILE_HPP_), which cpplint requires
+#   performance-enum-size                 a 1-byte base for a 3-value enum class saves nothing that matters
 # Each test/ directory has a .clang-tidy of its own on top of this one.
 Checks: >
   -*,
@@ -10,6 +11,12 @@ Checks: >
   performance-*,
   clang-analyzer-*,
   -bugprone-easily-swappable-parameters,
-  -bugprone-reserved-identifier
+  -bugprone-reserved-identifier,
+  -performance-enum-size
 # Our headers only, not those of ROS or of the generated braco_interfaces code (in build/ and install/).
 HeaderFilterRegex: '(/ws|.*/ros2_ws)/src/.*'
+# rclcpp callbacks take their message, request, response and future by value (SharedPtr, SharedFuture), as in the
+# rclcpp API: copying one is a reference-count increment, not a copy of the data.
+CheckOptions:
+  performance-unnecessary-value-param.AllowedTypes: 'SharedPtr$;SharedFuture$;shared_ptr;shared_future'
+  performance-unnecessary-copy-initialization.AllowedTypes: 'SharedPtr$;SharedFuture$;shared_ptr;shared_future'
