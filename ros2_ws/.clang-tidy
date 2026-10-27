@@ -13,6 +13,8 @@ Checks: >
   -bugprone-easily-swappable-parameters,
   -bugprone-reserved-identifier,
   -performance-enum-size
+# Any finding fails make tidy (clang-tidy exits 0 on plain warnings): fix it, or NOLINT it with a reason.
+WarningsAsErrors: '*'
 # Our headers only, not those of ROS or of the generated braco_interfaces code (in build/ and install/).
 HeaderFilterRegex: '(/ws|.*/ros2_ws)/src/.*'
 # rclcpp callbacks take their message, request, response and future by value (SharedPtr, SharedFuture), as in the
