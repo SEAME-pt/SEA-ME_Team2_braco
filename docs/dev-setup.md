@@ -139,7 +139,7 @@ the same commands:
 |---|---|---|
 | `host` | `make ci`: `make format-check` (C++ and Python formatting, see [4.1](#41-code-formatting)), `make lint` (compose files for both machines, ruff check of the Python outside `ros2_ws/src`, shellcheck, hadolint) and the web page tests (pytest `web/tests`, in a venv from `web/requirements*.txt`); creates `docker/.env` if missing | `make ci` |
 | `ros` | Builds the Dockerfile's `base` stage (Ubuntu 26.04 + ROS 2 Lyrical), then `rosdep install`, `colcon build` and `colcon test` of `ros2_ws/src` (with `mycobot_cpp`) in a throw-away container | `make ci-ros` (builds the image the first time) |
-| `coverage` | Same image as `ros`, in parallel: the GoogleTests built with `--coverage` in `ros2_ws/coverage/`, then a gcovr report, uploaded as the `coverage` artifact (HTML, per line) | `make coverage` (report in `ros2_ws/coverage/html`) |
+| `coverage` | Same image as `ros`, in parallel: the GoogleTests built with `--coverage` in `ros2_ws/coverage/` (gcovr) and the pytests (pytest-cov), uploaded as the `coverage` artifact (HTML per line; Python in `python/`) | `make coverage` (report in `ros2_ws/coverage/html`) |
 
 * shellcheck and hadolint need no install: without a local binary, `make lint` runs the images pinned in
   `SHELLCHECK_IMAGE` and `HADOLINT_IMAGE` through docker, so it never skips a check that CI runs.

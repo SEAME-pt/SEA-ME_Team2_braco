@@ -4,7 +4,7 @@
 #   ros job    make ci-ros   rosdep, colcon build and colcon test of ros2_ws/src (make ci-image builds its image)
 #              make cppcheck cppcheck on the C++ packages (same image)
 #              make tidy     clang-tidy on the C++ packages, from the ci-ros build (same image)
-#   coverage   make coverage the GoogleTests only, built with --coverage, then a gcovr report (same image)
+#   coverage   make coverage the GoogleTests (built with --coverage, gcovr) and pytests (pytest-cov) only (same image)
 #
 # No robot and no display needed.
 
@@ -26,25 +26,34 @@ CI_RUN = docker run --rm -e CCACHE_DIR=/ws/.ccache -e CCACHE_MAXSIZE=500M -v $(C
 # coverage: a Debug build with --coverage in its own tree, ros2_ws/coverage/ - not in build/, where it would replace
 # ci-ros's cached build and colcon test-result would count its tests twice. --cmake-args replaces the cmake-args of
 # colcon-defaults.yaml, so the ccache launchers are repeated. gcov adds to the .gcda counters of the last run: they
-# are deleted first. Only the gtest label runs (no linters); a failing test stops before the report. The table is cut
-# before gcovr's Missing column (every uncovered line number): the HTML report has them.
-COVERAGE_PKGS := mycobot_cpp braco_driver braco_teleop braco_bringup
+# are deleted first. Only the gtest and pytest labels run (no linters); a failing test stops before the report. The
+# table is cut before gcovr's Missing column (every uncovered line number): the HTML report has them.
+# Python: AMENT_CMAKE_PYTEST_WITH_COVERAGE makes ament_add_pytest_test run pytest-cov over the package's source dir,
+# one .coverage file per test under build/<pkg>/pytest_cov/; they are combined into one report (tests left out),
+# HTML in coverage/html/python. braco_description is not listed: test_urdf.py checks the xacro and imports none of
+# its scripts/, so it would only add them at 0%. Add it when they have tests.
+COVERAGE_PKGS := mycobot_cpp braco_driver braco_teleop braco_bringup braco_camera
 COV_DIRS      := --build-base coverage/build --install-base coverage/install
 COV_FLAGS     := -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_FLAGS=--coverage -DCMAKE_CXX_FLAGS=--coverage \
                  -DCMAKE_EXE_LINKER_FLAGS=--coverage -DCMAKE_SHARED_LINKER_FLAGS=--coverage \
-                 -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
-CI_COV_SH := set -eo pipefail; sudo apt-get update -qq; sudo apt-get install -y -qq gcovr >/dev/null; \
+                 -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+                 -DAMENT_CMAKE_PYTEST_WITH_COVERAGE=ON
+COV_PY    := --data-file=coverage/.coverage --omit="*/test/*"
+CI_COV_SH := set -eo pipefail; sudo apt-get update -qq; sudo apt-get install -y -qq gcovr python3-pytest-cov >/dev/null; \
              rosdep install --from-paths $(WS_BASE_PATHS) --ignore-src -y >/dev/null; \
              colcon --log-base coverage/log build --base-paths $(WS_BASE_PATHS) --packages-up-to $(COVERAGE_PKGS) \
                  $(COV_DIRS) --cmake-args $(COV_FLAGS); \
              find coverage/build -name "*.gcda" -delete; \
              colcon test-result --test-result-base coverage/build --delete-yes >/dev/null 2>&1 || true; \
              colcon --log-base coverage/log test --base-paths $(WS_BASE_PATHS) --packages-select $(COVERAGE_PKGS) \
-                 $(COV_DIRS) --ctest-args -L gtest; \
+                 $(COV_DIRS) --ctest-args -L "gtest|pytest"; \
              colcon test-result --test-result-base coverage/build --verbose; \
              mkdir -p coverage/html; \
              gcovr -r /ws/src coverage/build --exclude ".*/test/.*" --txt --print-summary \
-                 --html-details coverage/html/index.html | cut -c1-64
+                 --html-details coverage/html/index.html | cut -c1-64; \
+             python3 -m coverage combine --keep --data-file=coverage/.coverage \
+                 coverage/build/*/pytest_cov/*/.coverage >/dev/null; \
+             python3 -m coverage report $(COV_PY); python3 -m coverage html $(COV_PY) -q -d coverage/html/python
 
 # cppcheck: run directly, because ament_cppcheck skips every file ("performance issues" with cppcheck >= 2.0, it
 # feeds it the ROS headers too). Here only the packages' own include dirs are given, so it takes a second. All of
@@ -106,7 +115,7 @@ ci-ros: ## The `ros` CI job: rosdep + colcon build + colcon test in a throw-away
 	@docker image inspect $(CI_IMAGE) >/dev/null 2>&1 || $(MAKE) --no-print-directory ci-image
 	$(CI_RUN) bash -c '$(CI_ROS_SH)'
 
-coverage: ## GoogleTests of ros2_ws with coverage (gcovr), in the ci-ros container; report in ros2_ws/coverage/html
+coverage: ## GoogleTests and pytests of ros2_ws with coverage (gcovr, pytest-cov); report in ros2_ws/coverage/html
 	@docker image inspect $(CI_IMAGE) >/dev/null 2>&1 || $(MAKE) --no-print-directory ci-image
 	$(CI_RUN) bash -c '$(CI_COV_SH)'
 

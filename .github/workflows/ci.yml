@@ -5,7 +5,7 @@
 #   ros   make ci-ros    (rosdep, colcon build, colcon test of ros2_ws/src)
 #         make cppcheck  (cppcheck on the C++ packages, same image)
 #         make tidy      (clang-tidy on the C++ packages, from the ci-ros build)
-#   coverage  make coverage  (the GoogleTests built with --coverage, gcovr report; same image as ros)
+#   coverage  make coverage  (GoogleTests with gcovr, pytests with pytest-cov; same image as ros)
 #
 # The Jetson (arm64) image is not built here: a QEMU build is too slow, use make jetson-image by hand.
 name: CI
