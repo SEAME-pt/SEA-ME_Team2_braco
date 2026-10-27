@@ -39,10 +39,10 @@ On the Jetson with the system running (`make up`), read the arm without moving i
 
 ```bash
 make temps                          # one message from /arm/servo_temperatures (safe, works in rest mode)
-make run CMD='ros2 node list'       # expect /arm_driver, /temperature_monitor, /joystick_teleop, /braco_web
+make run CMD='ros2 node list'       # expect /arm_driver, /temperature_monitor, /joystick_teleop, /camera, /braco_web
 ```
 
-The web page shows the same thing without a terminal: its health panel says whether the three arm nodes and the four `arm_driver` services are present, and its graph explorer lists every node, topic and service and can echo any topic (read-only).
+The web page shows the same thing without a terminal: its health panel says whether the four arm nodes (`arm_driver`, `temperature_monitor`, `joystick_teleop`, `camera`) and the five `arm_driver` services are present, and its graph explorer lists every node, topic and service and can echo any topic (read-only).
 
 ---
 
@@ -50,7 +50,7 @@ The web page shows the same thing without a terminal: its health panel says whet
 
 ### The idea
 
-**`arm_driver` is the only process that opens the myCobot 280 serial port.** Everything else (the joystick, the zero and park routines, the web page, the `make` targets) is a client of its topics and services. Any client can start, stop or crash without touching the port, and the driver's watchdog stops the arm if motion commands stop arriving for 300 ms.
+**`arm_driver` is the only process that opens the myCobot 280 serial port.** Everything else (the joystick, the zero and park routines, the web page, the `make` targets) is a client of its topics and services. Any client can start, stop or crash without touching the port, and the driver's watchdog stops the arm if motion commands stop arriving for 300 ms. Only one client moves the arm at a time: the control owner, kept by `arm_driver` ([ADR-0002](../ADR-0002-unique-control.md)); STOP is obeyed from anyone. Likewise `camera` is the only process that opens the USB camera.
 
 ### Node diagram
 
@@ -74,7 +74,10 @@ The web page shows the same thing without a terminal: its health panel says whet
  │ make temps        │                    myCobot 280
  └───────────────────┘
 
-  ───► topic    ═══► service call (/arm/power_on, /arm/release_servos, /arm/set_gripper, /arm/set_read_only)
+  ───► topic    ═══► service call (/arm/take_control, /arm/power_on, /arm/release_servos, /arm/set_gripper,
+                                    /arm/set_read_only)
+  Not drawn: /arm/servo_voltages and /arm/control_owner (arm_driver → braco_web, joystick_teleop) and the
+  camera node (USB camera → /camera/image_raw/compressed → braco_web).
 ```
 
 All of it runs on the Jetson, in the `real` container. The PC sees the same topics over DDS (same `ROS_DOMAIN_ID`, from `docker/.env`), so you can inspect the arm from the PC with `ros2 topic echo`, rqt or PlotJuggler.
@@ -83,9 +86,10 @@ All of it runs on the Jetson, in the `real` container. The PC sees the same topi
 
 | Node | Package | Started by | Job |
 |---|---|---|---|
-| `arm_driver` | `braco_driver` | `braco.launch.py` (not respawned: a driver fault must be seen) | Owns the serial port. Publishes angles and temperatures, executes commands, watchdog, rest mode |
-| `temperature_monitor` | `braco_driver` | `braco.launch.py` (respawned) | Servo temperatures to the LCD1602 and `/diagnostics` (warm from 55 °C, hot from 65 °C) |
+| `arm_driver` | `braco_driver` | `braco.launch.py` (not respawned: a driver fault must be seen) | Owns the serial port. Publishes angles, temperatures and voltages, executes commands from the control owner, watchdog, rest mode |
+| `temperature_monitor` | `braco_driver` | `braco.launch.py` (respawned) | Servo temperatures to the LCD1602 and `/diagnostics` (warm from 55 °C, hot from 65 °C); at hot it runs `park` once per episode ([ADR-0003](../ADR-0003-rest-per-temp.md)) |
 | `joystick_teleop` | `braco_teleop` | `braco.launch.py` (respawned) | Joystick to joint jogging, gripper, homing and speed modes. Survives the joystick being unplugged |
+| `camera` | `braco_camera` | `braco.launch.py` (respawned) | Owns the eye-in-hand USB camera; publishes its JPEG frames. Waits for the camera when it is unplugged |
 | `arm_zero` | `braco_bringup` | `make zero` (runs once) | Leaves rest mode, powers on, moves all joints to 0° |
 | `arm_park` | `braco_bringup` | `make park` / `make down PARK=1` (runs once) | Folds the arm, releases the joints, enters rest mode |
 | `braco_web` | `web/server` (Python, `rclpy` inside the uvicorn web server; not a ROS package) | `arm_routine.sh` | The web page's single ROS node, shared by the arm controls, the health panel and the graph explorer, spun by a `MultiThreadedExecutor` (see [14. Executors](#14-executors-callbacks-and-threading)). A plain client of `arm_driver` like the joystick: a pose or joint move is a stream of `ALL_ANGLES` steps at most 15° ahead of the real angles, resent every 100 ms, the same as `arm_zero` and `arm_park` |
@@ -98,21 +102,25 @@ All of it runs on the Jetson, in the `real` container. The PC sees the same topi
 | `/arm/command` | `braco_interfaces/msg/ArmCommand` | `joystick_teleop`, `arm_zero`, `arm_park`, `braco_web` | `arm_driver` | `STOP`, `JOINTS` (only the joystick sends these) or `ALL_ANGLES`. **Latest wins**: a new command replaces any pending one |
 | `/arm/led` | `std_msgs/msg/ColorRGBA` | `joystick_teleop`, `braco_web` | `arm_driver` | LED colour of the arm (the joystick shows its speed mode) |
 | `/arm/servo_temperatures` | `braco_interfaces/msg/ServoTemperatures` | `arm_driver` | `temperature_monitor`, `braco_web`, `make temps` | Every 2 s, also in rest mode. `valid = false` when the arm did not answer |
+| `/arm/servo_voltages` | `braco_interfaces/msg/ServoVoltages` | `arm_driver` | `braco_web` | Every 2 s, also in rest mode. `valid = false` when the arm did not answer |
 | `/arm/read_only` | `std_msgs/msg/Bool` | `arm_driver` | `braco_web` | Rest mode on/off. **Latched** (`TRANSIENT_LOCAL`, depth 1) on both sides: a late subscriber gets the current value. A `VOLATILE` publisher would not match this subscriber (see [8. QoS](#8-quality-of-service-qos)) |
+| `/arm/control_owner` | `std_msgs/msg/String` | `arm_driver` | `joystick_teleop`, `braco_web` | Who may move the arm (`web`, `joystick`, `script`, `mission`; `""` = free). **Latched** like `/arm/read_only` |
 | `/diagnostics` | `diagnostic_msgs/msg/DiagnosticArray` | `temperature_monitor` | `braco_web` (health panel), rqt | One status per joint (OK / WARN / ERROR), `STALE` when temperatures stop arriving |
+| `/camera/image_raw/compressed` | `sensor_msgs/msg/CompressedImage` | `camera` | `braco_web` | JPEG, up to 15 fps, sensor-data QoS |
 
 ### Services
 
-All four are served by `arm_driver`.
+All five are served by `arm_driver`.
 
 | Service | Type | Called by | What it does |
 |---|---|---|---|
+| `/arm/take_control` | `braco_interfaces/srv/TakeControl` | `joystick_teleop`, `arm_zero` / `arm_park` (forced), `braco_web` (the page lease) | Become the control owner (`source`, `force`) or give it back (`release`) ([ADR-0002](../ADR-0002-unique-control.md)) |
 | `/arm/power_on` | `std_srvs/srv/Trigger` | `joystick_teleop` (when a joystick connects), `arm_zero`, `braco_web` ("wake up", after leaving rest mode) | Locks the joints. Refused in rest mode |
-| `/arm/release_servos` | `std_srvs/srv/Trigger` | `arm_park` | Frees the joints (the arm can be moved by hand). Drops pending motion. `braco_web` creates a client for it but never calls it |
+| `/arm/release_servos` | `std_srvs/srv/Trigger` | `arm_park`, `braco_web` (Park, once the pose is reached) | Frees the joints (the arm can be moved by hand). Drops pending motion |
 | `/arm/set_gripper` | `std_srvs/srv/SetBool` | `joystick_teleop` (A / B), `braco_web` | `true` closes, `false` opens. Refused in rest mode |
 | `/arm/set_read_only` | `std_srvs/srv/SetBool` | `arm_zero` (false), `arm_park` (true), `make rest` / `make resume`, `braco_web` (rest on/off, wake up) | Rest mode: motion, gripper and power on are refused, angles and temperatures keep being published |
 
-braco uses **no actions** yet. Long motions (zero, park) are short programs that stream `/arm/command` and watch `/joint_states` until the pose is reached. Actions arrive with MoveIt 2 (#40, #43); see [10. Actions](#10-actions-long-running-goals).
+braco uses **no actions** yet. Long motions (zero, park) are short programs that stream `/arm/command` and watch `/joint_states` until the pose is reached. Actions arrive with MoveIt 2; see [10. Actions](#10-actions-long-running-goals).
 
 ### Packages
 
@@ -120,13 +128,14 @@ All in [`ros2_ws/src/`](../../ros2_ws/src/).
 
 | Package | Status | Contains |
 |---|---|---|
-| [`braco_interfaces`](../../ros2_ws/src/braco_interfaces/README.md) | In use | `ArmCommand`, `JointTarget`, `ServoTemperatures` |
-| [`braco_driver`](../../ros2_ws/src/braco_driver/README.md) | In use | `arm_driver`, `temperature_monitor` (on top of `libs/cpp`) |
+| [`braco_interfaces`](../../ros2_ws/src/braco_interfaces/README.md) | In use | `ArmCommand`, `JointTarget`, `ServoTemperatures`, `ServoVoltages`, `TakeControl` |
+| [`braco_driver`](../../ros2_ws/src/braco_driver/README.md) | In use | `arm_driver`, `temperature_monitor` (on top of `mycobot_cpp`) |
 | [`braco_teleop`](../../ros2_ws/src/braco_teleop/README.md) | In use | `joystick_teleop`; the jogging logic without ROS and its tests |
+| [`braco_camera`](../../ros2_ws/src/braco_camera/README.md) | In use | `camera` (Python) |
 | [`braco_bringup`](../../ros2_ws/src/braco_bringup/README.md) | In use | `braco.launch.py`, `config/braco.yaml`, `arm_routine.sh`, `zero`, `park` |
-| [`braco_description`](../../ros2_ws/src/braco_description/README.md) | Empty, #25 | URDF model, meshes, RViz view |
-| [`braco_moveit_config`](../../ros2_ws/src/braco_moveit_config/README.md) | Empty, #40 | MoveIt 2 configuration (runs on the PC) |
-| [`braco_mission`](../../ros2_ws/src/braco_mission/README.md) | Empty, #43 | Tasks (pick-and-place, drawing) as a state machine over MoveIt 2 |
+| [`braco_description`](../../ros2_ws/src/braco_description/README.md) | In use (PC), #25 | URDF model, meshes, Gazebo viewer (`gazebo.launch.py`), sim-to-real checks |
+| [`braco_moveit_config`](../../ros2_ws/src/braco_moveit_config/README.md) | Empty | MoveIt 2 configuration (runs on the PC) |
+| [`braco_mission`](../../ros2_ws/src/braco_mission/README.md) | Empty | Tasks (pick-and-place, drawing) as a state machine over MoveIt 2 |
 
 ### How the system starts
 
@@ -134,18 +143,19 @@ All in [`ros2_ws/src/`](../../ros2_ws/src/).
 make up ──► `real` container ──► arm_routine.sh ──┬──► ros2 launch braco_bringup braco.launch.py sim:=false
                                                   │        ├── arm_driver
                                                   │        ├── temperature_monitor
-                                                  │        └── joystick_teleop
+                                                  │        ├── joystick_teleop
+                                                  │        └── camera
                                                   └──► web page (uvicorn, port WEB_PORT)
 ```
 
-- **Parameters**: tuning values (rates, watchdog, timeouts) are in [`braco_bringup/config/braco.yaml`](../../ros2_ws/src/braco_bringup/config/braco.yaml); the wiring (`port`, `baud`, `lcd_bus`, `device`) comes from launch arguments that the compose file fills from `docker/.env`.
+- **Parameters**: tuning values (rates, watchdog, timeouts) are in [`braco_bringup/config/braco.yaml`](../../ros2_ws/src/braco_bringup/config/braco.yaml); the wiring (`port`, `baud`, `lcd_bus`, `device`, `camera`) comes from launch arguments that the compose file fills from `docker/.env`.
 - **The arm never moves on start or stop.** Zero and park are manual (`make zero`, `make park`, `make down PARK=1`).
 - If the launch dies (for example the driver lost the port), the container stops.
 - `sim:=true` (the `sim` container on the PC) is reserved for the Gazebo arm (#34) and starts no node yet. The web page still starts there, with `ARM_SOURCE=gazebo`: it reads `/joint_states` and sends moves as `trajectory_msgs/msg/JointTrajectory` on `/joint_trajectory_controller/joint_trajectory` (the `ros2_control` controller Gazebo will provide), so it only waits until #34 lands.
 
 ### ROS 2 features braco does not use yet
 
-The [Reference](#reference-ros-2-concepts) covers more than the code uses today. Not used yet: actions, lifecycle nodes (`arm_driver` is a plain `rclcpp::Node`), tf2 and the URDF (#25), `ros2_control`, MoveIt 2 (#40), Gazebo (#34), the camera.
+The [Reference](#reference-ros-2-concepts) covers more than the code uses today. Not used yet on the real arm: actions, lifecycle nodes (`arm_driver` is a plain `rclcpp::Node`), tf2 and the URDF, `ros2_control`, MoveIt 2. The URDF, `gz_ros2_control` and Gazebo are used only by `braco_description`'s viewer on the PC (#25); the `sim:=true` bringup is #34.
 
 ---
 
@@ -864,7 +874,7 @@ GUI tools (rqt, RViz2, Gazebo, PlotJuggler) are only in the **PC image** (`braco
 
 ## 23. How this maps to our project
 
-What runs **today** is described in [ROS 2 in braco](#ros-2-in-braco) at the top of this file. This section is the Sprint 0 plan: where the project is heading, not what the code does now (for example, `arm_driver` is a plain node in C++ over `libs/cpp`, not yet a lifecycle node, and there is no camera node yet).
+What runs **today** is described in [ROS 2 in braco](#ros-2-in-braco) at the top of this file. This section is the Sprint 0 plan: where the project is heading, not what the code does now (for example, `arm_driver` is a plain node in C++ over `mycobot_cpp`, not yet a lifecycle node).
 
 ```
  PC (dev + sim containers)                          Jetson Nano (real container)

@@ -1,7 +1,7 @@
 # braco_moveit_config
 
-MoveIt 2 configuration of the braco arm. **Empty for now**: the package reserves the name; its content arrives
-with issue **#40** (MoveIt 2 configuration for the arm).
+MoveIt 2 configuration of the braco arm. **Empty for now**: the package reserves the name; its content (the MoveIt 2
+configuration for the arm) is planned.
 
 Planned content in `config/`: `braco.srdf` (planning group, end effector, disabled collisions),
 `kinematics.yaml`, `joint_limits.yaml` (the same limits as `JOINT_LIMITS` in `mycobot.hpp`) and the controllers MoveIt sends
