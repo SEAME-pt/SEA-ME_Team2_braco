@@ -6,7 +6,7 @@ measured on the hardware** (section "Open items"). Nothing below marked "to meas
 
 ## How to use
 
-Step by step, with the GPU, ROS domains and common problems: [Run the simulation, step by step](../ros2_ws/src/braco_description/README.md#run-the-simulation-step-by-step).
+Step by step, with the GPU, ROS domains and common problems: [Run the simulation, step by step](../../ros2_ws/src/braco_description/README.md#run-the-simulation-step-by-step).
 In short:
 
 ```bash
@@ -243,8 +243,8 @@ Gazebo can still behave differently on the arm:
 | Speed is the firmware's setting 1..100, about 0.0265 rad/s per unit (see "Limits") | The trajectory's `time_from_start`, capped by the URDF `velocity` limits |
 | A servo stops up to ~3° short of a target (dead zone, `DEADBAND_DEG` in `scripts/braco_arm.py`) | Reaches the target within the controller's tolerance |
 | `sendAngles` clamps to `JOINT_LIMITS` and refuses poses that hit the table (`minHeightMm`) | gz_ros2_control clamps to the URDF limits (and logs `Command of at least one joint is out of limits`); a pose under the table is not refused, the arm presses on the ground plane and stops short (J2 = 160° stops at 124°) |
-| Only the control owner moves the arm ([ADR-0002](ADR-0002-unique-control.md)); STOP from anyone | `arm_controller` accepts any trajectory |
-| Rest on overheat, servo temperatures and voltages ([ADR-0003](ADR-0003-rest-per-temp.md)) | No temperatures; never rests |
+| Only the control owner moves the arm ([ADR-0002](../decisions/ADR-0002-unique-control.md)); STOP from anyone | `arm_controller` accepts any trajectory |
+| Rest on overheat, servo temperatures and voltages ([ADR-0003](../decisions/ADR-0003-rest-per-temp.md)) | No temperatures; never rests |
 | Masses and efforts are documented/approximated (see "Inertia") | Uses those values as if measured |
 
 So the simulation checks a motion's joints, directions, kinematics and timing order; the table clearance, the control

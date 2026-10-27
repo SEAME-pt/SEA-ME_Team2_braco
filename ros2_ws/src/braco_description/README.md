@@ -3,7 +3,7 @@
 Model of the myCobot 280 with the adaptive gripper and a camera mount, for the braco stack: links, joints,
 limits, meshes and the TF frames the rest of the system uses. Issue **#25**. The validation against the real
 arm (zero pose, joint directions, forward kinematics) and the open measurements are in
-[`docs/urdf-sim-to-real.md`](../../../docs/urdf-sim-to-real.md).
+[`docs/urdf-sim-to-real.md`](../../../docs/hardware/urdf-sim-to-real.md).
 
 | Folder | Content |
 |---|---|
@@ -36,7 +36,7 @@ arm (zero pose, joint directions, forward kinematics) and the open measurements 
 
 The controllers are `config/controllers.yaml`, the set planned for the real arm too: on the hardware only the
 `<hardware>` plugin of the URDF changes (planned: a braco `SystemInterface`), so MoveIt, the mission and the page see the same names.
-The validation of the model against the real arm is [`docs/urdf-sim-to-real.md`](../../../docs/urdf-sim-to-real.md).
+The validation of the model against the real arm is [`docs/urdf-sim-to-real.md`](../../../docs/hardware/urdf-sim-to-real.md).
 
 ## Run the simulation, step by step
 
@@ -109,7 +109,7 @@ python3 /ws/src/braco_description/scripts/my_test.py
 
 **6. Then on the real arm (optional).** With the Jetson up (`make up` there), `--real` runs the same moves on the
 arm after Gazebo, and asks first. Like `make zero` / `make park`, the script takes the arm's control as `script`
-(forced: it takes it from the web page or the joystick, [ADR-0002](../../../docs/ADR-0002-unique-control.md)) and
+(forced: it takes it from the web page or the joystick, [ADR-0002](../../../docs/decisions/ADR-0002-unique-control.md)) and
 gives it back when it ends. Check first that the PC sees the arm: `ROS_DOMAIN_ID=42 ros2 node list` shows
 `/arm_driver`.
 
