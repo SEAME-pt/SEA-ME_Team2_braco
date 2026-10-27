@@ -469,7 +469,7 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
           <tr><td><a href="../ros2_ws/src/braco_driver/README.md"><code>braco_driver</code></a></td><td>Nodes</td><td><code>arm_driver</code> (owns the port and the control), <code>temperature_monitor</code> (LCD, <code>/diagnostics</code>, rest on overheat)</td><td><span class="pill p-ok">done</span></td></tr>
           <tr><td><a href="../ros2_ws/src/braco_teleop/README.md"><code>braco_teleop</code></a></td><td>Node</td><td><code>joystick_teleop</code>: jogs the arm through <code>arm_driver</code></td><td><span class="pill p-ok">done</span></td></tr>
           <tr><td><a href="../ros2_ws/src/braco_camera/README.md"><code>braco_camera</code></a></td><td>Node (Python)</td><td><code>camera</code>: the eye-in-hand USB camera as JPEG frames</td><td><span class="pill p-ok">done</span></td></tr>
-          <tr><td><a href="../ros2_ws/src/braco_bringup/README.md"><code>braco_bringup</code></a></td><td>Launch + config</td><td><code>braco.launch.py</code>, <code>braco.yaml</code>, the container entrypoint, <code>zero</code> / <code>park</code></td><td><span class="pill p-ok">done</span> <code>sim:=true</code> reserved</td></tr>
+          <tr><td><a href="../ros2_ws/src/braco_bringup/README.md"><code>braco_bringup</code></a></td><td>Launch + config</td><td><code>braco.launch.py</code>, <code>braco.yaml</code>, the container entrypoint, <code>zero</code> / <code>park</code></td><td><span class="pill p-ok">done</span> <code>sim:=true</code> = Gazebo (#34)</td></tr>
           <tr><td><a href="../ros2_ws/src/braco_description/README.md"><code>braco_description</code></a></td><td>Model + tools</td><td>URDF of the myCobot 280 with G-base, camera flange and gripper; <code>gazebo.launch.py</code> (Gazebo viewer); <code>sim_to_real.py</code> (checks against the real arm)</td><td><span class="pill p-ok">done</span> #25</td></tr>
           <tr class="future"><td><a href="../ros2_ws/src/braco_moveit_config/README.md"><code>braco_moveit_config</code></a></td><td>Config</td><td>MoveIt 2 for the arm</td><td><span class="pill p-note">placeholder #40</span></td></tr>
           <tr class="future"><td><a href="../ros2_ws/src/braco_mission/README.md"><code>braco_mission</code></a></td><td>Nodes</td><td>Mission state machine, MoveIt 2 client</td><td><span class="pill p-note">placeholder #43</span></td></tr>
@@ -591,7 +591,7 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
         <rect x="40" y="166" width="360" height="100" rx="4" class="key"/>
         <text x="56" y="188" class="t-b">sim</text><text x="90" y="188" class="t-s">arm_routine.sh</text>
         <text x="56" y="208" class="t-m">braco.launch.py sim:=true</text>
-        <text x="56" y="224" class="t-m t-note">  Gazebo arm (#34, reserved)</text>
+        <text x="56" y="224" class="t-m">  Gazebo + controllers (domain 77)</text>
         <text x="56" y="244" class="t-m">web page :8000  ARM_SOURCE=gazebo</text>
         <rect x="40" y="280" width="360" height="44" rx="4" class="future"/>
         <text x="56" y="307" class="t-m t-note">MoveIt 2 · braco_mission  (planned)</text>
@@ -620,8 +620,8 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
     </figure>
     <ul class="plain">
       <li><b>Heavy work stays on the PC.</b> <code>move_group</code> needs 300–600 MB and a full core while planning, so MoveIt 2 and the mission run on the PC and reach the arm on the Jetson through DDS. The Jetson runs only the nodes that need its devices.</li>
-      <li><code>make up</code> starts the system container; <code>arm_routine.sh</code> runs the launch and the web page side by side, stops both on <code>docker stop</code>, and ends the container when the launch ends.</li>
-      <li>The page's arm source: <code>ARM_SOURCE=ros</code> (real), <code>ARM_SOURCE=gazebo</code> (sim, PC only) or <code>ARM_MOCK=1</code> (<code>make web</code>, no arm, no ROS, no Docker). There is no mode that opens the serial port.</li>
+      <li><code>make up</code> starts the system container; <code>arm_routine.sh</code> runs the launch, stops it on <code>docker stop</code>, and ends the container when the launch ends. The web page is separate: <code>make web</code> starts it inside the running container (<code>real</code> on the Jetson, <code>dev</code> on the PC) and <code>make web-stop</code> stops it, without touching the arm nodes.</li>
+      <li>The page's arm source: <code>ARM_SOURCE=ros</code> (real), <code>ARM_SOURCE=gazebo</code> (sim, PC only) or <code>ARM_MOCK=1</code> (<code>make web MOCK=1</code>, and the web tests). There is no mode that opens the serial port.</li>
       <li>Gazebo's own transport stays on the machine: <code>compose.yml</code> sets <code>GZ_IP=127.0.0.1</code> (override in <code>.env</code>). With the host network it otherwise picks an interface by itself and, behind a VPN or a firewall, its processes never find each other. ROS 2 (DDS) is not affected. Run a simulation on its own <code>ROS_DOMAIN_ID</code> (e.g. 77) when the real arm is on the network: both publish <code>/joint_states</code>.</li>
     </ul>
   </section>
@@ -637,7 +637,8 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
       <table>
         <thead><tr><th>Argument</th><th>Default</th><th>Used by</th></tr></thead>
         <tbody>
-          <tr><td><code>sim</code></td><td class="num">false</td><td><code>false</code>: <code>arm_driver</code>, <code>temperature_monitor</code>, <code>joystick_teleop</code>, <code>camera</code>. <code>true</code>: the Gazebo arm (#34); until then it starts nothing and logs why</td></tr>
+          <tr><td><code>sim</code></td><td class="num">false</td><td><code>false</code>: <code>arm_driver</code>, <code>temperature_monitor</code>, <code>joystick_teleop</code>, <code>camera</code>. <code>true</code>: the Gazebo arm, <code>braco_description</code>'s <code>gazebo.launch.py</code> (#34)</td></tr>
+          <tr><td><code>gui</code></td><td class="num">false</td><td><code>sim:=true</code> only: <code>true</code> opens the Gazebo window (<code>SIM_GUI</code> in <code>docker/.env</code>)</td></tr>
           <tr><td><code>port</code>, <code>baud</code></td><td class="num">/dev/ttyTHS1, 1000000</td><td><code>arm_driver</code></td></tr>
           <tr><td><code>lcd_bus</code></td><td class="num">/dev/i2c-0</td><td><code>temperature_monitor</code></td></tr>
           <tr><td><code>device</code></td><td class="num">/dev/input/js0</td><td><code>joystick_teleop</code></td></tr>
@@ -676,13 +677,14 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
     <div class="hero-cmd">
       <div class="subhead">One command turns the system on</div>
       <div class="big">make up</div>
-      <p>On the Jetson it starts the real arm (driver, temperature, joystick, page); on the PC the simulation and the page. It can be repeated: each step (<code>.env</code>, checks, image, build) is skipped when it is already done, so <code>make up</code> after a code change only rebuilds what changed. No step moves the arm. <code>make</code> alone lists every command; the machine (<code>ROLE=pc|jetson</code>) comes from <code>COMPOSE_PROFILES</code> in <code>docker/.env</code> or is detected (arm64 + Tegra = Jetson).</p>
+      <p>On the Jetson it starts the real arm (driver, temperature, joystick, camera); on the PC only <code>dev</code>, and with <code>SIM=1</code> also the simulation. The web page is <code>make web</code>. The first <code>make</code> command on a machine asks once whether it is the dev PC or the jetson (<code>make role</code> asks again). It can be repeated: each step (<code>.env</code>, checks, image, build) is skipped when it is already done, so <code>make up</code> after a code change only rebuilds what changed. No step moves the arm. <code>make</code> alone lists every command; the machine (<code>ROLE=pc|jetson</code>) comes from <code>COMPOSE_PROFILES</code> in <code>docker/.env</code> or is detected (arm64 + Tegra = Jetson).</p>
     </div>
     <div class="groups">
       <div class="grp">
         <div class="grp-head"><h3>System</h3><span>mk/system.mk</span></div>
         <ul class="cmds">
-          <li><code>make up</code><span>Turn the system on, wait for the page and print its URL.</span></li>
+          <li><code>make up</code><span>Turn the system on and wait for <code>/joint_states</code> (PC: only <code>dev</code>; <code>SIM=1</code> adds the simulation).</span></li>
+          <li><code>make web</code><span>Start (or restart) the web page in the running container and print its URL; <code>make up</code> first if needed.<small><code>make web-stop</code> stops it; the arm keeps running.</small></span></li>
           <li><code>make down</code><span>Turn it off, without moving the arm.<small><code>PARK=1</code> parks the arm first.</small></span></li>
           <li><code>make restart</code><span>Restart the system container, then like <code>up</code>.</span></li>
           <li><code>make status</code><span>Containers, CPU/RAM per container, the arm as the page sees it; a few seconds of <code>tegrastats</code> on the Jetson.</span></li>
@@ -707,7 +709,6 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
           <li><code>make run CMD='…'</code><span>Run a command in <code>dev</code>.</span></li>
           <li><code>make build</code><span>colcon build of <code>ros2_ws/src</code>.</span></li>
           <li><code>make test</code><span>colcon test and the results (PC only).</span></li>
-          <li><code>make web</code><span>The page with mock data on :8080, no ROS, no Docker.</span></li>
           <li><code>make clean</code><span>Delete build/ install/ log/ and <code>~/.ros/log</code>.</span></li>
         </ul>
       </div>
@@ -719,7 +720,7 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
           <li><code>make image</code><span>(Re)build this machine's image.</span></li>
           <li><code>make boot-on</code><span>Start at boot (systemd <code>braco</code>).<small><code>make boot-off</code> undoes it.</small></span></li>
           <li><code>make jetson-image</code><span>Build the arm64 image on the PC.<small><code>NANO=user@host</code> also copies it.</small></span></li>
-          <li><code>make reset</code><span>Clean + remove containers, volumes and images.</span></li>
+          <li><code>make re</code><span>Remove containers, volumes, the image and the build output, then <code>make up</code>.</span></li>
         </ul>
       </div>
       <div class="grp">
@@ -859,8 +860,8 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
         <text x="385" y="174" text-anchor="middle" class="t-m t-b">braco_description</text><text x="385" y="193" text-anchor="middle" class="t-s t-note">URDF</text>
         <rect x="620" y="20" width="360" height="60" rx="4" class="key"/>
         <text x="800" y="46" text-anchor="middle" class="t-b">real arm: arm_driver</text><text x="800" y="66" text-anchor="middle" class="t-s">trajectory path decided with #37</text>
-        <rect x="620" y="110" width="360" height="60" rx="4" class="future"/>
-        <text x="800" y="136" text-anchor="middle" class="t-b">sim: Gazebo + gz_ros2_control</text><text x="800" y="156" text-anchor="middle" class="t-s t-note">#34</text>
+        <rect x="620" y="110" width="360" height="60" rx="4" class="key"/>
+        <text x="800" y="136" text-anchor="middle" class="t-b">sim: Gazebo + gz_ros2_control</text><text x="800" y="156" text-anchor="middle" class="t-s">sim:=true, domain 77 (#34)</text>
         <line x1="212" y1="70" x2="268" y2="70" class="w-note" marker-end="url(#s)"/>
         <line x1="385" y1="148" x2="385" y2="102" class="w-note" marker-end="url(#s)"/>
         <path d="M502,70 H560 V50 H618" class="w-ros" marker-end="url(#s2)"/>
@@ -872,7 +873,8 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
     </figure>
     <ul class="plain">
       <li><code>braco_description</code> holds the URDF; its joint limits must match <code>JOINT_LIMITS</code> in <code>mycobot.hpp</code>, and its joint names are the ones on <code>/joint_states</code> (<code>joint1..joint6</code>) on both the real arm and the simulation.</li>
-      <li><code>sim:=true</code> will start Gazebo with that model, publishing the same <code>/joint_states</code>. Until then <code>braco_description</code>'s <code>gazebo.launch.py</code> shows it in Gazebo with <code>gz_ros2_control</code> (<code>/arm_controller</code>, <code>FollowJointTrajectory</code>), and <code>scripts/braco_arm.py</code> runs the same moves there and, with <code>--real</code>, on the arm.</li>
+      <li><code>sim:=true</code> (the <code>sim</code> container) starts Gazebo with that model, publishing the same <code>/joint_states</code>, and the controllers of <code>braco_description/config/controllers.yaml</code>: <code>joint_state_broadcaster</code> and <code>arm_controller</code> (<code>FollowJointTrajectory</code>, the interface MoveIt uses). That file is the set planned for the real arm too; only the URDF's <code>&lt;hardware&gt;</code> plugin changes (#37). The <code>sim</code> container runs on its own ROS domain (77) so its <code>/joint_states</code> never mix with the real arm's. How to run it: <a href="../ros2_ws/src/braco_description/README.md#run-the-simulation-step-by-step">Run the simulation</a>.</li>
+      <li><code>braco_description</code>'s <code>scripts/braco_arm.py</code> runs the same moves in Gazebo and, with <code>--real</code>, on the arm.</li>
       <li>How MoveIt's trajectories reach <code>arm_driver</code> on the real arm is decided with #37 and #40.</li>
     </ul>
   </section>
@@ -909,6 +911,7 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
       <div><b>One Makefile.</b> Split in <code>mk/</code>, idempotent <code>make up</code>, ~30 public commands.</div>
       <div><b>Lean repository root.</b> <code>docker</code>, <code>docs</code>, <code>mk</code>, <code>ros2_ws</code>, <code>scripts</code> (operator scripts run by <code>make</code>), <code>web</code> and the <code>Makefile</code> (plus the formatter configs and <code>requirements-dev.txt</code>); <code>mycobot_cpp</code> in <code>ros2_ws/src</code> (one colcon base path, no extra mount); <code>tests/</code>, <code>playground/</code> and the root <code>requirements.txt</code> removed.</div>
       <div><b>Jetson guards.</b> <code>doctor</code> checks, ccache limit, ROS log cleanup, <code>status</code> with <code>docker stats</code> and <code>tegrastats</code>.</div>
+      <div><b>Simulation.</b> <code>braco.launch.py sim:=true</code> (the <code>sim</code> container): Gazebo, the URDF and the ros2_control controllers planned for the hardware, on ROS domain 77; the page drives it; <code>move_joint.py</code> commands one joint (#34).</div>
       <div><b>Validated URDF.</b> <code>braco_description</code>: joint names, limits, zero pose, joint directions and FK (within 1.5 mm of <code>get_coords()</code>) checked on the real arm; measured joint velocities; the table check in <code>mycobot_cpp</code> uses the same kinematics (<a href="urdf-sim-to-real.md">report</a>, #25).</div>
     </div>
 
@@ -933,7 +936,6 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
       <table>
         <thead><tr><th>Item</th><th>Issue</th></tr></thead>
         <tbody>
-          <tr><td><code>sim:=true</code>: Gazebo + <code>gz_ros2_control</code> with the same <code>/joint_states</code></td><td><span class="pill p-note">#34</span></td></tr>
           <tr><td>How trajectories reach <code>arm_driver</code> on the real arm (<code>FollowJointTrajectory</code> or equivalent)</td><td><span class="pill p-note">#37</span></td></tr>
           <tr><td><code>braco_moveit_config</code>: SRDF, kinematics, limits, controllers</td><td><span class="pill p-note">#40</span></td></tr>
           <tr><td><code>braco_mission</code>: pick-and-place, pen drawing, taking the control as <code>mission</code></td><td><span class="pill p-note">#43</span></td></tr>

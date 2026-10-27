@@ -113,7 +113,7 @@ Open `docker/.env` and check:
 
 - `COMPOSE_PROFILES=pc`
 - `USER_UID` / `USER_GID` match `id -u` / `id -g`
-- `ROS_DOMAIN_ID=42` and `RMW_IMPLEMENTATION=rmw_fastrtps_cpp` — **these must be identical on every machine that should talk to each other**. If several teams share the lab network, agree on different domain IDs per team.
+- `ROS_DOMAIN_ID=42` and `RMW_IMPLEMENTATION=rmw_fastrtps_cpp` — **these must be identical on every machine that should talk to each other**. If several teams share the lab network, agree on different domain IDs per team. `ROS_DOMAIN_ID` is the real arm's domain; the PC's own containers use `PC_ROS_DOMAIN_ID` (77), so from the PC reach the arm with `ROS_DOMAIN_ID=42 ros2 ...`.
 
 **Step 6. Check the host:**
 

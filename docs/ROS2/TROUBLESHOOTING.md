@@ -108,7 +108,7 @@ Go through this list in order.
 | `rqt_graph: command not found` on the PC | Lyrical no longer installs a `rqt_graph` shortcut in `/opt/ros/lyrical/bin` (only `rqt` and `rqt_bag`) | `ros2 run rqt_graph rqt_graph` or `rqt --standalone rqt_graph`, inside the container (`make shell`), not on the host |
 | `rqt_graph: command not found` on the Jetson | The Jetson image is headless on purpose | Run `ros2 run rqt_graph rqt_graph` on the PC; it shows the Jetson's nodes over the network |
 | rqt_graph is empty or outdated | Not refreshed, or filters | Press refresh; select "Nodes/Topics (all)"; uncheck the "Hide" options |
-| RViz2/Gazebo very slow | Software rendering | Use a GPU override: `make up GPU=nvidia` or `GPU=dri` (see docker/README.md) |
+| RViz2/Gazebo very slow | Software rendering | The PC uses the NVIDIA GPU by default: check `make doctor` (NVIDIA container runtime), or `GPU=dri` for Intel/AMD (see docker/README.md) |
 
 ## Jetson / hardware
 
