@@ -204,6 +204,8 @@ def velocity(sim, real):
             if not real.move(lo):
                 return False
             real.pause(0.5)
+            if not real.take_control():   # _time_move sends its own commands, not move()
+                return False
             avg, peak, stopped = _time_move(real, j, hi, speed)
             if avg is None:
                 real.log.error('joint%d speed %d: did not get through the sweep (stopped at %.1f '

@@ -4,8 +4,9 @@
   command interface on joint1..joint6, so the arm holds its pose instead of falling under
   gravity. Included by braco.urdf.xacro only with gazebo:=true; the real arm never sees it.
 
-  Quick viewer for issue #25. The full simulation bringup (sim:=true in braco_bringup,
-  /arm/command bridged to the controllers) is issues #34/#37.
+  Used by launch/gazebo.launch.py (and so by braco_bringup's sim:=true). The controllers on
+  top (config/controllers.yaml) are the set planned for the real arm too: only this
+  <hardware> plugin changes there (planned: a braco SystemInterface).
 -->
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
 

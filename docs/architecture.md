@@ -312,7 +312,7 @@ package has its own README with its topics, parameters and how to run it by hand
 | [`braco_driver`](../ros2_ws/src/braco_driver/README.md) | Nodes | `arm_driver` (owns the port and the control), `temperature_monitor` (LCD, `/diagnostics`, rest on overheat) | done |
 | [`braco_teleop`](../ros2_ws/src/braco_teleop/README.md) | Node | `joystick_teleop`: jogs the arm through `arm_driver` | done |
 | [`braco_camera`](../ros2_ws/src/braco_camera/README.md) | Node (Python) | `camera`: the eye-in-hand USB camera as JPEG frames | done |
-| [`braco_bringup`](../ros2_ws/src/braco_bringup/README.md) | Launch + config | `braco.launch.py`, `braco.yaml`, the container entrypoint, `zero` / `park` | done, `sim:=true` reserved |
+| [`braco_bringup`](../ros2_ws/src/braco_bringup/README.md) | Launch + config | `braco.launch.py`, `braco.yaml`, the container entrypoint, `zero` / `park` | done, `sim:=true` = Gazebo (#34) |
 | [`braco_description`](../ros2_ws/src/braco_description/README.md) | Model + tools | URDF of the myCobot 280 with G-base, camera flange and gripper; `gazebo.launch.py` (Gazebo viewer); `sim_to_real.py` (checks against the real arm) | done (#25) |
 | [`braco_moveit_config`](../ros2_ws/src/braco_moveit_config/README.md) | Config | MoveIt 2 for the arm | placeholder |
 | [`braco_mission`](../ros2_ws/src/braco_mission/README.md) | Nodes | Mission state machine, MoveIt 2 client | placeholder |
@@ -418,7 +418,7 @@ else has one generic folder.
  │ sim  arm_routine.sh                  │ ◄──────────► │     joystick_teleop ── /dev/input/js0     │
  │                                      │              │     camera ── /dev/video0 USB camera      │
  │   braco.launch.py sim:=true          │  Fast DDS,   │   web page :8000  ARM_SOURCE=ros          │
- │     Gazebo arm (#34, reserved)       │  host network│   launch ends → container stops           │
+ │     Gazebo + controllers (domain 77) │  host network│   launch ends → container stops           │
  │   web page :8000  ARM_SOURCE=gazebo  │              │                                           │
  │                                      │              │ dev  throw-away, run --rm                 │
  │ MoveIt 2 · braco_mission (planned)   │              │   build · zero · park                     │
@@ -431,14 +431,15 @@ Both machines run the same image family (ROS 2 Lyrical on Ubuntu 26.04) and the 
 - **Heavy work stays on the PC.** `move_group` needs 300–600 MB and a full core while planning, so MoveIt 2 and the
   mission run on the PC and reach the arm on the Jetson through DDS. The Jetson runs only the nodes that need its
   devices.
-- `make up` starts the system container; `arm_routine.sh` runs the launch and the web page side by side, stops both
-  on `docker stop`, and ends the container when the launch ends.
-- The page's arm source: `ARM_SOURCE=ros` (real), `ARM_SOURCE=gazebo` (sim, PC only) or `ARM_MOCK=1` (`make web`,
-  no arm, no ROS, no Docker). There is no mode that opens the serial port.
+- `make up` starts the system container; `arm_routine.sh` runs the launch, stops it on `docker stop`, and ends the
+  container when the launch ends. The web page is separate: `make web` starts it inside the running container
+  (`real` on the Jetson, `dev` on the PC) and `make web-stop` stops it, without touching the arm nodes.
+- The page's arm source: `ARM_SOURCE=ros` (real), `ARM_SOURCE=gazebo` (sim, PC only) or `ARM_MOCK=1` (`make web
+  MOCK=1`, and the web tests). There is no mode that opens the serial port.
 - Gazebo's own transport stays on the machine: `compose.yml` sets `GZ_IP=127.0.0.1` (override in `.env`). With the
   host network it otherwise picks an interface by itself and, behind a VPN or a firewall, its processes never find
-  each other. ROS 2 (DDS) is not affected. Run a simulation on its own `ROS_DOMAIN_ID` (e.g. 77) when the real arm
-  is on the network: both publish `/joint_states`.
+  each other. ROS 2 (DDS) is not affected. The PC's containers run on `PC_ROS_DOMAIN_ID` (77), never the real arm's
+  42: both publish `/joint_states`. From the PC, reach the arm with `ROS_DOMAIN_ID=42 ros2 ...`.
 
 ---
 
@@ -455,7 +456,8 @@ The **wiring** (devices) comes from the launch arguments, filled by `docker/comp
 
 | Argument | Default | Used by |
 |---|---|---|
-| `sim` | `false` | `false`: `arm_driver`, `temperature_monitor`, `joystick_teleop`, `camera`. `true`: the Gazebo arm (#34); until then it starts nothing and logs why |
+| `sim` | `false` | `false`: `arm_driver`, `temperature_monitor`, `joystick_teleop`, `camera`. `true`: the Gazebo arm, `braco_description`'s `gazebo.launch.py` (#34) |
+| `gui` | `false` | `sim:=true` only: `true` opens the Gazebo window (`SIM_GUI` in `docker/.env`) |
 | `port`, `baud` | `/dev/ttyTHS1`, `1000000` | `arm_driver` |
 | `lcd_bus` | `/dev/i2c-0` | `temperature_monitor` |
 | `device` | `/dev/input/js0` | `joystick_teleop` |
@@ -485,16 +487,19 @@ The **wiring** (devices) comes from the launch arguments, filled by `docker/comp
 ## 8. Make commands
 
 > **One command turns the system on: `make up`.** On the Jetson it starts the real arm (driver, temperature,
-> joystick, page); on the PC the simulation and the page. It can be repeated: each step (`.env`, checks, image,
+> joystick, camera); on the PC only `dev`, and with `SIM=1` also the simulation. The web page is `make web`. The
+> first `make` command on a machine asks once whether it is the dev PC or the jetson (`make role` asks again). It can be repeated: each step (`.env`, checks, image,
 > build) is skipped when it is already done, so `make up` after a code change only rebuilds what changed. No step
 > moves the arm. `make` alone lists every command; the machine (`ROLE=pc|jetson`) comes from `COMPOSE_PROFILES` in
-> `docker/.env` or is detected (arm64 + Tegra = Jetson).
+> `docker/.env` (that answer) or is detected (arm64 + Tegra = Jetson).
 
 **System** · [mk/system.mk](../mk/system.mk)
 
 | Command | What it does |
 |---|---|
-| `make up` | Turn the system on, wait for the page and print its URL |
+| `make up` | Turn the system on and wait for `/joint_states` (PC: only `dev`; `SIM=1` adds the simulation) |
+| `make web` | Start (or restart) the web page in the running container and print its URL; `make up` first if needed |
+| `make web-stop` | Stop the web page; the arm keeps running |
 | `make down` | Turn it off, without moving the arm (`PARK=1` parks the arm first) |
 | `make restart` | Restart the system container, then like `up` |
 | `make status` | Containers, CPU/RAM per container, the arm as the page sees it; a few seconds of `tegrastats` on the Jetson |
@@ -519,7 +524,6 @@ The **wiring** (devices) comes from the launch arguments, filled by `docker/comp
 | `make run CMD='…'` | Run a command in `dev` |
 | `make build` | colcon build of `ros2_ws/src` |
 | `make test` | colcon test and the results (PC only) |
-| `make web` | The page with mock data on :8080, no ROS, no Docker |
 | `make clean` | Delete build/ install/ log/ and `~/.ros/log` |
 
 **Setup** · [mk/setup.mk](../mk/setup.mk) · once per machine
@@ -531,7 +535,7 @@ The **wiring** (devices) comes from the launch arguments, filled by `docker/comp
 | `make image` | (Re)build this machine's image |
 | `make boot-on` / `boot-off` | Start at boot (systemd `braco`) / undo it |
 | `make jetson-image` | Build the arm64 image on the PC (`NANO=user@host` also copies it) |
-| `make reset` | Clean + remove containers, volumes and images |
+| `make re` | Remove containers, volumes, the image and the build output, then `make up` |
 
 **Network** · [mk/net.mk](../mk/net.mk)
 
@@ -611,7 +615,7 @@ on a 2 GB Nano or with the desktop on leads to the OOM killer or to swapping on 
 
 ```
  braco_mission ┄┄► MoveIt 2 ──trajectory──┬──► real arm: arm_driver    (trajectory path to decide)
-     planned       braco_moveit_config     └┄┄► sim: Gazebo + gz_ros2_control  #34
+     planned       braco_moveit_config     └──► sim: Gazebo + gz_ros2_control  #34
                         ▲
                         ┊
                    braco_description  URDF
@@ -622,9 +626,13 @@ runs on the real arm and in simulation.
 
 - `braco_description` holds the URDF; its joint limits must match `JOINT_LIMITS` in `mycobot.hpp`, and its joint
   names are the ones on `/joint_states` (`joint1..joint6`) on both the real arm and the simulation.
-- `sim:=true` will start Gazebo with that model, publishing the same `/joint_states`. Until then
-  `braco_description`'s `gazebo.launch.py` shows it in Gazebo with `gz_ros2_control` (`/arm_controller`,
-  `FollowJointTrajectory`), and `scripts/braco_arm.py` runs the same moves there and, with `--real`, on the arm.
+- `sim:=true` (the `sim` container) starts Gazebo with that model, publishing the same `/joint_states`, and the
+  controllers of `braco_description/config/controllers.yaml`: `joint_state_broadcaster` and `arm_controller`
+  (`FollowJointTrajectory`, the interface MoveIt uses). That file is the set planned for the real arm too; only the
+  URDF's `<hardware>` plugin changes (a braco `SystemInterface`, planned). The `sim` container runs on its own ROS domain (77) so its
+  `/joint_states` never mix with the real arm's. How to run it:
+  [Run the simulation](../ros2_ws/src/braco_description/README.md#run-the-simulation-step-by-step).
+- `braco_description`'s `scripts/braco_arm.py` runs the same moves in Gazebo and, with `--real`, on the arm.
 - How MoveIt's trajectories reach `arm_driver` on the real arm is still to decide: the target is the
   same ros2_control controller config as in simulation, with a braco `SystemInterface` as its hardware
   ([node graph](#node-graph)).
@@ -667,6 +675,7 @@ PR that closes or opens a gap.
 | **One Makefile** | Split in `mk/`, idempotent `make up`, ~30 public commands |
 | **Lean repository root** | `docker`, `docs`, `mk`, `ros2_ws`, `scripts` (operator scripts run by `make`), `web` and the `Makefile` (plus the formatter configs and `requirements-dev.txt`); `mycobot_cpp` in `ros2_ws/src` (one colcon base path, no extra mount); `tests/`, `playground/` and the root `requirements.txt` removed |
 | **Jetson guards** | `doctor` checks, ccache limit, ROS log cleanup, `status` with `docker stats` and `tegrastats` |
+| **Simulation** | `braco.launch.py sim:=true` (the `sim` container): Gazebo, the URDF and the ros2_control controllers planned for the hardware, on ROS domain 77; the page drives it; `move_joint.py` commands one joint (#34) |
 | **Validated URDF** | `braco_description`: joint names, limits, zero pose, joint directions and FK (within 1.5 mm of `get_coords()`) checked on the real arm; measured joint velocities; table check in `mycobot_cpp` uses the same kinematics ([report](urdf-sim-to-real.md), #25) |
 
 ### Differs from the target (accepted for now)
@@ -688,7 +697,6 @@ PR that closes or opens a gap.
 
 | Item | Issue |
 |---|---|
-| `sim:=true`: Gazebo + `gz_ros2_control` with the same `/joint_states` | #34 |
 | `arm_driver` as a lifecycle node: port on *configure*, motion only while *active*, *deactivate* cuts actuation | — |
 | E-stop node: forces the motion nodes to *deactivate* and aborts the active goals, also mid-trajectory | — |
 | ros2_control `SystemInterface` for the real arm and `joint_trajectory_controller` | — |
