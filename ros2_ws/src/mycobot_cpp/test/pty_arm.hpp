@@ -14,6 +14,7 @@
 
 #include <poll.h>
 #include <pty.h>
+#include <sys/ioctl.h>
 #include <unistd.h>
 
 #include <algorithm>
@@ -24,6 +25,7 @@
 #include <cstdint>
 #include <map>
 #include <mutex>
+#include <set>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -71,7 +73,9 @@ public:
         bool moving = false;
         std::map<std::pair<int, uint8_t>, int> servoData;  // (joint, address) -> value
         bool silent = false;                               // true: receive, never answer
-        bool ignoreWrites = false;  // true: SET_SERVO_DATA is received but not stored
+        bool ignoreWrites = false;   // true: SET_SERVO_DATA is received but not stored
+        std::set<int> brokenServos;  // their servo data comes back in an unknown format: no value,
+                                     // at once (a silent arm costs 600 ms per read)
 
         State() {
             for (int j = 1; j <= 6; ++j) {
@@ -100,6 +104,11 @@ public:
     PtyArm& operator=(const PtyArm&) = delete;
 
     const std::string& path() const { return path_; }
+
+    // MyCobot280 opens the port in exclusive mode (TIOCEXCL), and the mode outlives it here: this
+    // object keeps the port open. Clear it before another program opens the port (a non-root
+    // opener would get EBUSY).
+    void unlock() { ioctl(slave_, TIOCNXCL); }
 
     // ---- manual ---------------------------------------------------------------------
 
@@ -249,6 +258,10 @@ private:
                 break;
             case protocol::GET_SERVO_DATA:  // joint, address -> echo + value
                 if (f.data.size() != 2) return {};
+                if (s.brokenServos.count(f.data[0])) {
+                    data = {0, 0, 0, 0};
+                    break;
+                }
                 data = {f.data[0], f.data[1],
                         static_cast<uint8_t>(s.servoData[{f.data[0], f.data[1]}])};
                 break;
