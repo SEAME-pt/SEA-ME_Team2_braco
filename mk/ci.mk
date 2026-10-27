@@ -118,11 +118,13 @@ tidy: ## clang-tidy on the C++ packages of ros2_ws/src (ros2_ws/.clang-tidy), fr
 	@docker image inspect $(CI_IMAGE) >/dev/null 2>&1 || $(MAKE) --no-print-directory ci-image
 	$(CI_RUN) bash -c '$(CI_TIDY_SH)'
 
-lint: $(ENV_FILE) ## Compose files (both machines, GPU overrides), shellcheck and hadolint (binaries or their docker images)
+lint: $(ENV_FILE) $(VENV)/.installed ## Compose files, ruff check, shellcheck and hadolint (binaries or their docker images)
 	@echo "== compose =="
 	@for r in pc jetson; do COMPOSE_PROFILES=$$r $(DC) config -q && echo "  $(COMPOSE_BASE) ($$r): ok"; done
 	@COMPOSE_PROFILES=jetson I2C_GID= INPUT_GID= $(DC) config -q && echo "  $(COMPOSE_BASE) (jetson): ok without i2c/input groups"
 	@for g in nvidia dri; do COMPOSE_PROFILES=pc docker compose --project-directory $(DOCKER_DIR) -f $(COMPOSE_BASE) -f $(COMPOSE_DIR)/$$g.yml config -q && echo "  $(COMPOSE_DIR)/$$g.yml: ok"; done
+	@echo "== Python =="
+	@$(VENV)/bin/ruff check -q $(PY_FILES) && echo "  ruff check: clean"
 	@echo "== shell scripts =="
 	@if command -v shellcheck >/dev/null 2>&1; then shellcheck $(SHELLCHECK_FLAGS) $(SHELLCHECK_FILES) && echo "  shellcheck: clean"; \
 	else \
