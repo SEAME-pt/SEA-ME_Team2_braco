@@ -38,13 +38,13 @@ Question: who decides that a hot arm must rest, and how does it come back?
 
 ## Considered Options
 
-* `temperature_monitor` calls `/arm/set_read_only true` once per hot episode
+* `temperature_monitor` parks the arm and puts it to rest once per hot episode
 * `arm_driver` enters rest mode itself when it reads a hot temperature
 * Only warn (LCD, page, log), as before
 
 ## Decision Outcome
 
-Chosen option: "`temperature_monitor` calls `/arm/set_read_only true` once per hot
+Chosen option: "`temperature_monitor` parks the arm and puts it to rest once per hot
 episode", because it already computes the level for the LCD and `/diagnostics`,
 and the driver already has the rest mode it needs.
 
@@ -120,6 +120,8 @@ on the real arm they come from `/diagnostics`, so there is one definition of
 ## More Information
 
 * Issue [#55](https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/55)
+* The reaction was first only `/arm/set_read_only true`; it now runs `park` (fold, release the
+  joints, rest mode) and falls back to `set_read_only` (see "What it does" above).
 * 2026-10-23: the episode end moved from "below 65 °C" to "below 60 °C" (hysteresis),
   found in the review of PR #64. The decision itself is unchanged.
 * Related: [ADR-0002](ADR-0002-unique-control.md) (one control owner), [safety.md](safety.md)
