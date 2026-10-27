@@ -1,4 +1,4 @@
-# Guide: the arm is hot
+# Guide: arm overheating and rest mode
 
 **Goal:** cool the motors down and get back to work safely.
 
