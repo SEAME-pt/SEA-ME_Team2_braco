@@ -30,8 +30,9 @@ CI_RUN = docker run --rm -e CCACHE_DIR=/ws/.ccache -e CCACHE_MAXSIZE=500M -v $(C
 # table is cut before gcovr's Missing column (every uncovered line number): the HTML report has them.
 # Python: AMENT_CMAKE_PYTEST_WITH_COVERAGE makes ament_add_pytest_test run pytest-cov over the package's source dir,
 # one .coverage file per test under build/<pkg>/pytest_cov/; they are combined into one report (tests left out),
-# HTML in coverage/html/python. braco_description is not listed: test_urdf.py checks the xacro and imports none of
-# its scripts/, so it would only add them at 0%. Add it when they have tests.
+# HTML in coverage/html/python. scripts/ directories are not measured (C++ or Python): with them out, braco_camera's
+# camera.py is left out too and there is no ROS Python to report yet - coverage.py exits 1 ("No data to report"),
+# which is skipped; 2 is a total below the floor. braco_camera stays listed, so its pytest still runs.
 # Coverage floors: 80% for every component, the project's minimum. Do not lower them to make a PR pass: add tests.
 # C++ is gated on the line total of every package (gcovr); branches are only reported (gcc counts exception paths).
 # pytest-cov and coverage.py compare the total of statements and branches together, not the line percentage.
@@ -45,7 +46,7 @@ COV_FLAGS     := -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_FLAGS=--coverage -DCMAKE_CXX
                  -DCMAKE_EXE_LINKER_FLAGS=--coverage -DCMAKE_SHARED_LINKER_FLAGS=--coverage \
                  -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
                  -DAMENT_CMAKE_PYTEST_WITH_COVERAGE=ON
-COV_PY    := --data-file=coverage/.coverage --omit="*/test/*"
+COV_PY    := --data-file=coverage/.coverage --omit="*/test/*,*/scripts/*"
 CI_COV_SH := set -eo pipefail; sudo apt-get update -qq; sudo apt-get install -y -qq gcovr python3-pytest-cov >/dev/null; \
              rosdep install --from-paths $(WS_BASE_PATHS) --ignore-src -y >/dev/null; \
              colcon --log-base coverage/log build --base-paths $(WS_BASE_PATHS) --packages-up-to $(COVERAGE_PKGS) \
@@ -56,12 +57,13 @@ CI_COV_SH := set -eo pipefail; sudo apt-get update -qq; sudo apt-get install -y 
                  $(COV_DIRS) --ctest-args -L "gtest|pytest"; \
              colcon test-result --test-result-base coverage/build --verbose; \
              mkdir -p coverage/html; st=0; \
-             gcovr -r /ws/src coverage/build --exclude ".*/test/.*" --txt --print-summary \
+             gcovr -r /ws/src coverage/build --exclude ".*/test/.*" --exclude ".*/scripts/.*" --txt --print-summary \
                  --html-details coverage/html/index.html --fail-under-line $(COV_MIN_CXX) | cut -c1-64 || st=1; \
              python3 -m coverage combine --keep --data-file=coverage/.coverage \
                  coverage/build/*/pytest_cov/*/.coverage >/dev/null; \
-             python3 -m coverage html $(COV_PY) -q -d coverage/html/python; \
-             python3 -m coverage report $(COV_PY) --fail-under=$(COV_MIN_PY) || st=1; \
+             r=0; python3 -m coverage report $(COV_PY) --fail-under=$(COV_MIN_PY) || r=$$?; \
+             if [ $$r -eq 1 ]; then echo "ROS Python: nothing to measure outside scripts/ and test/"; \
+             else python3 -m coverage html $(COV_PY) -q -d coverage/html/python; [ $$r -eq 0 ] || st=1; fi; \
              exit $$st
 
 # cppcheck: run directly, because ament_cppcheck skips every file ("performance issues" with cppcheck >= 2.0, it
