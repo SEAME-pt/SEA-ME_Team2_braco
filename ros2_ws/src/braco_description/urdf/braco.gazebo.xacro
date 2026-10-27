@@ -6,7 +6,7 @@
 
   Used by launch/gazebo.launch.py (and so by braco_bringup's sim:=true). The controllers on
   top (config/controllers.yaml) are the set planned for the real arm too: only this
-  <hardware> plugin changes there (#37).
+  <hardware> plugin changes there (planned: a braco SystemInterface).
 -->
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
 

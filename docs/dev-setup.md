@@ -14,13 +14,16 @@ The versions below represent the baseline software environment of the physical r
 
 | Component | Robot reports | Container provides | How obtained |
 |---|---|---|---|
-| OS | Ubuntu 20.04.6 LTS (`focal`) | Ubuntu 20.04 (`focal`) | `lsb_release -a` |
+| OS | Ubuntu 20.04.6 LTS (`focal`) | Ubuntu 26.04 (`resolute`) | `lsb_release -a` |
 | Architecture | `aarch64` | `x86_64` or `aarch64`, host-dependent | `uname -m` |
-| Compiler | GCC 8.4.0 | GCC 9.4 (Focal default) | `gcc --version` |
-| Python | Python 3.8.10 | 3.8.x | `python3 --version` |
-| ROS 2 | galactic | `ros-galactic-ros-base` | `printenv ROS_DISTRO` |
-| CMake | 3.16.3 | 3.16.3 | `cmake --version` |
-| Colcon | 0.17.0 | x | `pip3 show colcon-core` |
+| Compiler | GCC 8.4.0 | Ubuntu 26.04's default GCC | `gcc --version` |
+| Python | Python 3.8.10 | 3.14 (Ubuntu 26.04 system Python) | `python3 --version` |
+| ROS 2 | galactic (native, not used by braco) | `lyrical` (`ros-lyrical-ros-base`) | `printenv ROS_DISTRO` |
+| CMake | 3.16.3 | Ubuntu 26.04's default CMake | `cmake --version` |
+| Colcon | 0.17.0 | from the ROS 2 apt repository | `pip3 show colcon-core` |
+
+The robot column is the Jetson host; braco itself runs in the containers (see
+[ADR-0001](ADR-0001-ros2-in-docker-on-jetson-nano.md) and [docker/README.md](../docker/README.md)).
 
 ---
 

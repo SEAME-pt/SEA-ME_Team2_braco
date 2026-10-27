@@ -14,7 +14,7 @@ figures. **Both files are kept in sync**: a change to one goes to the other in t
 > [status](#12-status-against-the-target-architecture) between *pending*, *differs* and *done*. If the code and this
 > document disagree, the code wins and this document is the bug.
 >
-> Last checked against the code: **2026-10-23** · [ADR-0001](ADR-0001-ros2-in-docker-on-jetson-nano.md) ·
+> Last checked against the code: **2026-10-27** · [ADR-0001](ADR-0001-ros2-in-docker-on-jetson-nano.md) ·
 > [ADR-0002](ADR-0002-unique-control.md) · [ADR-0003](ADR-0003-rest-per-temp.md)
 
 **Contents**
@@ -54,8 +54,14 @@ figures. **Both files are kept in sync**: a change to one goes to the other in t
   ([ADR-0002](ADR-0002-unique-control.md)).
 - **One source for each fact.** The thermal level is computed once, by `temperature_monitor`, and published on
   `/diagnostics`; the page shows it and does not recompute it. The control owner is kept once, by `arm_driver`.
-- **Same interface for real and simulated.** Everything above the driver uses `/joint_states` and
-  `braco_interfaces`, so the mission and planning layers run unchanged on both (#37).
+- **Same interface for real and simulated.** Everything above the hardware abstraction uses `/joint_states`,
+  `braco_interfaces` and the `FollowJointTrajectory` action, with the same topic, frame and action names on both,
+  so the mission and planning layers cannot tell the simulation from the real arm and run unchanged on both.
+  Only the hardware abstraction layer changes with `sim:=true|false`.
+- **Every node that moves the arm is a lifecycle node** *(target, not yet implemented)*. `arm_driver` opens the
+  serial port on *configure*, accepts motion only while *active*, and *deactivate* cuts actuation. The same
+  holds for the other nodes that command motion, so the e-stop can force them all out of *active*. Today
+  every node is a plain node; see [section 12](#12-status-against-the-target-architecture).
 - **Logic without ROS where possible.** Serial protocol, joystick, LCD and teleop logic live in `mycobot_cpp`
   (`ros2_ws/src/mycobot_cpp`); the control owner and the auto-rest decision are plain headers in `braco_driver/include`. All
   unit-tested without a ROS graph.
@@ -63,6 +69,106 @@ figures. **Both files are kept in sync**: a change to one goes to the other in t
 ---
 
 ## 2. The system at a glance
+
+Three views of the same system: the layers it is built in, the graph of nodes that move the arm (today and
+planned), and the processes and devices that run on the real arm today.
+
+### Layers
+
+```
+  REAL ARM  (sim:=false · Jetson)                  SIMULATION  (sim:=true · PC)
+ ┌─────────────────────────────────────────────────────────────────────────────────────────────────┐   ┐
+ │ 1 MISSION AND CLIENTS  ·  decide what the arm does                                              │   │
+ │   braco_web · joystick_teleop · temperature_monitor · zero / park                               │   │
+ │   braco_mission ┄► move_group (MoveIt 2)                      planned, PC                       │   │
+ └─────────────────────────────────────────────────────────────────────────────────────────────────┘   │
+      ▲▼  publish · call services · send action goals ↓     /joint_states · /diagnostics ↑             │  identical
+ ┌─────────────────────────────────────────────────────────────────────────────────────────────────┐   │  sim and real
+ │ 2 ROS 2 MIDDLEWARE  ·  the contract between layers                                              │   │
+ │   DDS · domain 42 · /joint_states · /arm/command · /arm/* services · /diagnostics               │   │
+ │   braco_interfaces types · FollowJointTrajectory (planned on the real arm)                      │   │
+ └─────────────────────────────────────────────────────────────────────────────────────────────────┘   ┘
+      ▲▼  /arm/command, services ↓  /joint_states ↑      ▲▼  FollowJointTrajectory ↓  /joint_states ↑  ┐
+ ┌──────────────────────────────────────────────┐   ┌──────────────────────────────────────────────┐   │
+ │ 3 HARDWARE ABSTRACTION                       │   │ 3 HARDWARE ABSTRACTION                       │   │
+ │   arm_driver: gates, limits, UART owner      │   │   gz_ros2_control                            │   │
+ │   camera: USB camera owner                   │   │     controller_manager                       │   │
+ │   mycobot_cpp: protocol, no ROS              │   │     arm_controller                           │   │
+ │   SystemInterface (planned)                  │   │     joint_state_broadcaster                  │   │
+ └──────────────────────────────────────────────┘   └──────────────────────────────────────────────┘   │
+      ▲▼  serial protocol · UART 1 Mbaud                 ▲▼  gz_ros2_control plugin                    │
+ ┌──────────────────────────────────────────────┐   ┌──────────────────────────────────────────────┐   │
+ │ 4 ARM SERVO CONTROLLER                       │   │ 4 ARM SERVO CONTROLLER                       │   │  switched by
+ │   Atom (ESP32, firmware 7.3)                 │   │   Gazebo physics                             │   │  sim:=true|false
+ │   runs the myCobot protocol                  │   │   steps the model                            │   │
+ └──────────────────────────────────────────────┘   └──────────────────────────────────────────────┘   │
+      ▲▼  servo bus: angles ↓  angle, temp, V ↑          ▲▼  joint commands ↓  joint state ↑           │
+ ┌──────────────────────────────────────────────┐   ┌──────────────────────────────────────────────┐   │
+ │ 5 SENSORS AND ACTUATORS                      │   │ 5 SENSORS AND ACTUATORS                      │   │
+ │   6 servos: angle, temperature, voltage      │   │   simulated joint1..joint6                   │   │
+ │   gripper                                    │   │   simulated gripper                          │   │
+ │   USB camera · joystick · LCD1602 *          │   │   joints from the URDF                       │   │
+ │   * wired to the Jetson, skip layer 4        │   │                                              │   │
+ └──────────────────────────────────────────────┘   └──────────────────────────────────────────────┘   ┘
+```
+
+How to read it: each layer only talks to the one right below it, through what the arrows name. Layers 1 and 2
+are the same in simulation and on the real arm; layers 3 to 5 are swapped by `sim:=true|false`, so code above
+layer 3 cannot tell which one it runs on.
+
+| Layer | Responsibility | Real arm (`sim:=false`) | Simulation (`sim:=true`) | Talks to the layer below through | Lives in | Status |
+|---|---|---|---|---|---|---|
+| **1 Mission and clients** | Decide *what* the arm does. Never open a device; take the control before moving ([ADR-0002](ADR-0002-unique-control.md)) | `braco_web`, `joystick_teleop`, `temperature_monitor`, `zero` / `park`; planned: `braco_mission`, `move_group` | the same nodes, on the PC | topics, services, action goals (layer 2) | `web/`, `braco_teleop`, `braco_driver`, `braco_bringup`, `braco_mission`, `braco_moveit_config` | clients done; mission and MoveIt planned |
+| **2 ROS 2 middleware** | The contract between the layers: names and types every layer agrees on. Identical in sim and real | DDS domain 42; `/joint_states`, `/arm/command`, `/arm/*` services, `/diagnostics` | the same names; `FollowJointTrajectory` on `/arm_controller` | subscriptions, service and action servers in layer 3 | `braco_interfaces` | done; `FollowJointTrajectory` on the real arm planned |
+| **3 Hardware abstraction** | Turn the contract into device access and enforce safety. The only layer that changes with `sim` | `arm_driver` (UART owner, gates, limits, watchdog), `camera` (USB camera owner), `mycobot_cpp` (protocol, no ROS) | `gz_ros2_control`: `controller_manager`, `arm_controller`, `joint_state_broadcaster` | myCobot serial protocol, UART 1 Mbaud (real); the gz_ros2_control plugin (sim) | `braco_driver`, `braco_camera`, `mycobot_cpp`, `braco_description` (sim) | done; lifecycle and ros2_control `SystemInterface` planned |
+| **4 Arm servo controller** | The arm's own board: receives the protocol and drives the servo bus. braco does not change its firmware | Atom (ESP32, firmware 7.3) in the myCobot 280 | Gazebo physics | servo bus: target angles down; angle, temperature and voltage up | vendor firmware; protocol in [protocol_commands.md](protocol_commands.md) | given |
+| **5 Sensors and actuators** | What moves and what senses | six joint servos (angle, temperature, voltage), gripper; USB camera, joystick and LCD1602 wired straight to the Jetson (they skip layer 4) | simulated `joint1..joint6` and gripper, from the URDF | — | `braco_description` (model), [inventory](inventory/inventory.md) | given |
+
+### Node graph
+
+The nodes that plan, command or stop motion. Solid boxes run today; dashed boxes are planned.
+
+```
+ ┌┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┐   srv /arm/take_control("mission")
+ ┊ braco_mission                ┊ ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┐
+ ┊ pick-and-place, pen drawing  ┊                                              ┊
+ └┄┄┄┄┄┄┄┄┄┄┄┄┄┄┬┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┘                                              ┊
+                ┊ MoveGroup action (goal pose)                                 ┊
+ ┌┄┄┄┄┄┄┄┄┄┄┄┄┄┄▼┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┐                                              ┊
+ ┊ move_group (MoveIt 2)        ┊ ◄── /joint_states                            ┊
+ └┄┄┄┄┄┄┄┄┄┄┄┄┄┄┬┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┘                                              ┊
+                ┊ FollowJointTrajectory on /arm_controller                     ┊
+ ┌──────────────▼────────────────────────────────────┐                         ┊
+ │ ros2_control   controller_manager                 │                         ┊
+ │   arm_controller   joint_trajectory_controller    │                         ┊
+ │   joint_state_broadcaster ──► /joint_states       │                         ┊
+ │ sim:  GazeboSimSystem in Gazebo             done  │                         ┊
+ │ real: braco SystemInterface              planned  │                         ┊
+ └──────────────┬────────────────────────────────────┘                         ┊
+                ┊ real arm: how it reaches the UART: to decide                 ┊
+ ┌──────────────▼────────────────────────────────────┐                         ┊
+ │ arm_driver                lifecycle (planned)     │ ◄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┘
+ │ gates: 1 STOP · 2 rest · 3 owner · 4 watchdog     │ ── UART ──► Atom ──► servos
+ └──────────────▲──────────────────────────▲─────────┘
+                │ STOP on /arm/command     ┊ deactivate (lifecycle transition)
+ ┌──────────────┴──────────────┐ ┌┄┄┄┄┄┄┄┄┄┴┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┐
+ │ today: page, joystick,      │ ┊ e-stop node             ┊
+ │ zero / park, any client     │ ┊ cuts actuation, aborts  ┊
+ └─────────────────────────────┘ ┊ the active goals        ┊
+                                 └┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┘
+```
+
+| Node | Layer | Role | Status |
+|---|---|---|---|
+| `braco_mission` | 1 | Mission state machine; takes the control as `mission`, sends goal poses to MoveIt 2 | planned |
+| `move_group` (MoveIt 2) | 1 | Plans collision-free trajectories from `/joint_states` and the URDF | planned |
+| ros2_control (`controller_manager`, `arm_controller`, `joint_state_broadcaster`) | 3 | Executes `FollowJointTrajectory` and publishes `/joint_states`; one controller config for sim and real | done in sim; real arm planned |
+| `arm_driver` | 3 | Only owner of the UART; every command passes its gates (STOP, rest, owner, watchdog) | done; lifecycle planned |
+| e-stop | 1 → 3 | **Today:** gate 1 of `arm_driver`, a `STOP` on `/arm/command` from any client is always obeyed. **Planned:** a dedicated node that forces `arm_driver` (and the other motion nodes) to *deactivate* and aborts the active goals, also mid-trajectory | gate done; node planned |
+
+The rest of the graph (topics, services, who uses them) is in [section 4](#4-ros-2-graph-and-control-real-arm-simfalse).
+
+### Processes and devices today
 
 ```
  ┌────────────────────────────────────────────────────────────────────┐
@@ -88,7 +194,7 @@ figures. **Both files are kept in sync**: a change to one goes to the other in t
       │                       │                        │                          ┊
  ┌────┴──────────────┐ ┌──────┴────────────────┐ ┌─────┴───────────────────┐ ┌┄┄┄┴┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┐
  │ braco_web         │ │ joystick_teleop       │ │ temperature_monitor     │ ┊ braco_mission (planned)   ┊
- │ rclpy in uvicorn  │ │ reopens js0 if        │ │ the thermal authority   │ ┊ #43, same contract        ┊
+ │ rclpy in uvicorn  │ │ reopens js0 if        │ │ the thermal authority   │ ┊ same contract             ┊
  │ SENDS             │ │ unplugged             │ │ SENDS                   │ ┊ SENDS                     ┊
  │  /arm/command,led │ │ SENDS                 │ │  /diagnostics           │ ┊  srv take_control         ┊
  │  srv take_control │ │  /arm/command, /led   │ │  srv set_read_only      │ ┊  FollowJointTrajectory    ┊
@@ -208,8 +314,8 @@ package has its own README with its topics, parameters and how to run it by hand
 | [`braco_camera`](../ros2_ws/src/braco_camera/README.md) | Node (Python) | `camera`: the eye-in-hand USB camera as JPEG frames | done |
 | [`braco_bringup`](../ros2_ws/src/braco_bringup/README.md) | Launch + config | `braco.launch.py`, `braco.yaml`, the container entrypoint, `zero` / `park` | done, `sim:=true` = Gazebo (#34) |
 | [`braco_description`](../ros2_ws/src/braco_description/README.md) | Model + tools | URDF of the myCobot 280 with G-base, camera flange and gripper; `gazebo.launch.py` (Gazebo viewer); `sim_to_real.py` (checks against the real arm) | done (#25) |
-| [`braco_moveit_config`](../ros2_ws/src/braco_moveit_config/README.md) | Config | MoveIt 2 for the arm | placeholder #40 |
-| [`braco_mission`](../ros2_ws/src/braco_mission/README.md) | Nodes | Mission state machine, MoveIt 2 client | placeholder #43 |
+| [`braco_moveit_config`](../ros2_ws/src/braco_moveit_config/README.md) | Config | MoveIt 2 for the arm | placeholder |
+| [`braco_mission`](../ros2_ws/src/braco_mission/README.md) | Nodes | Mission state machine, MoveIt 2 client | placeholder |
 
 ### Repository layout
 
@@ -243,8 +349,8 @@ SEA-ME_Team2_braco/
 │   │   ├── urdf/    braco.urdf.xacro  mycobot_280  adaptive_gripper  braco.gazebo
 │   │   ├── meshes/  config/  launch/ gazebo.launch.py
 │   │   └── scripts/ braco_arm.py  park.py  move_arm_example.py  sim_to_real.py
-│   ├── braco_moveit_config/    # placeholder #40
-│   └── braco_mission/          # placeholder #43
+│   ├── braco_moveit_config/    # placeholder
+│   └── braco_mission/          # placeholder
 ├── scripts/  bench.sh        # bench test of control and auto-rest (make bench)
 ├── web/                      # the braco page, a ROS 2 client
 │   ├── server/   app.py  arm.py  camera.py  ros.py  session.py …
@@ -461,9 +567,9 @@ Each machine has two compose services from the same image: `dev`, the tools cont
 > the code: state at 20 Hz, temperatures every 2 s, joystick at 50 Hz, page at 5 Hz. Replace them with numbers from
 > `make status` (end of this section).
 
-| ~0.25 GB | ~0.2 core | ~1.6 GB |
+| ~0.3 GB | ~0.2 core | ~1.6 GB |
 |---|---|---|
-| RAM of the braco system on: driver, temperature, joystick, launch and page | Average CPU in operation, about 5% of the 4 cores; ~0.4 with the page's ROS tab open | Peak of `colcon build` with 2 g++ running: the moment with the highest out-of-memory risk |
+| RAM of the braco system on: driver, temperature, joystick, camera, launch and page | Average CPU in operation, about 5% of the 4 cores; ~0.4 with the page's ROS tab open | Peak of `colcon build` with 2 g++ running: the moment with the highest out-of-memory risk |
 
 Estimated memory of a 4 GB Nano (`█` system L4T + Docker, `▓` braco on, `▒` MoveIt, `░` colcon build, `·` free;
 one character ≈ 100 MB):
@@ -508,8 +614,8 @@ on a 2 GB Nano or with the desktop on leads to the OOM killer or to swapping on 
 ## 10. Simulation and the planned upper layers
 
 ```
- braco_mission ┄┄► MoveIt 2 ──trajectory──┬──► real arm: arm_driver    (trajectory path decided with #37)
-     #43           braco_moveit_config #40 └──► sim: Gazebo + gz_ros2_control  #34
+ braco_mission ┄┄► MoveIt 2 ──trajectory──┬──► real arm: arm_driver    (trajectory path to decide)
+     planned       braco_moveit_config     └──► sim: Gazebo + gz_ros2_control  #34
                         ▲
                         ┊
                    braco_description  URDF
@@ -523,11 +629,13 @@ runs on the real arm and in simulation.
 - `sim:=true` (the `sim` container) starts Gazebo with that model, publishing the same `/joint_states`, and the
   controllers of `braco_description/config/controllers.yaml`: `joint_state_broadcaster` and `arm_controller`
   (`FollowJointTrajectory`, the interface MoveIt uses). That file is the set planned for the real arm too; only the
-  URDF's `<hardware>` plugin changes (#37). The `sim` container runs on its own ROS domain (77) so its
+  URDF's `<hardware>` plugin changes (a braco `SystemInterface`, planned). The `sim` container runs on its own ROS domain (77) so its
   `/joint_states` never mix with the real arm's. How to run it:
   [Run the simulation](../ros2_ws/src/braco_description/README.md#run-the-simulation-step-by-step).
 - `braco_description`'s `scripts/braco_arm.py` runs the same moves in Gazebo and, with `--real`, on the arm.
-- How MoveIt's trajectories reach `arm_driver` on the real arm is decided with #37 and #40.
+- How MoveIt's trajectories reach `arm_driver` on the real arm is still to decide: the target is the
+  same ros2_control controller config as in simulation, with a braco `SystemInterface` as its hardware
+  ([node graph](#node-graph)).
 
 ---
 
@@ -576,19 +684,25 @@ PR that closes or opens a gap.
 |---|---|---|
 | `mycobot_cpp/{include,src,tools}`, CMake only | `ros2_ws/src/mycobot_cpp/{includes,srcs}` with a Makefile next to CMake | Folder rename not done yet; low value until the library changes |
 | `teleop_logic.hpp` in `braco_teleop/include/` | in `mycobot_cpp/includes/` | Kept ROS-free in the library; the test lives in `braco_teleop/test/` |
-| `braco_moveit` | `braco_moveit_config` | MoveIt's own convention; decide when #40 starts |
+| `braco_moveit` | `braco_moveit_config` | MoveIt's own convention; decide when the MoveIt configuration starts |
 | zero / park / arm_moves as Python scripts | C++ programs in `braco_bringup/src/` | They reuse the `mycobot_cpp` poses and limits |
 | ADRs in `docs/adr/NNNN-*.md` | `docs/ADR-NNNN-*.md` | The page's Docs tab groups them by this prefix |
 | `examples/ros2_basics_*` and `make demos` | removed | The learning demos are no longer part of the system |
 | The page as an `ExecuteProcess` inside the launch | started by `arm_routine.sh` next to the launch | Optional; a matter of taste, not of correctness |
+| File, executable and node share the name | the `zero` / `park` executables run as nodes `arm_zero` / `arm_park` | Rename when `braco_bringup` changes next |
+| Every node that moves the arm is a lifecycle node | plain `rclcpp` / `rclpy` nodes; `arm_driver` opens the port on start-up | `arm_driver` first, then the e-stop on top of it |
+| The e-stop is a dedicated node that deactivates the motion nodes | STOP on `/arm/command`, gate 1 of `arm_driver`, from any client | after the lifecycle driver |
 
 ### Pending
 
 | Item | Issue |
 |---|---|
-| How trajectories reach `arm_driver` on the real arm (`FollowJointTrajectory` or equivalent) | #37 |
-| `braco_moveit_config`: SRDF, kinematics, limits, controllers | #40 |
-| `braco_mission`: pick-and-place, pen drawing, taking the control as `mission` | #43 |
+| `arm_driver` as a lifecycle node: port on *configure*, motion only while *active*, *deactivate* cuts actuation | — |
+| E-stop node: forces the motion nodes to *deactivate* and aborts the active goals, also mid-trajectory | — |
+| ros2_control `SystemInterface` for the real arm and `joint_trajectory_controller` | — |
+| How trajectories reach `arm_driver` on the real arm (`FollowJointTrajectory` or equivalent) | — |
+| `braco_moveit_config`: SRDF, kinematics, limits, controllers | — |
+| `braco_mission`: pick-and-place, pen drawing, taking the control as `mission` | — |
 | Measured CPU/RAM on the Jetson replacing the estimates of [section 9](#9-cpu-and-memory-on-the-jetson) | — |
 
 ---
@@ -611,6 +725,7 @@ In the same PR as the code change, in **both** `architecture.md` and `architectu
 | You changed | Update |
 |---|---|
 | a node, topic, service or message | sections 2 and 4, and the package README |
+| a layer, a node that moves or stops the arm, a lifecycle state | section 2 (layers and node graph) and section 1 |
 | who may move the arm, a safety gate, rest mode | sections 1, 3 and 4 (and an ADR if it is a new policy) |
 | a parameter in `braco.yaml` or a launch argument | section 7 |
 | a package, a folder or a file name | section 5 |
