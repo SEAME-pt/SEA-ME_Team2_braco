@@ -145,8 +145,9 @@ the same commands:
   `SHELLCHECK_IMAGE` and `HADOLINT_IMAGE` through docker, so it never skips a check that CI runs.
 * Caches: pip (`actions/setup-python`), the image layers (BuildKit `type=gha`), and ccache + colcon `build/`
   (`actions/cache`, reset whenever `docker/` changes). A warm run only recompiles what changed.
-* Coverage floors: `COV_MIN_CXX`, `COV_MIN_PY` and `COV_MIN_WEB` in [`mk/ci.mk`](../mk/ci.mk), the baseline rounded
-  down. They only go up: a PR whose tests raise the coverage raises its floor; a PR below a floor adds tests instead.
+* Coverage floors: `COV_MIN_CXX`, `COV_MIN_PY` and `COV_MIN_WEB` in [`mk/ci.mk`](../mk/ci.mk), 80% for every
+  component. A PR below a floor adds tests; the floors are not lowered to make it pass. The C++ (19%) and ROS Python
+  (24%) of `ros2_ws` are still below it, so the `coverage` job fails until their tests catch up.
 * The arm64 Jetson image is not built in CI (QEMU is too slow); build it by hand with `make jetson-image`.
 * `ci-ros` writes to `ros2_ws/build`, `install` and `log`, like `make build`, plus its ccache in `ros2_ws/.ccache`.
 

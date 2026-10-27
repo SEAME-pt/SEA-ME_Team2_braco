@@ -32,12 +32,12 @@ CI_RUN = docker run --rm -e CCACHE_DIR=/ws/.ccache -e CCACHE_MAXSIZE=500M -v $(C
 # one .coverage file per test under build/<pkg>/pytest_cov/; they are combined into one report (tests left out),
 # HTML in coverage/html/python. braco_description is not listed: test_urdf.py checks the xacro and imports none of
 # its scripts/, so it would only add them at 0%. Add it when they have tests.
-# Coverage floors (ratchet): the baseline rounded down. Raise one in the commit whose tests lift it, never lower it.
+# Coverage floors: 80% for every component, the project's minimum. Do not lower them to make a PR pass: add tests.
 # C++ is gated on the line total of every package (gcovr); branches are only reported (gcc counts exception paths).
 # pytest-cov and coverage.py compare the total of statements and branches together, not the line percentage.
 # Below a floor, every report and the HTML are still written; the target fails at the end.
-COV_MIN_CXX   := 19
-COV_MIN_PY    := 24
+COV_MIN_CXX   := 80
+COV_MIN_PY    := 80
 COV_MIN_WEB   := 80
 COVERAGE_PKGS := mycobot_cpp braco_driver braco_teleop braco_bringup braco_camera
 COV_DIRS      := --build-base coverage/build --install-base coverage/install
