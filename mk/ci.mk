@@ -48,11 +48,14 @@ CI_COV_SH := set -eo pipefail; sudo apt-get update -qq; sudo apt-get install -y 
 # cppcheck: run directly, because ament_cppcheck skips every file ("performance issues" with cppcheck >= 2.0, it
 # feeds it the ROS headers too). Here only the packages' own include dirs are given, so it takes a second. All of
 # $(WS_SRC) is checked, mycobot_cpp included (it has no ament linters). Findings fail the target; a false positive
-# gets an inline `// cppcheck-suppress <id>` with the reason. useStlAlgorithm is off: a std::transform in place of a
-# two-line loop is a matter of taste, not a defect.
+# gets an inline `// cppcheck-suppress <id>` with the reason. Off, as matters of taste rather than defects:
+# useStlAlgorithm (a std::transform in place of a two-line loop) and useInitializationList (the nodes declare their
+# parameters, then create publishers, clients and the serial port in the constructor body, as rclcpp code does; the
+# check flags whichever assignments come first, so moving them only exposes the next ones).
 CPPCHECK_INCLUDES := $(patsubst $(WS_DIR)/%,-I %,$(wildcard $(WS_SRC)/*/include $(WS_SRC)/*/includes))
 CPPCHECK_FLAGS    := --enable=warning,style,performance,portability --std=c++17 --language=c++ --inline-suppr \
-                     --error-exitcode=1 --quiet --suppress=missingIncludeSystem --suppress=useStlAlgorithm
+                     --error-exitcode=1 --quiet --suppress=missingIncludeSystem --suppress=useStlAlgorithm \
+                     --suppress=useInitializationList
 CI_CPPCHECK_SH    := cppcheck $(CPPCHECK_FLAGS) -j"$$(nproc)" $(CPPCHECK_INCLUDES) $(WS_BASE_PATHS) && echo "cppcheck: clean"
 
 BUILDX_MISSING := docker buildx not found: the Dockerfile needs BuildKit (apt install docker-buildx, or docker-buildx-plugin from Docker's repo)
