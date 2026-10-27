@@ -4,6 +4,7 @@
 #   ros job    make ci-ros   rosdep, colcon build and colcon test of ros2_ws/src (make ci-image builds its image)
 #              make coverage the GoogleTests only, built with --coverage, then a gcovr report (same image)
 #              make cppcheck cppcheck on the C++ packages (same image)
+#              make tidy     clang-tidy on the C++ packages, from the ci-ros build (same image)
 #
 # No robot and no display needed.
 
@@ -58,6 +59,16 @@ CPPCHECK_FLAGS    := --enable=warning,style,performance,portability --std=c++17 
                      --suppress=useInitializationList
 CI_CPPCHECK_SH    := cppcheck $(CPPCHECK_FLAGS) -j"$$(nproc)" $(CPPCHECK_INCLUDES) $(WS_BASE_PATHS) && echo "cppcheck: clean"
 
+# tidy: clang-tidy (checks in ros2_ws/.clang-tidy) on the sources of ros2_ws/src, from the compile_commands.json that
+# ci-ros's build leaves in build/<pkg> (colcon-defaults.yaml exports it): run make ci-ros first. It is installed at run
+# time, like gcovr, so the image does not carry it. Generated code (braco_interfaces) lives in build/, not src/, and is
+# skipped. A package's failure does not stop the others; the exit status is the worst.
+CI_TIDY_SH := ls build/*/compile_commands.json >/dev/null 2>&1 || { echo "no build in $(WS_DIR)/build: run make ci-ros first" >&2; exit 1; }; \
+              sudo apt-get update -qq; sudo apt-get install -y -qq clang-tidy >/dev/null; \
+              rc=0; for db in build/*/compile_commands.json; do \
+                run-clang-tidy -quiet -p "$$(dirname "$$db")" -j "$$(nproc)" "^/ws/src/" 2>/dev/null || rc=1; \
+              done; exit $$rc
+
 BUILDX_MISSING := docker buildx not found: the Dockerfile needs BuildKit (apt install docker-buildx, or docker-buildx-plugin from Docker's repo)
 
 # shellcheck and hadolint: a local binary if installed, else the pinned image through docker, so no check is ever
@@ -79,7 +90,7 @@ PY_FILES  = $(shell git ls-files '*.py')
 # Use the venv's pinned ruff and clang-format (make setup) even when the venv is not activated.
 format format-check: export PATH := $(CURDIR)/$(VENV)/bin:$(PATH)
 
-.PHONY: ci ci-image ci-ros coverage cppcheck lint format format-check
+.PHONY: ci ci-image ci-ros coverage cppcheck tidy lint format format-check
 
 ##@ CI (.github/workflows/ci.yml)
 
@@ -101,6 +112,10 @@ coverage: ## GoogleTests of ros2_ws with coverage (gcovr), in the ci-ros contain
 cppcheck: ## cppcheck on every C++ package of ros2_ws/src (ament_cppcheck skips them all), in the ci-ros image
 	@docker image inspect $(CI_IMAGE) >/dev/null 2>&1 || $(MAKE) --no-print-directory ci-image
 	$(CI_RUN) bash -c '$(CI_CPPCHECK_SH)'
+
+tidy: ## clang-tidy on the C++ packages of ros2_ws/src (ros2_ws/.clang-tidy), from the build of make ci-ros
+	@docker image inspect $(CI_IMAGE) >/dev/null 2>&1 || $(MAKE) --no-print-directory ci-image
+	$(CI_RUN) bash -c '$(CI_TIDY_SH)'
 
 lint: $(ENV_FILE) ## Compose files (both machines, GPU overrides), shellcheck and hadolint (binaries or their docker images)
 	@echo "== compose =="

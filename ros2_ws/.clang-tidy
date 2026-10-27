@@ -1,0 +1,15 @@
+# clang-tidy for the C++ packages of ros2_ws/src (make tidy, in the ci-ros container). Here and not at the repo root:
+# the container mounts only ros2_ws, and clang-tidy looks for this file upwards from each source file.
+# Start small: bugs, performance and the static analyzer. Off:
+#   bugprone-easily-swappable-parameters  every (int joint, double angle)-style signature; not actionable
+#   bugprone-reserved-identifier          the ROS include guards (PKG__FILE_HPP_), which cpplint requires
+# Each test/ directory has a .clang-tidy of its own on top of this one.
+Checks: >
+  -*,
+  bugprone-*,
+  performance-*,
+  clang-analyzer-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-reserved-identifier
+# Our headers only, not those of ROS or of the generated braco_interfaces code (in build/ and install/).
+HeaderFilterRegex: '(/ws|.*/ros2_ws)/src/.*'
