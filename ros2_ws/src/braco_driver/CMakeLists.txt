@@ -16,17 +16,18 @@ find_package(std_srvs REQUIRED)
 find_package(diagnostic_msgs REQUIRED)
 find_package(braco_interfaces REQUIRED)
 
-add_executable(arm_driver src/arm_driver.cpp)
-target_include_directories(arm_driver PRIVATE include)
-target_link_libraries(arm_driver
+# The two nodes in a library, so the tests can run them in-process; the programs only hold main()
+add_library(braco_driver_nodes STATIC src/arm_driver_node.cpp src/temperature_monitor_node.cpp)
+target_include_directories(braco_driver_nodes PUBLIC include)
+target_link_libraries(braco_driver_nodes PUBLIC
   mycobot_cpp::mycobot_cpp rclcpp::rclcpp
-  ${sensor_msgs_TARGETS} ${std_msgs_TARGETS} ${std_srvs_TARGETS} ${braco_interfaces_TARGETS})
+  ${sensor_msgs_TARGETS} ${std_msgs_TARGETS} ${std_srvs_TARGETS} ${diagnostic_msgs_TARGETS}
+  ${braco_interfaces_TARGETS})
 
-add_executable(temperature_monitor src/temperature_monitor.cpp)
-target_include_directories(temperature_monitor PRIVATE include)
-target_link_libraries(temperature_monitor
-  mycobot_cpp::mycobot_cpp rclcpp::rclcpp
-  ${diagnostic_msgs_TARGETS} ${std_srvs_TARGETS} ${braco_interfaces_TARGETS})
+foreach(program arm_driver temperature_monitor)
+  add_executable(${program} src/${program}.cpp)
+  target_link_libraries(${program} braco_driver_nodes)
+endforeach()
 
 install(TARGETS arm_driver temperature_monitor
   DESTINATION lib/${PROJECT_NAME})
