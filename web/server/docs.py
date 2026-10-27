@@ -25,7 +25,10 @@ GROUPS = [
     ('Getting started', lambda p: p in ('README.md', 'docs/guides/dev-setup.md')),
     ('Safety', lambda p: p == 'docs/guides/safety.md'),
     ('Guides', lambda p: p.startswith('docs/guides/')),
-    ('Architecture and decisions', lambda p: p.startswith(('docs/architecture/', 'docs/decisions/'))),
+    (
+        'Architecture and decisions',
+        lambda p: p.startswith(('docs/architecture/', 'docs/decisions/')),
+    ),
     ('Hardware', lambda p: p.startswith('docs/hardware/')),
     ('Web page (braco)', lambda p: p.startswith('web/')),
     ('Docker and ROS 2', lambda p: p.startswith(('docker/', 'ros2_ws/'))),

@@ -111,7 +111,11 @@ def test_mock_arm_stop_freezes_angles(monkeypatch):
 
 def test_list_docs_includes_repo_docs():
     paths = {d['path'] for d in docs.list_docs()}
-    assert {'docs/guides/safety.md', 'docs/guides/dev-setup.md', 'docs/hardware/protocol_commands.md'} <= paths
+    assert {
+        'docs/guides/safety.md',
+        'docs/guides/dev-setup.md',
+        'docs/hardware/protocol_commands.md',
+    } <= paths
     assert 'docker/README.md' in paths and 'web/README.md' in paths
     safety = next(d for d in docs.list_docs() if d['path'] == 'docs/guides/safety.md')
     assert safety['title'].startswith('Lab Safety')
