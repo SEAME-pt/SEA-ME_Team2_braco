@@ -34,5 +34,13 @@ install(TARGETS mycobot_cpp EXPORT export_${PROJECT_NAME}
   RUNTIME DESTINATION bin
 )
 
+if(BUILD_TESTING)
+  # Only the hardware-independent parts: no serial port is opened. No ament linters: the package is
+  # formatted with clang-format (make format-check) instead of uncrustify.
+  find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(test_mycobot test/test_mycobot.cpp)
+  target_link_libraries(test_mycobot mycobot_cpp)
+endif()
+
 ament_export_targets(export_${PROJECT_NAME} HAS_LIBRARY_TARGET)
 ament_package()
