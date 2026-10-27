@@ -3,6 +3,7 @@
 #   host job   make ci       format check, lint, web page tests
 #   ros job    make ci-ros   rosdep, colcon build and colcon test of ros2_ws/src (make ci-image builds its image)
 #              make coverage the GoogleTests only, built with --coverage, then a gcovr report (same image)
+#              make cppcheck cppcheck on the C++ packages (same image)
 #
 # No robot and no display needed.
 
@@ -43,6 +44,17 @@ CI_COV_SH := set -eo pipefail; sudo apt-get update -qq; sudo apt-get install -y 
              mkdir -p coverage/html; \
              gcovr -r /ws/src coverage/build --exclude ".*/test/.*" --txt --print-summary \
                  --html-details coverage/html/index.html | cut -c1-64
+
+# cppcheck: run directly, because ament_cppcheck skips every file ("performance issues" with cppcheck >= 2.0, it
+# feeds it the ROS headers too). Here only the packages' own include dirs are given, so it takes a second. All of
+# $(WS_SRC) is checked, mycobot_cpp included (it has no ament linters). Findings fail the target; a false positive
+# gets an inline `// cppcheck-suppress <id>` with the reason. useStlAlgorithm is off: a std::transform in place of a
+# two-line loop is a matter of taste, not a defect.
+CPPCHECK_INCLUDES := $(patsubst $(WS_DIR)/%,-I %,$(wildcard $(WS_SRC)/*/include $(WS_SRC)/*/includes))
+CPPCHECK_FLAGS    := --enable=warning,style,performance,portability --std=c++17 --language=c++ --inline-suppr \
+                     --error-exitcode=1 --quiet --suppress=missingIncludeSystem --suppress=useStlAlgorithm
+CI_CPPCHECK_SH    := cppcheck $(CPPCHECK_FLAGS) -j"$$(nproc)" $(CPPCHECK_INCLUDES) $(WS_BASE_PATHS) && echo "cppcheck: clean"
+
 BUILDX_MISSING := docker buildx not found: the Dockerfile needs BuildKit (apt install docker-buildx, or docker-buildx-plugin from Docker's repo)
 
 # shellcheck and hadolint: a local binary if installed, else the pinned image through docker, so no check is ever
@@ -64,7 +76,7 @@ PY_FILES  = $(shell git ls-files '*.py')
 # Use the venv's pinned ruff and clang-format (make setup) even when the venv is not activated.
 format format-check: export PATH := $(CURDIR)/$(VENV)/bin:$(PATH)
 
-.PHONY: ci ci-image ci-ros coverage lint format format-check
+.PHONY: ci ci-image ci-ros coverage cppcheck lint format format-check
 
 ##@ CI (.github/workflows/ci.yml)
 
@@ -82,6 +94,10 @@ ci-ros: ## The `ros` CI job: rosdep + colcon build + colcon test in a throw-away
 coverage: ## GoogleTests of ros2_ws with coverage (gcovr), in the ci-ros container; report in ros2_ws/coverage/html
 	@docker image inspect $(CI_IMAGE) >/dev/null 2>&1 || $(MAKE) --no-print-directory ci-image
 	$(CI_RUN) bash -c '$(CI_COV_SH)'
+
+cppcheck: ## cppcheck on every C++ package of ros2_ws/src (ament_cppcheck skips them all), in the ci-ros image
+	@docker image inspect $(CI_IMAGE) >/dev/null 2>&1 || $(MAKE) --no-print-directory ci-image
+	$(CI_RUN) bash -c '$(CI_CPPCHECK_SH)'
 
 lint: $(ENV_FILE) ## Compose files (both machines, GPU overrides), shellcheck and hadolint (binaries or their docker images)
 	@echo "== compose =="
