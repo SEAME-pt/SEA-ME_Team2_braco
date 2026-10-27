@@ -11,6 +11,7 @@
 #include <cerrno>
 #include <cmath>
 #include <cstddef>
+#include <cstdlib>
 #include <cstring>
 #include <stdexcept>
 #include <thread>
@@ -513,6 +514,11 @@ std::optional<std::vector<uint8_t>> MyCobot280::queryWithData(uint8_t cmd,
 }
 
 // ------------------------------------------------------------------ helpers
+
+std::string envOr(const char* name, const std::string& fallback) {
+    const char* value = std::getenv(name);
+    return value && *value ? value : fallback;
+}
 
 void MyCobot280::appendInt16(std::vector<uint8_t>& out, int16_t value) {
     const uint16_t v = static_cast<uint16_t>(value);

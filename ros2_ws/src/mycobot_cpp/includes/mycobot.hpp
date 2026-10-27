@@ -75,6 +75,11 @@ constexpr double TABLE_MARGIN_MM = 20.0;    // lowest point must stay above this
 // sideways size of the gripper are not modelled.
 double minHeightMm(const Angles& angles);
 
+// The environment variable `name` if it is set and not empty, else `fallback`. The stand-alone
+// programs take their devices this way (MYCOBOT_PORT, MYCOBOT_JOYSTICK, MYCOBOT_LCD_BUS), so tests
+// can point them at a pseudo-terminal or a FIFO.
+std::string envOr(const char* name, const std::string& fallback);
+
 // Command codes, taken from pymycobot's ProtocolCode.
 // Verify against your installed version:
 //   grep -nE "= 0x" ~/.local/lib/python3.8/site-packages/pymycobot/common.py
