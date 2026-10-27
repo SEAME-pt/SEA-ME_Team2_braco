@@ -32,6 +32,13 @@ CI_RUN = docker run --rm -e CCACHE_DIR=/ws/.ccache -e CCACHE_MAXSIZE=500M -v $(C
 # one .coverage file per test under build/<pkg>/pytest_cov/; they are combined into one report (tests left out),
 # HTML in coverage/html/python. braco_description is not listed: test_urdf.py checks the xacro and imports none of
 # its scripts/, so it would only add them at 0%. Add it when they have tests.
+# Coverage floors (ratchet): the baseline rounded down. Raise one in the commit whose tests lift it, never lower it.
+# C++ is gated on the line total of every package (gcovr); branches are only reported (gcc counts exception paths).
+# pytest-cov and coverage.py compare the total of statements and branches together, not the line percentage.
+# Below a floor, every report and the HTML are still written; the target fails at the end.
+COV_MIN_CXX   := 19
+COV_MIN_PY    := 24
+COV_MIN_WEB   := 80
 COVERAGE_PKGS := mycobot_cpp braco_driver braco_teleop braco_bringup braco_camera
 COV_DIRS      := --build-base coverage/build --install-base coverage/install
 COV_FLAGS     := -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_FLAGS=--coverage -DCMAKE_CXX_FLAGS=--coverage \
@@ -48,12 +55,14 @@ CI_COV_SH := set -eo pipefail; sudo apt-get update -qq; sudo apt-get install -y 
              colcon --log-base coverage/log test --base-paths $(WS_BASE_PATHS) --packages-select $(COVERAGE_PKGS) \
                  $(COV_DIRS) --ctest-args -L "gtest|pytest"; \
              colcon test-result --test-result-base coverage/build --verbose; \
-             mkdir -p coverage/html; \
+             mkdir -p coverage/html; st=0; \
              gcovr -r /ws/src coverage/build --exclude ".*/test/.*" --txt --print-summary \
-                 --html-details coverage/html/index.html | cut -c1-64; \
+                 --html-details coverage/html/index.html --fail-under-line $(COV_MIN_CXX) | cut -c1-64 || st=1; \
              python3 -m coverage combine --keep --data-file=coverage/.coverage \
                  coverage/build/*/pytest_cov/*/.coverage >/dev/null; \
-             python3 -m coverage report $(COV_PY); python3 -m coverage html $(COV_PY) -q -d coverage/html/python
+             python3 -m coverage html $(COV_PY) -q -d coverage/html/python; \
+             python3 -m coverage report $(COV_PY) --fail-under=$(COV_MIN_PY) || st=1; \
+             exit $$st
 
 # cppcheck: run directly, because ament_cppcheck skips every file ("performance issues" with cppcheck >= 2.0, it
 # feeds it the ROS headers too). Here only the packages' own include dirs are given, so it takes a second. All of
@@ -104,9 +113,11 @@ format format-check: export PATH := $(CURDIR)/$(VENV)/bin:$(PATH)
 
 ##@ CI (.github/workflows/ci.yml)
 
-# The web tests measure the coverage of web/server (lines and branches); the table lists the lines no test runs.
+# The web tests measure the coverage of web/server (lines and branches); the table lists the lines no test runs,
+# and the job fails below COV_MIN_WEB.
 ci: format-check lint $(VENV)/.web-test-installed ## The `host` CI job: format check, lint, web page tests (with coverage)
-	$(VENV)/bin/python -m pytest web/tests -q --cov=web/server --cov-branch --cov-report=term-missing:skip-covered
+	$(VENV)/bin/python -m pytest web/tests -q --cov=web/server --cov-branch --cov-report=term-missing:skip-covered \
+		--cov-fail-under=$(COV_MIN_WEB)
 
 ci-image: ## Build the `ros` CI job's image (Dockerfile stage CI_TARGET=base) as CI_IMAGE, for your UID/GID
 	@docker buildx version >/dev/null 2>&1 || { echo "$(BUILDX_MISSING)" >&2; exit 1; }
