@@ -9,7 +9,7 @@ while a command runs).
  ┌───────────────────────────────┐   DDS (same    ┌───────────────────────────────┐
  │ dev  shell, build, test,      │   domain+RMW)  │ dev   shell, build, test      │
  │      RViz2 · MoveIt 2 · Gazebo│ ◄────────────► │ real  arm_driver, temperature,│
- │ sim  simulated arm + web page │  host network  │       joystick + web page     │
+ │ sim  simulated arm + web page │  host network  │  joystick, camera + web page  │
  └───────────────┬───────────────┘                └───────────────┬───────────────┘
         image braco-image/pc ─────────► stage `base` ◄───────── image braco-image/jetson
           Ubuntu 26.04 · ROS 2 Lyrical (ros-base) · ros2_control · pymycobot · colcon defaults
@@ -101,11 +101,11 @@ skips the entrypoint, so ROS is **not** sourced - prefix it with `ros_entrypoint
 | Group | Commands |
 |---|---|
 | System | `up`, `down` (`PARK=1`), `restart`, `status`, `logs` (`S=web`, `S=arm_driver`, any pattern) |
-| Arm (Jetson) | `zero`, `park`, `rest`, `resume`, `temps` |
+| Arm (Jetson) | `zero`, `park`, `rest`, `resume`, `temps`, `bench` |
 | Development | `shell`, `run CMD='...'`, `build` (`COLCON_ARGS=...`), `test`, `web` (mock page on :8080), `clean` |
 | Setup | `setup`, `doctor`, `image` (`IMAGE_ARGS='--no-cache --pull'`), `boot-on`, `boot-off`, `jetson-image` (`NANO=user@host`), `reset` |
 | Network | `net-test`, `net-talk`, `net-listen` |
-| CI | `ci`, `ci-image`, `ci-ros`, `lint` |
+| CI | `ci`, `ci-image`, `ci-ros`, `lint`, `format`, `format-check` |
 
 - `make up GPU=nvidia` (or `GPU=dri`) adds `compose/nvidia.yml` or `compose/dri.yml` for `dev` and `sim` (PC only);
   `COMPOSE_FILE` in `.env` does the same permanently.
@@ -118,8 +118,8 @@ skips the entrypoint, so ROS is **not** sourced - prefix it with `ros_entrypoint
 - In CI (`CI=true`) or without a terminal, TTY allocation is turned off automatically.
 
 **The Jetson never simulates.** Its image has no Gazebo, MoveIt or RViz (those are only in the `pc` stage), and
-`make build` there only takes `braco_bringup` and what it depends on (driver, teleop, interfaces,
-`mycobot_cpp`): `braco_description`, `braco_moveit_config` and
+`make build` there only takes `braco_bringup` and what it depends on (driver, teleop, camera,
+interfaces, `mycobot_cpp`): `braco_description`, `braco_moveit_config` and
 `braco_mission` are left out (`WS_PACKAGES` in `mk/config.mk`). If the real arm needs another package, add it to
 `braco_bringup/package.xml` as an `exec_depend`; the opposite holds too: never make `braco_bringup` depend on a
 simulation package (Gazebo, MoveIt), or the Jetson builds it again. The PC builds everything.
@@ -191,8 +191,8 @@ arm_driver           ROS 2 node   the ONLY process that opens /dev/ttyTHS1 (myco
                                   srv /arm/set_read_only, pub /arm/read_only (rest mode, see below)
                                   srv /arm/take_control, pub /arm/control_owner (one client moves the arm)
                                   not respawned: when it exits the launch shuts down and the container stops
-temperature_monitor  ROS 2 node   temperatures -> /diagnostics + LCD1602 (port of mycobot_cpp temps_lcd), rest mode
-                                  at 65 °C; respawned
+temperature_monitor  ROS 2 node   temperatures -> /diagnostics + LCD1602 (port of mycobot_cpp temps_lcd); at 65 °C
+                                  runs park (fold, release the joints, rest mode); respawned
 joystick_teleop      ROS 2 node   joystick -> /arm/command (port of mycobot_cpp joystick_all_joints); respawned
 camera               ROS 2 node   the ONLY process that opens the USB camera -> /camera/image_raw/compressed
                                   (JPEG, 15 fps); waits for the camera when it is missing; respawned
@@ -251,7 +251,7 @@ the container also stops the temperature readings.
 ## The system on the PC: simulation
 
 `sim` runs the same `arm_routine.sh` with `SIM=true`: `braco.launch.py sim:=true` and the web page with
-`ARM_SOURCE=gazebo` (http://localhost:8000). Until the Gazebo bringup (#34) and the model (#25) exist the launch
+`ARM_SOURCE=gazebo` (http://localhost:8000). Until the Gazebo bringup (#34) exists (the model, #25, is in `braco_description`) the launch
 starts no node, so the page is up but shows the arm as not connected, and `make up` only warns about it.
 
 ## The compatibility contract
@@ -281,6 +281,9 @@ Checked against the real thing:
   locale, Universe, ros2-apt-source install, `apt upgrade`, `pymycobot` 4.0.7 on Python 3.14, user creation, QA tools.
   The two machines' services start without rebuilding, with the right user, volume ownership and environment.
 - A real PC image build (amd64) completed, and the smoke test (`make run CMD=seame-smoke-test`) passed except for the two items below.
+- The serial port: `/dev/ttyTHS1` at 1000000 baud, opened from a container on the Nano
+  ([ADR-0001](../docs/ADR-0001-ros2-in-docker-on-jetson-nano.md)). On stock JetPack the UART is held by the serial
+  console: on the host run `sudo systemctl disable --now nvgetty` and re-login before the container can open it.
 
 Found by that real smoke test run:
 
@@ -312,10 +315,7 @@ Found by that real smoke test run:
    Compose and containers, but never against a real Lyrical install. It relies on the demo nodes' log line
    `I heard: [Hello World: N]` and on the layout of `ros2 topic info -v`; if a real run disagrees, `make run CMD='ros2
    run demo_nodes_py listener'` shows the actual output to compare with.
-4. **Serial port.** `/dev/ttyTHS1` at 1000000 baud is what I remember for the Jetson Nano version; confirm in the
-   Elephant Robotics docs. On stock JetPack the UART is held by the serial console: on the host run
-   `sudo systemctl disable --now nvgetty` and re-login before the container can open it.
-5. **E-stop.** The class README does not say how it reaches the Jetson. If it is a GPIO line, uncomment the
+4. **E-stop.** The class README does not say how it reaches the Jetson. If it is a GPIO line, uncomment the
    `/dev/gpiochip0` device in `compose.yml` and have your lifecycle node read it.
 
 ## If the build fails
@@ -334,7 +334,7 @@ Found by that real smoke test run:
 
 ## Jetson host: what to check before Module 1 hardware work
 
-The Nano's stock JetPack 4.6 host is Ubuntu 18.04 with a 4.9 kernel and an old Docker Engine. Containers share
+The Nano's JetPack 4.6 host is Ubuntu 20.04 with a 4.9 kernel and an old Docker Engine. Containers share
 that kernel, so a 26.04 userland should be smoke-tested first:
 
 ```bash

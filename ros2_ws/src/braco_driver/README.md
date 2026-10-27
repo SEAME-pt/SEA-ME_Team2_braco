@@ -12,6 +12,7 @@ crash independently while the port keeps a single owner. It never powers the arm
 |---|---|---|
 | pub | `/joint_states` | `sensor_msgs/JointState` (radians, `joint1..joint6`, 20 Hz) |
 | pub | `/arm/servo_temperatures` | `braco_interfaces/ServoTemperatures` (every 2 s, also in rest mode) |
+| pub | `/arm/servo_voltages` | `braco_interfaces/ServoVoltages` (every 2 s, also in rest mode) |
 | pub | `/arm/read_only` | `std_msgs/Bool`, latched: rest mode on/off |
 | pub | `/arm/control_owner` | `std_msgs/String`, latched: who may move the arm (`""` = free) |
 | sub | `/arm/command` | `braco_interfaces/ArmCommand` |
