@@ -166,7 +166,8 @@ inline Wanted wantedMotion(const std::map<int, int>& axisState,
 
     const bool l1 = valueOr0(buttonState, BUTTON_L1) == 1;
     const bool r1 = valueOr0(buttonState, BUTTON_R1) == 1;
-    const int bumperDir = (l1 && !r1) ? -1 : ((r1 && !l1) ? 1 : 0);
+    // L1 -1, R1 +1, both or neither 0
+    const int bumperDir = static_cast<int>(r1) - static_cast<int>(l1);
     if (bumperDir != 0) {
         wanted[6] = motionForRatio(bumperRatio(mode), mode, bumperDir);
         if (BUMPERS_EXCLUSIVE) return wanted;  // ignore sticks while J6 rotates
