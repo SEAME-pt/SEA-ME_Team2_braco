@@ -134,7 +134,7 @@ the same commands:
 
 | Job | What it runs | Reproduce locally |
 |---|---|---|
-| `host` | `make ci`: `make format-check` (C++ and Python formatting, see [4.1](#41-code-formatting)), `make lint` (compose files for both machines, shellcheck, hadolint) and the web page tests (pytest `web/tests`, in a venv from `web/requirements*.txt`); creates `docker/.env` if missing | `make ci` |
+| `host` | `make ci`: `make format-check` (C++ and Python formatting, see [4.1](#41-code-formatting)), `make lint` (compose files for both machines, ruff check of the Python outside `ros2_ws/src`, shellcheck, hadolint) and the web page tests (pytest `web/tests`, in a venv from `web/requirements*.txt`); creates `docker/.env` if missing | `make ci` |
 | `ros` | Builds the Dockerfile's `base` stage (Ubuntu 26.04 + ROS 2 Lyrical), then `rosdep install`, `colcon build` and `colcon test` of `ros2_ws/src` (with `mycobot_cpp`) in a throw-away container | `make ci-ros` (builds the image the first time) |
 
 * shellcheck and hadolint need no install: without a local binary, `make lint` runs the images pinned in

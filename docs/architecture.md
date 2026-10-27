@@ -442,7 +442,7 @@ The **wiring** (devices) comes from the launch arguments, filled by `docker/comp
 | `make ci` | The `host` job: format check, lint, page tests |
 | `make ci-ros` | The `ros` job: rosdep, build, test in a clean image |
 | `make ci-image` | Build that job's image |
-| `make lint` | Compose files, shellcheck, hadolint |
+| `make lint` | Compose files, ruff check, shellcheck, hadolint |
 | `make format` | clang-format (C++) and ruff (Python); `format-check` only checks (pre-push hook) |
 
 Each machine has two compose services from the same image: `dev`, the tools container used by `shell`, `run` and
