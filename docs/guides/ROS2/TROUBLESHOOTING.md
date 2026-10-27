@@ -8,7 +8,7 @@ that causes them:
 | Building the Docker image | [docker/README.md → If the build fails](../../../docker/README.md#10-if-the-build-fails) |
 | Setting up your machine (Docker, NVIDIA, `make doctor`) | [dev-setup.md → Problems](../dev-setup.md#5-problems) |
 | The simulation / Gazebo | [braco_description → When something goes wrong](../../../ros2_ws/src/braco_description/README.md#when-something-goes-wrong) |
-| A hot arm, or the arm does nothing | [hot-arm guide](../hot-arm/README.md) |
+| A hot arm, or the arm does nothing | [hot-arm guide](../hot-arm/hot-arm-guide.md) |
 | ROS 2: build, tests, topics, two machines, GUI tools | Below, in this file |
 
 When something fails, first collect the basics:
