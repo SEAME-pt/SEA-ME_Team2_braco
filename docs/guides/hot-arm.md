@@ -46,4 +46,4 @@
 | The arm is loose after `make resume` | `make resume` does not turn the motors on: use `make zero` |
 | It parks again soon after `make zero` | It was not cool enough: back to step 2, and wait longer |
 
-Why it works this way: [ADR-0003](../../decisions/ADR-0003-rest-per-temp.md).
+Why it works this way: [ADR-0003](../decisions/ADR-0003-rest-per-temp.md).

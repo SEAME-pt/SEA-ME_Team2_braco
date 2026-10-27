@@ -69,5 +69,5 @@ Implemented in `ControlLease` ([control.hpp](../../ros2_ws/src/braco_driver/incl
 ## Links
 
 - Issue [#55](https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/55)
-- [Architecture](../architecture/architecture.md), [ADR-0003](ADR-0003-rest-per-temp.md), [hot-arm guide](../guides/hot-arm/hot-arm-guide.md)
+- [Architecture](../architecture/architecture.md), [ADR-0003](ADR-0003-rest-per-temp.md), [hot-arm guide](../guides/hot-arm.md)
 - Revisit if: a client we do not control calls `power_on` / `set_gripper` / `release_servos`, or a wrong call is seen on the bench

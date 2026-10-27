@@ -1,11 +1,20 @@
 # ROS 2: Hands-on Guide
 
-From zero to a working ROS 2 workspace with the core patterns: publisher/subscriber with QoS (C++ and Python), service, action, lifecycle node, launch file, parameters, and inspection tools.
+Learn ROS 2 by doing: you write small example programs (in C++ and Python) and run them in the container.
+Nothing here moves the arm.
 
-- Concepts: [README.md](README.md) · Commands: [CHEATSHEET.md](CHEATSHEET.md) · Problems: [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
-- **Safety:** nothing here moves the arm. Before running anything on the hardware, read [safety.md](../safety.md).
+**You will learn:** topics, services, actions, lifecycle nodes, launch files, parameters and the inspection tools.
 
-Conventions: `host$` = your machine, repo root. `nano$` = the Jetson, repo root. `container$` = inside `make shell`. ROS distro: `lyrical`.
+**Where to type each command:**
+
+| Prompt | Means |
+|---|---|
+| `host$` | Your PC, in the repo folder |
+| `nano$` | The Jetson, in the repo folder |
+| `container$` | Inside the container (`make shell`) |
+
+**Also useful:** [CHEATSHEET](CHEATSHEET.md) (commands) · [TROUBLESHOOTING](TROUBLESHOOTING.md) (errors) ·
+[ROS 2 docs](https://docs.ros.org/en/rolling/Concepts.html) (concepts)
 
 ---
 

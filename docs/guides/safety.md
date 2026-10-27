@@ -86,7 +86,7 @@ Safety rules for the arm, its gripper and its camera.
 
 ## 7. Hot motors
 
-- **The arm is hot?** Follow [hot-arm/hot-arm-guide.md](hot-arm/hot-arm-guide.md).
+- **The arm is hot?** Follow [hot-arm.md](hot-arm.md).
 
 ## 8. Starting again after an emergency stop
 

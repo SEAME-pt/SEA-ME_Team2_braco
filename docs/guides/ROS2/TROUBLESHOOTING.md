@@ -6,9 +6,9 @@ that causes them:
 | Your problem is about... | Look in |
 |---|---|
 | Building the Docker image | [docker/README.md → If the build fails](../../../docker/README.md#10-if-the-build-fails) |
-| Setting up your machine (Docker, NVIDIA, `make doctor`) | [dev-setup.md → Problems](../dev-setup.md#5-problems) |
+| Setting up your machine (Docker, NVIDIA, `make doctor`) | [dev-setup.md → Problems](../dev-setup.md#problems) |
 | The simulation / Gazebo | [braco_description → When something goes wrong](../../../ros2_ws/src/braco_description/README.md#when-something-goes-wrong) |
-| A hot arm, or the arm does nothing | [hot-arm guide](../hot-arm/hot-arm-guide.md) |
+| A hot arm, or the arm does nothing | [hot-arm guide](../hot-arm.md) |
 | ROS 2: build, tests, topics, two machines, GUI tools | Below, in this file |
 
 When something fails, first collect the basics:
@@ -124,7 +124,7 @@ Go through this list in order.
 | Symptom | Cause | Fix |
 |---|---|---|
 | Container does not start: `error gathering device information ... /dev/ttyTHS1` | `real` needs the serial port and the LCD on the host | `make doctor` checks both. On a PC use `ROLE=pc`. On the Jetson: `ls -l /dev/ttyTHS1` |
-| `Permission denied` / port busy on `/dev/ttyTHS1` | Serial console (`nvgetty`) holds the UART, or wrong `DIALOUT_GID` | `nvgetty`: [dev-setup → Jetson](../dev-setup.md#3-jetson). `DIALOUT_GID`: `getent group dialout`, set it in `.env` |
+| `Permission denied` / port busy on `/dev/ttyTHS1` | Serial console (`nvgetty`) holds the UART, or wrong `DIALOUT_GID` | `nvgetty`: [dev-setup → Jetson](../dev-setup.md#jetson). `DIALOUT_GID`: `getent group dialout`, set it in `.env` |
 | Docker on the Nano freezes during builds | Parallel image builds | Build one image at a time, or build on the PC (`make jetson-image NANO=user@host`) |
 | SD card full | Images and build caches | `docker system df`; `docker image prune`; `make clean` (asks first) |
 

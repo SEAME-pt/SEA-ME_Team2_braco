@@ -1,85 +1,69 @@
-# Developer Setup Guide
+# Guide: install braco on the PC and the Jetson
 
-How to set up your machine to work on braco (**myCobot 280 Jetson Nano**).
+Everything runs in Docker, so you only install Docker, `make` and `git`. You run every command from the repo folder.
 
-> **Safety:** before moving the real arm, read [safety.md](safety.md).
+## PC (Linux)
 
-## 1. How it works
+1. **Install Docker Engine** with Compose 2.20 or newer: [docs.docker.com/engine/install](https://docs.docker.com/engine/install/).
+2. **Install the tools:**
 
-- **You do not install ROS 2 on your machine.** It is already inside a Docker container: a ready-made Linux with
-  ROS 2 and every tool the project needs.
-  - So everyone has exactly the same versions, on the PC and on the Jetson.
-  - On your machine you only install Docker, `make` and `git`.
-  - Why we chose this: [ADR-0001](../decisions/ADR-0001-ros2-in-docker-on-jetson-nano.md).
-- **You never type `docker` commands.** You type `make <command>` in the repo folder, and `make` runs Docker for
-  you.
-  - Example: `make up` starts the containers, `make down` stops them.
-  - Type `make` alone to see every command.
-- **Your code stays on your machine.** The repo folder `ros2_ws/` is shared with the container (inside it, it is
-  called `/ws`).
-  - So you edit the files with your normal editor, and the container builds and runs them.
-- **The PC and the Jetson run different containers:**
+   ```bash
+   sudo apt-get install -y make git curl python3-venv x11-xserver-utils
+   ```
 
-  | Machine | Container | What it is for |
-  |---|---|---|
-  | PC | `dev` | Your work: open a shell (`make shell`), build, test, RViz, Gazebo |
-  | PC | `sim` | A simulated arm in Gazebo. Only if you ask: `make up SIM=1` |
-  | Jetson | `real` | The real arm: the nodes that move it and read its temperatures |
+3. **Let your user run Docker without `sudo`:**
 
-- More about the containers: [docker/README.md](../../docker/README.md).
+   ```bash
+   sudo usermod -aG docker $USER
+   ```
 
-## 2. PC (Linux)
+   Log out and back in.
+4. **GPU** (Gazebo and RViz use it). `make` expects an NVIDIA card:
+   - NVIDIA: install the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html).
+   - Intel / AMD: add `GPU=dri` to every `make` command.
+   - No GPU: add `GPU=none` to every `make` command (Gazebo is slow).
+5. **Clone the repo:**
 
-- **Install Docker Engine** with Compose 2.20 or newer: [docs.docker.com/engine/install](https://docs.docker.com/engine/install/).
-- **Install the tools:**
-  - `sudo apt-get install -y make git curl python3-venv x11-xserver-utils`
-  - `python3-venv`: for the venv with the formatters. `x11-xserver-utils`: lets RViz and Gazebo open windows.
-- **Run Docker without `sudo`:**
-  - `sudo usermod -aG docker $USER`, then log out and back in.
-- **GPU:** `make` uses an NVIDIA card by default.
-  - NVIDIA: install the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html).
-  - Intel / AMD: add `GPU=dri` to the `make` commands. No GPU: `GPU=none` (Gazebo is slow).
-- **Clone and prepare:**
-  - `git clone git@github.com:SEAME-pt/SEA-ME_Team2_braco.git && cd SEA-ME_Team2_braco`
-  - `make setup`: asks `dev or jetson?` → type **`dev`**.
-  - It creates `docker/.env`, the venv and the git hooks, then runs `make doctor`: every line must be `[ ok ]`.
-  - Never run `make` with `sudo`.
-- **Start:**
-  - `make up`: starts `dev`. The first time it builds the image (tens of minutes).
-  - `make up SIM=1`: also the simulated arm.
-- **Check:**
-  - `make net-test` must print `PASS`.
-  - `make shell` opens a shell in the container.
+   ```bash
+   git clone git@github.com:SEAME-pt/SEA-ME_Team2_braco.git
+   cd SEA-ME_Team2_braco
+   ```
 
-## 3. Jetson
+6. **Prepare the machine:** `make setup`
+   - It asks `Is this machine the dev PC or the jetson?` → type **`dev`**.
+   - Every line it prints must say `[ ok ]`. A `[FAIL]` line says how to fix it.
+7. **Start:** `make up`
+   - The first time it builds the image: tens of minutes.
+8. **Check:** `make net-test` must print `PASS`.
 
-- **Free the arm's serial port** (once): `sudo systemctl disable --now nvgetty`, then log out and back in.
-- **Clone and prepare:**
-  - Same `git clone` as on the PC.
-  - `make setup` → type **`jetson`**.
-  - Fix the `[warn]` lines too (desktop running, power mode not MAXN, no swap): they slow the Jetson down.
-- **Get the image**, one of:
-  - `make image` on the Jetson (slow);
-  - `make jetson-image NANO=user@<jetson-ip>` on the PC (faster: builds it there and copies it).
-- **Start:** `make up`. It waits until the arm answers, and never moves it.
-- **Check:**
-  - `make status`: the arm connected, six angles.
-  - `make temps`: six temperatures.
-  - `make web`, then `http://<jetson-ip>:8000`: live angles.
+## Jetson
 
-## 4. Before you push
+1. **Free the arm's serial port** (the Jetson uses it as a console by default):
 
-- `make format`: fixes the C++ (clang-format) and Python (ruff) formatting.
-- `make ci`: the same checks as GitHub (formatting, lint, web page tests).
-- `make ci-ros`: if you changed ROS 2 code (builds and tests every package, like GitHub).
-- The pre-push hook **blocks the push** if the formatting is wrong: `make format`, commit, push again.
+   ```bash
+   sudo systemctl disable --now nvgetty
+   ```
 
-## 5. Problems
+   Log out and back in.
+2. **Clone the repo:** the same `git clone` and `cd` as on the PC.
+3. **Prepare the machine:** `make setup` → type **`jetson`**.
+   - Fix the `[warn]` lines too: a desktop running, power mode not MAXN, no swap. They slow the Jetson down.
+4. **Get the image**, one of:
+   - on the Jetson: `make image` (slow);
+   - on the PC: `make jetson-image NANO=user@<jetson-ip>` (faster: builds it on the PC and copies it).
+5. **Start:** `make up`
+   - It waits until the arm answers. It never moves the arm.
+6. **Check:**
+   - `make status`: the arm connected, six angles.
+   - `make temps`: six temperatures.
 
-- `permission denied` with `docker`: log out and back in after `usermod -aG docker`.
-- `docker has no NVIDIA runtime`: install the NVIDIA Container Toolkit, or use `GPU=dri` / `GPU=none`.
-- `[FAIL]` in `make doctor`: each line says how to fix it. More: [TROUBLESHOOTING.md](ROS2/TROUBLESHOOTING.md).
-- Jetson, `Device or resource busy` on `/dev/ttyTHS1`: the port belongs to `arm_driver`. Use `make park`,
-  `make zero`, `make temps`, never a script of your own.
-- Jetson, the arm does not answer: turn on the round power switch on the base.
-- Motors locked, resist by hand: `make park` frees the joints.
+## Problems
+
+| Problem | Fix |
+|---|---|
+| `permission denied` when running `docker` | Log out and back in after step 3 |
+| `docker has no NVIDIA runtime` | Install the NVIDIA Container Toolkit, or use `GPU=dri` / `GPU=none` |
+| `Run make as your normal user, not root/sudo` | Run `make` without `sudo` |
+| `docker compose ... is too old` | Update Docker (Compose 2.20 or newer) |
+| Jetson: `/dev/ttyTHS1 not found` | Jetson step 1, then log out and back in |
+| Any other `[FAIL]` | The line says how to fix it. More: [TROUBLESHOOTING.md](ROS2/TROUBLESHOOTING.md) |
