@@ -28,7 +28,7 @@ CI_RUN = docker run --rm -e CCACHE_DIR=/ws/.ccache -e CCACHE_MAXSIZE=500M -v $(C
 # colcon-defaults.yaml, so the ccache launchers are repeated. gcov adds to the .gcda counters of the last run: they
 # are deleted first. Only the gtest label runs (no linters); a failing test stops before the report. The table is cut
 # before gcovr's Missing column (every uncovered line number): the HTML report has them.
-COVERAGE_PKGS := braco_driver braco_teleop
+COVERAGE_PKGS := mycobot_cpp braco_driver braco_teleop braco_bringup
 COV_DIRS      := --build-base coverage/build --install-base coverage/install
 COV_FLAGS     := -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_FLAGS=--coverage -DCMAKE_CXX_FLAGS=--coverage \
                  -DCMAKE_EXE_LINKER_FLAGS=--coverage -DCMAKE_SHARED_LINKER_FLAGS=--coverage \
