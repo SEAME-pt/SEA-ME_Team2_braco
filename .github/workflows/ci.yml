@@ -87,3 +87,14 @@ jobs:
 
       - name: make ci-ros
         run: make ci-ros CI_IMAGE=${{ env.CI_IMAGE }}
+
+      # JUnit XML of every gtest, pytest and linter, also (above all) when a test failed. ci-ros deletes the old
+      # results first, so the cached build/ never adds those of a removed test.
+      - name: Upload test results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v5
+        with:
+          name: test-results
+          path: ros2_ws/build/*/test_results/
+          if-no-files-found: warn
+          retention-days: 14
