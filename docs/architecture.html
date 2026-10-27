@@ -182,7 +182,7 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
     <h1>braco architecture</h1>
     <p class="lede">How the braco software is split into ROS 2 packages, which process owns what, how the pieces talk to each other on the real arm (Jetson Nano) and in simulation (PC), where each file lives, how the system is started and what it costs on the Jetson. This page describes what is <b>implemented today</b>. The same content in Markdown: <a href="architecture.md">architecture.md</a>; <b>both files are kept in sync</b>.</p>
     <div class="meta">
-      <span>Last checked against the code: 2026-10-26</span>
+      <span>Last checked against the code: 2026-10-27</span>
       <span>Started as <a href="https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/30">issue #30</a></span>
       <span><a href="ADR-0001-ros2-in-docker-on-jetson-nano.md">ADR-0001</a> · <a href="ADR-0002-unique-control.md">ADR-0002</a> · <a href="ADR-0003-rest-per-temp.md">ADR-0003</a></span>
     </div>
@@ -986,7 +986,7 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
     <div class="sechead"><span class="secnum">9</span><h2>CPU and memory on the Jetson</h2></div>
     <p class="assume"><b>Estimates, not measurements.</b> They assume a 4 GB Jetson Nano (4 Cortex-A57 cores, RAM shared with the GPU), no desktop and the 10 W power mode, and come from what these processes usually take on aarch64 and from the rates in the code: state at 20 Hz, temperatures every 2 s, joystick at 50 Hz, page at 5 Hz. Replace them with numbers from <code>make status</code> (end of this section).</p>
     <div class="tiles">
-      <div class="tile"><span class="v">~0.25 GB</span><span class="k">RAM of the braco system on: driver, temperature, joystick, launch and page</span></div>
+      <div class="tile"><span class="v">~0.3 GB</span><span class="k">RAM of the braco system on: driver, temperature, joystick, camera, launch and page</span></div>
       <div class="tile"><span class="v">~0.2 core</span><span class="k">Average CPU in operation, about 5% of the 4 cores; ~0.4 with the page's ROS tab open</span></div>
       <div class="tile"><span class="v">~1.6 GB</span><span class="k">Peak of <code>colcon build</code> with 2 g++ running: the moment with the highest out-of-memory risk</span></div>
     </div>
@@ -1161,6 +1161,7 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
           <tr><td>ADRs in <code>docs/adr/NNNN-*.md</code></td><td><code>docs/ADR-NNNN-*.md</code></td><td>The page's Docs tab groups them by this prefix.</td></tr>
           <tr><td><code>examples/ros2_basics_*</code> and <code>make demos</code></td><td>removed</td><td>The learning demos are no longer part of the system.</td></tr>
           <tr><td>The page as an <code>ExecuteProcess</code> inside the launch</td><td>started by <code>arm_routine.sh</code> next to the launch</td><td>Optional; a matter of taste, not of correctness.</td></tr>
+          <tr><td>File, executable and node share the name</td><td>the <code>zero</code> / <code>park</code> executables run as nodes <code>arm_zero</code> / <code>arm_park</code></td><td>Rename when <code>braco_bringup</code> changes next.</td></tr>
           <tr><td>Every node that moves the arm is a lifecycle node</td><td>plain <code>rclcpp</code> / <code>rclpy</code> nodes; <code>arm_driver</code> opens the port on start-up</td><td><code>arm_driver</code> first, then the e-stop on top of it.</td></tr>
           <tr><td>The e-stop is a dedicated node that deactivates the motion nodes</td><td>STOP on <code>/arm/command</code>, gate 1 of <code>arm_driver</code>, from any client</td><td>After the lifecycle driver.</td></tr>
         </tbody>
