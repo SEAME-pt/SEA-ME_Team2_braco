@@ -104,8 +104,9 @@ format format-check: export PATH := $(CURDIR)/$(VENV)/bin:$(PATH)
 
 ##@ CI (.github/workflows/ci.yml)
 
-ci: format-check lint $(VENV)/.web-test-installed ## The `host` CI job: format check, lint, web page tests
-	$(VENV)/bin/python -m pytest web/tests -q
+# The web tests measure the coverage of web/server (lines and branches); the table lists the lines no test runs.
+ci: format-check lint $(VENV)/.web-test-installed ## The `host` CI job: format check, lint, web page tests (with coverage)
+	$(VENV)/bin/python -m pytest web/tests -q --cov=web/server --cov-branch --cov-report=term-missing:skip-covered
 
 ci-image: ## Build the `ros` CI job's image (Dockerfile stage CI_TARGET=base) as CI_IMAGE, for your UID/GID
 	@docker buildx version >/dev/null 2>&1 || { echo "$(BUILDX_MISSING)" >&2; exit 1; }
