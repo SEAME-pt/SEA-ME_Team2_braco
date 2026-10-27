@@ -149,6 +149,9 @@ the same commands:
   component. A PR below a floor adds tests; the floors are not lowered to make it pass. `scripts/` directories are
   not measured, so the ROS Python (today only `braco_camera/scripts/camera.py`) has nothing to report yet. The C++ of
   `ros2_ws` is still below 80%, so the `coverage` job fails until its tests catch up.
+* Each run's summary page shows the coverage totals against their floors, with the C++ per package
+  (`scripts/coverage_summary.py`, from the JSON reports; written on failure too). Locally the table is dropped; to see
+  it, run e.g. `GITHUB_STEP_SUMMARY=/dev/stdout make ci`.
 * The arm64 Jetson image is not built in CI (QEMU is too slow); build it by hand with `make jetson-image`.
 * `ci-ros` writes to `ros2_ws/build`, `install` and `log`, like `make build`, plus its ccache in `ros2_ws/.ccache`.
 
