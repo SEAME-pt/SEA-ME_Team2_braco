@@ -6,7 +6,7 @@ publishes no topics.
 
 | Header (`includes/`) | What it holds |
 |---|---|
-| `mycobot.hpp` | Serial protocol ([protocol_commands.md](../../../docs/protocol_commands.md)), `JOINT_LIMITS`, `ZERO_ANGLES` / `PARK_ANGLES`, the table margin |
+| `mycobot.hpp` | Serial protocol ([protocol_commands.md](../../../docs/hardware/protocol_commands.md)), `JOINT_LIMITS`, `ZERO_ANGLES` / `PARK_ANGLES`, the table margin |
 | `joystick.hpp` | `input::Joystick`: reads `/dev/input/js*` events |
 | `lcd_display.hpp` | `ui::LcdDisplay`: the LCD1602 over I2C |
 | `display.hpp` | `ui::TerminalDisplay`: full-screen terminal status |

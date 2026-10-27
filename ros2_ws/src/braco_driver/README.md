@@ -21,7 +21,7 @@ crash independently while the port keeps a single owner. It never powers the arm
 | srv | `/arm/power_on`, `/arm/release_servos` | `std_srvs/Trigger` |
 | srv | `/arm/set_gripper`, `/arm/set_read_only` | `std_srvs/SetBool` |
 
-**Control owner** ([ADR-0002](../../../docs/ADR-0002-unique-control.md)): one client moves the arm at a time.
+**Control owner** ([ADR-0002](../../../docs/decisions/ADR-0002-unique-control.md)): one client moves the arm at a time.
 `/arm/take_control` gives the control to a `source` (`web`, `joystick`, `script`, `mission`) when it is free,
 already that source's, or with `force` (which drops the previous owner's pending motion and stops the arm).
 Motion (`JOINTS`, `ALL_ANGLES`) is obeyed only from the owner; **STOP always**, from anyone. The owner loses
@@ -46,7 +46,7 @@ Reads `/arm/servo_temperatures` (never the port), shows them on the LCD1602 (`/d
 `/diagnostics` per joint: normal, warm from 55 °C, hot from 65 °C. Shows "no feedback" when nothing arrives for
 `stale_timeout_s`.
 
-**Rest on overheat** ([ADR-0003](../../../docs/ADR-0003-rest-per-temp.md)): the first reading with a
+**Rest on overheat** ([ADR-0003](../../../docs/decisions/ADR-0003-rest-per-temp.md)): the first reading with a
 joint at 65 °C or above runs `park` (fold, release the joints so the servos cool, rest mode on; parameter
 `park_on_hot`, default `true`), once per episode (the episode ends when every joint is
 below 60 °C, so a reading that jitters around 65 °C does not park it again), logs it (if `park` cannot run or fails, it calls `/arm/set_read_only true` instead) and shows `REST: SERVO HOT` / `J4 66 C cooling` on the LCD. It never leaves rest mode:

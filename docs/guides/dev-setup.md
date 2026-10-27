@@ -23,7 +23,7 @@ The versions below represent the baseline software environment of the physical r
 | Colcon | 0.17.0 | from the ROS 2 apt repository | `pip3 show colcon-core` |
 
 The robot column is the Jetson host; braco itself runs in the containers (see
-[ADR-0001](ADR-0001-ros2-in-docker-on-jetson-nano.md) and [docker/README.md](../docker/README.md)).
+[ADR-0001](../decisions/ADR-0001-ros2-in-docker-on-jetson-nano.md) and [docker/README.md](../../docker/README.md)).
 
 ---
 
@@ -68,9 +68,9 @@ make setup
 ```
 
 It creates `docker/.env` for this machine (PC or Jetson, detected), on the PC the development venv (see
-[2.4](#24-host-python-web-page-and-dev-tools)), binds the git hooks in `.githooks/` (commit message format, and a code
+[2.4](#24-host-python-web-page-tests-and-dev-tools)), binds the git hooks in `.githooks/` (commit message format, and a code
 format check before every push, see [4.1](#41-code-formatting)), and runs `make doctor`. Then `make up` turns the
-braco system on (see [docker/README.md](../docker/README.md)); `make` lists every command.
+braco system on (see [docker/README.md](../../docker/README.md)); `make` lists every command.
 
 ### 2.4 Host Python (web page tests and dev tools)
 
@@ -130,7 +130,7 @@ make temps    # servo temperatures, read through arm_driver
 
 ## 4. Continuous Integration (CI)
 
-Every pull request and every push to `main` runs [`.github/workflows/ci.yml`](../.github/workflows/ci.yml). No robot,
+Every pull request and every push to `main` runs [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml). No robot,
 serial port or display is needed. Both jobs only call `make`, so a red check can be reproduced on a workstation with
 the same commands:
 

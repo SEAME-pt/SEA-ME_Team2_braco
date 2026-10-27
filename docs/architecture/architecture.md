@@ -14,8 +14,8 @@ figures. **Both files are kept in sync**: a change to one goes to the other in t
 > [status](#12-status-against-the-target-architecture) between *pending*, *differs* and *done*. If the code and this
 > document disagree, the code wins and this document is the bug.
 >
-> Last checked against the code: **2026-10-27** · [ADR-0001](ADR-0001-ros2-in-docker-on-jetson-nano.md) ·
-> [ADR-0002](ADR-0002-unique-control.md) · [ADR-0003](ADR-0003-rest-per-temp.md)
+> Last checked against the code: **2026-10-27** · [ADR-0001](../decisions/ADR-0001-ros2-in-docker-on-jetson-nano.md) ·
+> [ADR-0002](../decisions/ADR-0002-unique-control.md) · [ADR-0003](../decisions/ADR-0003-rest-per-temp.md)
 
 **Contents**
 
@@ -43,7 +43,7 @@ figures. **Both files are kept in sync**: a change to one goes to the other in t
   only process that opens the eye-in-hand USB camera; the page (and later vision) subscribes to its frames.
 - **The driver never moves the arm by itself.** Starting or stopping the system does not zero, park or power on the
   arm; those are explicit commands (`make zero`, `make park`, `make down PARK=1`). The one automatic move is the
-  park on overheat, run by `temperature_monitor` ([ADR-0003](ADR-0003-rest-per-temp.md)).
+  park on overheat, run by `temperature_monitor` ([ADR-0003](../decisions/ADR-0003-rest-per-temp.md)).
 - **Safety lives next to the hardware.** Joint limits, the table margin, the watchdog, rest mode and the control
   owner are enforced in `arm_driver`, not in its clients: a buggy client cannot bypass them.
 - **Faults are visible.** `arm_driver` is not respawned: if it dies the launch shuts down, `arm_routine.sh` ends and
@@ -51,7 +51,7 @@ figures. **Both files are kept in sync**: a change to one goes to the other in t
   on the camera, whose node waits for it when it is unplugged.
 - **One client moves the arm at a time.** The page, the joystick, zero/park and the mission take the control from
   `arm_driver` before moving; motion from anyone else is ignored, STOP never is
-  ([ADR-0002](ADR-0002-unique-control.md)).
+  ([ADR-0002](../decisions/ADR-0002-unique-control.md)).
 - **One source for each fact.** The thermal level is computed once, by `temperature_monitor`, and published on
   `/diagnostics`; the page shows it and does not recompute it. The control owner is kept once, by `arm_driver`.
 - **Same interface for real and simulated.** Everything above the hardware abstraction uses `/joint_states`,
@@ -118,11 +118,11 @@ layer 3 cannot tell which one it runs on.
 
 | Layer | Responsibility | Real arm (`sim:=false`) | Simulation (`sim:=true`) | Talks to the layer below through | Lives in | Status |
 |---|---|---|---|---|---|---|
-| **1 Mission and clients** | Decide *what* the arm does. Never open a device; take the control before moving ([ADR-0002](ADR-0002-unique-control.md)) | `braco_web`, `joystick_teleop`, `temperature_monitor`, `zero` / `park`; planned: `braco_mission`, `move_group` | the same nodes, on the PC | topics, services, action goals (layer 2) | `web/`, `braco_teleop`, `braco_driver`, `braco_bringup`, `braco_mission`, `braco_moveit_config` | clients done; mission and MoveIt planned |
+| **1 Mission and clients** | Decide *what* the arm does. Never open a device; take the control before moving ([ADR-0002](../decisions/ADR-0002-unique-control.md)) | `braco_web`, `joystick_teleop`, `temperature_monitor`, `zero` / `park`; planned: `braco_mission`, `move_group` | the same nodes, on the PC | topics, services, action goals (layer 2) | `web/`, `braco_teleop`, `braco_driver`, `braco_bringup`, `braco_mission`, `braco_moveit_config` | clients done; mission and MoveIt planned |
 | **2 ROS 2 middleware** | The contract between the layers: names and types every layer agrees on. Identical in sim and real | DDS domain 42; `/joint_states`, `/arm/command`, `/arm/*` services, `/diagnostics` | the same names; `FollowJointTrajectory` on `/arm_controller` | subscriptions, service and action servers in layer 3 | `braco_interfaces` | done; `FollowJointTrajectory` on the real arm planned |
 | **3 Hardware abstraction** | Turn the contract into device access and enforce safety. The only layer that changes with `sim` | `arm_driver` (UART owner, gates, limits, watchdog), `camera` (USB camera owner), `mycobot_cpp` (protocol, no ROS) | `gz_ros2_control`: `controller_manager`, `arm_controller`, `joint_state_broadcaster` | myCobot serial protocol, UART 1 Mbaud (real); the gz_ros2_control plugin (sim) | `braco_driver`, `braco_camera`, `mycobot_cpp`, `braco_description` (sim) | done; lifecycle and ros2_control `SystemInterface` planned |
-| **4 Arm servo controller** | The arm's own board: receives the protocol and drives the servo bus. braco does not change its firmware | Atom (ESP32, firmware 7.3) in the myCobot 280 | Gazebo physics | servo bus: target angles down; angle, temperature and voltage up | vendor firmware; protocol in [protocol_commands.md](protocol_commands.md) | given |
-| **5 Sensors and actuators** | What moves and what senses | six joint servos (angle, temperature, voltage), gripper; USB camera, joystick and LCD1602 wired straight to the Jetson (they skip layer 4) | simulated `joint1..joint6` and gripper, from the URDF | — | `braco_description` (model), [inventory](inventory/inventory.md) | given |
+| **4 Arm servo controller** | The arm's own board: receives the protocol and drives the servo bus. braco does not change its firmware | Atom (ESP32, firmware 7.3) in the myCobot 280 | Gazebo physics | servo bus: target angles down; angle, temperature and voltage up | vendor firmware; protocol in [protocol_commands.md](../hardware/protocol_commands.md) | given |
+| **5 Sensors and actuators** | What moves and what senses | six joint servos (angle, temperature, voltage), gripper; USB camera, joystick and LCD1602 wired straight to the Jetson (they skip layer 4) | simulated `joint1..joint6` and gripper, from the URDF | — | `braco_description` (model), [inventory](../hardware/inventory/inventory.md) | given |
 
 ### Node graph
 
@@ -246,7 +246,7 @@ watchdog stops the arm.
    `set_read_only(true)`. In rest mode `arm_driver` drops the pending motion and refuses motion, gripper and power
    on, but keeps reading.
 4. The page shows the level from `/diagnostics`. When the arm has cooled down, someone runs `make resume`
-   ([arm-rest-mode.md](arm-rest-mode.md)).
+   ([arm-rest-mode.md](../guides/arm-rest-mode.md)).
 
 ---
 
@@ -278,10 +278,10 @@ watchdog stops the arm.
   refused.
 - **Rest mode.** `/arm/set_read_only true`: motion, gripper and power on are refused; angles and temperatures keep
   being published. `temperature_monitor` enters it by itself when a servo reaches 65 °C, once per hot episode
-  (which ends below 60 °C), after parking the arm (`park_on_hot`); leaving it is manual (`make resume`). See [arm-rest-mode.md](arm-rest-mode.md) and
-  [ADR-0003](ADR-0003-rest-per-temp.md).
+  (which ends below 60 °C), after parking the arm (`park_on_hot`); leaving it is manual (`make resume`). See [arm-rest-mode.md](../guides/arm-rest-mode.md) and
+  [ADR-0003](../decisions/ADR-0003-rest-per-temp.md).
 
-### Who moves the arm ([ADR-0002](ADR-0002-unique-control.md))
+### Who moves the arm ([ADR-0002](../decisions/ADR-0002-unique-control.md))
 
 | | |
 |---|---|
@@ -302,20 +302,20 @@ watchdog stops the arm.
 ## 5. Packages and folders
 
 colcon builds one workspace, `ros2_ws/src` (mounted at `/ws` in every container; `make build` passes
-`--base-paths src`; flags in [colcon-defaults.yaml](../docker/config/colcon-defaults.yaml)). Every
+`--base-paths src`; flags in [colcon-defaults.yaml](../../docker/config/colcon-defaults.yaml)). Every
 package has its own README with its topics, parameters and how to run it by hand.
 
 | Package | Kind | Role | Status |
 |---|---|---|---|
-| [`mycobot_cpp`](../ros2_ws/src/mycobot_cpp/README.md) | C++ library | myCobot 280 serial driver, joint limits and poses (`mycobot.hpp`), joystick, LCD1602, teleop logic; also the stand-alone tools (no ROS) | done |
-| [`braco_interfaces`](../ros2_ws/src/braco_interfaces/README.md) | Interfaces | `ArmCommand`, `JointTarget`, `ServoTemperatures`, `ServoVoltages`, `TakeControl` | done |
-| [`braco_driver`](../ros2_ws/src/braco_driver/README.md) | Nodes | `arm_driver` (owns the port and the control), `temperature_monitor` (LCD, `/diagnostics`, rest on overheat) | done |
-| [`braco_teleop`](../ros2_ws/src/braco_teleop/README.md) | Node | `joystick_teleop`: jogs the arm through `arm_driver` | done |
-| [`braco_camera`](../ros2_ws/src/braco_camera/README.md) | Node (Python) | `camera`: the eye-in-hand USB camera as JPEG frames | done |
-| [`braco_bringup`](../ros2_ws/src/braco_bringup/README.md) | Launch + config | `braco.launch.py`, `braco.yaml`, the container entrypoint, `zero` / `park` | done, `sim:=true` = Gazebo (#34) |
-| [`braco_description`](../ros2_ws/src/braco_description/README.md) | Model + tools | URDF of the myCobot 280 with G-base, camera flange and gripper; `gazebo.launch.py` (Gazebo viewer); `sim_to_real.py` (checks against the real arm) | done (#25) |
-| [`braco_moveit_config`](../ros2_ws/src/braco_moveit_config/README.md) | Config | MoveIt 2 for the arm | placeholder |
-| [`braco_mission`](../ros2_ws/src/braco_mission/README.md) | Nodes | Mission state machine, MoveIt 2 client | placeholder |
+| [`mycobot_cpp`](../../ros2_ws/src/mycobot_cpp/README.md) | C++ library | myCobot 280 serial driver, joint limits and poses (`mycobot.hpp`), joystick, LCD1602, teleop logic; also the stand-alone tools (no ROS) | done |
+| [`braco_interfaces`](../../ros2_ws/src/braco_interfaces/README.md) | Interfaces | `ArmCommand`, `JointTarget`, `ServoTemperatures`, `ServoVoltages`, `TakeControl` | done |
+| [`braco_driver`](../../ros2_ws/src/braco_driver/README.md) | Nodes | `arm_driver` (owns the port and the control), `temperature_monitor` (LCD, `/diagnostics`, rest on overheat) | done |
+| [`braco_teleop`](../../ros2_ws/src/braco_teleop/README.md) | Node | `joystick_teleop`: jogs the arm through `arm_driver` | done |
+| [`braco_camera`](../../ros2_ws/src/braco_camera/README.md) | Node (Python) | `camera`: the eye-in-hand USB camera as JPEG frames | done |
+| [`braco_bringup`](../../ros2_ws/src/braco_bringup/README.md) | Launch + config | `braco.launch.py`, `braco.yaml`, the container entrypoint, `zero` / `park` | done, `sim:=true` = Gazebo (#34) |
+| [`braco_description`](../../ros2_ws/src/braco_description/README.md) | Model + tools | URDF of the myCobot 280 with G-base, camera flange and gripper; `gazebo.launch.py` (Gazebo viewer); `sim_to_real.py` (checks against the real arm) | done (#25) |
+| [`braco_moveit_config`](../../ros2_ws/src/braco_moveit_config/README.md) | Config | MoveIt 2 for the arm | placeholder |
+| [`braco_mission`](../../ros2_ws/src/braco_mission/README.md) | Nodes | Mission state machine, MoveIt 2 client | placeholder |
 
 ### Repository layout
 
@@ -402,7 +402,7 @@ else has one generic folder.
 
 `braco_bringup` lists every package the **real** system needs as an `exec_depend`. The Jetson builds only
 `--packages-up-to braco_bringup`, so a simulation-only package (Gazebo, MoveIt) must never become a dependency of
-`braco_bringup`, or the Nano starts building it (`WS_PACKAGES` in [mk/config.mk](../mk/config.mk)).
+`braco_bringup`, or the Nano starts building it (`WS_PACKAGES` in [mk/config.mk](../../mk/config.mk)).
 
 ---
 
@@ -452,7 +452,7 @@ ros2 launch braco_bringup braco.launch.py --show-args
 ```
 
 The **wiring** (devices) comes from the launch arguments, filled by `docker/compose.yml` from `docker/.env`; the
-**tuning** comes from [config/braco.yaml](../ros2_ws/src/braco_bringup/config/braco.yaml).
+**tuning** comes from [config/braco.yaml](../../ros2_ws/src/braco_bringup/config/braco.yaml).
 
 | Argument | Default | Used by |
 |---|---|---|
@@ -493,7 +493,7 @@ The **wiring** (devices) comes from the launch arguments, filled by `docker/comp
 > moves the arm. `make` alone lists every command; the machine (`ROLE=pc|jetson`) comes from `COMPOSE_PROFILES` in
 > `docker/.env` (that answer) or is detected (arm64 + Tegra = Jetson).
 
-**System** · [mk/system.mk](../mk/system.mk)
+**System** · [mk/system.mk](../../mk/system.mk)
 
 | Command | What it does |
 |---|---|
@@ -505,7 +505,7 @@ The **wiring** (devices) comes from the launch arguments, filled by `docker/comp
 | `make status` | Containers, CPU/RAM per container, the arm as the page sees it; a few seconds of `tegrastats` on the Jetson |
 | `make logs` | Follow the system's log (`S=web`, `S=arm_driver`, `S=temperature_monitor`, `S=joystick_teleop`, `S=camera`) |
 
-**Arm** · [mk/arm.mk](../mk/arm.mk) · Jetson
+**Arm** · [mk/arm.mk](../../mk/arm.mk) · Jetson
 
 | Command | What it does |
 |---|---|
@@ -514,9 +514,9 @@ The **wiring** (devices) comes from the launch arguments, filled by `docker/comp
 | `make rest` | Rest mode on: motion refused, still reading |
 | `make resume` | Rest mode off |
 | `make temps` | Print the servo temperatures once |
-| `make bench` | Bench test of control and auto-rest ([scripts/bench.sh](../scripts/bench.sh)); asks before moving the arm, appends to `bench-report.log` |
+| `make bench` | Bench test of control and auto-rest ([scripts/bench.sh](../../scripts/bench.sh)); asks before moving the arm, appends to `bench-report.log` |
 
-**Development** · [mk/dev.mk](../mk/dev.mk)
+**Development** · [mk/dev.mk](../../mk/dev.mk)
 
 | Command | What it does |
 |---|---|
@@ -526,7 +526,7 @@ The **wiring** (devices) comes from the launch arguments, filled by `docker/comp
 | `make test` | colcon test and the results (PC only) |
 | `make clean` | Delete build/ install/ log/ and `~/.ros/log` |
 
-**Setup** · [mk/setup.mk](../mk/setup.mk) · once per machine
+**Setup** · [mk/setup.mk](../../mk/setup.mk) · once per machine
 
 | Command | What it does |
 |---|---|
@@ -537,7 +537,7 @@ The **wiring** (devices) comes from the launch arguments, filled by `docker/comp
 | `make jetson-image` | Build the arm64 image on the PC (`NANO=user@host` also copies it) |
 | `make re` | Remove containers, volumes, the image and the build output, then `make up` |
 
-**Network** · [mk/net.mk](../mk/net.mk)
+**Network** · [mk/net.mk](../../mk/net.mk)
 
 | Command | What it does |
 |---|---|
@@ -545,7 +545,7 @@ The **wiring** (devices) comes from the launch arguments, filled by `docker/comp
 | `make net-talk` | Publish on one machine… |
 | `make net-listen` | …and check on the other |
 
-**CI** · [mk/ci.mk](../mk/ci.mk) · same as GitHub
+**CI** · [mk/ci.mk](../../mk/ci.mk) · same as GitHub
 
 | Command | What it does |
 |---|---|
@@ -631,7 +631,7 @@ runs on the real arm and in simulation.
   (`FollowJointTrajectory`, the interface MoveIt uses). That file is the set planned for the real arm too; only the
   URDF's `<hardware>` plugin changes (a braco `SystemInterface`, planned). The `sim` container runs on its own ROS domain (77) so its
   `/joint_states` never mix with the real arm's. How to run it:
-  [Run the simulation](../ros2_ws/src/braco_description/README.md#run-the-simulation-step-by-step).
+  [Run the simulation](../../ros2_ws/src/braco_description/README.md#run-the-simulation-step-by-step).
 - `braco_description`'s `scripts/braco_arm.py` runs the same moves in Gazebo and, with `--real`, on the arm.
 - How MoveIt's trajectories reach `arm_driver` on the real arm is still to decide: the target is the
   same ros2_control controller config as in simulation, with a braco `SystemInterface` as its hardware
@@ -651,7 +651,7 @@ make ci-ros   # the `ros` CI job: rosdep, build and test in a clean image
 
 - **PC:** everything, `RelWithDebInfo`, with tests.
 - **Jetson:** only `--packages-up-to braco_bringup`, `Release`, `BUILD_TESTING=OFF`, one package at a time.
-- **CI** ([ci.yml](../.github/workflows/ci.yml)) runs both jobs on every pull request.
+- **CI** ([ci.yml](../../.github/workflows/ci.yml)) runs both jobs on every pull request.
 
 ---
 
@@ -666,17 +666,17 @@ PR that closes or opens a gap.
 | Item | Detail |
 |---|---|
 | **Single serial owner** | Only `arm_driver` opens the UART; the page has no direct serial mode |
-| **One control owner** | `ArmCommand.source`, `TakeControl.srv`, latched `/arm/control_owner`; motion only from the owner, STOP from anyone ([ADR-0002](ADR-0002-unique-control.md)) |
+| **One control owner** | `ArmCommand.source`, `TakeControl.srv`, latched `/arm/control_owner`; motion only from the owner, STOP from anyone ([ADR-0002](../decisions/ADR-0002-unique-control.md)) |
 | **Clients follow the owner** | Page lease = control `web`; joystick takes it free or forced (button 8 for 1 s), `power_on` only as owner; zero/park force and release |
 | **One thermal authority** | `temperature_monitor` publishes the level on `/diagnostics`; the page reads it |
-| **Rest on overheat** | Once per hot episode (from 65 °C until every joint is below 60 °C), manual resume ([ADR-0003](ADR-0003-rest-per-temp.md)) |
+| **Rest on overheat** | Once per hot episode (from 65 °C until every joint is below 60 °C), manual resume ([ADR-0003](../decisions/ADR-0003-rest-per-temp.md)) |
 | **braco layout** | `ros2_ws/src` with `braco_interfaces`, `braco_driver`, `braco_teleop`, `braco_camera`, `braco_bringup`; one launch and one `braco.yaml`; a README in every package, `mycobot_cpp` included |
 | **braco infrastructure** | `docker/Dockerfile`, `compose.yml` (project `braco`), `braco-image/*`, `braco.service` |
 | **One Makefile** | Split in `mk/`, idempotent `make up`, ~30 public commands |
 | **Lean repository root** | `docker`, `docs`, `mk`, `ros2_ws`, `scripts` (operator scripts run by `make`), `web` and the `Makefile` (plus the formatter configs and `requirements-dev.txt`); `mycobot_cpp` in `ros2_ws/src` (one colcon base path, no extra mount); `tests/`, `playground/` and the root `requirements.txt` removed |
 | **Jetson guards** | `doctor` checks, ccache limit, ROS log cleanup, `status` with `docker stats` and `tegrastats` |
 | **Simulation** | `braco.launch.py sim:=true` (the `sim` container): Gazebo, the URDF and the ros2_control controllers planned for the hardware, on ROS domain 77; the page drives it; `move_joint.py` commands one joint (#34) |
-| **Validated URDF** | `braco_description`: joint names, limits, zero pose, joint directions and FK (within 1.5 mm of `get_coords()`) checked on the real arm; measured joint velocities; table check in `mycobot_cpp` uses the same kinematics ([report](urdf-sim-to-real.md), #25) |
+| **Validated URDF** | `braco_description`: joint names, limits, zero pose, joint directions and FK (within 1.5 mm of `get_coords()`) checked on the real arm; measured joint velocities; table check in `mycobot_cpp` uses the same kinematics ([report](../hardware/urdf-sim-to-real.md), #25) |
 
 ### Differs from the target (accepted for now)
 
@@ -738,5 +738,5 @@ Then update the "Last checked against the code" date at the top.
 
 ---
 
-Why ROS 2 runs in Docker: [ADR-0001](ADR-0001-ros2-in-docker-on-jetson-nano.md) · Containers and commands:
-[docker/README.md](../docker/README.md) · ROS 2 concepts: [ROS2/README.md](ROS2/README.md)
+Why ROS 2 runs in Docker: [ADR-0001](../decisions/ADR-0001-ros2-in-docker-on-jetson-nano.md) · Containers and commands:
+[docker/README.md](../../docker/README.md) · ROS 2 concepts: [ROS2/README.md](../guides/ROS2/README.md)
