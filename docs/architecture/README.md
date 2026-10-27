@@ -4,7 +4,7 @@ How the braco software is built today: ROS 2 packages, nodes, topics and service
 
 | Doc | Content |
 |---|---|
-| [architecture.md](architecture.md) | The architecture, in Markdown |
-| [architecture.html](architecture.html) | The same sections, with figures |
+| [architecture.md](architecture.md) | Layers, nodes, topics, packages and deployment |
+| [resources.md](resources.md) | CPU and memory on the Jetson, and the mitigations |
 
-Both files are kept in sync. A PR that changes the architecture updates both.
+A PR that changes the architecture updates `architecture.md` in the same PR.

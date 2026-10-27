@@ -114,7 +114,7 @@ docker compose exec dev bash            # ROS ready
 ## 5. The `real` container (Jetson)
 
 - **Runs** `arm_routine.sh` → `ros2 launch braco_bringup braco.launch.py sim:=false`. The nodes:
-  [architecture §2 and §4](../docs/architecture/architecture.md#node-graph).
+  [architecture §3 and §4](../docs/architecture/architecture.md#3-nodes-and-devices).
 - **Never moves the arm** when it starts or stops. Park before turning off (`make down PARK=1`), or the arm drops.
 - **Stops when the launch ends** (for example if `arm_driver` loses the port). `arm_driver` is not restarted on
   purpose: a driver fault must be seen.
