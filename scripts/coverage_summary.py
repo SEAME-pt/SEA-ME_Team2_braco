@@ -17,59 +17,63 @@ from pathlib import Path
 
 
 def pct(covered: int, total: int) -> str:
-    return f"{100.0 * covered / total:.1f}% ({covered}/{total})" if total else "-"
+    return f'{100.0 * covered / total:.1f}% ({covered}/{total})' if total else '-'
 
 
 def status(value: float, floor: float) -> str:
-    return "✅" if value >= floor else "❌"
+    return '✅' if value >= floor else '❌'
 
 
 def gcovr_rows(data: dict, floor: float) -> list[str]:
     """The gated line total first, then one row per package (the first path component under the gcovr root)."""
     rows = [
-        f"| **total** | **{pct(data['line_covered'], data['line_total'])}** "
-        f"| {pct(data['branch_covered'], data['branch_total'])} "
-        f"| {floor:g}% of lines | {status(data['line_percent'], floor)} |"
+        f'| **total** | **{pct(data["line_covered"], data["line_total"])}** '
+        f'| {pct(data["branch_covered"], data["branch_total"])} '
+        f'| {floor:g}% of lines | {status(data["line_percent"], floor)} |'
     ]
     packages: dict[str, list[int]] = defaultdict(lambda: [0, 0, 0, 0])
-    for f in data["files"]:
-        p = packages[f["filename"].split("/", 1)[0]]
-        p[0] += f["line_covered"]
-        p[1] += f["line_total"]
-        p[2] += f["branch_covered"]
-        p[3] += f["branch_total"]
+    for f in data['files']:
+        p = packages[f['filename'].split('/', 1)[0]]
+        p[0] += f['line_covered']
+        p[1] += f['line_total']
+        p[2] += f['branch_covered']
+        p[3] += f['branch_total']
     for name, (lc, lt, bc, bt) in sorted(packages.items()):
-        rows.append(f"| `{name}` | {pct(lc, lt)} | {pct(bc, bt)} | | |")
+        rows.append(f'| `{name}` | {pct(lc, lt)} | {pct(bc, bt)} | | |')
     return rows
 
 
 def coverage_py_rows(data: dict, floor: float) -> list[str]:
     """coverage.py gates on statements and branches together (percent_covered), not on the line percentage."""
-    t = data["totals"]
-    gated = t["percent_covered"]
+    t = data['totals']
+    gated = t['percent_covered']
     return [
-        f"| **total** | **{pct(t['covered_lines'], t['num_statements'])}** "
-        f"| {pct(t['covered_branches'], t['num_branches'])} "
-        f"| {floor:g}% of statements + branches ({gated:.1f}%) | {status(gated, floor)} |"
+        f'| **total** | **{pct(t["covered_lines"], t["num_statements"])}** '
+        f'| {pct(t["covered_branches"], t["num_branches"])} '
+        f'| {floor:g}% of statements + branches ({gated:.1f}%) | {status(gated, floor)} |'
     ]
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    for flag in ("--gcovr", "--coverage-py"):
-        parser.add_argument(flag, nargs=3, action="append", default=[], metavar=("NAME", "JSON", "FLOOR"))
+    for flag in ('--gcovr', '--coverage-py'):
+        parser.add_argument(
+            flag, nargs=3, action='append', default=[], metavar=('NAME', 'JSON', 'FLOOR')
+        )
     args = parser.parse_args()
 
-    sections = [(s, gcovr_rows) for s in args.gcovr] + [(s, coverage_py_rows) for s in args.coverage_py]
+    sections = [(s, gcovr_rows) for s in args.gcovr] + [
+        (s, coverage_py_rows) for s in args.coverage_py
+    ]
     for (name, path, floor), rows in sections:
-        print(f"### Coverage: {name}\n")
+        print(f'### Coverage: {name}\n')
         file = Path(path)
         if not file.is_file():
-            print("No data (no report was written, or nothing to measure).\n")
+            print('No data (no report was written, or nothing to measure).\n')
             continue
-        print("| | Lines | Branches | Floor | |\n|---|---|---|---|---|")
-        print("\n".join(rows(json.loads(file.read_text()), float(floor))), end="\n\n")
+        print('| | Lines | Branches | Floor | |\n|---|---|---|---|---|')
+        print('\n'.join(rows(json.loads(file.read_text()), float(floor))), end='\n\n')
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
