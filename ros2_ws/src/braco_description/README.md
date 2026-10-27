@@ -123,8 +123,8 @@ python3 /ws/src/braco_description/scripts/my_test.py --real --speed 15
 
 | What you see | Why / fix |
 |---|---|
-| `Package 'braco_description' not found` | Not built or not sourced: `cd /ws && colcon build --packages-select braco_description && source install/setup.bash` |
-| No window, or Gazebo aborts with `Authorization required ... could not connect to display :0` | The display refused the container: the `xhost +local:` grant ends with each login. `make shell` / `make up` grant it again (or run `xhost +local:` on the host), then launch again. Check `echo $DISPLAY` in the container |
+| `Package 'braco_description' not found` | Not built or not sourced: see [TROUBLESHOOTING](../../../docs/guides/ROS2/TROUBLESHOOTING.md#environment-and-commands) |
+| No window, or Gazebo aborts with `Authorization required ... could not connect to display :0` | The display refused the container: see [TROUBLESHOOTING → GUI tools](../../../docs/guides/ROS2/TROUBLESHOOTING.md#gui-tools-rqt-rqt_graph-rviz2-gazebo) |
 | Slow, or "Gazebo is taking too long to start" | No GPU: `glxinfo -B \| grep "OpenGL renderer"` says `llvmpipe`. Restart with `make down && make up SIM=1` |
 | Stuck on `Requesting list of world names` | Gazebo's processes cannot find each other: `GZ_IP` must be `127.0.0.1` (set by `docker/compose.yml`; recreate the containers after pulling it) |
 | `Moved backwards in time`, `Controller already loaded`, `no controller with this name exists` | Two simulations on one `ROS_DOMAIN_ID`: `gazebo.launch.py` in `dev` while the `sim` container runs (both 77). For a window on `sim`: `make sim-gui`. For a second Gazebo: step 4 |

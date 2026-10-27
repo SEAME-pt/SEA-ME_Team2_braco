@@ -1,6 +1,15 @@
 # ROS 2 Troubleshooting
 
-Common problems when installing and using ROS 2 in this project, and how to fix them. Problems specific to building the Docker images are also listed in [docker/README.md → If the build fails](../../../docker/README.md#if-the-build-fails).
+Common ROS 2 problems in this project, and how to fix them. Some problems have their own table next to the thing
+that causes them:
+
+| Your problem is about... | Look in |
+|---|---|
+| Building the Docker image | [docker/README.md → If the build fails](../../../docker/README.md#10-if-the-build-fails) |
+| Setting up your machine (Docker, NVIDIA, `make doctor`) | [dev-setup.md → Problems](../dev-setup.md#5-problems) |
+| The simulation / Gazebo | [braco_description → When something goes wrong](../../../ros2_ws/src/braco_description/README.md#when-something-goes-wrong) |
+| A hot arm, or the arm does nothing | [hot-arm guide](../hot-arm/README.md) |
+| ROS 2: build, tests, topics, two machines, GUI tools | Below, in this file |
 
 When something fails, first collect the basics:
 
@@ -104,18 +113,18 @@ Go through this list in order.
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `qt.qpa.xcb: could not connect to display` | Container cannot reach your X server | On the host: `xhost +local:` (done by `make up` on the PC) and check `echo $DISPLAY` in the container. Wayland desktops need XWayland |
+| `qt.qpa.xcb: could not connect to display`, or Gazebo: `Authorization required ... could not connect to display :0` | Container cannot reach your X server (the `xhost +local:` grant ends with each login) | On the host: `xhost +local:` (done by `make up` on the PC) and check `echo $DISPLAY` in the container. Wayland desktops need XWayland |
 | `rqt_graph: command not found` on the PC | Lyrical no longer installs a `rqt_graph` shortcut in `/opt/ros/lyrical/bin` (only `rqt` and `rqt_bag`) | `ros2 run rqt_graph rqt_graph` or `rqt --standalone rqt_graph`, inside the container (`make shell`), not on the host |
 | `rqt_graph: command not found` on the Jetson | The Jetson image is headless on purpose | Run `ros2 run rqt_graph rqt_graph` on the PC; it shows the Jetson's nodes over the network |
 | rqt_graph is empty or outdated | Not refreshed, or filters | Press refresh; select "Nodes/Topics (all)"; uncheck the "Hide" options |
-| RViz2/Gazebo very slow | Software rendering | The PC uses the NVIDIA GPU by default: check `make doctor` (NVIDIA container runtime), or `GPU=dri` for Intel/AMD (see docker/README.md) |
+| RViz2/Gazebo very slow | Software rendering (no GPU) | See [Gazebo slow](../../../ros2_ws/src/braco_description/README.md#when-something-goes-wrong) |
 
 ## Jetson / hardware
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| Container does not start: `error gathering device information ... /dev/ttyTHS1` | Serial device missing on that host | On a PC use `ROLE=pc`. On the Nano, check `ls -l /dev/ttyTHS1` |
-| `Permission denied` / port busy on `/dev/ttyTHS1` | Serial console (`nvgetty`) holds the UART, or wrong `DIALOUT_GID` | `sudo systemctl disable --now nvgetty` on the host; `getent group dialout` and set `DIALOUT_GID` in `.env` |
+| Container does not start: `error gathering device information ... /dev/ttyTHS1` | `real` needs the serial port and the LCD on the host | `make doctor` checks both. On a PC use `ROLE=pc`. On the Jetson: `ls -l /dev/ttyTHS1` |
+| `Permission denied` / port busy on `/dev/ttyTHS1` | Serial console (`nvgetty`) holds the UART, or wrong `DIALOUT_GID` | `nvgetty`: [dev-setup → Jetson](../dev-setup.md#3-jetson). `DIALOUT_GID`: `getent group dialout`, set it in `.env` |
 | Docker on the Nano freezes during builds | Parallel image builds | Build one image at a time, or build on the PC (`make jetson-image NANO=user@host`) |
 | SD card full | Images and build caches | `docker system df`; `docker image prune`; `make clean` (asks first) |
 
