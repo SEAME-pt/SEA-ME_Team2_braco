@@ -1,14 +1,10 @@
-# mk/dev.mk - working on the code, in the `dev` container: shell run build test, plus web and clean.
+# mk/dev.mk - working on the code, in the `dev` container: shell run build test sim-gui, plus clean.
 #
 # `dev` is the same image as the system, with the workspace mounted at /ws, so a build here is what the system runs
 # after `make restart`. PC: started by `make up` or by these commands, and kept up. Jetson: a throw-away container
 # per command (`run --rm`), gone when the command ends.
 
-# `make web`: the page on this machine with mock data (no arm, no ROS, no docker). Not WEB_PORT, which the
-# PC's `sim` container already uses.
-WEB_DEV_PORT ?= 8080
-
-.PHONY: shell run build test web clean
+.PHONY: shell run build test sim-gui clean
 
 ##@ Development (in the dev container)
 
@@ -27,15 +23,20 @@ test: _image _dev_up ## colcon test, then the results (unit tests and ament lint
 	@[ "$(ROLE)" != jetson ] || { echo "the Jetson builds without tests (BUILD_TESTING=OFF): run make test on the PC, or make ci-ros" >&2; exit 1; }
 	$(call dev_cmd) bash -c 'colcon test --base-paths $(WS_BASE_PATHS) && colcon test-result --verbose'
 
-web: $(VENV)/.web-installed ## Serve the page with mock arm data on http://localhost:8080 (no arm, no ROS, no docker)
-	ARM_MOCK=1 BRACO_ROS=0 $(VENV)/bin/uvicorn web.server.app:app --host 127.0.0.1 --port $(WEB_DEV_PORT) --reload
+# A Gazebo window on the simulation the `sim` container already runs (its GZ_PARTITION), not a second simulation:
+# a second gazebo.launch.py on the same ROS domain fights it for /clock and /controller_manager.
+SIM_GZ_ENV := -e GZ_PARTITION=braco-sim -e GZ_SIM_RESOURCE_PATH=/ws/install/braco_description/share
+sim-gui: _image _dev_up ## PC: open the Gazebo window on the running simulation (make up SIM=1 first; Ctrl-C closes only the window)
+	@[ "$(ROLE)" = pc ] || { echo "sim-gui: the simulation runs on the PC" >&2; exit 1; }
+	@[ -n "$$($(COMPOSE) ps -q --status running sim)" ] || { echo "sim is not running: make up SIM=1 first" >&2; exit 1; }
+	$(call dev_cmd,$(SIM_GZ_ENV)) ros2 launch ros_gz_sim gz_sim.launch.py gz_args:=-g
 
 clean: _role ## Delete colcon's build/ install/ log/ and the ROS logs (~/.ros/log, here and in the containers)
 	rm -rf $(WS_DIR)/build $(WS_DIR)/install $(WS_DIR)/log $(HOME)/.ros/log
 	@if docker image inspect $(IMAGE) >/dev/null 2>&1; then \
 	  $(COMPOSE) run --rm --no-deps -T $(DEV) bash -c 'rm -rf "$$HOME/.ros/log"' && echo "cleared ~/.ros/log in the containers"; fi
 
-# ---- host venv for the page (also used by mk/ci.mk) ------------------------------------------
+# ---- host venv for the page's tests (mk/ci.mk) -----------------------------------------------
 # The page and its tests only need web/requirements*.txt (no arm library, no ROS), so they also work where
 # requirements-dev.txt (pymycobot, numpy) cannot be installed.
 $(VENV)/bin/python:

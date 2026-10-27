@@ -4,7 +4,7 @@
 # `systemctl stop braco` or at shutdown. The arm is not zeroed or parked by either.
 
 [Unit]
-Description=SEA:ME arm services (ROS 2 driver, temperature monitor, joystick teleop, web page)
+Description=SEA:ME arm services (ROS 2 driver, temperature monitor, joystick teleop, camera; the web page is make web)
 Requires=docker.service
 After=docker.service network-online.target
 Wants=network-online.target

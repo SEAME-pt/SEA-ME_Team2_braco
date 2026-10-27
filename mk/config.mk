@@ -61,9 +61,24 @@ DETECTED_ROLE := $(if $(and $(filter arm64,$(ARCH)),$(IS_JETSON)),jetson,pc)
 ifneq ($(origin ROLE),command line)
 ROLE := $(or $(COMPOSE_PROFILES),$(call dotenv,COMPOSE_PROFILES),$(DETECTED_ROLE))
 endif
+# GPU: the PC uses the NVIDIA GPU (every team PC has one) unless GPU=dri (Intel/AMD) or GPU=none (CPU), or
+# COMPOSE_FILE in docker/.env chooses the override files. The Jetson has no GPU option.
 ifneq ($(origin GPU),command line)
-GPU :=
+GPU := $(if $(and $(filter pc,$(ROLE)),$(if $(call dotenv,COMPOSE_FILE),,1)),nvidia)
 endif
+GPU_FILE := $(filter-out none,$(GPU))
+
+# The machine type comes before every command: the first command on a machine creates docker/.env and asks "dev or
+# jetson" (mk/setup.mk). ROLE above was read when make parsed this file, so the answer must be in .env before that:
+# MACHINE_STAMP is an included file made from .env, and when make (re)makes an included file it starts over and
+# parses everything again, now with the answer. Host-only commands (help, CI, format, lint) skip it.
+MACHINE_STAMP    := $(DOCKER_DIR)/.machine
+NO_MACHINE_GOALS := help ci ci-image ci-ros format format-check lint fclean role
+ifneq ($(filter-out $(NO_MACHINE_GOALS),$(or $(MAKECMDGOALS),help)),)
+-include $(MACHINE_STAMP)
+endif
+$(MACHINE_STAMP): $(ENV_FILE)
+	@touch $@
 
 IMAGE_PREFIX ?= $(or $(call dotenv,IMAGE_PREFIX),braco-image)
 IMAGE_TAG    ?= $(or $(call dotenv,IMAGE_TAG),lyrical)
@@ -79,22 +94,35 @@ IMAGE         := $(IMAGE_PREFIX)/$(ROLE):$(IMAGE_TAG)
 
 # Every compose call goes through docker/ (so .env and ../ros2_ws resolve) with this machine's profile.
 # compose.yml also uses COMPOSE_PROFILES to pick the image of `dev`, which is why it is passed explicitly.
-# GPU=nvidia|dri adds the matching override file (PC only); without it, compose uses COMPOSE_FILE from .env.
-DC      := docker compose --project-directory $(DOCKER_DIR) $(if $(GPU),-f $(COMPOSE_BASE) -f $(COMPOSE_DIR)/$(GPU).yml)
-COMPOSE := COMPOSE_PROFILES=$(ROLE) $(DC)
+# GPU=nvidia (PC default)|dri adds the matching override file; GPU=none, or COMPOSE_FILE in .env, none from here.
+DC      := docker compose --project-directory $(DOCKER_DIR) $(if $(GPU_FILE),-f $(COMPOSE_BASE) -f $(COMPOSE_DIR)/$(GPU_FILE).yml)
+# Domains: the real arm (ROS_DOMAIN_ID, Jetson) and the PC (PC_ROS_DOMAIN_ID: `sim` and, through DEV_ROS_DOMAIN_ID,
+# the PC's `dev`), see docker/compose.yml. Defaults for a .env written before PC_ROS_DOMAIN_ID existed.
+ARM_ROS_DOMAIN_ID ?= $(or $(call dotenv,ROS_DOMAIN_ID),42)
+PC_ROS_DOMAIN_ID  ?= $(or $(call dotenv,PC_ROS_DOMAIN_ID),77)
+COMPOSE := COMPOSE_PROFILES=$(ROLE) $(if $(filter pc,$(ROLE)),DEV_ROS_DOMAIN_ID=$(PC_ROS_DOMAIN_ID)) $(DC)
 
 # No TTY in CI (GitHub Actions sets CI=true) or when stdin is not a terminal.
 NOTTY ?= $(if $(or $(CI),$(shell [ -t 0 ] || echo 1)),-T)
 
 # `dev` on the PC stays up (several shells, RViz, PlotJuggler in one container). On the Jetson it never runs on its
 # own: every dev command is a throw-away `run --rm`, so normally only `real` uses the Nano's RAM.
+# What `make up` starts: Jetson, `real` (the arm). PC, only `dev`; SIM=1 adds `sim` (Gazebo + the web page).
+# UP_SYSTEM is the system container when `up` starts it (empty on a plain PC `make up`): `up` waits for it.
+SIM ?= 0
 ifeq ($(ROLE),jetson)
 DEV_MODE    := run --rm --no-deps
 UP_SERVICES := $(SYSTEM)
 else
 DEV_MODE    := exec
-UP_SERVICES := $(DEV) $(SYSTEM)
+UP_SERVICES := $(DEV) $(if $(filter 1,$(SIM)),$(SYSTEM))
 endif
+UP_SYSTEM := $(filter $(SYSTEM),$(UP_SERVICES))
+# The web page (make web) runs in the container that is always up: `real` on the Jetson (the real arm), `dev` on the
+# PC (the simulation, on the PC's domain). WEB_AGAIN: left by an `up` whose restart stopped the page.
+WEB_CONTAINER := $(if $(filter jetson,$(ROLE)),$(SYSTEM),$(DEV))
+WEB_SOURCE    := $(if $(filter jetson,$(ROLE)),ros,gazebo)
+WEB_AGAIN      = $(WS_DIR)/build/.braco-web-again
 # A command in dev ($(1): extra options such as -e VAR=value). Through the image entrypoint, so ROS and the workspace
 # are sourced (a bare `exec` would not).
 dev_cmd   = $(COMPOSE) $(DEV_MODE) $(NOTTY) $(1) $(DEV) ros_entrypoint.sh
@@ -129,8 +157,8 @@ endef
 
 _role:
 	@case "$(ROLE)" in pc|jetson) ;; *) echo "ROLE must be 'pc' or 'jetson' (got '$(ROLE)')" >&2; exit 1;; esac
-	@if [ -n "$(GPU)" ]; then \
-	  case "$(GPU)" in nvidia|dri) ;; *) echo "GPU must be 'nvidia' or 'dri' (got '$(GPU)')" >&2; exit 1;; esac; \
+	@if [ -n "$(GPU_FILE)" ]; then \
+	  case "$(GPU_FILE)" in nvidia|dri) ;; *) echo "GPU must be 'nvidia', 'dri' or 'none' (got '$(GPU)')" >&2; exit 1;; esac; \
 	  [ "$(ROLE)" = pc ] || { echo "GPU only applies to the PC" >&2; exit 1; }; fi
 	@if [ "$(ROLE)" = jetson ] && [ "$(ARCH)" != arm64 ] && [ "$(FORCE)" != 1 ]; then \
 	  echo "ROLE=jetson needs an arm64 host, this one is $(UNAME_M). Build the image here with 'make jetson-image', or FORCE=1." >&2; exit 1; fi
