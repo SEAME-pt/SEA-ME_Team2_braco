@@ -146,8 +146,9 @@ the same commands:
 * Caches: pip (`actions/setup-python`), the image layers (BuildKit `type=gha`), and ccache + colcon `build/`
   (`actions/cache`, reset whenever `docker/` changes). A warm run only recompiles what changed.
 * Coverage floors: `COV_MIN_CXX`, `COV_MIN_PY` and `COV_MIN_WEB` in [`mk/ci.mk`](../mk/ci.mk), 80% for every
-  component. A PR below a floor adds tests; the floors are not lowered to make it pass. The C++ (19%) and ROS Python
-  (24%) of `ros2_ws` are still below it, so the `coverage` job fails until their tests catch up.
+  component. A PR below a floor adds tests; the floors are not lowered to make it pass. `scripts/` directories are
+  not measured, so the ROS Python (today only `braco_camera/scripts/camera.py`) has nothing to report yet. The C++ of
+  `ros2_ws` is still below 80%, so the `coverage` job fails until its tests catch up.
 * The arm64 Jetson image is not built in CI (QEMU is too slow); build it by hand with `make jetson-image`.
 * `ci-ros` writes to `ros2_ws/build`, `install` and `log`, like `make build`, plus its ccache in `ros2_ws/.ccache`.
 
