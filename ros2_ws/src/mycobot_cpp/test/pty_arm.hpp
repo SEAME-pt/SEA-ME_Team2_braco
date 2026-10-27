@@ -8,7 +8,7 @@
 //            with a fixed reply.
 //   serve()  a thread answers like the arm, from state(): angles, temperatures, voltages, power,
 //            moving and servo data. SEND_ANGLES / SEND_ANGLE move the angles there at once and
-//            SET_SERVO_DATA stores the value. Every frame is kept in received().
+//            SET_SERVO_DATA stores the value (unless ignoreWrites). Every frame is kept in received().
 
 #pragma once
 
@@ -71,6 +71,7 @@ public:
         bool moving = false;
         std::map<std::pair<int, uint8_t>, int> servoData;  // (joint, address) -> value
         bool silent = false;                               // true: receive, never answer
+        bool ignoreWrites = false;  // true: SET_SERVO_DATA is received but not stored
 
         State() {
             for (int j = 1; j <= 6; ++j) {
@@ -252,7 +253,8 @@ private:
                         static_cast<uint8_t>(s.servoData[{f.data[0], f.data[1]}])};
                 break;
             case protocol::SET_SERVO_DATA:  // joint, address, value
-                if (f.data.size() == 3) s.servoData[{f.data[0], f.data[1]}] = f.data[2];
+                if (f.data.size() == 3 && !s.ignoreWrites)
+                    s.servoData[{f.data[0], f.data[1]}] = f.data[2];
                 return {};
             case protocol::SEND_ANGLES:  // 6 x int16 hundredths, speed
                 if (f.data.size() == 13) {

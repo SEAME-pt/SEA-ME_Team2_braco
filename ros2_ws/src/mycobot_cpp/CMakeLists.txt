@@ -47,7 +47,7 @@ install(TARGETS mycobot_cpp EXPORT export_${PROJECT_NAME}
 )
 
 if(BUILD_TESTING)
-  # No arm needed: test_mycobot opens no port, test_serial and test_tools talk to a pseudo-terminal
+  # No hardware needed: test_mycobot opens no port, test_serial and test_tools talk to a pseudo-terminal
   # (test/pty_arm.hpp). No ament linters: the package is formatted with clang-format
   # (make format-check) instead of uncrustify.
   find_package(ament_cmake_gtest REQUIRED)
@@ -55,6 +55,14 @@ if(BUILD_TESTING)
   target_link_libraries(test_mycobot mycobot_cpp)
   ament_add_gtest(test_serial test/test_serial.cpp TIMEOUT 120)
   target_link_libraries(test_serial mycobot_cpp util)
+  # The displays and the joystick without their devices: stdout on a pseudo-terminal, the LCD's I2C
+  # bus on a file (with its own ioctl(), hence dl), the joystick on a FIFO.
+  ament_add_gtest(test_display test/test_display.cpp)
+  target_link_libraries(test_display mycobot_cpp util)
+  ament_add_gtest(test_lcd_display test/test_lcd_display.cpp)
+  target_link_libraries(test_lcd_display mycobot_cpp ${CMAKE_DL_LIBS})
+  ament_add_gtest(test_joystick test/test_joystick.cpp)
+  target_link_libraries(test_joystick mycobot_cpp)
   # Runs the stand-alone programs themselves (built next to each other, in TOOLS_DIR).
   ament_add_gtest(test_tools test/test_tools.cpp TIMEOUT 120)
   target_link_libraries(test_tools mycobot_cpp util)

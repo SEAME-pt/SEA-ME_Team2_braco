@@ -4,6 +4,8 @@
 // replies.
 
 #include <gtest/gtest.h>
+#include <pty.h>
+#include <unistd.h>
 
 #include <chrono>
 #include <cmath>
@@ -45,6 +47,10 @@ TEST_F(FakeArm, CommandWithoutData) {
     EXPECT_EQ(sent(), frame(mc::protocol::POWER_ON));
     arm_->stop();
     EXPECT_EQ(sent(), frame(mc::protocol::STOP));
+    arm_->powerOff();
+    EXPECT_EQ(sent(), frame(mc::protocol::POWER_OFF));
+    arm_->releaseAllServos();
+    EXPECT_EQ(sent(), frame(mc::protocol::RELEASE_ALL_SERVOS));
 }
 
 TEST_F(FakeArm, SendAnglesEncodesHundredthsBigEndian) {
@@ -177,6 +183,10 @@ TEST_F(FakeArm, ServoDataReplyFormats) {
     respond(
         frame(mc::protocol::GET_SERVO_DATA, {5, mc::servo::ADDR_P, 26}));  // echo of another joint
     EXPECT_FALSE(arm_->getServoData(4, mc::servo::ADDR_P, 1).has_value());
+    pty_.wait();
+
+    respond(frame(mc::protocol::GET_SERVO_DATA, {4, mc::servo::ADDR_P, 26, 0}));  // unknown format
+    EXPECT_FALSE(arm_->getServoData(4, mc::servo::ADDR_P, 1).has_value());
 }
 
 TEST_F(FakeArm, NoReplyGivesNothing) {
@@ -235,6 +245,20 @@ TEST_F(FakeArm, SetPidWritesOnlyTheChangedGainAndReadsItBack) {
     EXPECT_EQ(arm_->getPid(2)->p, 40);
 }
 
+TEST_F(FakeArm, SetPidRefusesWhileTheArmMoves) {
+    pty_.update([](auto& s) { s.moving = true; });
+    pty_.serve();
+    EXPECT_THROW(arm_->setPid(2, {40, 0, 8}), std::runtime_error);
+    EXPECT_TRUE(pty_.received(mc::protocol::SET_SERVO_DATA).empty());
+}
+
+TEST_F(FakeArm, SetPidFailsWhenTheValueDoesNotStick) {
+    pty_.update([](auto& s) { s.ignoreWrites = true; });
+    pty_.serve();
+    EXPECT_FALSE(arm_->setPid(2, {40, 0, 8}));
+    EXPECT_EQ(pty_.received(mc::protocol::SET_SERVO_DATA).size(), 3u);  // SERVO_WRITE_ATTEMPTS
+}
+
 // ---- Opening the port -------------------------------------------------------------
 
 TEST(Port, MissingDeviceThrows) {
@@ -243,4 +267,29 @@ TEST(Port, MissingDeviceThrows) {
 
 TEST(Port, UnsupportedBaudThrows) {
     EXPECT_THROW(mc::MyCobot280("/dev/null", 9600), std::invalid_argument);
+}
+
+TEST(Port, OtherSupportedBaud) {
+    mc::fake::PtyArm pty;
+    EXPECT_NO_THROW(mc::MyCobot280(pty.path(), 115200));
+}
+
+TEST(Port, NotATerminalThrows) {
+    try {
+        mc::MyCobot280 arm("/dev/null");
+        FAIL() << "no exception";
+    } catch (const std::runtime_error& e) {
+        EXPECT_STREQ(e.what(), "tcgetattr failed on /dev/null: Inappropriate ioctl for device");
+    }
+}
+
+TEST(Port, WriteAfterTheOtherSideClosedThrows) {
+    int master = -1;
+    int slave = -1;
+    char name[128];
+    ASSERT_EQ(openpty(&master, &slave, name, nullptr, nullptr), 0);
+    mc::MyCobot280 arm(name);
+    close(slave);
+    close(master);  // the "cable" is gone: writes fail with EIO
+    EXPECT_THROW(arm.stop(), std::runtime_error);
 }
