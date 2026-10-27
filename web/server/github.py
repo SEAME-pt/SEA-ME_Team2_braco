@@ -50,7 +50,7 @@ def _issue(raw):
         'state': raw['state'],
         'url': raw['html_url'],
         'assignees': [a['login'] for a in raw.get('assignees') or []],
-        'labels': [l['name'] for l in raw.get('labels') or []],
+        'labels': [label['name'] for label in raw.get('labels') or []],
         'milestone': (raw.get('milestone') or {}).get('number'),
         'created_at': raw.get('created_at'),
         'closed_at': raw.get('closed_at'),
@@ -63,7 +63,7 @@ def _pull(raw):
         'title': raw['title'],
         'url': raw['html_url'],
         'author': (raw.get('user') or {}).get('login'),
-        'labels': [l['name'] for l in raw.get('labels') or []],
+        'labels': [label['name'] for label in raw.get('labels') or []],
         'milestone': (raw.get('milestone') or {}).get('number'),
         'merged_at': raw['merged_at'],
     }

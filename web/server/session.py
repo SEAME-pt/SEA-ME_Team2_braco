@@ -277,7 +277,10 @@ class Hub:
         return True
 
     def control_lost(self, owner):
-        """arm_driver gave the control to `owner` (the joystick forced it): the lease ends. Any thread."""
+        """arm_driver gave the control to `owner` (the joystick forced it): the lease ends.
+
+        Any thread.
+        """
         with self._lock:
             holder = self._holder
         if holder is not None:
@@ -336,7 +339,7 @@ class Hub:
         now = self.clock()
         gone = []
         with self._lock:
-            for cid, client in list(self._clients.items()):
+            for client in list(self._clients.values()):
                 if (
                     client.connections == 0
                     and client.left_at

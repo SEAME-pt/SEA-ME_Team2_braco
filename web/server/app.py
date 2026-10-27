@@ -37,7 +37,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from . import docs, github, ros
-from .arm import POSES, JOINT_LIMITS, GazeboArm, MockArm, RestingError, RosArm
+from .arm import JOINT_LIMITS, POSES, GazeboArm, MockArm, RestingError, RosArm
 from .camera import BOUNDARY, Camera
 from .role import machine_role
 from .ros_graph import Graph
@@ -151,15 +151,15 @@ def command(request, action, fn, operator=True):
     try:
         return hub.run(cid, action, fn, operator=operator, ip=ip)
     except LockedError as e:
-        raise HTTPException(status_code=423, detail=str(e))
+        raise HTTPException(status_code=423, detail=str(e)) from e
     except (BusyError, RestingError) as e:
-        raise HTTPException(status_code=409, detail=str(e))
+        raise HTTPException(status_code=409, detail=str(e)) from e
     except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        raise HTTPException(status_code=422, detail=str(e)) from e
     except NotImplementedError as e:
-        raise HTTPException(status_code=501, detail=str(e))
+        raise HTTPException(status_code=501, detail=str(e)) from e
     except Exception as e:
-        raise HTTPException(status_code=503, detail=str(e))
+        raise HTTPException(status_code=503, detail=str(e)) from e
 
 
 def capable(name):
@@ -231,9 +231,9 @@ def set_speed(body: Speed, request: Request):
     try:
         return hub.set_speed(cid, body.value, body.unlocked)
     except LockedError as e:
-        raise HTTPException(status_code=423, detail=str(e))
+        raise HTTPException(status_code=423, detail=str(e)) from e
     except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        raise HTTPException(status_code=422, detail=str(e)) from e
 
 
 class Switch(BaseModel):
@@ -291,11 +291,11 @@ def take_control(request: Request):
     try:
         hub.take(cid)
     except LockedError as e:
-        raise HTTPException(status_code=423, detail=str(e))
+        raise HTTPException(status_code=423, detail=str(e)) from e
     except ControlError as e:  # the joystick or zero/park has the arm
-        raise HTTPException(status_code=409, detail=str(e))
+        raise HTTPException(status_code=409, detail=str(e)) from e
     except Exception as e:  # arm_driver not reachable
-        raise HTTPException(status_code=503, detail=str(e))
+        raise HTTPException(status_code=503, detail=str(e)) from e
     return hub.lease()
 
 

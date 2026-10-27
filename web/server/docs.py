@@ -1,4 +1,4 @@
-"""Discover and read every Markdown file in the repository (and the HTML pages in docs/), grouped by topic."""
+"""Discover and read every Markdown file in the repository (and docs/'s HTML pages), by topic."""
 
 import re
 from pathlib import Path
