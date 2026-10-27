@@ -1,6 +1,7 @@
 # CMakeLists.txt - builds the shared classes as the ROS 2 package `mycobot_cpp`
 # (colcon finds it through package.xml). The Makefile next to it still builds
-# the stand-alone programs; this file only builds the library they share.
+# and is the way to get the stand-alone programs; this file installs only the
+# library they share.
 #
 # Other packages use it with:
 #   find_package(mycobot_cpp REQUIRED)
@@ -26,6 +27,14 @@ target_include_directories(mycobot_cpp PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/includes>
   $<INSTALL_INTERFACE:include/${PROJECT_NAME}>
 )
+
+# The stand-alone programs of the Makefile, built (not installed) here too, so CI compiles them and
+# make tidy sees them in compile_commands.json. Keep the list in step with PROGRAMS in the Makefile.
+foreach(program park zero joystick_all_joints joystick_display pid_tool temps_lcd)
+  add_executable(${program} srcs/${program}.cpp)
+  target_compile_options(${program} PRIVATE -Wall -Wextra)
+  target_link_libraries(${program} mycobot_cpp)
+endforeach()
 
 install(DIRECTORY includes/ DESTINATION include/${PROJECT_NAME})
 install(TARGETS mycobot_cpp EXPORT export_${PROJECT_NAME}
