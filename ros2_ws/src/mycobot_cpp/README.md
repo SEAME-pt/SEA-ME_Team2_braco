@@ -10,7 +10,7 @@ publishes no topics.
 | `joystick.hpp` | `input::Joystick`: reads `/dev/input/js*` events |
 | `lcd_display.hpp` | `ui::LcdDisplay`: the LCD1602 over I2C |
 | `display.hpp` | `ui::TerminalDisplay`: full-screen terminal status |
-| `teleop_logic.hpp` | Jogging logic shared by `joystick_teleop` and `joystick_all_joints`; tested in `braco_teleop/test/` |
+| `teleop_logic.hpp` | Jogging logic shared by `joystick_teleop`, `joystick_all_joints` and `joystick_display`; tested in `braco_teleop/test/` |
 
 `braco_description` must keep its joint limits equal to `JOINT_LIMITS`.
 

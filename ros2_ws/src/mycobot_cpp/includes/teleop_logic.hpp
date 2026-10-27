@@ -1,7 +1,7 @@
 // teleop_logic.hpp - joystick-to-joint logic, as pure functions (no I/O).
 //
-// The one copy, used by mycobot_cpp/srcs/joystick_all_joints.cpp (stand-alone) and by the
-// joystick_teleop node of braco_teleop (ROS 2). Header-only, so unit tests can
+// The one copy, used by mycobot_cpp/srcs/joystick_all_joints.cpp and joystick_display.cpp
+// (stand-alone) and by the joystick_teleop node of braco_teleop (ROS 2). Header-only, so unit tests can
 // check it without hardware. Positions come from mycobot.hpp (JOINT_LIMITS, stepToward).
 
 #pragma once
