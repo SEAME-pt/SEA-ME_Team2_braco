@@ -121,7 +121,7 @@ public:
     temp_period_ = std::chrono::duration<double>(declare_parameter<double>("temp_period_s", 2.0));
     command_timeout_ = std::chrono::milliseconds(
       declare_parameter<int>("command_timeout_ms", 300));
-    gripper_speed_ = declare_parameter<int>("gripper_speed", 50);
+    gripper_speed_ = static_cast<int>(declare_parameter<int>("gripper_speed", 50));
     control_idle_ = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
       std::chrono::duration<double>(declare_parameter<double>("control_idle_s", 5.0)));
 

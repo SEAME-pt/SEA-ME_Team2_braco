@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cerrno>
 #include <cmath>
+#include <cstddef>
 #include <cstring>
 #include <stdexcept>
 #include <thread>
@@ -478,7 +479,8 @@ std::optional<std::vector<uint8_t>> MyCobot280::readReply(uint8_t cmd,
             const size_t footer = i + 2 + len;
             if (len < 2 || footer >= buf.size()) continue;  // incomplete or invalid
             if (buf[i + 3] == cmd && buf[footer] == protocol::FOOTER) {
-                return std::vector<uint8_t>(buf.begin() + i + 4, buf.begin() + footer);
+                return std::vector<uint8_t>(buf.begin() + static_cast<std::ptrdiff_t>(i + 4),
+                                            buf.begin() + static_cast<std::ptrdiff_t>(footer));
             }
         }
     }

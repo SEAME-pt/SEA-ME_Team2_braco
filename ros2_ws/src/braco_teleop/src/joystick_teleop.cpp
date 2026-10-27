@@ -109,7 +109,8 @@ public:
     device_ = declare_parameter<std::string>("device", input::Joystick::DEFAULT_DEVICE);
     state_timeout_ = std::chrono::milliseconds(declare_parameter<int>("state_timeout_ms", 150));
     debug_ = declare_parameter<bool>("debug", false);
-    force_button_ = declare_parameter<int>("force_button", tl::BUTTON_FORCE_CONTROL);
+    force_button_ = static_cast<int>(
+      declare_parameter<int>("force_button", tl::BUTTON_FORCE_CONTROL));
     force_hold_s_ = declare_parameter<double>("force_hold_s", tl::FORCE_HOLD_S);
     force_hold_ = tl::ButtonHold(force_hold_s_);
 
@@ -247,9 +248,9 @@ private:
   {
     const float k = (owner_.empty() || isOwner()) ? 1.0f : NOT_OWNER_LED;
     std_msgs::msg::ColorRGBA c;
-    c.r = k * mode.r / 255.0f;
-    c.g = k * mode.g / 255.0f;
-    c.b = k * mode.b / 255.0f;
+    c.r = k * static_cast<float>(mode.r) / 255.0f;
+    c.g = k * static_cast<float>(mode.g) / 255.0f;
+    c.b = k * static_cast<float>(mode.b) / 255.0f;
     c.a = 1.0f;
     led_pub_->publish(c);
   }
