@@ -99,7 +99,7 @@ python3 /ws/src/braco_description/scripts/my_test.py --real --speed 15
 | What you see | Why / fix |
 |---|---|
 | `Package 'braco_description' not found` | Not built or not sourced: `cd /ws && colcon build --packages-select braco_description && source install/setup.bash` |
-| No window | On the host: `make xhost`, then launch again. Check `echo $DISPLAY` in the container |
+| No window | `make up` runs `xhost +local:` on the host (unless `XHOST=0`): run `make up` again, or `xhost +local:` by hand, then launch again. Check `echo $DISPLAY` in the container |
 | Slow, or "Gazebo is taking too long to start" | No GPU: `glxinfo -B \| grep "OpenGL renderer"` says `llvmpipe`. Restart with `make down && make up GPU=nvidia` |
 | Stuck on `Requesting list of world names` | Gazebo's processes cannot find each other: `GZ_IP` must be `127.0.0.1` (set by `docker/compose.yml`; recreate the containers after pulling it) |
 | `Moved backwards in time`, controllers never answer | Two Gazebos (or the `sim` container) on the same `ROS_DOMAIN_ID`: one domain per simulation |
