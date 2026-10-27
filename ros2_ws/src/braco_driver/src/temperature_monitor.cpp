@@ -201,6 +201,8 @@ private:
   {
     if (park_pid_ > 0) {return true;}   // one is already running
     std::vector<char *> argv;
+    // execvp takes char *const[], so `arg` cannot be a const reference (data() would be const)
+    // cppcheck-suppress constVariableReference
     for (auto & arg : park_command_) {argv.push_back(arg.data());}
     argv.push_back(nullptr);
     const pid_t pid = fork();

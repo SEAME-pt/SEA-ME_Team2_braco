@@ -176,7 +176,7 @@ std::optional<bool> MyCobot280::isPowerOn() {
 
 // ------------------------------------------------------------ joint limits
 
-double MyCobot280::limitAngle(int joint, double angle, bool& clamped) const {
+double MyCobot280::limitAngle(int joint, double angle, bool& clamped) {
     if (!std::isfinite(angle)) {
         throw std::invalid_argument("J" + std::to_string(joint) + ": angle is not a finite number");
     }

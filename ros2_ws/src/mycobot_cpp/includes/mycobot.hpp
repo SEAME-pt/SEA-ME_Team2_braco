@@ -247,7 +247,7 @@ private:
     std::optional<Angles> lastAngles_;  // last angles read or commanded
 
     // Clamp one angle to JOINT_LIMITS of `joint` (1..6); sets `clamped`.
-    double limitAngle(int joint, double angle, bool& clamped) const;
+    static double limitAngle(int joint, double angle, bool& clamped);
 
     // Build a frame and write it to the port.
     void sendCommand(uint8_t cmd, const std::vector<uint8_t>& data = {});
