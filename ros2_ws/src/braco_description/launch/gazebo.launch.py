@@ -13,20 +13,22 @@
 # limitations under the License.
 
 """
-Show the braco model in Gazebo (gz sim), holding its pose with ros2_control.
+The simulated braco arm: the model in Gazebo (gz sim), driven by ros2_control.
 
 Starts Gazebo with an empty world, spawns the model (gazebo:=true adds gz_ros2_control),
-bridges /clock and starts joint_state_broadcaster + arm_controller once the model is in.
+bridges /clock and starts the controllers of config/controllers.yaml (the same set planned
+for the real arm): joint_state_broadcaster, then arm_controller, once the model is in.
 
+braco_bringup's braco.launch.py sim:=true (the `sim` container) includes this file; it also
+runs on its own in the dev container:
   ros2 launch braco_description gazebo.launch.py              # Gazebo window
   ros2 launch braco_description gazebo.launch.py gui:=false   # server only (headless)
 
-Move the arm (all six joints, radians, reached in 2 s):
+Move one joint (degrees), or all six (radians, reached in 2 s):
+  ros2 run braco_description move_joint.py 2 30
   ros2 topic pub --once /arm_controller/joint_trajectory trajectory_msgs/msg/JointTrajectory \
     "{joint_names: [joint1, joint2, joint3, joint4, joint5, joint6],
       points: [{positions: [0.5, 0.3, -0.3, 0.0, 0.0, 0.0], time_from_start: {sec: 2}}]}"
-
-Quick viewer for issue #25; the full simulation bringup is issues #34/#37.
 """
 
 import os
@@ -49,7 +51,7 @@ def generate_launch_description():
 
     share = FindPackageShare('braco_description')
     model = PathJoinSubstitution([share, 'urdf', 'braco.urdf.xacro'])
-    controllers = PathJoinSubstitution([share, 'config', 'gazebo_controllers.yaml'])
+    controllers = PathJoinSubstitution([share, 'config', 'controllers.yaml'])
     robot_description = ParameterValue(
         Command([FindExecutable(name='xacro'), ' ', model, ' gazebo:=true']),
         value_type=str)
@@ -76,7 +78,10 @@ def generate_launch_description():
                 [FindPackageShare('ros_gz_sim'), 'launch', 'gz_sim.launch.py'])),
             launch_arguments={'gz_args': [
                 PythonExpression(["'' if '", gui, "' == 'true' else '-s '"]),
-                '-r -v 1 empty.sdf']}.items()),
+                '-r -v 1 empty.sdf'],
+                # Gazebo gone (crash, window closed) = no arm: end the launch, so the
+                # sim container stops like the real one does when arm_driver exits
+                'on_exit_shutdown': 'true'}.items()),
         Node(package='robot_state_publisher', executable='robot_state_publisher', output='screen',
              parameters=[{'robot_description': robot_description, 'use_sim_time': True}]),
         Node(package='ros_gz_bridge', executable='parameter_bridge', output='screen',

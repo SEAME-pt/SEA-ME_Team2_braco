@@ -328,7 +328,7 @@ def test_gazebo_joint_state_order_follows_names(gz):
 def test_gazebo_missing_joint_is_an_error(gz):
     gz._on_joint_state(FakeJointState(['other'], [0]))
     s = gz.snapshot()
-    assert s['connected'] is False and 'joint2_to_joint1' in s['error']
+    assert s['connected'] is False and arm.GZ_JOINT_NAMES[0] in s['error']
 
 
 def test_gazebo_moving_flag(gz):
