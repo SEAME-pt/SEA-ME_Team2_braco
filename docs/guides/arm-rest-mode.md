@@ -40,9 +40,9 @@ until `make zero` or `power_on`).
   `/arm/set_read_only true` once per episode (until all joints are below 60 °C: a reading that jitters around 65 °C stays one episode) and the LCD shows
   `REST: SERVO HOT` / `J4 66 C cooling`. Leaving it is always manual (`make resume`); a `make resume` during the
   same episode is not undone (useful to park a hot arm on purpose). Can be disabled with the
-  `auto_rest_on_hot` parameter. At that moment the monitor runs `park` (folds the arm, releases the joints to cool down and turns rest on); if `park` cannot run or fails, it only turns rest on. Parameters `park_on_hot` and `park_command`. See [ADR-0003](ADR-0003-rest-per-temp.md).
+  `auto_rest_on_hot` parameter. At that moment the monitor runs `park` (folds the arm, releases the joints to cool down and turns rest on); if `park` cannot run or fails, it only turns rest on. Parameters `park_on_hot` and `park_command`. See [ADR-0003](../decisions/ADR-0003-rest-per-temp.md).
 - `zero` and `park` take control of the arm by force (`take_control("script", force=true)`) and hand it back at the end:
-  they work with the joystick connected or the web page in control. See [ADR-0002](ADR-0002-unique-control.md).
+  they work with the joystick connected or the web page in control. See [ADR-0002](../decisions/ADR-0002-unique-control.md).
 - `arm_routine.sh` (entrypoint of the `real` container) does not move the arm when stopping: use `make down PARK=1`, which runs `park` before shutting down and leaves the arm in rest.
 - `ros2 topic echo /arm/read_only` shows the current state.
 

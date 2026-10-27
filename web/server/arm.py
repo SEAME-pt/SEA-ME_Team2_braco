@@ -4,12 +4,12 @@
     GazeboArm  the arm simulated in Gazebo (ROS 2, PC only)
     MockArm    synthetic data, for developing the page without the arm
 
-The page never opens the serial port: arm_driver owns it (docs/architecture.html).
+The page never opens the serial port: arm_driver owns it (docs/architecture/architecture.md).
 
 All of them expose start(), snapshot(), stop_motion(), go_to_pose(), move_joint()
 and wake_up() (leave rest, servos on, no movement); RosArm and MockArm also set_rest(), set_gripper() and set_led().
 take_control() / release_control() follow the page's control lease: RosArm asks arm_driver
-for the control (docs/ADR-0002-unique-control.md), the others have nobody to ask.
+for the control (docs/decisions/ADR-0002-unique-control.md), the others have nobody to ask.
 snapshot()["capabilities"] tells the page which of these a source supports.
 Commands only come from explicit actions on the page; nothing here powers the
 servos or moves the arm by itself, and no setting is written.
