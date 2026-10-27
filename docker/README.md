@@ -60,7 +60,7 @@ There is a single `Makefile`, at the **repo root**, split into `mk/*.mk`: run ev
 passes `--project-directory docker` to `docker compose`, so `.env` and `../ros2_ws` resolve exactly as
 below. Every path it uses is defined in one block of `mk/config.mk`, so moving a file means editing one line there.
 `make doctor` checks that all project files are present, and `make lint` validates the compose files, runs shellcheck
-on `docker/scripts/` and `docker/tests/` and hadolint on the Dockerfile (each a local binary, or else its pinned image
+on every shell script git tracks (and the `.githooks/`) and hadolint on the Dockerfile (each a local binary, or else its pinned image
 through docker).
 
 ## Quick start
