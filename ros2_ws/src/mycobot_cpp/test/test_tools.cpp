@@ -341,6 +341,11 @@ TEST_F(PidTool, AllAsksEveryJointThenOneYes) {
     EXPECT_EQ(r.exitCode, 0);
     EXPECT_TRUE(has(r.out, "Nothing to change."));
 
+    r = pidTool({"all"}, "\n\n\n\n\n25 0 25\nno\n");  // a change, then declined
+    EXPECT_EQ(r.exitCode, 1);
+    EXPECT_TRUE(has(r.out, "Aborted - nothing was changed.")) << r.out;
+    EXPECT_EQ(servo(arm_, 6, mc::servo::ADDR_P), 30);
+
     r = pidTool({"all"}, "\nq\n");
     EXPECT_EQ(r.exitCode, 1);
     EXPECT_TRUE(has(r.out, "Aborted - nothing was changed."));
@@ -677,6 +682,18 @@ TEST_P(JoystickDisplay, StatusScreenOnATerminal) {
     js_.axis(AXIS_J1, 0);
     arm_.update([](auto& s) { s.silent = true; });  // idle reads fail: shown on the screen
     EXPECT_TRUE(tool.next("NO ANGLE FEEDBACK", 10s));
+    quit(tool);
+}
+
+TEST_P(JoystickDisplay, ParkedScreenFollowsTheArm) {
+    Options options;
+    options.terminal = true;
+    Tool tool(GetParam(), {}, devices(options));
+    EXPECT_TRUE(tool.next("myCobot 280 - joystick control", 10s));
+    js_.click(BUTTON_Y);
+    EXPECT_TRUE(tool.next(">>> parked - joints released", 20s));
+    arm_.update([](auto& s) { s.angles[0] = -12.34; });  // moved by hand while released
+    EXPECT_TRUE(tool.next("-12.34", 10s));
     quit(tool);
 }
 
