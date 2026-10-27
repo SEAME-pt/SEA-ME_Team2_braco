@@ -19,7 +19,7 @@ install(DIRECTORY launch config DESTINATION share/${PROJECT_NAME})
 install(PROGRAMS scripts/arm_routine.sh DESTINATION lib/${PROJECT_NAME})
 
 # zero and park are run by hand (make zero / make park): C++ clients of arm_driver
-add_library(arm_moves STATIC src/arm_moves.cpp)
+add_library(arm_moves STATIC src/arm_moves.cpp src/routines.cpp)
 target_include_directories(arm_moves PUBLIC include)
 target_link_libraries(arm_moves PUBLIC
   mycobot_cpp::mycobot_cpp rclcpp::rclcpp
@@ -34,6 +34,12 @@ endforeach()
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   ament_lint_auto_find_test_dependencies()
+
+  # ArmMoves and the zero/park routines against a fake arm_driver in the same process. Isolated:
+  # its own ROS graph, so a real arm_driver on the same machine is never seen (or moved).
+  find_package(ament_cmake_ros REQUIRED)
+  ament_add_ros_isolated_gtest(test_arm_moves test/test_arm_moves.cpp TIMEOUT 120)
+  target_link_libraries(test_arm_moves arm_moves)
 endif()
 
 ament_package()
