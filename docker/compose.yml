@@ -17,6 +17,11 @@ x-ros-env: &ros-env
   ROS_AUTOMATIC_DISCOVERY_RANGE: ${ROS_AUTOMATIC_DISCOVERY_RANGE:-SUBNET}
   # When multicast is blocked (campus Wi-Fi, some switches) add the other machine's IP:
   # ROS_STATIC_PEERS: "192.168.1.50"
+  # Gazebo's own transport (gz-transport, not ROS) stays on this machine. With the host network it
+  # otherwise picks a network interface by itself, and on some machines (VPN, several interfaces,
+  # firewall) the Gazebo processes never find each other: ros_gz_sim waits forever on
+  # "Requesting list of world names". Gazebo and ROS still talk through ros_gz_bridge.
+  GZ_IP: ${GZ_IP:-127.0.0.1}
 
 # Identical for both images on purpose: the shared `base` stage is then built once and reused.
 x-build-args: &build-args
