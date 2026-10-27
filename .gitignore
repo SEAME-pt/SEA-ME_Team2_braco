@@ -21,6 +21,7 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.coverage
 
 # ---- Secrets and local settings -------------------------------------------------
 # Local env files (e.g. GITHUB_TOKEN for the web dashboard)

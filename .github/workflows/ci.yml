@@ -1,7 +1,7 @@
 # CI for every PR and every push to main (issue #16). Every job calls the Makefile, so a failure can be
 # reproduced locally with the same command:
 #
-#   host  make ci        (lint, web page tests; no robot, no docker image)
+#   host  make ci        (lint, web page tests with coverage; no robot, no docker image)
 #   ros   make ci-ros    (rosdep, colcon build, colcon test of ros2_ws/src)
 #         make cppcheck  (cppcheck on the C++ packages, same image)
 #         make tidy      (clang-tidy on the C++ packages, from the ci-ros build)
