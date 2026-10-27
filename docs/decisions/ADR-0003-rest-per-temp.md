@@ -58,4 +58,4 @@ Implemented in `AutoRest` ([auto_rest.hpp](../../ros2_ws/src/braco_driver/includ
 ## Links
 
 - Issue [#55](https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/55); hysteresis added after PR #64 review (2026-10-23)
-- [ADR-0002](ADR-0002-unique-control.md), [hot-arm guide](../guides/hot-arm/hot-arm-guide.md), [safety.md](../guides/safety.md)
+- [ADR-0002](ADR-0002-unique-control.md), [hot-arm guide](../guides/hot-arm.md), [safety.md](../guides/safety.md)

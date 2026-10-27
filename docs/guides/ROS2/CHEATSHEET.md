@@ -1,6 +1,6 @@
 # ROS 2 Cheat Sheet
 
-Quick reference for daily work. Explanations are in [README.md](README.md), step-by-step usage in [INSTRUCTIONS.md](INSTRUCTIONS.md).
+Quick reference for daily work. Concepts are in the [ROS 2 docs](https://docs.ros.org/en/rolling/Concepts.html), hands-on practice in [INSTRUCTIONS.md](INSTRUCTIONS.md).
 
 ## Project containers (run from the repo root)
 
