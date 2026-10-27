@@ -184,7 +184,7 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
     <div class="meta">
       <span>Last checked against the code: 2026-10-27</span>
       <span>Started as <a href="https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/30">issue #30</a></span>
-      <span><a href="ADR-0001-ros2-in-docker-on-jetson-nano.md">ADR-0001</a> · <a href="ADR-0002-unique-control.md">ADR-0002</a> · <a href="ADR-0003-rest-per-temp.md">ADR-0003</a></span>
+      <span><a href="../decisions/ADR-0001-ros2-in-docker-on-jetson-nano.md">ADR-0001</a> · <a href="../decisions/ADR-0002-unique-control.md">ADR-0002</a> · <a href="../decisions/ADR-0003-rest-per-temp.md">ADR-0003</a></span>
     </div>
   </header>
 
@@ -215,10 +215,10 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
     <div class="sechead"><span class="secnum">1</span><h2>Principles</h2></div>
     <div class="okgrid">
       <div><b>One owner per device.</b> <code>arm_driver</code> is the only process that opens the myCobot 280 serial port (<code>/dev/ttyTHS1</code>, 1 Mbaud). Everyone else reaches the arm through its topics and services, so each client can start, stop or crash without touching the port. The page has no direct serial mode. Likewise <code>camera</code> is the only process that opens the eye-in-hand USB camera; the page (and later vision) subscribes to its frames.</div>
-      <div><b>The driver never moves the arm by itself.</b> Starting or stopping the system does not zero, park or power on the arm; those are explicit commands (<code>make zero</code>, <code>make park</code>, <code>make down PARK=1</code>). The one automatic move is the park on overheat, run by <code>temperature_monitor</code> (<a href="ADR-0003-rest-per-temp.md">ADR-0003</a>).</div>
+      <div><b>The driver never moves the arm by itself.</b> Starting or stopping the system does not zero, park or power on the arm; those are explicit commands (<code>make zero</code>, <code>make park</code>, <code>make down PARK=1</code>). The one automatic move is the park on overheat, run by <code>temperature_monitor</code> (<a href="../decisions/ADR-0003-rest-per-temp.md">ADR-0003</a>).</div>
       <div><b>Safety lives next to the hardware.</b> Joint limits, the table margin, the watchdog, rest mode and the control owner are enforced in <code>arm_driver</code>, not in its clients: a buggy client cannot bypass them.</div>
       <div><b>Faults are visible.</b> <code>arm_driver</code> is not respawned: if it dies the launch shuts down, <code>arm_routine.sh</code> ends and the container stops. <code>temperature_monitor</code>, <code>joystick_teleop</code> and <code>camera</code> are respawned; the arm never depends on the camera, whose node waits for it when it is unplugged.</div>
-      <div><b>One client moves the arm at a time.</b> The page, the joystick, zero/park and the mission take the control from <code>arm_driver</code> before moving; motion from anyone else is ignored, STOP never is (<a href="ADR-0002-unique-control.md">ADR-0002</a>).</div>
+      <div><b>One client moves the arm at a time.</b> The page, the joystick, zero/park and the mission take the control from <code>arm_driver</code> before moving; motion from anyone else is ignored, STOP never is (<a href="../decisions/ADR-0002-unique-control.md">ADR-0002</a>).</div>
       <div><b>One source for each fact.</b> The thermal level is computed once, by <code>temperature_monitor</code>, and published on <code>/diagnostics</code>; the page shows it and does not recompute it. The control owner is kept once, by <code>arm_driver</code>.</div>
       <div><b>Same interface for real and simulated.</b> Everything above the hardware abstraction uses <code>/joint_states</code>, <code>braco_interfaces</code> and the <code>FollowJointTrajectory</code> action, with the same topic, frame and action names on both, so the mission and planning layers cannot tell the simulation from the real arm and run unchanged on both. Only the hardware abstraction layer changes with <code>sim:=true|false</code>.</div>
       <div><b>Every node that moves the arm is a lifecycle node</b> <i>(target, not yet implemented)</i>. <code>arm_driver</code> opens the serial port on <i>configure</i>, accepts motion only while <i>active</i>, and <i>deactivate</i> cuts actuation. The same holds for the other nodes that command motion, so the e-stop can force them all out of <i>active</i>. Today every node is a plain node; see <a href="#s12">section 12</a>.</div>
@@ -368,11 +368,11 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
       <table style="min-width:1320px">
         <thead><tr><th>Layer</th><th>Responsibility</th><th>Real arm (<code>sim:=false</code>)</th><th>Simulation (<code>sim:=true</code>)</th><th>Talks to the layer below through</th><th>Lives in</th><th>Status</th></tr></thead>
         <tbody>
-          <tr><td><b>1 Mission and clients</b></td><td>Decide <i>what</i> the arm does. Never open a device; take the control before moving (<a href="ADR-0002-unique-control.md">ADR-0002</a>)</td><td><code>braco_web</code>, <code>joystick_teleop</code>, <code>temperature_monitor</code>, <code>zero</code> / <code>park</code>; planned: <code>braco_mission</code>, <code>move_group</code></td><td>the same nodes, on the PC</td><td>topics, services, action goals (layer 2)</td><td><code>web/</code>, <code>braco_teleop</code>, <code>braco_driver</code>, <code>braco_bringup</code>, <code>braco_mission</code>, <code>braco_moveit_config</code></td><td>clients done; mission and MoveIt planned</td></tr>
+          <tr><td><b>1 Mission and clients</b></td><td>Decide <i>what</i> the arm does. Never open a device; take the control before moving (<a href="../decisions/ADR-0002-unique-control.md">ADR-0002</a>)</td><td><code>braco_web</code>, <code>joystick_teleop</code>, <code>temperature_monitor</code>, <code>zero</code> / <code>park</code>; planned: <code>braco_mission</code>, <code>move_group</code></td><td>the same nodes, on the PC</td><td>topics, services, action goals (layer 2)</td><td><code>web/</code>, <code>braco_teleop</code>, <code>braco_driver</code>, <code>braco_bringup</code>, <code>braco_mission</code>, <code>braco_moveit_config</code></td><td>clients done; mission and MoveIt planned</td></tr>
           <tr><td><b>2 ROS 2 middleware</b></td><td>The contract between the layers: names and types every layer agrees on. Identical in sim and real</td><td>DDS domain 42; <code>/joint_states</code>, <code>/arm/command</code>, <code>/arm/*</code> services, <code>/diagnostics</code></td><td>the same names; <code>FollowJointTrajectory</code> on <code>/arm_controller</code></td><td>subscriptions, service and action servers in layer 3</td><td><code>braco_interfaces</code></td><td>done; <code>FollowJointTrajectory</code> on the real arm planned</td></tr>
           <tr><td><b>3 Hardware abstraction</b></td><td>Turn the contract into device access and enforce safety. The only layer that changes with <code>sim</code></td><td><code>arm_driver</code> (UART owner, gates, limits, watchdog), <code>camera</code> (USB camera owner), <code>mycobot_cpp</code> (protocol, no ROS)</td><td><code>gz_ros2_control</code>: <code>controller_manager</code>, <code>arm_controller</code>, <code>joint_state_broadcaster</code></td><td>myCobot serial protocol, UART 1 Mbaud (real); the gz_ros2_control plugin (sim)</td><td><code>braco_driver</code>, <code>braco_camera</code>, <code>mycobot_cpp</code>, <code>braco_description</code> (sim)</td><td>done; lifecycle and ros2_control <code>SystemInterface</code> planned</td></tr>
-          <tr><td><b>4 Arm servo controller</b></td><td>The arm's own board: receives the protocol and drives the servo bus. braco does not change its firmware</td><td>Atom (ESP32, firmware 7.3) in the myCobot 280</td><td>Gazebo physics</td><td>servo bus: target angles down; angle, temperature and voltage up</td><td>vendor firmware; protocol in <a href="protocol_commands.md">protocol_commands.md</a></td><td>given</td></tr>
-          <tr><td><b>5 Sensors and actuators</b></td><td>What moves and what senses</td><td>six joint servos (angle, temperature, voltage), gripper; USB camera, joystick and LCD1602 wired straight to the Jetson (they skip layer 4)</td><td>simulated <code>joint1..joint6</code> and gripper, from the URDF</td><td>—</td><td><code>braco_description</code> (model), <a href="inventory/inventory.md">inventory</a></td><td>given</td></tr>
+          <tr><td><b>4 Arm servo controller</b></td><td>The arm's own board: receives the protocol and drives the servo bus. braco does not change its firmware</td><td>Atom (ESP32, firmware 7.3) in the myCobot 280</td><td>Gazebo physics</td><td>servo bus: target angles down; angle, temperature and voltage up</td><td>vendor firmware; protocol in <a href="../hardware/protocol_commands.md">protocol_commands.md</a></td><td>given</td></tr>
+          <tr><td><b>5 Sensors and actuators</b></td><td>What moves and what senses</td><td>six joint servos (angle, temperature, voltage), gripper; USB camera, joystick and LCD1602 wired straight to the Jetson (they skip layer 4)</td><td>simulated <code>joint1..joint6</code> and gripper, from the URDF</td><td>—</td><td><code>braco_description</code> (model), <a href="../hardware/inventory/inventory.md">inventory</a></td><td>given</td></tr>
         </tbody>
       </table>
     </div>
@@ -616,7 +616,7 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
           <li><span><code>arm_driver</code> publishes <code>/arm/servo_temperatures</code> (and <code>/arm/servo_voltages</code>) every 2 s, also in rest mode.</span></li>
           <li><span><code>temperature_monitor</code> classifies normal (up to 54 °C), warm (55–64 °C) or hot (65 °C or more), publishes <code>/diagnostics</code> and shows it on the LCD.</span></li>
           <li><span>At hot, once per hot episode, it runs <code>park</code> (<code>park_on_hot</code>): the arm folds, the joints are released so the servos cool, and the arm ends in rest mode, also when park fails. The episode ends only when every joint is below 60 °C (hysteresis), so a reading that jitters around 65 °C does not park the arm again. With <code>park_on_hot: false</code> it only calls <code>set_read_only(true)</code>. In rest mode <code>arm_driver</code> drops the pending motion and refuses motion, gripper and power on, but keeps reading.</span></li>
-          <li><span>The page shows the level from <code>/diagnostics</code>. When the arm has cooled down, someone runs <code>make resume</code> (<a href="arm-rest-mode.md">arm-rest-mode.md</a>).</span></li>
+          <li><span>The page shows the level from <code>/diagnostics</code>. When the arm has cooled down, someone runs <code>make resume</code> (<a href="../guides/arm-rest-mode.md">arm-rest-mode.md</a>).</span></li>
         </ol>
       </div>
     </div>
@@ -664,12 +664,12 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
         <span class="pill p-hw">rest</span>
         <div class="ch-body">
           <h3>Rest mode</h3>
-          <p><code>/arm/set_read_only true</code>: motion, gripper and power on are refused; angles and temperatures keep being published. <code>temperature_monitor</code> enters it by itself when a servo reaches 65 °C, once per hot episode (which ends below 60 °C), after parking the arm (<code>park_on_hot</code>); leaving it is manual (<code>make resume</code>). See <a href="arm-rest-mode.md">arm-rest-mode.md</a> and <a href="ADR-0003-rest-per-temp.md">ADR-0003</a>.</p>
+          <p><code>/arm/set_read_only true</code>: motion, gripper and power on are refused; angles and temperatures keep being published. <code>temperature_monitor</code> enters it by itself when a servo reaches 65 °C, once per hot episode (which ends below 60 °C), after parking the arm (<code>park_on_hot</code>); leaving it is manual (<code>make resume</code>). See <a href="../guides/arm-rest-mode.md">arm-rest-mode.md</a> and <a href="../decisions/ADR-0003-rest-per-temp.md">ADR-0003</a>.</p>
         </div>
       </div>
     </div>
 
-    <div class="subhead">Who moves the arm (<a href="ADR-0002-unique-control.md">ADR-0002</a>)</div>
+    <div class="subhead">Who moves the arm (<a href="../decisions/ADR-0002-unique-control.md">ADR-0002</a>)</div>
     <div class="tablewrap">
       <table>
         <tbody>
@@ -696,20 +696,20 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
   <!-- 5 -->
   <section id="s5">
     <div class="sechead"><span class="secnum">5</span><h2>Packages and folders</h2></div>
-    <p>colcon builds one workspace, <code>ros2_ws/src</code> (mounted at <code>/ws</code> in every container; <code>make build</code> passes <code>--base-paths src</code>; flags in <a href="../docker/config/colcon-defaults.yaml">colcon-defaults.yaml</a>). Every package has its own README with its topics, parameters and how to run it by hand.</p>
+    <p>colcon builds one workspace, <code>ros2_ws/src</code> (mounted at <code>/ws</code> in every container; <code>make build</code> passes <code>--base-paths src</code>; flags in <a href="../../docker/config/colcon-defaults.yaml">colcon-defaults.yaml</a>). Every package has its own README with its topics, parameters and how to run it by hand.</p>
     <div class="tablewrap">
       <table>
         <thead><tr><th>Package</th><th>Kind</th><th>Role</th><th>Status</th></tr></thead>
         <tbody>
-          <tr><td><a href="../ros2_ws/src/mycobot_cpp/README.md"><code>mycobot_cpp</code></a></td><td>C++ library</td><td>myCobot 280 serial driver, joint limits and poses (<code>mycobot.hpp</code>), joystick, LCD1602, teleop logic; also the stand-alone tools (no ROS)</td><td><span class="pill p-ok">done</span></td></tr>
-          <tr><td><a href="../ros2_ws/src/braco_interfaces/README.md"><code>braco_interfaces</code></a></td><td>Interfaces</td><td><code>ArmCommand</code>, <code>JointTarget</code>, <code>ServoTemperatures</code>, <code>ServoVoltages</code>, <code>TakeControl</code></td><td><span class="pill p-ok">done</span></td></tr>
-          <tr><td><a href="../ros2_ws/src/braco_driver/README.md"><code>braco_driver</code></a></td><td>Nodes</td><td><code>arm_driver</code> (owns the port and the control), <code>temperature_monitor</code> (LCD, <code>/diagnostics</code>, rest on overheat)</td><td><span class="pill p-ok">done</span></td></tr>
-          <tr><td><a href="../ros2_ws/src/braco_teleop/README.md"><code>braco_teleop</code></a></td><td>Node</td><td><code>joystick_teleop</code>: jogs the arm through <code>arm_driver</code></td><td><span class="pill p-ok">done</span></td></tr>
-          <tr><td><a href="../ros2_ws/src/braco_camera/README.md"><code>braco_camera</code></a></td><td>Node (Python)</td><td><code>camera</code>: the eye-in-hand USB camera as JPEG frames</td><td><span class="pill p-ok">done</span></td></tr>
-          <tr><td><a href="../ros2_ws/src/braco_bringup/README.md"><code>braco_bringup</code></a></td><td>Launch + config</td><td><code>braco.launch.py</code>, <code>braco.yaml</code>, the container entrypoint, <code>zero</code> / <code>park</code></td><td><span class="pill p-ok">done</span> <code>sim:=true</code> = Gazebo (#34)</td></tr>
-          <tr><td><a href="../ros2_ws/src/braco_description/README.md"><code>braco_description</code></a></td><td>Model + tools</td><td>URDF of the myCobot 280 with G-base, camera flange and gripper; <code>gazebo.launch.py</code> (Gazebo viewer); <code>sim_to_real.py</code> (checks against the real arm)</td><td><span class="pill p-ok">done</span> #25</td></tr>
-          <tr class="future"><td><a href="../ros2_ws/src/braco_moveit_config/README.md"><code>braco_moveit_config</code></a></td><td>Config</td><td>MoveIt 2 for the arm</td><td><span class="pill p-note">placeholder</span></td></tr>
-          <tr class="future"><td><a href="../ros2_ws/src/braco_mission/README.md"><code>braco_mission</code></a></td><td>Nodes</td><td>Mission state machine, MoveIt 2 client</td><td><span class="pill p-note">placeholder</span></td></tr>
+          <tr><td><a href="../../ros2_ws/src/mycobot_cpp/README.md"><code>mycobot_cpp</code></a></td><td>C++ library</td><td>myCobot 280 serial driver, joint limits and poses (<code>mycobot.hpp</code>), joystick, LCD1602, teleop logic; also the stand-alone tools (no ROS)</td><td><span class="pill p-ok">done</span></td></tr>
+          <tr><td><a href="../../ros2_ws/src/braco_interfaces/README.md"><code>braco_interfaces</code></a></td><td>Interfaces</td><td><code>ArmCommand</code>, <code>JointTarget</code>, <code>ServoTemperatures</code>, <code>ServoVoltages</code>, <code>TakeControl</code></td><td><span class="pill p-ok">done</span></td></tr>
+          <tr><td><a href="../../ros2_ws/src/braco_driver/README.md"><code>braco_driver</code></a></td><td>Nodes</td><td><code>arm_driver</code> (owns the port and the control), <code>temperature_monitor</code> (LCD, <code>/diagnostics</code>, rest on overheat)</td><td><span class="pill p-ok">done</span></td></tr>
+          <tr><td><a href="../../ros2_ws/src/braco_teleop/README.md"><code>braco_teleop</code></a></td><td>Node</td><td><code>joystick_teleop</code>: jogs the arm through <code>arm_driver</code></td><td><span class="pill p-ok">done</span></td></tr>
+          <tr><td><a href="../../ros2_ws/src/braco_camera/README.md"><code>braco_camera</code></a></td><td>Node (Python)</td><td><code>camera</code>: the eye-in-hand USB camera as JPEG frames</td><td><span class="pill p-ok">done</span></td></tr>
+          <tr><td><a href="../../ros2_ws/src/braco_bringup/README.md"><code>braco_bringup</code></a></td><td>Launch + config</td><td><code>braco.launch.py</code>, <code>braco.yaml</code>, the container entrypoint, <code>zero</code> / <code>park</code></td><td><span class="pill p-ok">done</span> <code>sim:=true</code> = Gazebo (#34)</td></tr>
+          <tr><td><a href="../../ros2_ws/src/braco_description/README.md"><code>braco_description</code></a></td><td>Model + tools</td><td>URDF of the myCobot 280 with G-base, camera flange and gripper; <code>gazebo.launch.py</code> (Gazebo viewer); <code>sim_to_real.py</code> (checks against the real arm)</td><td><span class="pill p-ok">done</span> #25</td></tr>
+          <tr class="future"><td><a href="../../ros2_ws/src/braco_moveit_config/README.md"><code>braco_moveit_config</code></a></td><td>Config</td><td>MoveIt 2 for the arm</td><td><span class="pill p-note">placeholder</span></td></tr>
+          <tr class="future"><td><a href="../../ros2_ws/src/braco_mission/README.md"><code>braco_mission</code></a></td><td>Nodes</td><td>Mission state machine, MoveIt 2 client</td><td><span class="pill p-note">placeholder</span></td></tr>
         </tbody>
       </table>
     </div>
@@ -806,7 +806,7 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
         <text x="770" y="214" text-anchor="middle" class="t-s t-note">never a dependency of braco_bringup</text>
       </svg>
       </div>
-      <figcaption><code>braco_bringup</code> lists every package the <b>real</b> system needs as an <code>exec_depend</code>. The Jetson builds only <code>--packages-up-to braco_bringup</code>, so a simulation-only package (Gazebo, MoveIt) must never become a dependency of <code>braco_bringup</code>, or the Nano starts building it (<code>WS_PACKAGES</code> in <a href="../mk/config.mk">mk/config.mk</a>).</figcaption>
+      <figcaption><code>braco_bringup</code> lists every package the <b>real</b> system needs as an <code>exec_depend</code>. The Jetson builds only <code>--packages-up-to braco_bringup</code>, so a simulation-only package (Gazebo, MoveIt) must never become a dependency of <code>braco_bringup</code>, or the Nano starts building it (<code>WS_PACKAGES</code> in <a href="../../mk/config.mk">mk/config.mk</a>).</figcaption>
     </figure>
   </section>
 
@@ -869,7 +869,7 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
 <pre class="code"><span class="k">ros2 launch</span> braco_bringup braco.launch.py              <span class="c"># sim:=false, the real arm (default)</span>
 <span class="k">ros2 launch</span> braco_bringup braco.launch.py sim:=true    <span class="c"># the simulated arm</span>
 <span class="k">ros2 launch</span> braco_bringup braco.launch.py --show-args</pre>
-    <p>The <b>wiring</b> (devices) comes from the launch arguments, filled by <code>docker/compose.yml</code> from <code>docker/.env</code>; the <b>tuning</b> comes from <a href="../ros2_ws/src/braco_bringup/config/braco.yaml">config/braco.yaml</a>.</p>
+    <p>The <b>wiring</b> (devices) comes from the launch arguments, filled by <code>docker/compose.yml</code> from <code>docker/.env</code>; the <b>tuning</b> comes from <a href="../../ros2_ws/src/braco_bringup/config/braco.yaml">config/braco.yaml</a>.</p>
     <div class="tablewrap">
       <table>
         <thead><tr><th>Argument</th><th>Default</th><th>Used by</th></tr></thead>
@@ -936,7 +936,7 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
           <li><code>make rest</code><span>Rest mode on: motion refused, still reading.</span></li>
           <li><code>make resume</code><span>Rest mode off.</span></li>
           <li><code>make temps</code><span>Print the servo temperatures once.</span></li>
-          <li><code>make bench</code><span>Bench test of control and auto-rest (<a href="../scripts/bench.sh">scripts/bench.sh</a>).<small>Asks before moving the arm; appends to <code>bench-report.log</code>.</small></span></li>
+          <li><code>make bench</code><span>Bench test of control and auto-rest (<a href="../../scripts/bench.sh">scripts/bench.sh</a>).<small>Asks before moving the arm; appends to <code>bench-report.log</code>.</small></span></li>
         </ul>
       </div>
       <div class="grp">
@@ -1110,7 +1110,7 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
     </figure>
     <ul class="plain">
       <li><code>braco_description</code> holds the URDF; its joint limits must match <code>JOINT_LIMITS</code> in <code>mycobot.hpp</code>, and its joint names are the ones on <code>/joint_states</code> (<code>joint1..joint6</code>) on both the real arm and the simulation.</li>
-      <li><code>sim:=true</code> (the <code>sim</code> container) starts Gazebo with that model, publishing the same <code>/joint_states</code>, and the controllers of <code>braco_description/config/controllers.yaml</code>: <code>joint_state_broadcaster</code> and <code>arm_controller</code> (<code>FollowJointTrajectory</code>, the interface MoveIt uses). That file is the set planned for the real arm too; only the URDF's <code>&lt;hardware&gt;</code> plugin changes (a braco <code>SystemInterface</code>, planned). The <code>sim</code> container runs on its own ROS domain (77) so its <code>/joint_states</code> never mix with the real arm's. How to run it: <a href="../ros2_ws/src/braco_description/README.md#run-the-simulation-step-by-step">Run the simulation</a>.</li>
+      <li><code>sim:=true</code> (the <code>sim</code> container) starts Gazebo with that model, publishing the same <code>/joint_states</code>, and the controllers of <code>braco_description/config/controllers.yaml</code>: <code>joint_state_broadcaster</code> and <code>arm_controller</code> (<code>FollowJointTrajectory</code>, the interface MoveIt uses). That file is the set planned for the real arm too; only the URDF's <code>&lt;hardware&gt;</code> plugin changes (a braco <code>SystemInterface</code>, planned). The <code>sim</code> container runs on its own ROS domain (77) so its <code>/joint_states</code> never mix with the real arm's. How to run it: <a href="../../ros2_ws/src/braco_description/README.md#run-the-simulation-step-by-step">Run the simulation</a>.</li>
       <li><code>braco_description</code>'s <code>scripts/braco_arm.py</code> runs the same moves in Gazebo and, with <code>--real</code>, on the arm.</li>
       <li>How MoveIt's trajectories reach <code>arm_driver</code> on the real arm is still to decide: the target is the same ros2_control controller config as in simulation, with a braco <code>SystemInterface</code> as its hardware (<a href="#node-graph">node graph</a>).</li>
     </ul>
@@ -1127,7 +1127,7 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
     <ul class="plain">
       <li><b>PC:</b> everything, <code>RelWithDebInfo</code>, with tests.</li>
       <li><b>Jetson:</b> only <code>--packages-up-to braco_bringup</code>, <code>Release</code>, <code>BUILD_TESTING=OFF</code>, one package at a time.</li>
-      <li><b>CI</b> (<a href="../.github/workflows/ci.yml">ci.yml</a>) runs both jobs on every pull request.</li>
+      <li><b>CI</b> (<a href="../../.github/workflows/ci.yml">ci.yml</a>) runs both jobs on every pull request.</li>
     </ul>
   </section>
 
@@ -1139,17 +1139,17 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
     <div class="subhead">Done</div>
     <div class="okgrid">
       <div><b>Single serial owner.</b> Only <code>arm_driver</code> opens the UART; the page has no direct serial mode.</div>
-      <div><b>One control owner.</b> <code>ArmCommand.source</code>, <code>TakeControl.srv</code>, latched <code>/arm/control_owner</code>; motion only from the owner, STOP from anyone (<a href="ADR-0002-unique-control.md">ADR-0002</a>).</div>
+      <div><b>One control owner.</b> <code>ArmCommand.source</code>, <code>TakeControl.srv</code>, latched <code>/arm/control_owner</code>; motion only from the owner, STOP from anyone (<a href="../decisions/ADR-0002-unique-control.md">ADR-0002</a>).</div>
       <div><b>Clients follow the owner.</b> Page lease = control <code>web</code>; joystick takes it free or forced (button 8 for 1 s), <code>power_on</code> only as owner; zero/park force and release.</div>
       <div><b>One thermal authority.</b> <code>temperature_monitor</code> publishes the level on <code>/diagnostics</code>; the page reads it.</div>
-      <div><b>Rest on overheat.</b> Once per hot episode (from 65 °C until every joint is below 60 °C), manual resume (<a href="ADR-0003-rest-per-temp.md">ADR-0003</a>).</div>
+      <div><b>Rest on overheat.</b> Once per hot episode (from 65 °C until every joint is below 60 °C), manual resume (<a href="../decisions/ADR-0003-rest-per-temp.md">ADR-0003</a>).</div>
       <div><b>braco layout.</b> <code>ros2_ws/src</code> with <code>braco_interfaces</code>, <code>braco_driver</code>, <code>braco_teleop</code>, <code>braco_camera</code>, <code>braco_bringup</code>; one launch and one <code>braco.yaml</code>; a README in every package, <code>mycobot_cpp</code> included.</div>
       <div><b>braco infrastructure.</b> <code>docker/Dockerfile</code>, <code>compose.yml</code> (project <code>braco</code>), <code>braco-image/*</code>, <code>braco.service</code>.</div>
       <div><b>One Makefile.</b> Split in <code>mk/</code>, idempotent <code>make up</code>, ~30 public commands.</div>
       <div><b>Lean repository root.</b> <code>docker</code>, <code>docs</code>, <code>mk</code>, <code>ros2_ws</code>, <code>scripts</code> (operator scripts run by <code>make</code>), <code>web</code> and the <code>Makefile</code> (plus the formatter configs and <code>requirements-dev.txt</code>); <code>mycobot_cpp</code> in <code>ros2_ws/src</code> (one colcon base path, no extra mount); <code>tests/</code>, <code>playground/</code> and the root <code>requirements.txt</code> removed.</div>
       <div><b>Jetson guards.</b> <code>doctor</code> checks, ccache limit, ROS log cleanup, <code>status</code> with <code>docker stats</code> and <code>tegrastats</code>.</div>
       <div><b>Simulation.</b> <code>braco.launch.py sim:=true</code> (the <code>sim</code> container): Gazebo, the URDF and the ros2_control controllers planned for the hardware, on ROS domain 77; the page drives it; <code>move_joint.py</code> commands one joint (#34).</div>
-      <div><b>Validated URDF.</b> <code>braco_description</code>: joint names, limits, zero pose, joint directions and FK (within 1.5 mm of <code>get_coords()</code>) checked on the real arm; measured joint velocities; the table check in <code>mycobot_cpp</code> uses the same kinematics (<a href="urdf-sim-to-real.md">report</a>, #25).</div>
+      <div><b>Validated URDF.</b> <code>braco_description</code>: joint names, limits, zero pose, joint directions and FK (within 1.5 mm of <code>get_coords()</code>) checked on the real arm; measured joint velocities; the table check in <code>mycobot_cpp</code> uses the same kinematics (<a href="../hardware/urdf-sim-to-real.md">report</a>, #25).</div>
     </div>
 
     <div class="subhead">Differs from the target (accepted for now)</div>
@@ -1223,7 +1223,7 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
     <p>Then update the "Last checked against the code" date at the top.</p>
   </section>
 
-  <footer>braco · SEA:ME Team 2 · <code>docs/architecture.html</code> · Why ROS 2 runs in Docker: <a href="ADR-0001-ros2-in-docker-on-jetson-nano.md">ADR-0001</a> · Containers and commands: <a href="../docker/README.md">docker/README.md</a> · ROS 2 concepts: <a href="ROS2/README.md">ROS2/README.md</a></footer>
+  <footer>braco · SEA:ME Team 2 · <code>docs/architecture.html</code> · Why ROS 2 runs in Docker: <a href="../decisions/ADR-0001-ros2-in-docker-on-jetson-nano.md">ADR-0001</a> · Containers and commands: <a href="../../docker/README.md">docker/README.md</a> · ROS 2 concepts: <a href="../guides/ROS2/README.md">ROS2/README.md</a></footer>
 </div>
 </body>
 </html>
