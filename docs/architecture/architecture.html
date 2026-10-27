@@ -616,7 +616,7 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
           <li><span><code>arm_driver</code> publishes <code>/arm/servo_temperatures</code> (and <code>/arm/servo_voltages</code>) every 2 s, also in rest mode.</span></li>
           <li><span><code>temperature_monitor</code> classifies normal (up to 54 °C), warm (55–64 °C) or hot (65 °C or more), publishes <code>/diagnostics</code> and shows it on the LCD.</span></li>
           <li><span>At hot, once per hot episode, it runs <code>park</code> (<code>park_on_hot</code>): the arm folds, the joints are released so the servos cool, and the arm ends in rest mode, also when park fails. The episode ends only when every joint is below 60 °C (hysteresis), so a reading that jitters around 65 °C does not park the arm again. With <code>park_on_hot: false</code> it only calls <code>set_read_only(true)</code>. In rest mode <code>arm_driver</code> drops the pending motion and refuses motion, gripper and power on, but keeps reading.</span></li>
-          <li><span>The page shows the level from <code>/diagnostics</code>. When the arm has cooled down, someone runs <code>make resume</code> (<a href="../guides/arm-rest-mode.md">arm-rest-mode.md</a>).</span></li>
+          <li><span>The page shows the level from <code>/diagnostics</code>. When the arm has cooled down, someone runs <code>make resume</code> (<a href="../guides/hot-arm/README.md">hot-arm guide</a>).</span></li>
         </ol>
       </div>
     </div>
@@ -664,7 +664,7 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
         <span class="pill p-hw">rest</span>
         <div class="ch-body">
           <h3>Rest mode</h3>
-          <p><code>/arm/set_read_only true</code>: motion, gripper and power on are refused; angles and temperatures keep being published. <code>temperature_monitor</code> enters it by itself when a servo reaches 65 °C, once per hot episode (which ends below 60 °C), after parking the arm (<code>park_on_hot</code>); leaving it is manual (<code>make resume</code>). See <a href="../guides/arm-rest-mode.md">arm-rest-mode.md</a> and <a href="../decisions/ADR-0003-rest-per-temp.md">ADR-0003</a>.</p>
+          <p><code>/arm/set_read_only true</code>: motion, gripper and power on are refused; angles and temperatures keep being published. <code>temperature_monitor</code> enters it by itself when a servo reaches 65 °C, once per hot episode (which ends below 60 °C), after parking the arm (<code>park_on_hot</code>); leaving it is manual (<code>make resume</code>). See <a href="../guides/hot-arm/README.md">hot-arm guide</a> and <a href="../decisions/ADR-0003-rest-per-temp.md">ADR-0003</a>.</p>
         </div>
       </div>
     </div>
@@ -760,7 +760,7 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
 ├── docs/
 │   ├── architecture.html  architecture.md   <span class="c"># this page, two formats</span>
 │   ├── ADR-000N-*.md  safety.md  protocol_commands.md
-│   └── arm-rest-mode.md  dev-setup.md  ROS2/  inventory/
+│   └── hot-arm/  dev-setup.md  ROS2/  inventory/
 ├── .github/  .githooks/       <span class="c"># CI, PR template, commit and pre-push hooks</span>
 └── .clang-format  .ruff.toml  requirements-dev.txt   <span class="c"># formatters, host dev venv</span></pre>
         <div class="rules">

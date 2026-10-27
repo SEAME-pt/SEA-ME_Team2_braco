@@ -246,7 +246,7 @@ watchdog stops the arm.
    `set_read_only(true)`. In rest mode `arm_driver` drops the pending motion and refuses motion, gripper and power
    on, but keeps reading.
 4. The page shows the level from `/diagnostics`. When the arm has cooled down, someone runs `make resume`
-   ([arm-rest-mode.md](../guides/arm-rest-mode.md)).
+   ([hot-arm guide](../guides/hot-arm/README.md)).
 
 ---
 
@@ -278,7 +278,7 @@ watchdog stops the arm.
   refused.
 - **Rest mode.** `/arm/set_read_only true`: motion, gripper and power on are refused; angles and temperatures keep
   being published. `temperature_monitor` enters it by itself when a servo reaches 65 °C, once per hot episode
-  (which ends below 60 °C), after parking the arm (`park_on_hot`); leaving it is manual (`make resume`). See [arm-rest-mode.md](../guides/arm-rest-mode.md) and
+  (which ends below 60 °C), after parking the arm (`park_on_hot`); leaving it is manual (`make resume`). See [hot-arm guide](../guides/hot-arm/README.md) and
   [ADR-0003](../decisions/ADR-0003-rest-per-temp.md).
 
 ### Who moves the arm ([ADR-0002](../decisions/ADR-0002-unique-control.md))
@@ -364,7 +364,7 @@ SEA-ME_Team2_braco/
 ├── docs/
 │   ├── architecture.html  architecture.md   # this document, two formats
 │   ├── ADR-000N-*.md  safety.md  protocol_commands.md
-│   └── arm-rest-mode.md  dev-setup.md  ROS2/  inventory/
+│   └── hot-arm/  dev-setup.md  ROS2/  inventory/
 ├── .github/  .githooks/       # CI workflow, PR template, commit-msg and pre-push hooks
 └── .clang-format  .ruff.toml  requirements-dev.txt   # formatters (make format), host dev venv
 ```

@@ -170,9 +170,9 @@ C++ is formatted by clang-format (`.clang-format`) and Python by ruff (`.ruff.to
 | Problem | Cause | Solution |
 |---|---|---|
 | `Permission denied: '/dev/ttyTHS1'` | User not in `dialout` group | Run `sudo usermod -aG dialout $USER`, then log out and back in. |
-| `Device or resource busy` | Another process is accessing UART (with the system up it is the `arm_driver` node in the `real` container, which holds the port exclusively) | Check active locks using `lsof /dev/ttyTHS1` or `fuser /dev/ttyTHS1`. Don't stop the driver just to run a script: use `make park`, `make zero` or `make temps` from the repo root (see [arm-rest-mode.md](arm-rest-mode.md)). |
+| `Device or resource busy` | Another process is accessing UART (with the system up it is the `arm_driver` node in the `real` container, which holds the port exclusively) | Check active locks using `lsof /dev/ttyTHS1` or `fuser /dev/ttyTHS1`. Don't stop the driver just to run a script: use `make park`, `make zero` or `make temps` from the repo root (see [hot-arm/](hot-arm/README.md)). |
 | `[WARN] No response to get_angles query` | Base power switch off or wrong baud rate | Ensure the circular 60W power switch on the base is turned ON and baud rate is set to `1000000`. |
-| Motors locked or resisting movement | Active closed-loop holding torque | Run torque release script (see [Safety Guide](safety.md#52-software-operational-stop--holding-torque-behavior)): `mc.release_all_servos()`. With the system up, `make park` releases the joints and keeps the driver monitoring temperatures. |
+| Motors locked or resisting movement | Active closed-loop holding torque | Run torque release script (see [Safety Guide](safety.md#63-turning-off-the-motors-free-the-joints)): `mc.release_all_servos()`. With the system up, `make park` releases the joints and keeps the driver monitoring temperatures. |
 
 ---
 
