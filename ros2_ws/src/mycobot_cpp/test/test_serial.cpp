@@ -1,87 +1,39 @@
 // test_serial.cpp - GoogleTests for the serial protocol of mycobot::MyCobot280 (see mycobot.hpp),
 // against a pseudo-terminal instead of the arm: the test holds the master side, the class opens
-// the slave side as its port. Checks the frames it sends and how it parses the replies.
+// the slave side as its port (PtyArm, pty_arm.hpp). Checks the frames it sends and how it parses the
+// replies.
 
 #include <gtest/gtest.h>
-#include <poll.h>
-#include <pty.h>
-#include <unistd.h>
 
 #include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <stdexcept>
-#include <thread>
 #include <vector>
 
 #include "mycobot.hpp"
+#include "pty_arm.hpp"
 
 namespace mc = mycobot;
-using Bytes = std::vector<uint8_t>;
+using mc::fake::appendInt16;
+using mc::fake::Bytes;
+using mc::fake::frame;
 
 namespace {
 
-// Big-endian int16, as the arm sends it.
-void appendInt16(Bytes& out, int value) {
-    const uint16_t v = static_cast<uint16_t>(static_cast<int16_t>(value));
-    out.push_back(static_cast<uint8_t>(v >> 8));
-    out.push_back(static_cast<uint8_t>(v & 0xFF));
-}
-
-Bytes frame(uint8_t cmd, const Bytes& data = {}) {
-    Bytes f = {mc::protocol::HEADER, mc::protocol::HEADER, static_cast<uint8_t>(data.size() + 2),
-               cmd};
-    f.insert(f.end(), data.begin(), data.end());
-    f.push_back(mc::protocol::FOOTER);
-    return f;
-}
-
 class FakeArm : public ::testing::Test {
 protected:
-    void SetUp() override {
-        char name[128];
-        ASSERT_EQ(openpty(&master_, &slave_, name, nullptr, nullptr), 0);
-        arm_ = std::make_unique<mc::MyCobot280>(name);
-    }
+    void SetUp() override { arm_ = std::make_unique<mc::MyCobot280>(pty_.path()); }
 
-    void TearDown() override {
-        if (responder_.joinable()) responder_.join();
-        arm_.reset();
-        close(slave_);
-        close(master_);
-    }
-
-    // Every byte the arm object wrote, waiting up to `timeout` for the first one.
     Bytes sent(std::chrono::milliseconds timeout = std::chrono::milliseconds(200)) {
-        Bytes out;
-        pollfd p{master_, POLLIN, 0};
-        int wait = static_cast<int>(timeout.count());
-        while (poll(&p, 1, wait) > 0) {
-            uint8_t buf[256];
-            const ssize_t n = read(master_, buf, sizeof(buf));
-            if (n <= 0) break;
-            out.insert(out.end(), buf, buf + n);
-            wait = 20;  // the rest of the frame follows at once
-        }
-        return out;
+        return pty_.sent(timeout);
     }
+    void respond(const Bytes& reply, int count = 1) { pty_.respond(reply, count); }
 
-    // Answer the next `count` requests with `reply`, from another thread (the class blocks in its read).
-    void respond(const Bytes& reply, int count = 1) {
-        responder_ = std::thread([this, reply, count] {
-            for (int i = 0; i < count; ++i) {
-                if (sent(std::chrono::milliseconds(2000)).empty()) return;
-                ASSERT_EQ(write(master_, reply.data(), reply.size()),
-                          static_cast<ssize_t>(reply.size()));
-            }
-        });
-    }
-
-    int master_ = -1;
-    int slave_ = -1;
+    mc::fake::PtyArm pty_;  // declared first: outlives the arm object
     std::unique_ptr<mc::MyCobot280> arm_;
-    std::thread responder_;
 };
 
 }  // namespace
@@ -188,7 +140,7 @@ TEST_F(FakeArm, TemperaturesOneByteOrTwoBytesPerJoint) {
     EXPECT_EQ(temps->temps, (mc::ServoTemps{30, 31, 32, 33, 34, 66}));
     EXPECT_EQ(temps->level, mc::TempLevel::Hot);
     EXPECT_EQ(temps->hottestJoint, 6);
-    responder_.join();
+    pty_.wait();
 
     Bytes wide;
     for (int v : {40, 41, 42, 43, 44, 45}) appendInt16(wide, v);
@@ -212,15 +164,15 @@ TEST_F(FakeArm, VoltagesInTenthsOfAVolt) {
 TEST_F(FakeArm, ServoDataReplyFormats) {
     respond(frame(mc::protocol::GET_SERVO_DATA, {25}));  // value
     EXPECT_EQ(arm_->getServoData(4, mc::servo::ADDR_P, 1), 25);
-    responder_.join();
+    pty_.wait();
 
     respond(frame(mc::protocol::GET_SERVO_DATA, {0x01, 0x02}));  // 16-bit value
     EXPECT_EQ(arm_->getServoData(4, mc::servo::ADDR_P, 1), 0x0102);
-    responder_.join();
+    pty_.wait();
 
     respond(frame(mc::protocol::GET_SERVO_DATA, {4, mc::servo::ADDR_P, 26}));  // echo + value
     EXPECT_EQ(arm_->getServoData(4, mc::servo::ADDR_P, 1), 26);
-    responder_.join();
+    pty_.wait();
 
     respond(
         frame(mc::protocol::GET_SERVO_DATA, {5, mc::servo::ADDR_P, 26}));  // echo of another joint
@@ -245,6 +197,42 @@ TEST_F(FakeArm, SetPidRefusesWhenTheCurrentValuesCannotBeRead) {
     ASSERT_FALSE(out.empty());
     ASSERT_EQ(out.size() % 7, 0u);
     for (size_t i = 0; i < out.size(); i += 7) EXPECT_EQ(out[i + 3], mc::protocol::GET_SERVO_DATA);
+}
+
+// ---- Served arm (PtyArm::serve) -----------------------------------------------------
+
+TEST_F(FakeArm, ServedArmFollowsTheCommandedPose) {
+    pty_.serve();
+    EXPECT_EQ(arm_->getAngles(1), mc::ZERO_ANGLES);
+    arm_->sendAngles(mc::PARK_ANGLES, mc::MOVE_SPEED);
+    ASSERT_TRUE(pty_.waitFor(mc::protocol::SEND_ANGLES, std::chrono::milliseconds(1000)));
+    EXPECT_EQ(arm_->getAngles(1), mc::PARK_ANGLES);
+    EXPECT_FALSE(arm_->sendAngle(1, -30, 40));
+    EXPECT_EQ(arm_->getAngles(1)->at(0), -30);
+}
+
+TEST_F(FakeArm, ServedArmReportsItsState) {
+    pty_.update([](auto& s) {
+        s.temps = {40, 41, 42, 70, 44, 45};
+        s.decivolts = {75, 75, 75, 75, 75, 75};
+        s.powered = false;
+    });
+    pty_.serve();
+    const auto temps = arm_->checkTemps(1);
+    ASSERT_TRUE(temps.has_value());
+    EXPECT_EQ(temps->hottestJoint, 4);
+    EXPECT_NEAR(arm_->getVoltages(1)->at(5), 7.5, 1e-9);
+    EXPECT_EQ(arm_->isPowerOn(), std::optional<bool>(false));
+    arm_->powerOn();
+    EXPECT_EQ(arm_->isPowerOn(), std::optional<bool>(true));
+}
+
+TEST_F(FakeArm, SetPidWritesOnlyTheChangedGainAndReadsItBack) {
+    pty_.serve();
+    EXPECT_EQ(arm_->getPid(2)->p, mc::FACTORY_PID[1].p);
+    EXPECT_TRUE(arm_->setPid(2, {40, 0, 8}));  // P 32 -> 40, I and D unchanged
+    EXPECT_EQ(pty_.received(mc::protocol::SET_SERVO_DATA).size(), 1u);
+    EXPECT_EQ(arm_->getPid(2)->p, 40);
 }
 
 // ---- Opening the port -------------------------------------------------------------

@@ -720,12 +720,14 @@ int main(int argc, char** argv) {
     sigaction(SIGHUP, &sa, nullptr);
 
     try {
-        std::printf("1/2 Opening joystick: %s\n", JOYSTICK_DEVICE);
-        input::Joystick js(JOYSTICK_DEVICE);
+        const std::string device = mycobot::envOr("MYCOBOT_JOYSTICK", JOYSTICK_DEVICE);
+        std::printf("1/2 Opening joystick: %s\n", device.c_str());
+        input::Joystick js(device);
         std::printf("    OK\n");
 
-        std::printf("2/2 Connecting to arm on: %s\n", mycobot::MyCobot280::DEFAULT_PORT);
-        mycobot::MyCobot280 mc;
+        const std::string port = mycobot::envOr("MYCOBOT_PORT", mycobot::MyCobot280::DEFAULT_PORT);
+        std::printf("2/2 Connecting to arm on: %s\n", port.c_str());
+        mycobot::MyCobot280 mc(port);
         pause(1000ms);
         mc.powerOn();
         pause(500ms);

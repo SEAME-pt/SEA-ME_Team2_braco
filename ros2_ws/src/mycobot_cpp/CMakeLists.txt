@@ -30,13 +30,16 @@ target_include_directories(mycobot_cpp PUBLIC
 
 # The stand-alone programs of the Makefile, built (not installed) here too, so CI compiles them and
 # make tidy sees them in compile_commands.json. Keep the list in step with PROGRAMS in the Makefile.
-foreach(program park zero joystick_all_joints joystick_display pid_tool temps_lcd)
+set(TOOLS park zero joystick_all_joints joystick_display pid_tool temps_lcd)
+foreach(program ${TOOLS})
   add_executable(${program} srcs/${program}.cpp)
   target_compile_options(${program} PRIVATE -Wall -Wextra)
   target_link_libraries(${program} mycobot_cpp)
 endforeach()
 
 install(DIRECTORY includes/ DESTINATION include/${PROJECT_NAME})
+# Test code, not part of the library: the fake arm on a pseudo-terminal, for other packages' tests.
+install(FILES test/pty_arm.hpp DESTINATION include/${PROJECT_NAME})
 install(TARGETS mycobot_cpp EXPORT export_${PROJECT_NAME}
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
@@ -44,13 +47,19 @@ install(TARGETS mycobot_cpp EXPORT export_${PROJECT_NAME}
 )
 
 if(BUILD_TESTING)
-  # No arm needed: test_mycobot opens no port, test_serial talks to a pseudo-terminal. No ament
-  # linters: the package is formatted with clang-format (make format-check) instead of uncrustify.
+  # No arm needed: test_mycobot opens no port, test_serial and test_tools talk to a pseudo-terminal
+  # (test/pty_arm.hpp). No ament linters: the package is formatted with clang-format
+  # (make format-check) instead of uncrustify.
   find_package(ament_cmake_gtest REQUIRED)
   ament_add_gtest(test_mycobot test/test_mycobot.cpp)
   target_link_libraries(test_mycobot mycobot_cpp)
   ament_add_gtest(test_serial test/test_serial.cpp TIMEOUT 120)
   target_link_libraries(test_serial mycobot_cpp util)
+  # Runs the stand-alone programs themselves (built next to each other, in TOOLS_DIR).
+  ament_add_gtest(test_tools test/test_tools.cpp TIMEOUT 120)
+  target_link_libraries(test_tools mycobot_cpp util)
+  target_compile_definitions(test_tools PRIVATE TOOLS_DIR="$<TARGET_FILE_DIR:park>")
+  add_dependencies(test_tools ${TOOLS})
 endif()
 
 ament_export_targets(export_${PROJECT_NAME} HAS_LIBRARY_TARGET)
