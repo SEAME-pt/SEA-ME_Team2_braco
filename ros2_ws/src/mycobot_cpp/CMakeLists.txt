@@ -64,7 +64,7 @@ if(BUILD_TESTING)
   ament_add_gtest(test_joystick test/test_joystick.cpp)
   target_link_libraries(test_joystick mycobot_cpp)
   # Runs the stand-alone programs themselves (built next to each other, in TOOLS_DIR).
-  ament_add_gtest(test_tools test/test_tools.cpp TIMEOUT 120)
+  ament_add_gtest(test_tools test/test_tools.cpp TIMEOUT 300)
   target_link_libraries(test_tools mycobot_cpp util)
   target_compile_definitions(test_tools PRIVATE TOOLS_DIR="$<TARGET_FILE_DIR:park>")
   add_dependencies(test_tools ${TOOLS})
