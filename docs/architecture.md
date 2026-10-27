@@ -14,7 +14,7 @@ figures. **Both files are kept in sync**: a change to one goes to the other in t
 > [status](#12-status-against-the-target-architecture) between *pending*, *differs* and *done*. If the code and this
 > document disagree, the code wins and this document is the bug.
 >
-> Last checked against the code: **2026-10-26** · [ADR-0001](ADR-0001-ros2-in-docker-on-jetson-nano.md) ·
+> Last checked against the code: **2026-10-27** · [ADR-0001](ADR-0001-ros2-in-docker-on-jetson-nano.md) ·
 > [ADR-0002](ADR-0002-unique-control.md) · [ADR-0003](ADR-0003-rest-per-temp.md)
 
 **Contents**
@@ -563,9 +563,9 @@ Each machine has two compose services from the same image: `dev`, the tools cont
 > the code: state at 20 Hz, temperatures every 2 s, joystick at 50 Hz, page at 5 Hz. Replace them with numbers from
 > `make status` (end of this section).
 
-| ~0.25 GB | ~0.2 core | ~1.6 GB |
+| ~0.3 GB | ~0.2 core | ~1.6 GB |
 |---|---|---|
-| RAM of the braco system on: driver, temperature, joystick, launch and page | Average CPU in operation, about 5% of the 4 cores; ~0.4 with the page's ROS tab open | Peak of `colcon build` with 2 g++ running: the moment with the highest out-of-memory risk |
+| RAM of the braco system on: driver, temperature, joystick, camera, launch and page | Average CPU in operation, about 5% of the 4 cores; ~0.4 with the page's ROS tab open | Peak of `colcon build` with 2 g++ running: the moment with the highest out-of-memory risk |
 
 Estimated memory of a 4 GB Nano (`█` system L4T + Docker, `▓` braco on, `▒` MoveIt, `░` colcon build, `·` free;
 one character ≈ 100 MB):
@@ -680,6 +680,7 @@ PR that closes or opens a gap.
 | ADRs in `docs/adr/NNNN-*.md` | `docs/ADR-NNNN-*.md` | The page's Docs tab groups them by this prefix |
 | `examples/ros2_basics_*` and `make demos` | removed | The learning demos are no longer part of the system |
 | The page as an `ExecuteProcess` inside the launch | started by `arm_routine.sh` next to the launch | Optional; a matter of taste, not of correctness |
+| File, executable and node share the name | the `zero` / `park` executables run as nodes `arm_zero` / `arm_park` | Rename when `braco_bringup` changes next |
 | Every node that moves the arm is a lifecycle node | plain `rclcpp` / `rclpy` nodes; `arm_driver` opens the port on start-up | `arm_driver` first, then the e-stop on top of it |
 | The e-stop is a dedicated node that deactivates the motion nodes | STOP on `/arm/command`, gate 1 of `arm_driver`, from any client | after the lifecycle driver |
 
