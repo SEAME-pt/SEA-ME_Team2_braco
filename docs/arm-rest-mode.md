@@ -17,7 +17,7 @@ Running `park.py` directly on the host (old version, direct serial access) while
 | `arm_moves.cpp` | New `setRest(on)` (client of the service above). |
 | `Makefile` (repo root) | Commands `park`, `zero`, `rest`, `resume`, `temps` (run inside the `real` container; they were `arm-*` before #54). |
 
-## How to use (on the Jetson, in `docker/`)
+## How to use (on the Jetson, from the repo root)
 
 ```bash
 make park      # parks, releases the servos and enters rest (nothing needs to be stopped)
@@ -56,4 +56,7 @@ until `make zero` or `power_on`).
 5. Simulated hot servo: with the system running, one fake reading at 66 °C is enough (the next real reading,
    2 s later, ends the episode):
    `make run CMD='ros2 topic pub --once /arm/servo_temperatures braco_interfaces/msg/ServoTemperatures "{celsius: [40, 40, 40, 66, 40, 40], valid: true}"'`.
-   The arm enters rest, the monitor log and the LCD warn about it, and `make resume` brings it back.
+   **The arm moves:** with `park_on_hot: true` (the default) the monitor runs `park`, so the arm folds into the
+   park pose, the joints are released and rest mode is on; clear the park envelope first. With
+   `park_on_hot: false` it only enters rest. Either way the monitor log and the LCD warn about it, and
+   `make resume` brings it back.

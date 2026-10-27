@@ -2,12 +2,12 @@
 #
 #   joint_state_broadcaster       publishes /joint_states (joint1..joint6, radians)
 #   arm_controller                holds joint1..joint6 and follows trajectories:
-#                                   action /arm_controller/follow_joint_trajectory (MoveIt, #40)
+#                                   action /arm_controller/follow_joint_trajectory (MoveIt, planned)
 #                                   topic  /arm_controller/joint_trajectory      (web page, by hand)
 #
 # Only the hardware under them changes, in the URDF's <ros2_control> block:
 #   simulation  gz_ros2_control/GazeboSimSystem (urdf/braco.gazebo.xacro, gazebo:=true)   #34
-#   real arm    planned: a braco hardware interface over arm_driver, same names           #37
+#   real arm    planned: a braco hardware interface over arm_driver, same names
 # so MoveIt, the mission and the page use the same controller names on both.
 controller_manager:
   ros__parameters:
