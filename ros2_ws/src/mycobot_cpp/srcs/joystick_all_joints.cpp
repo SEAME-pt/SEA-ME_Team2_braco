@@ -278,7 +278,7 @@ void controlLoop(input::Joystick& js, mycobot::MyCobot280& mc, bool debug) {
 
             // Same fraction for every joint -> they all arrive together
             if (const auto targets = homeStep(angles)) {
-                if (debug) std::printf("home targets %s\n", fmtAngles(*targets, "%.1f").c_str());
+                if (debug) std::printf("home targets %s\n", fmtAngles(targets, "%.1f").c_str());
                 mc.sendAngles(*targets, HOME_SPEED);
                 pause(COMMAND_GAP);
             } else {
