@@ -77,7 +77,8 @@ SHELLCHECK_IMAGE := koalaman/shellcheck:v0.10.0
 # SC1091: scripts source /etc/os-release and ROS setup files that exist only in the image (and not at all in the
 # scratch-based shellcheck image), so following them would make the result depend on where lint runs.
 SHELLCHECK_FLAGS := -x -e SC1091
-SHELLCHECK_FILES := $(SCRIPTS_DIR)/*.sh $(TESTS_DIR)/*.sh
+# Every shell script git tracks, so a new one is checked without editing this line; the hooks have no extension.
+SHELLCHECK_FILES = $(shell git ls-files '*.sh') $(addprefix .githooks/,commit-msg pre-push)
 HADOLINT_IMAGE   := hadolint/hadolint:v2.12.0
 HADOLINT_FLAGS   := $(addprefix --ignore ,DL3008 DL3013 DL3059 DL3006 DL3042 DL3045 SC1091 SC2086 SC2016)
 
