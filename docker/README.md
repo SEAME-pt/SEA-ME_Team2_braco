@@ -226,7 +226,7 @@ Launch arguments: `port`, `baud`, `lcd_bus`, `device`, `camera` (filled from `.e
   refused, but angles and temperatures keep being published, so a hot arm can cool down under watch (LCD and
   `/diagnostics` keep updating). Leave it with `make resume` or `make zero`; `make rest` enters it without parking.
   A servo at 65 °C enters it by itself ([ADR-0003](../docs/decisions/ADR-0003-rest-per-temp.md)).
-  Details: [../docs/arm-rest-mode.md](../docs/guides/arm-rest-mode.md).
+  Details: [../docs/guides/arm-rest-mode.md](../docs/guides/arm-rest-mode.md).
 - The driver opens the port with `TIOCEXCL`: a second program (non-root) gets `Device or resource busy` immediately.
 - **The braco web page** ([../web/README.md](../web/README.md)) runs in this container too: the repository is mounted
   read-only at `/opt/braco` and `arm_routine.sh` starts uvicorn there (one process, `--workers 1`). It moves the arm

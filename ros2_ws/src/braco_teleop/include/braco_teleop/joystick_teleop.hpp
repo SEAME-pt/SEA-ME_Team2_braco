@@ -26,7 +26,7 @@
 //   cli  /arm/power_on        when a joystick connects, once the joystick has the control
 //   cli  /arm/set_gripper     A = close, B = open
 //
-// Control (docs/ADR-0002-unique-control.md): only the owner moves the arm. With
+// Control (docs/decisions/ADR-0002-unique-control.md): only the owner moves the arm. With
 // the control free, touching a stick, X or A/B takes it. While another client (the
 // web page, zero/park) has it, the joystick is ignored until force_button is held for
 // force_hold_s. Letting go of everything does not release it: arm_driver frees it
