@@ -86,11 +86,11 @@ world -> g_base -> base_link -> link1 -> link2 -> link3 -> link4 -> link5 -> lin
   model: the hand-eye calibration sets it.
 - `camera_optical_frame`: z forward, x right, y down (rotation `-pi/2, 0, -pi/2` from `camera_link`).
 
-Frame tree PDFs (in [`urdf-sim-to-real/`](urdf-sim-to-real/)):
+Frame tree PDFs:
 
-- [`urdf_tree.pdf`](urdf-sim-to-real/urdf_tree.pdf): links and joints of the URDF
+- [`urdf_tree.pdf`](https://drive.google.com/file/d/1C3D_8I5hIox0ihUDqZAfZ5IRBMBpgma5/view?usp=drive_link): links and joints of the URDF
   (`xacro urdf/braco.urdf.xacro > /tmp/braco.urdf && urdf_to_graphviz /tmp/braco.urdf braco_urdf_tree`)
-- [`tf_frames.pdf`](urdf-sim-to-real/tf_frames.pdf): the live TF tree with Gazebo running (`ros2 run tf2_tools view_frames`)
+- [`tf_frames.pdf`](https://drive.google.com/file/d/1v69O8Fw6NHj9i0OACtq8zB-GK0Wb1dZB/view?usp=drive_link): the live TF tree with Gazebo running (`ros2 run tf2_tools view_frames`)
 
 ## Limits
 
@@ -167,8 +167,8 @@ limits (the payload method above).
 
 | | Real arm | Gazebo |
 |---|---|---|
-| Front | <img src="urdf-sim-to-real/zero_real_front.webp" width="260"> | <img src="urdf-sim-to-real/zero_gazebo_front.webp" width="420"> |
-| Back | <img src="urdf-sim-to-real/zero_real_back.webp" width="260"> | <img src="urdf-sim-to-real/zero_gazebo_back.webp" width="420"> |
+| Front | <img src="https://drive.google.com/thumbnail?id=1-JwKTxQcvAESGr6jYVKj5n1yWR8ccuY1&sz=w1000" width="260"> | <img src="https://drive.google.com/thumbnail?id=1Lx0SzQ9NlalFeLtBHWMOPm2sn2n3tFOT&sz=w1000" width="420"> |
+| Back | <img src="https://drive.google.com/thumbnail?id=1tO-z_EurUwDVA2b0HtgpjaRwmLX5SMXL&sz=w1000" width="260"> | <img src="https://drive.google.com/thumbnail?id=1vyP7vS113Y8dlSY3Xsm_ucosE6TPX4_L&sz=w1000" width="420"> |
 
 **Result: the zero poses match.** The arm stands upright with the same zig-zag of the links (left, right, left in the
 front view), on the G-base, and the gripper on the flange is turned the same way (after the 45° flange correction).
