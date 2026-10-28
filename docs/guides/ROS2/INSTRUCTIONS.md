@@ -1,11 +1,20 @@
 # ROS 2: Hands-on Guide
 
-From zero to a working ROS 2 workspace with the core patterns: publisher/subscriber with QoS (C++ and Python), service, action, lifecycle node, launch file, parameters, and inspection tools.
+Learn ROS 2 by doing: you write small example programs (in C++ and Python) and run them in the container.
+Nothing here moves the arm.
 
-- Concepts: [README.md](README.md) · Commands: [CHEATSHEET.md](CHEATSHEET.md) · Problems: [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
-- **Safety:** nothing here moves the arm. Before running anything on the hardware, read [safety.md](../safety.md).
+**You will learn:** topics, services, actions, lifecycle nodes, launch files, parameters and the inspection tools.
 
-Conventions: `host$` = your machine, repo root. `nano$` = the Jetson, repo root. `container$` = inside `make shell`. ROS distro: `lyrical`.
+**Where to type each command:**
+
+| Prompt | Means |
+|---|---|
+| `host$` | Your PC, in the repo folder |
+| `nano$` | The Jetson, in the repo folder |
+| `container$` | Inside the container (`make shell`) |
+
+**Also useful:** [COMMAND_REFERENCES](COMMAND_REFERENCES.md) (commands) · [TROUBLESHOOTING](TROUBLESHOOTING.md) (errors) ·
+[ROS 2 docs](https://docs.ros.org/en/rolling/Concepts.html) (concepts)
 
 ---
 
@@ -32,66 +41,18 @@ Conventions: `host$` = your machine, repo root. `nano$` = the Jetson, repo root.
 
 ## 1. Set up
 
-ROS 2 runs in Docker on both machines (why: [ADR-0001](../../decisions/ADR-0001-ros2-in-docker-on-jetson-nano.md); details: [docker/README.md](../../../docker/README.md)). Do not install ROS natively on the Jetson: Lyrical does not exist for Ubuntu 20.04.
-
-### 1.1 PC
-
-**1. Install** [Docker Engine](https://docs.docker.com/engine/install/) with Compose v2.20+, then:
+**Set up your machine first:** [dev-setup.md](../dev-setup.md) (Docker, clone, `make setup`, `make up`). Then:
 
 ```bash
-host$ sudo usermod -aG docker $USER          # log out and back in
-host$ sudo apt-get install -y make git x11-xserver-utils
-host$ docker compose version                  # v2.20 or newer
-```
-
-**2. Clone and prepare:**
-
-```bash
-host$ git clone git@github.com:SEAME-pt/SEA-ME_Team2_braco.git
-host$ cd SEA-ME_Team2_braco
-host$ make setup              # answer "dev"; creates docker/.env, venv, git hooks, then runs make doctor
-```
-
-Fix any `[FAIL]` from `make doctor` before continuing.
-
-**3. Start and verify** (the first run builds the image: tens of minutes):
-
-```bash
-host$ make up                 # starts the `dev` container (SIM=1 also starts the Gazebo simulation)
-host$ make net-test           # C++ talker + Python listener: PASS
 host$ make shell              # (pc-dev) dev@host:/ws$
 ```
 
-`/ws` in the container is `ros2_ws/` in the repo: files in `/ws/src` are your files on the host. Edit on the host, build and run in the container.
+- `/ws` in the container is `ros2_ws/` in the repo: edit on the host, build and run in the container.
+- The PC's containers use **domain 77**, the real arm **domain 42**. To reach the arm from the PC:
+  `ROS_DOMAIN_ID=42 ros2 ...`
+- The Jetson has no GUI tools: inspect its nodes from the PC ([section 14](#14-pc-and-jetson-together)).
 
-> The PC's containers use **domain 77** (`PC_ROS_DOMAIN_ID`), the real arm **domain 42** (`ROS_DOMAIN_ID`). To reach the arm from the PC: `ROS_DOMAIN_ID=42 ros2 ...`.
-
-### 1.2 Jetson Nano
-
-```bash
-nano$ sudo systemctl disable --now nvgetty      # once: frees the arm's UART /dev/ttyTHS1; log out and in
-nano$ git clone git@github.com:SEAME-pt/SEA-ME_Team2_braco.git
-nano$ cd SEA-ME_Team2_braco
-nano$ make setup                                # answer "jetson"
-```
-
-Get the image, either:
-
-```bash
-nano$ make image                                # build on the Nano (slow)
-host$ make jetson-image NANO=user@<nano-ip>     # or: build on the PC and copy it (faster)
-```
-
-Then:
-
-```bash
-nano$ make up                                   # builds the workspace and starts `real` (the arm)
-nano$ make net-test
-```
-
-The Jetson has no GUI tools: inspect its nodes from the PC ([section 14](#14-pc-and-jetson-together)).
-
-### 1.3 Daily commands
+### Daily commands
 
 | What | Command |
 |---|---|
@@ -225,7 +186,7 @@ container$ ros2 interface show ros2_basics_interfaces/action/Fibonacci
 
 ## 5. Publisher and subscriber with QoS
 
-Topic `chatter`, type `std_msgs/msg/String`, QoS `KEEP_LAST` 10, `RELIABLE`, `VOLATILE` ([README §8](README.md#8-quality-of-service-qos)). Same in both languages, so they interoperate.
+Topic `chatter`, type `std_msgs/msg/String`, QoS `KEEP_LAST` 10, `RELIABLE`, `VOLATILE` ([QoS, ROS 2 docs](https://docs.ros.org/en/rolling/Concepts/Intermediate/About-Quality-of-Service-Settings.html)). Same in both languages, so they interoperate.
 
 `ros2_basics_py/ros2_basics_py/talker.py`:
 
@@ -497,7 +458,7 @@ if __name__ == '__main__':
     sys.exit(main())
 ```
 
-`call_async` + `spin_until_future_complete` never blocks inside a callback, which avoids deadlocks ([README §14](README.md#14-executors-callbacks-and-threading)).
+`call_async` + `spin_until_future_complete` never blocks inside a callback, which avoids deadlocks ([executors, ROS 2 docs](https://docs.ros.org/en/rolling/Concepts/Intermediate/About-Executors.html)).
 
 `ros2_basics_cpp/src/add_two_ints_server.cpp`:
 
