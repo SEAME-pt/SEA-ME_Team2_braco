@@ -46,10 +46,19 @@ namespace braco_bringup
 
 using Angles = std::array<double, 6>;   // J1..J6 in degrees
 
+// How long ArmMoves waits. The programs keep the defaults; the tests shorten them.
+struct Timeouts
+{
+  std::chrono::duration<double> call{5.0};   // one service call to arm_driver
+  std::chrono::duration<double> move{20.0};  // zero / park reaching the pose
+};
+
 class ArmMoves : public rclcpp::Node
 {
 public:
-  explicit ArmMoves(const std::string & name);
+  explicit ArmMoves(const std::string & name, Timeouts timeouts = {});
+
+  const Timeouts & timeouts() const {return timeouts_;}
 
   // Wait until arm_driver publishes angles and offers its services.
   bool waitForDriver(std::chrono::duration<double> timeout);
@@ -91,6 +100,7 @@ private:
   rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr release_client_;
   rclcpp::Client<std_srvs::srv::SetBool>::SharedPtr rest_client_;
   rclcpp::Client<braco_interfaces::srv::TakeControl>::SharedPtr control_client_;
+  Timeouts timeouts_;
   bool has_control_ = false;
   // Runs the callbacks while a move or a call waits (rclcpp::spin_some is deprecated)
   rclcpp::executors::SingleThreadedExecutor executor_;
