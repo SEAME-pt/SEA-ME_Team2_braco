@@ -41,6 +41,12 @@ if(BUILD_TESTING)
   ament_add_gtest(test_control test/test_control.cpp)
   target_include_directories(test_control PRIVATE include)
   target_link_libraries(test_control mycobot_cpp::mycobot_cpp)
+
+  # ArmDriver on a fake arm (PtyArm, a pseudo-terminal) with a client node in the same process.
+  # Isolated: its own ROS graph, so a real arm_driver on the same machine is never seen.
+  find_package(ament_cmake_ros REQUIRED)
+  ament_add_ros_isolated_gtest(test_arm_driver test/test_arm_driver.cpp TIMEOUT 120)
+  target_link_libraries(test_arm_driver braco_driver_nodes util)
 endif()
 
 ament_package()
