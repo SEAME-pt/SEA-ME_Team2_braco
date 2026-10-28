@@ -193,8 +193,6 @@ plotjuggler4
 
 ## 9. Not verified yet
 
-- **The Jetson (arm64) image build.** If `dbus-fast` has no wheel, pip compiles it. Missing optional packages are
-  listed by `make run CMD=seame-smoke-test`.
 - **Live ROS 2 topics in PlotJuggler** (recordings work).
 - **E-stop:** how it reaches the Jetson is unknown. If it is a GPIO line, uncomment `/dev/gpiochip0` in `compose.yml`.
 
@@ -211,11 +209,13 @@ plotjuggler4
 | `Unable to locate package ros-lyrical-...` | ROS repo not reachable, or the package does not exist for your CPU |
 | `Cannot uninstall ... installed by debian` | A pip/apt conflict: pin `PYMYCOBOT_VERSION` |
 
-## 11. Jetson host checks
+## 11. Jetson host
 
-The Jetson's host is old (JetPack 4.6, Ubuntu 20.04, kernel 4.9), and the containers share its kernel.
+The Jetson's host is old (JetPack 4.6, Ubuntu 20.04, kernel 4.9), and the containers share its kernel. **Verified:**
+the `jetson` image (Ubuntu 26.04 + ROS 2 Lyrical) runs the whole `real` system on it: the arm, the temperatures, the
+joystick, the camera and the LCD.
 
-- **Test that Ubuntu 26.04 runs on it:**
+- **After reflashing or updating the host,** check that the userland still runs:
 
   ```bash
   docker run --rm ubuntu:26.04 bash -c 'uname -r && echo userland-ok'
