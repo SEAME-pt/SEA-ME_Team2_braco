@@ -1,6 +1,7 @@
 # mk/ci.mk - what .github/workflows/ci.yml runs, reproducible here: ci ci-ros lint format format-check.
 #
-#   host job   make ci       format check, lint, web page tests
+#   host job   make ci       format check, lint, web page tests (in CI one step each: make format-check, make lint,
+#                            make web-test)
 #   ros job    make ci-ros   rosdep, colcon build and colcon test of ros2_ws/src (make ci-image builds its image)
 #              make cppcheck cppcheck on the C++ packages (same image)
 #              make tidy     clang-tidy on the C++ packages, from the ci-ros build (same image)
@@ -116,13 +117,15 @@ PY_FILES  = $(shell git ls-files '*.py')
 # Use the venv's pinned ruff and clang-format (make setup) even when the venv is not activated.
 format format-check: export PATH := $(CURDIR)/$(VENV)/bin:$(PATH)
 
-.PHONY: ci ci-image ci-ros coverage cppcheck tidy lint format format-check
+.PHONY: ci web-test ci-image ci-ros coverage cppcheck tidy lint format format-check
 
 ##@ CI (.github/workflows/ci.yml)
 
+ci: format-check lint web-test ## The `host` CI job: format check, lint, web page tests (with coverage)
+
 # The web tests measure the coverage of web/server (lines and branches); the table lists the lines no test runs,
 # and the job fails below COV_MIN_WEB.
-ci: format-check lint $(VENV)/.web-test-installed ## The `host` CI job: format check, lint, web page tests (with coverage)
+web-test: $(VENV)/.web-test-installed ## Web page tests (pytest web/tests) with the coverage of web/server
 	@rm -f coverage.json
 	$(VENV)/bin/python -m pytest web/tests -q --cov=web/server --cov-branch --cov-report=term-missing:skip-covered \
 		--cov-fail-under=$(COV_MIN_WEB); st=$$?; \

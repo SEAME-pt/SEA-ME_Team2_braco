@@ -43,9 +43,19 @@ jobs:
       # shellcheck and hadolint need no install step: without a local binary, make lint runs the images pinned in
       # SHELLCHECK_IMAGE and HADOLINT_IMAGE (Makefile) through docker.
 
+      # make ci, one step per part so the failing one is named; each runs even when an earlier one failed. The first
+      # creates .venv with this Python, the others reuse it.
+      - name: make format-check
+        run: make format-check PYTHON=${{ steps.py.outputs.python-path }}
+
       # Also creates docker/.env as every user gets it: lint validates the compose files against it.
-      - name: make ci
-        run: make ci PYTHON=${{ steps.py.outputs.python-path }}
+      - name: make lint
+        if: ${{ !cancelled() }}
+        run: make lint PYTHON=${{ steps.py.outputs.python-path }}
+
+      - name: make web-test
+        if: ${{ !cancelled() }}
+        run: make web-test PYTHON=${{ steps.py.outputs.python-path }}
 
   ros:
     runs-on: ubuntu-24.04
