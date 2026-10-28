@@ -24,6 +24,7 @@
 #include <memory>
 #include <mutex>
 #include <set>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <vector>
@@ -438,4 +439,67 @@ TEST_F(ArmMovesTest, ParkWithoutReleaseDoesNotRest)
   EXPECT_FALSE(braco_bringup::park(*arm_));
   EXPECT_NE(indexOf("release_servos"), -1);
   EXPECT_EQ(indexOf("rest_on"), -1);
+}
+
+// ---- run() ----------------------------------------------------------------------
+// run() inits and shuts down ROS itself, so these tests have their own fixture and come after
+// ArmMovesTest, whose suite shuts ROS down at the end (rclcpp can be initialised again after that).
+
+namespace
+{
+
+class RunTest : public ::testing::Test
+{
+protected:
+  // braco_bringup::run with a FakeDriver started inside the action (ROS is only up from there)
+  // and spinning until run() shuts ROS down, so the control given back at the end is answered.
+  template<typename Action>
+  int run(Action action)
+  {
+    const int code = braco_bringup::run(
+      0, nullptr, "run_test", [this, action](braco_bringup::ArmMoves & arm) {
+        driver_ = std::make_shared<FakeDriver>(mycobot::ZERO_ANGLES, FakeDriver::Options{});
+        executor_ = std::make_shared<rclcpp::executors::SingleThreadedExecutor>();
+        executor_->add_node(driver_);
+        spinner_ = std::thread([this] {executor_->spin();});
+        EXPECT_TRUE(arm.waitForDriver(5s));
+        EXPECT_TRUE(arm.takeControl());
+        return action();
+      });
+    if (spinner_.joinable()) {spinner_.join();}   // spin() returns at the shutdown
+    return code;
+  }
+
+  // The control taken in run() was given back
+  void expectReleased()
+  {
+    const auto requests = driver_->controlRequests();
+    ASSERT_EQ(requests.size(), 2u);
+    EXPECT_FALSE(requests[0].release);
+    EXPECT_TRUE(requests[1].release);
+  }
+
+  std::shared_ptr<FakeDriver> driver_;
+  std::shared_ptr<rclcpp::executors::SingleThreadedExecutor> executor_;
+  std::thread spinner_;
+};
+
+}  // namespace
+
+TEST_F(RunTest, SuccessExitsZeroAndGivesControlBack)
+{
+  EXPECT_EQ(run([] {return true;}), 0);
+  expectReleased();
+}
+
+TEST_F(RunTest, FailureExitsOneAndGivesControlBack)
+{
+  EXPECT_EQ(run([] {return false;}), 1);
+  expectReleased();
+}
+
+TEST_F(RunTest, ExceptionExitsOneAndGivesControlBack)
+{
+  EXPECT_EQ(run([]() -> bool {throw std::runtime_error("interrupted");}), 1);
+  expectReleased();
 }
