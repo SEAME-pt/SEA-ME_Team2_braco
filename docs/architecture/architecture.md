@@ -103,7 +103,7 @@ Details: [ADR-0002](../decisions/ADR-0002-unique-control.md) (owner), [ADR-0003]
 | Joystick | first input if free; **hold button 8 for 1 s** to force | 5 s after the last move |
 | zero / park | forced | at the end, also on failure |
 
-**Overheat:** at ≥ 65 °C, `temperature_monitor` runs `park` once per episode: the arm folds, the joints are released and rest mode turns on. The episode ends when every joint is below 60 °C. Resuming is manual (`make resume`, [arm-rest-mode.md](../guides/arm-rest-mode.md)).
+**Overheat:** at ≥ 65 °C, `temperature_monitor` runs `park` once per episode: the arm folds, the joints are released and rest mode turns on. The episode ends when every joint is below 60 °C. Resuming is manual (`make resume`, [overheating guide](../guides/overheating.md)).
 
 ---
 
