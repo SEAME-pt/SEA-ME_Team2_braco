@@ -35,6 +35,12 @@ if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
   ament_add_gtest(test_teleop_logic test/test_teleop_logic.cpp)
   target_link_libraries(test_teleop_logic mycobot_cpp::mycobot_cpp)
+
+  # JoystickTeleop on a FIFO joystick with a fake arm_driver node in the same process.
+  # Isolated: its own ROS graph, so a real arm_driver on the same machine is never seen.
+  find_package(ament_cmake_ros REQUIRED)
+  ament_add_ros_isolated_gtest(test_joystick_teleop test/test_joystick_teleop.cpp TIMEOUT 120)
+  target_link_libraries(test_joystick_teleop braco_teleop_node)
 endif()
 
 ament_package()
