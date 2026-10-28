@@ -31,4 +31,8 @@ the control never sends STOP, so unplugging it does not cut somebody else's move
 The jogging logic (dead zone, speed modes, slow-down near the soft limits, homing steps, the held button) is in
 `ros2_ws/src/mycobot_cpp/includes/teleop_logic.hpp` (shared with the stand-alone `joystick_all_joints`), without ROS, and tested by `test/test_teleop_logic.cpp` (`make test`).
 
+The node is the class `braco_teleop::JoystickTeleop` (`include/braco_teleop/joystick_teleop.hpp`), built into the
+static library `braco_teleop_node`, so the tests can run it in-process; `src/joystick_teleop.cpp` only holds
+`main()`.
+
 Starts with the whole system (`make up`); by hand: `ros2 run braco_teleop joystick_teleop`.
