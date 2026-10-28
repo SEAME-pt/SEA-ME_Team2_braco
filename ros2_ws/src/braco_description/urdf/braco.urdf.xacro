@@ -50,7 +50,7 @@
        middle of the closed fingertips. -->
   <xacro:property name="tcp_length" value="0.130"/>
 
-  <!-- Camera: Elephant Robotics' camera flange (in the arm's box, docs/inventory), a 83 x 34 mm
+  <!-- Camera: Elephant Robotics' camera flange (in the arm's box, docs/hardware/inventory.md), a 83 x 34 mm
        plate, 16 mm thick with the camera module. Its LEGO hole grid goes on the flange's and the
        gripper pins onto the same holes on its front face: flange -> camera plate -> gripper. The
        lens is at the other end of the plate, on the gripper side. Mesh and mount from the vendor

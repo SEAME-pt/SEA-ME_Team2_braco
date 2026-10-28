@@ -9,7 +9,7 @@ const QUICK = [
   ["#/docs/docs/dev-setup.md", "Development setup", "dev-setup.md"],
   ["#/docs/docs/safety.md", "Safety rules", "safety.md"],
   ["#/docs/docs/protocol_commands.md", "Protocol commands", "protocol_commands.md"],
-  ["#/docs/docs/inventory/inventory.md", "Hardware inventory", "inventory.md"],
+  ["#/docs/docs/hardware/inventory.md", "Hardware inventory", "inventory.md"],
   ["#/docs/docker/README.md", "ROS 2 containers", "docker/README.md"],
   ["#/ros/graph", "ROS 2 graph", "nodes, topics, services"],
   ["#/arm", "Command reference", "codes, limits, PID"],
