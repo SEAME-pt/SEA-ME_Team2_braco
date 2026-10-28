@@ -29,5 +29,5 @@ braco is a set of ROS 2 nodes. `arm_driver` is the only one that talks to the ar
 | Doc | What it is for |
 |---|---|
 | [INSTRUCTIONS.md](INSTRUCTIONS.md) | Hands-on: write a publisher, subscriber, service, action and lifecycle node |
-| [CHEATSHEET.md](CHEATSHEET.md) | The commands, on one page |
+| [COMMAND_REFERENCES.md](COMMAND_REFERENCES.md) | The commands, on one page |
 | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Common errors and fixes |

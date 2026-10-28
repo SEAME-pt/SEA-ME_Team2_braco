@@ -13,7 +13,7 @@ Nothing here moves the arm.
 | `nano$` | The Jetson, in the repo folder |
 | `container$` | Inside the container (`make shell`) |
 
-**Also useful:** [CHEATSHEET](CHEATSHEET.md) (commands) · [TROUBLESHOOTING](TROUBLESHOOTING.md) (errors) ·
+**Also useful:** [COMMAND_REFERENCES](COMMAND_REFERENCES.md) (commands) · [TROUBLESHOOTING](TROUBLESHOOTING.md) (errors) ·
 [ROS 2 docs](https://docs.ros.org/en/rolling/Concepts.html) (concepts)
 
 ---
