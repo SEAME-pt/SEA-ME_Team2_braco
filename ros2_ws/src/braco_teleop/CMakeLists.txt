@@ -15,10 +15,15 @@ find_package(std_msgs REQUIRED)
 find_package(std_srvs REQUIRED)
 find_package(braco_interfaces REQUIRED)
 
-add_executable(joystick_teleop src/joystick_teleop.cpp)
-target_link_libraries(joystick_teleop
+# The node in a library, so the tests can run it in-process; the program only holds main()
+add_library(braco_teleop_node STATIC src/joystick_teleop_node.cpp)
+target_include_directories(braco_teleop_node PUBLIC include)
+target_link_libraries(braco_teleop_node PUBLIC
   mycobot_cpp::mycobot_cpp rclcpp::rclcpp
   ${sensor_msgs_TARGETS} ${std_msgs_TARGETS} ${std_srvs_TARGETS} ${braco_interfaces_TARGETS})
+
+add_executable(joystick_teleop src/joystick_teleop.cpp)
+target_link_libraries(joystick_teleop braco_teleop_node)
 
 install(TARGETS joystick_teleop
   DESTINATION lib/${PROJECT_NAME})
