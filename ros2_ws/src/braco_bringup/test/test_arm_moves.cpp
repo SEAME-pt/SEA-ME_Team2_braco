@@ -13,7 +13,8 @@
 // limitations under the License.
 
 // ArmMoves and the zero/park routines against FakeDriver: a node with arm_driver's topics and
-// services that records every call and, when `follow` is set, jumps to each commanded pose.
+// services that records every call and, when `follow` is set, jumps to each commanded pose. A
+// service can also fail (`fail`) or never answer (`silent`), for the timeouts.
 
 #include <gtest/gtest.h>
 
@@ -22,6 +23,7 @@
 #include <cmath>
 #include <memory>
 #include <mutex>
+#include <set>
 #include <string>
 #include <thread>
 #include <vector>
@@ -49,6 +51,8 @@ public:
     bool follow = true;           // apply ALL_ANGLES commands to the joints
     bool grant_control = true;
     bool rest_service = true;
+    bool fail = false;               // power_on, release_servos, set_read_only answer success=false
+    std::set<std::string> silent;    // events recorded but never answered
   };
 
   FakeDriver(const Angles & start, Options options)
@@ -59,34 +63,36 @@ public:
     joints_pub_ = create_publisher<sensor_msgs::msg::JointState>("joint_states", 10);
     command_sub_ = create_subscription<ArmCommand>(
       "arm/command", 10, [this](const ArmCommand & msg) {onCommand(msg);});
-    power_srv_ = create_service<Trigger>(
-      "arm/power_on", [this](Trigger::Request::SharedPtr, Trigger::Response::SharedPtr res) {
-        record("power_on");
-        res->success = true;
+    power_srv_ = serve<Trigger>(
+      "arm/power_on", [this](const Trigger::Request &, Trigger::Response & res) {
+        res.success = !options_.fail;
+        res.message = res.success ? "ok" : "failed";
+        return "power_on";
       });
-    release_srv_ = create_service<Trigger>(
-      "arm/release_servos",
-      [this](Trigger::Request::SharedPtr, Trigger::Response::SharedPtr res) {
-        record("release_servos");
-        res->success = true;
+    release_srv_ = serve<Trigger>(
+      "arm/release_servos", [this](const Trigger::Request &, Trigger::Response & res) {
+        res.success = !options_.fail;
+        res.message = res.success ? "ok" : "failed";
+        return "release_servos";
       });
     if (options_.rest_service) {
-      rest_srv_ = create_service<SetBool>(
-        "arm/set_read_only",
-        [this](SetBool::Request::SharedPtr req, SetBool::Response::SharedPtr res) {
-          record(req->data ? "rest_on" : "rest_off");
-          res->success = true;
+      rest_srv_ = serve<SetBool>(
+        "arm/set_read_only", [this](const SetBool::Request & req, SetBool::Response & res) {
+          res.success = !options_.fail;
+          res.message = res.success ? "ok" : "failed";
+          return req.data ? "rest_on" : "rest_off";
         });
     }
-    control_srv_ = create_service<TakeControl>(
-      "arm/take_control",
-      [this](TakeControl::Request::SharedPtr req, TakeControl::Response::SharedPtr res) {
-        std::lock_guard<std::mutex> lock(mutex_);
-        control_requests_.push_back(*req);
-        events_.push_back(req->release ? "release_control" : "take_control");
-        res->success = req->release || options_.grant_control;
-        res->owner = res->success && !req->release ? req->source : "";
-        res->message = res->success ? "ok" : "refused";
+    control_srv_ = serve<TakeControl>(
+      "arm/take_control", [this](const TakeControl::Request & req, TakeControl::Response & res) {
+        {
+          std::lock_guard<std::mutex> lock(mutex_);
+          control_requests_.push_back(req);
+        }
+        res.success = req.release || options_.grant_control;
+        res.owner = res.success && !req.release ? req.source : "";
+        res.message = res.success ? "ok" : "refused";
+        return req.release ? "release_control" : "take_control";
       });
     if (options_.publish_joints) {
       timer_ = create_wall_timer(20ms, [this] {publishJoints();});
@@ -110,6 +116,23 @@ public:
   }
 
 private:
+  // A service whose handler fills the response and names the event; the answer is only sent
+  // when the event is not silent (deferred response: the caller sees a service that never answers).
+  template<typename ServiceT, typename Handler>
+  typename rclcpp::Service<ServiceT>::SharedPtr serve(const std::string & name, Handler handler)
+  {
+    return create_service<ServiceT>(
+      name, [this, handler](
+        std::shared_ptr<rclcpp::Service<ServiceT>> service,
+        std::shared_ptr<rmw_request_id_t> header,
+        std::shared_ptr<typename ServiceT::Request> req) {
+        typename ServiceT::Response res;
+        const std::string event = handler(*req, res);
+        record(event);
+        if (options_.silent.count(event) == 0) {service->send_response(*header, res);}
+      });
+  }
+
   void record(const std::string & event)
   {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -166,13 +189,15 @@ protected:
   }
 
   // Start the fake driver, spinning in its own thread, and the ArmMoves under test.
-  void start(const Angles & from, FakeDriver::Options options = {})
+  void start(
+    const Angles & from, FakeDriver::Options options = {},
+    braco_bringup::Timeouts timeouts = {})
   {
     driver_ = std::make_shared<FakeDriver>(from, options);
     executor_ = std::make_shared<rclcpp::executors::SingleThreadedExecutor>();
     executor_->add_node(driver_);
     spinner_ = std::thread([this] {executor_->spin();});
-    arm_ = std::make_shared<braco_bringup::ArmMoves>("arm_moves_test");
+    arm_ = std::make_shared<braco_bringup::ArmMoves>("arm_moves_test", timeouts);
   }
 
   // Index of `event` in the driver's log, or -1.
@@ -183,11 +208,22 @@ protected:
     return it == events.end() ? -1 : static_cast<int>(it - events.begin());
   }
 
+  // Options with these events never answered
+  static FakeDriver::Options silent(std::set<std::string> events)
+  {
+    FakeDriver::Options options;
+    options.silent = std::move(events);
+    return options;
+  }
+
   std::shared_ptr<FakeDriver> driver_;
   std::shared_ptr<rclcpp::executors::SingleThreadedExecutor> executor_;
   std::thread spinner_;
   std::shared_ptr<braco_bringup::ArmMoves> arm_;
 };
+
+// Short enough for the failure tests, long enough for a loaded CI runner to answer a call.
+const braco_bringup::Timeouts SHORT{1s, 1s};
 
 }  // namespace
 
@@ -231,6 +267,57 @@ TEST_F(ArmMovesTest, ReleaseOnlyWhatWasTaken)
   ASSERT_EQ(requests.size(), 2u);
   EXPECT_TRUE(requests[1].release);
   EXPECT_EQ(requests[1].source, "script");
+}
+
+TEST_F(ArmMovesTest, TakeControlWithoutAnswerTimesOut)
+{
+  start(mycobot::ZERO_ANGLES, silent({"take_control"}), SHORT);
+  ASSERT_TRUE(arm_->waitForDriver(5s));
+  EXPECT_FALSE(arm_->takeControl());
+  arm_->releaseControl();   // not taken: nothing to give back
+  EXPECT_EQ(driver_->controlRequests().size(), 1u);
+}
+
+TEST_F(ArmMovesTest, ReleaseWithoutAnswerOnlyWarns)
+{
+  start(mycobot::ZERO_ANGLES, silent({"release_control"}), SHORT);
+  ASSERT_TRUE(arm_->waitForDriver(5s));
+  ASSERT_TRUE(arm_->takeControl());
+  arm_->releaseControl();
+  arm_->releaseControl();   // given back once, even without an answer
+  EXPECT_EQ(driver_->controlRequests().size(), 2u);
+}
+
+// ---- Services -------------------------------------------------------------------
+
+TEST_F(ArmMovesTest, PowerOnWithoutAnswerTimesOut)
+{
+  start(mycobot::ZERO_ANGLES, silent({"power_on"}), SHORT);
+  ASSERT_TRUE(arm_->waitForDriver(5s));
+  EXPECT_FALSE(arm_->powerOn());
+  EXPECT_NE(indexOf("power_on"), -1);
+}
+
+TEST_F(ArmMovesTest, RestWithoutAnswerTimesOut)
+{
+  start(mycobot::ZERO_ANGLES, silent({"rest_on"}), SHORT);
+  ASSERT_TRUE(arm_->waitForDriver(5s));
+  EXPECT_FALSE(arm_->setRest(true));
+  EXPECT_NE(indexOf("rest_on"), -1);
+}
+
+TEST_F(ArmMovesTest, RefusedCallsReturnFalse)
+{
+  FakeDriver::Options options;
+  options.fail = true;
+  start(mycobot::ZERO_ANGLES, options);
+  ASSERT_TRUE(arm_->waitForDriver(5s));
+  EXPECT_FALSE(arm_->powerOn());
+  EXPECT_FALSE(arm_->releaseServos());
+  EXPECT_FALSE(arm_->setRest(false));
+  EXPECT_EQ(
+    driver_->events(),
+    (std::vector<std::string>{"power_on", "release_servos", "rest_off"}));
 }
 
 TEST_F(ArmMovesTest, MissingRestServiceIsNotFatal)
@@ -323,4 +410,32 @@ TEST_F(ArmMovesTest, RoutinesStopWhenControlIsRefused)
     driver_->events(),
     (std::vector<std::string>{"take_control", "take_control"}));
   EXPECT_TRUE(driver_->commands().empty());
+}
+
+TEST_F(ArmMovesTest, ZeroStopsWhenThePoseIsNotReached)
+{
+  start({20, 10, -10, 0, 0, 0}, {true, false, true, true}, SHORT);   // the arm never moves
+  EXPECT_FALSE(braco_bringup::zero(*arm_));
+  arm_->wait(200ms);
+  EXPECT_NE(indexOf("stop"), -1);
+}
+
+TEST_F(ArmMovesTest, ParkLeavesTheJointsLockedWhenNotReached)
+{
+  start(mycobot::ZERO_ANGLES, {true, false, true, true}, SHORT);
+  EXPECT_FALSE(braco_bringup::park(*arm_));
+  arm_->wait(200ms);
+  EXPECT_NE(indexOf("stop"), -1);
+  EXPECT_EQ(indexOf("release_servos"), -1);
+  EXPECT_EQ(indexOf("rest_on"), -1);
+}
+
+TEST_F(ArmMovesTest, ParkWithoutReleaseDoesNotRest)
+{
+  FakeDriver::Options options;
+  options.fail = true;   // rest_off is only logged; release_servos fails
+  start(mycobot::ZERO_ANGLES, options);
+  EXPECT_FALSE(braco_bringup::park(*arm_));
+  EXPECT_NE(indexOf("release_servos"), -1);
+  EXPECT_EQ(indexOf("rest_on"), -1);
 }
