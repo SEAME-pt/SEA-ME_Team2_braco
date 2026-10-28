@@ -32,8 +32,10 @@ CI_RUN = docker run --rm -e CCACHE_DIR=/ws/.ccache -e CCACHE_MAXSIZE=500M -v $(C
 # Python: AMENT_CMAKE_PYTEST_WITH_COVERAGE makes ament_add_pytest_test run pytest-cov over the package's source dir,
 # one .coverage file per test under build/<pkg>/pytest_cov/; they are combined into one report (tests left out),
 # HTML in coverage/html/python. scripts/ directories are not measured (C++ or Python): with them out, braco_camera's
-# camera.py is left out too and there is no ROS Python to report yet - coverage.py exits 1 ("No data to report"),
-# which is skipped; 2 is a total below the floor. braco_camera stays listed, so its pytest still runs.
+# camera.py is left out too and there is no ROS Python to report yet - coverage.py exits 1 with "No data to report.",
+# which is skipped; 2 is a total below the floor. Exit 1 is also every other error (a corrupt data file...), so only
+# that exact message skips the floor; any other failure fails the target. braco_camera stays listed, so its pytest
+# still runs.
 # Coverage floors: 80% for every component, the project's minimum. Do not lower them to make a PR pass: add tests.
 # C++ is gated on the line total of every package (gcovr); branches are only reported (gcc counts exception paths).
 # pytest-cov and coverage.py compare the total of statements and branches together, not the line percentage.
@@ -66,10 +68,13 @@ CI_COV_SH := set -eo pipefail; sudo apt-get update -qq; sudo apt-get install -y 
                  --fail-under-line $(COV_MIN_CXX) | cut -c1-64 || st=1; \
              python3 -m coverage combine --keep --data-file=coverage/.coverage \
                  coverage/build/*/pytest_cov/*/.coverage >/dev/null; \
-             r=0; python3 -m coverage report $(COV_PY) --fail-under=$(COV_MIN_PY) || r=$$?; \
-             if [ $$r -eq 1 ]; then echo "ROS Python: nothing to measure outside scripts/ and test/"; \
-             else python3 -m coverage html $(COV_PY) -q -d coverage/html/python; \
-                 python3 -m coverage json $(COV_PY) -q -o coverage/python.json; [ $$r -eq 0 ] || st=1; fi; \
+             r=0; out=$$(python3 -m coverage report $(COV_PY) --fail-under=$(COV_MIN_PY) 2>&1) || r=$$?; \
+             printf "%s\n" "$$out"; \
+             if [ $$r -eq 0 ] || [ $$r -eq 2 ]; then python3 -m coverage html $(COV_PY) -q -d coverage/html/python; \
+                 python3 -m coverage json $(COV_PY) -q -o coverage/python.json; [ $$r -eq 0 ] || st=1; \
+             elif printf "%s\n" "$$out" | grep -qxF "No data to report."; then \
+                 echo "ROS Python: nothing to measure outside scripts/ and test/"; \
+             else echo "ROS Python: coverage report failed (exit $$r)" >&2; st=1; fi; \
              exit $$st
 
 # cppcheck: run directly, because ament_cppcheck skips every file ("performance issues" with cppcheck >= 2.0, it
