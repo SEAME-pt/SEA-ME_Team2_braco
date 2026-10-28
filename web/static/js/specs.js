@@ -1,5 +1,5 @@
 // Arm reference data, copied from ros2_ws/src/mycobot_cpp/includes/mycobot.hpp and
-// docs/protocol_commands.md. Keep in sync when those change.
+// docs/hardware/protocol_commands.md. Keep in sync when those change.
 
 export const JOINTS = ["J1", "J2", "J3", "J4", "J5", "J6"];
 export const JOINT_NAMES = ["Base", "Shoulder", "Elbow", "Wrist 1", "Wrist 2", "Wrist 3"];

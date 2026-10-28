@@ -1,22 +1,29 @@
-# ROS 2 Cheat Sheet
+# ROS 2 Command Reference
 
-Quick reference for daily work. Explanations are in [README.md](README.md), step-by-step usage in [INSTRUCTIONS.md](INSTRUCTIONS.md).
+The commands for working with ROS 2 in braco, on one page.
+First time? Set up your machine: [dev-setup.md](../dev-setup.md).
 
-## Project containers (run from the repo root)
+**Where to run each command:**
 
-| Command | What it does |
+| Commands | Where |
 |---|---|
-| `make setup` | Create `.env` for this machine, dev venv (PC), git hooks, folders (once; `ROLE=pc\|jetson` to override the detection) |
-| `make doctor` | Check Docker, Compose, `.env`, folders, devices; on the Jetson also RAM, power mode, swap |
-| `make up` / `make down` | Turn the system on / off (`real` on the Jetson; `dev` on the PC, plus `sim` with `SIM=1`) |
-| `make status` / `make logs` | Containers and resources / follow the system's log (`S=web`, `S=arm_driver`, ...) |
-| `make shell` | Shell inside the `dev` container (ROS + `/ws` sourced) |
-| `make run CMD='ros2 node list'` | Run one command in `dev` |
-| `make run CMD=seame-smoke-test` | Check the install |
-| `make net-test` | C++ talker + Python listener self-test (PASS/FAIL) |
-| `make net-talk` / `make net-listen` | Two-machine test (one on each machine) |
-| `make build` / `make test` / `make clean` | colcon build / colcon test / delete build output and ROS logs |
-| `make` | List all targets |
+| `make ...` | **Outside** the container: your terminal, in the repo folder |
+| Everything else (`ros2`, `colcon`, `rosdep`, `rviz2`, `rqt`...) | **Inside** the container: run `make shell` first |
+
+## `make` commands (outside the container)
+
+| Command | What it does | When |
+|---|---|---|
+| `make shell` | A shell in the container, ROS 2 ready: run `ros2 ...` here | To work: every time you open a terminal |
+| `make run CMD='ros2 node list'` | Runs one `ros2` command without opening a shell | For a quick look, without staying in the container |
+| `make build` | Builds the workspace (`colcon build`) | After you change code |
+| `make test` | Tests the workspace (`colcon test`) | Before a push (PC only) |
+| `make net-test` | Checks that ROS 2 works on this machine (PASS / FAIL) | After installing, or when ROS 2 seems broken |
+| `make net-talk` / `make net-listen` | Checks that the PC and the Jetson see each other (one on each machine) | When the PC cannot see the Jetson's topics |
+
+---
+
+**From here on, everything runs inside the container** (`make shell`).
 
 ## Environment
 
@@ -25,6 +32,7 @@ source /opt/ros/lyrical/setup.bash      # underlay (automatic in the containers)
 source /ws/install/setup.bash           # your workspace, after every build
 printenv | grep -E 'ROS|RMW'            # ROS_DISTRO, ROS_DOMAIN_ID, RMW_IMPLEMENTATION...
 ros2 doctor --report                    # environment + network report
+ROS_DOMAIN_ID=42 ros2 topic list        # the real arm, from the PC (the PC itself is on domain 77)
 ```
 
 ## Workspace and packages
@@ -38,10 +46,10 @@ rosdep install --from-paths src --ignore-src -y      # install dependencies (fro
 colcon build                                         # build all (from /ws, never from src/)
 colcon build --packages-select <pkg>                 # only this package
 colcon build --packages-up-to <pkg>                  # this package and its dependencies
-colcon build --parallel-workers 2                    # on the Jetson
 colcon test && colcon test-result --verbose          # tests + linters (failures only)
 colcon test-result --all                             # one line per test file
 rm -rf build install log                             # clean
+# on the Jetson, make build already limits the build (one package at a time)
 
 ros2 pkg list | grep <name>
 ros2 pkg executables <pkg>
@@ -82,7 +90,10 @@ ros2 topic pub -r 10 /<topic> <type> "<yaml>"     # 10 Hz
 ros2 topic pub --qos-reliability best_effort --qos-durability transient_local ...
 ```
 
-Example: `ros2 topic pub --once /chatter std_msgs/msg/String "{data: 'hi'}"`
+Examples:
+
+- `ros2 topic pub --once /chatter std_msgs/msg/String "{data: 'hi'}"`
+- braco: `ros2 topic echo --once /joint_states` (the arm's angles), `ros2 topic echo --once /arm/control_owner` (who controls the arm)
 
 ## Services
 
@@ -115,11 +126,13 @@ ros2 lifecycle set /<node> configure | activate | deactivate | cleanup | shutdow
 ros2 topic echo /<node>/transition_event
 ```
 
-```
-Unconfigured ─configure→ Inactive ─activate→ Active
-Unconfigured ←cleanup─── Inactive ←deactivate─ Active
-any primary state ─shutdown→ Finalized
-```
+| From | Transition | To |
+|---|---|---|
+| Unconfigured | `configure` | Inactive |
+| Inactive | `activate` | Active |
+| Active | `deactivate` | Inactive |
+| Inactive | `cleanup` | Unconfigured |
+| any | `shutdown` | Finalized |
 
 ## Parameters
 
