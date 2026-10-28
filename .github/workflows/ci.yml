@@ -29,10 +29,10 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
       - id: py
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.11"
           cache: pip
@@ -53,7 +53,7 @@ jobs:
     env:
       CI_IMAGE: braco-image/ci:lyrical
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
       # The image's `dev` user gets the runner's UID/GID (1001 on GitHub), so the bind-mounted ros2_ws is writable.
       - id: ids
@@ -61,13 +61,13 @@ jobs:
           echo "uid=$(id -u)" >> "$GITHUB_OUTPUT"
           echo "gid=$(id -g)" >> "$GITHUB_OUTPUT"
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
 
       # Same image as `make ci-image` (keep target and build-args in step with CI_TARGET there), but with the
       # BuildKit layers cached in GitHub's cache between runs.
       - name: Build the CI image (Dockerfile stage base)
         id: image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: docker
           target: base
@@ -81,7 +81,7 @@ jobs:
 
       # ccache and colcon's build/ make warm runs incremental. The key changes with the image definition,
       # so a new toolchain never reuses an old CMake cache.
-      - uses: actions/cache@v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
             ros2_ws/.ccache
@@ -96,7 +96,7 @@ jobs:
       # results first, so the cached build/ never adds those of a removed test.
       - name: Upload test results
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         with:
           name: test-results
           path: ros2_ws/build/*/test_results/
@@ -123,19 +123,19 @@ jobs:
     env:
       CI_IMAGE: braco-image/ci:lyrical
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
       - id: ids
         run: |
           echo "uid=$(id -u)" >> "$GITHUB_OUTPUT"
           echo "gid=$(id -g)" >> "$GITHUB_OUTPUT"
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
 
       # The ros job's image and layer cache. Only ros writes the cache back: two jobs exporting the same scope at
       # the same time would only race to store the same layers.
       - name: Build the CI image (Dockerfile stage base)
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: docker
           target: base
@@ -148,7 +148,7 @@ jobs:
 
       # Its own ccache: the --coverage objects never match ros's. The build tree is not cached; make coverage
       # deletes the old counters, but a fresh tree is the simpler guarantee.
-      - uses: actions/cache@v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ros2_ws/.ccache
           key: coverage-${{ hashFiles('docker/Dockerfile', 'docker/config/**', 'docker/scripts/**') }}-${{ github.sha }}
@@ -160,7 +160,7 @@ jobs:
       # gcovr's HTML report, per file and line. Also uploaded when a test failed, if gcovr got that far.
       - name: Upload the coverage report
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         with:
           name: coverage
           path: ros2_ws/coverage/html/
