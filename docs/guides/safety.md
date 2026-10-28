@@ -1,12 +1,8 @@
-# Lab Safety Induction & Workstation Rules: myCobot 280 Jetson Nano
+# Lab Safety: myCobot 280 Jetson Nano
 
-This document records safety induction compliance and defines workstation operating rules for the robotic arm cell, configured with the **Elephant Robotics myCobot 280 Jetson Nano**, **parallel gripper**, and **vision camera**.
+Safety rules for the arm, its gripper and its camera.
 
----
-
-## 1. Safety Induction Sign-off Record
-
-The following team members have attended all mandatory laboratory training modules, inspected the workstation, and reviewed the emergency shutdown protocols.
+## 1. Induction sign-off
 
 | Date | GitHub Handle | Electrical & Guarded Cell | LiPo Lab Handling | Emergency Protocol Verified | Induction Status |
 | :--- | :--- | :---: | :---: | :---: | :--- |
@@ -16,88 +12,85 @@ The following team members have attended all mandatory laboratory training modul
 | 2026-10-09 | `@magusk89` | [x] | [x] | [x] | Completed |
 | 2026-10-09 | `@carlos-lvt` | [x] | [x] | [x] | Completed |
 
----
+## 2. Hardware
 
-## 2. Workstation Hardware Profile
+| Part | Details |
+|---|---|
+| Arm | 6 joints, reaches 280 mm, carries **250 g at most** |
+| Power | 60 W adapter plugged into the wall. No batteries |
+| Gripper | Electric |
+| Camera | USB, plugged into the Jetson |
 
-* **Manipulator:** Elephant Robotics myCobot 280 (Jetson Nano edition, 6 DOF, 280 mm working radius, ~250 g rated payload).
-* **Power Supply:** Dedicated 60W AC-to-DC desktop power adapter (Mains 100-240V AC input, dedicated DC barrel connector). *Note: The arm operates strictly on mains DC power; no onboard batteries are installed.*
-* **End-Effector Tooling:**
-  * **Adaptive Parallel Electric Gripper:** Driven via serial/PWM auxiliary port.
-  * **Tool-Mounted / Cell Camera:** Connected via USB to the Jetson Nano carrier board.
+## 3. Work area
 
----
+- **Nothing within 350 mm of the base** while the arm has power: no objects, no loose clothes, no hands.
+- **The base is always clamped** to the table.
+- **Put the arm straight up (all joints ≈ 0°) before you turn on the motors.**
+  - If the arm is bent, its weight pulls hard on J2 and J3: it jumps, can break the gears and can hit the camera or
+    gripper.
+- **Never move a joint by hand while the motors are on.** Turn them off first (section 6.3).
 
-## 3. Workstation Operating Rules & Guarded Cell
+## 4. Gripper, camera and weight
 
-### 3.1 Workspace Clearance & Pre-Power Positioning
-* **Exclusion Zone:** Maintain a clear operating envelope with a minimum radius of **350 mm** centered on the robot base. No personal items, loose clothing, or non-essential tools may enter this boundary while the arm is powered.
-* **Rigid Clamping:** The myCobot base must remain securely clamped or bolted to the workstation surface at all times during operation. Never energize servos on a free-standing base.
-* **Pre-Power Upright Pose Protocol (Zero-Gravity Alignment):**
-  * Before applying motor power or software torque, manually articulate the arm into the vertical upright configuration (all joint angles positioned close to $0^\circ$).
-  * *Rationale:* Powering the arm while slumped or horizontally cantilevered places maximum gravitational torque ($\tau = r \times F_g$) onto Joint 2 and Joint 3, causing violent startup jolts, stripping internal gearbox teeth, and risking surface collisions that can damage the camera lens and gripper tips.
-* **Manual Joint Articulation:** Never back-drive or force arm joints manually while servo torques are engaged (`power_on`). Disengage torque via software or cut power before manipulating joints by hand.
+- **Gripper:** keep your fingers away from it. Do not put objects in it by hand while it moves.
+- **Weight:** gripper + camera + object **≤ 250 g**. More than that and the motors get stuck and overheat.
+- **Camera cable:** leave it loose on J4-J6, and check it before long moves (J6 turns ±178° and can wrap it).
+- **Move slowly** when holding heavy or slippery objects.
 
-### 3.2 Tooling Hazards: Gripper & Camera Integration
-* **Pinch Points (Gripper):** Keep hands and fingers clear of the gripper jaws at all times. Do not attempt to seat or extract workpieces by hand while gripper commands are executing.
-* **Object Slip & Drop Hazards:** Ensure gripped items conform to size limits and do not exceed remaining payload limits. Never move the arm at high acceleration profiles while holding heavy or slippery objects.
-* **Camera Cable Tethering & Clearance:** 
-  * Ensure adequate strain relief and slack on the camera USB cable along Joint 4, Joint 5, and Joint 6.
-  * Inspect the cable harness before running autonomous paths to prevent cable wrapping, joint binding, or connector damage during full rotations ($J6 \pm 178^\circ$).
-* **Payload Budget:** The total combined weight of the gripper, mounting bracket, camera, and payload must not exceed the arm's **250 g** payload rating. Exceeding this limit causes servo stall errors and excessive thermal wear.
+## 5. Power
 
----
+### 5.1 Turning on
 
-## 4. Electrical Safety & 60W Power Management
+1. Clear the 350 mm area and check the camera cable.
+2. Put the arm straight up by hand.
+3. Start the Jetson.
+4. Press the round switch on the base.
+5. Hold the arm lightly while you send `power_on` (the motors turn on).
 
-* **Power Delivery:** The workstation is powered by a dedicated 60W regulated DC supply.
-* **Standard Power-On & Torque Sequencing:**
-  1. **Visual & Harness Check:** Verify camera cable slack and clear foreign objects from the 350 mm zone.
-  2. **Manual Pre-Alignment:** Manually support and align the arm into the **vertical upright position** ($J1$–$J6 \approx 0^\circ$).
-  3. **Controller Boot:** Boot the Jetson Nano controller and verify baseline serial communication (`/dev/ttyTHS1`).
-  4. **DC Bus Energization:** Switch on the main 60W DC power feed via the base circular switch.
-  5. **Controlled Torque Engagement:** Lightly support the arm structure with one hand while sending the software torque command (`power_on`) to absorb any residual settling jerk.
-* **Stall Current & Thermal Limits:** If a joint encounters an obstacle or binds, cut servo torque immediately. Sustained servo stalls at full load trigger over-current conditions, PSU brownouts, and driver overheating.
-* **Common Grounding:** Any auxiliary instrumentation or microcontrollers connected to GPIO pins must share a common ground reference with the Jetson carrier board before applying logic signals.
+### 5.2 Electrical rules
 
----
+- **A joint is blocked:** turn off the motors at once. If not, they draw too much current and overheat.
+- **Something wired to the GPIO pins:** connect its ground to the Jetson's ground first.
 
-## 5. Emergency Shutdown & Rapid Stop Procedures
+## 6. Stopping the arm
 
-### 5.1 Hardware Power Cutoff (Full Workstation Shutdown)
-* **Primary Cutoff:** Press the integrated circular power switch on the base back panel, or unplug the 60W DC barrel connector directly from the base.
-* **Impact:** Instantly disconnects power from both the servo drive bus and the Jetson Nano carrier board.
-* **When to Use:** Use immediately in critical emergencies such as electrical shorts, severe collisions, physical entanglement, or smoke/burning smell.
+### 6.1 Emergency: cut the power
 
-### 5.2 Software Operational Stop & Holding Torque Behavior
-* **Script Interruption Behavior:** Terminating a Python process or interrupting execution (e.g., via `Ctrl+C` or uncaught exceptions) does **not** disengage motor torque. The internal servo microcontrollers and gripper driver retain their active closed-loop holding torque and remain locked at their last commanded angles.
-* **Active Torque Release Procedure:** To deliberately disengage holding torque and allow manual positioning of the manipulator or gripper jaws, an explicit serial release command must be executed with a mandatory post-initialization delay for UART buffer stabilization:
+- **How:** press the round switch on the back of the base, or pull out the power cable.
+- **What happens:** the motors **and** the Jetson turn off at once.
+- **When:** short circuit, crash, something caught in the arm, smoke or a burning smell.
+
+### 6.2 Stopping from software
+
+- **Stopping a program does not free the arm.** After Ctrl+C or a crash the motors stay on and hold the arm in place.
+- **STOP works from anywhere** (web page, joystick, scripts), no matter who is in control.
+- **Only one client moves the arm at a time** ([ADR-0002](../decisions/ADR-0002-unique-control.md)).
+  - Who is in control: see the web page, or `ros2 topic echo /arm/control_owner`.
+  - The joystick takes control from the page only if you hold **button 8 for about 1 s**.
+- **If `arm_driver` crashes,** the whole system stops. Check with `make status` and `make logs`.
+
+### 6.3 Turning off the motors (free the joints)
+
+- **System running:** `make park`. It folds the arm, turns off the motors and puts it in rest mode.
+- **Never open the serial port yourself while the system runs:** only `arm_driver` may use it.
+- **System off** (`make down`): you can free the joints with pymycobot:
+
   ```python
   import time
   from pymycobot import MyCobot
 
-  # Initialize serial connection
   mc = MyCobot('/dev/ttyTHS1', 1000000)
-  time.sleep(0.5)  # Required: wait for UART port and controller handshake stabilization
-
-  # Release all joint servo torques
+  time.sleep(0.5)          # needed: wait for the port
   mc.release_all_servos()
   ```
 
-* **With the ROS 2 arm services (Jetson):** do not open the serial port yourself while the `real` container (`arm_driver` node) runs. Run `make park` (from the repo root): it folds the arm, releases the joints and puts the driver in **rest mode**, which refuses motion but keeps publishing servo temperatures. Overheated servos (warm 55 °C, hot 65 °C, see the LCD or `make temps`) should rest in this mode until back to normal; leave it with `make zero` or `make resume`. At 65 °C the system enters rest mode **by itself** (once per hot episode, [ADR-0003](../decisions/ADR-0003-rest-per-temp.md)); leaving it is always manual. See [arm-rest-mode.md](arm-rest-mode.md).
-* **One client moves the arm at a time:** the web page, the joystick and `make zero` / `make park` never command it together. Whoever has the control (shown on the page; `ros2 topic echo /arm/control_owner`) moves it; the others are ignored. The joystick takes it from the page only when its button 8 is held for ~1 s. **STOP works from every client, whoever has the control.** See [ADR-0002](../decisions/ADR-0002-unique-control.md).
-* **A driver fault stops the system:** if `arm_driver` exits, the launch and the `real` container stop (`make status`, `make logs`); nothing keeps running without it.
+## 7. Hot motors
 
-### 5.3 Post-Shutdown Recovery Routine
-1. Disconnect or terminate the faulty control script.
-2. Manually guide the arm back into the **vertical upright position** ($0^\circ$).
-3. Re-engage power to the base.
-4. Execute an initial homing sequence at low speed ($\le 15\%$) to verify joint telemetry and camera alignment.
+- **The arm is hot?** Follow [overheating.md](overheating.md).
 
----
+## 8. Starting again after an emergency stop
 
-## 6. General Lab LiPo Safety Compliance
-
-Although the myCobot 280 workstation runs exclusively on a 60W mains adapter, all operators have completed the mandatory laboratory LiPo safety module to ensure safe coexistence with mobile robotics in the shared space:
-* Batteries must only be charged in designated fireproof bags using certified balance chargers.
-* Any battery exhibiting puffing, swelling, or low cell voltage ($<3.0\text{V}$) must be retired to the lab quarantine sand container immediately.
+1. Stop the program that caused the problem.
+2. Put the arm straight up by hand.
+3. Turn the power back on.
+4. Move it to zero slowly (speed ≤ 15%) and check the angles and the camera.

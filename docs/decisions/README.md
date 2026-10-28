@@ -8,4 +8,4 @@ Architecture Decision Records (ADRs). Each one covers a single decision: its con
 | [ADR-0002](ADR-0002-unique-control.md) | One control owner for the arm, decided by `arm_driver` |
 | [ADR-0003](ADR-0003-rest-per-temp.md) | An overheating servo puts the arm to rest by itself |
 
-New ADR: copy an existing one, use the next number, `ADR-NNNN-short-title.md`.
+New ADR: copy [ADR-TEMPLATE.md](ADR-TEMPLATE.md), use the next number, `ADR-NNNN-short-title.md`.
