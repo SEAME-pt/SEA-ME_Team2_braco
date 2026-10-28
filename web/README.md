@@ -21,7 +21,7 @@ is in sync**: who is online, who controls the arm, what each person did, and the
   needs control, and runs one at a time (a second one while the first is running is refused as *busy*).
 - **STOP works for everybody**, operator or not, and stops the arm whoever moves it (the joystick too).
 - **The page is one client among others.** On the real arm, taking control also asks `arm_driver` for the arm
-  ([ADR-0002](../docs/ADR-0002-unique-control.md)): while the **joystick** or `make zero` / `make park` has it,
+  ([ADR-0002](../docs/decisions/ADR-0002-unique-control.md)): while the **joystick** or `make zero` / `make park` has it,
   *Take control* is refused (409) and the page shows "the joystick is in control". While the page has it, the
   joystick is ignored unless someone holds its button 8 for about 1 s; then the page's control ends at once.
 - **Speed is shared**: one value held by the server, shown to everybody, changed only by the operator (viewers see
@@ -32,7 +32,7 @@ is in sync**: who is online, who controls the arm, what each person did, and the
 - **The camera** (eye-in-hand) is shown live on the Arm and Control pages to everybody, operator or not. It comes
   from the `camera` node ([braco_camera](../ros2_ws/src/braco_camera/README.md)) through
   `/camera/image_raw/compressed`: the page never opens the camera. While no frames arrive (camera unplugged, node
-  down, `make web` without ROS) it shows why and opens the stream again once they come back. *⤓ Frame* saves the
+  down, a page without ROS) it shows why and opens the stream again once they come back. *⤓ Frame* saves the
   current frame as a JPEG.
 - **Activity log**: commands, STOPs, failures, control changes, joins and leaves, for everybody (Home and Arm pages).
   Other people's actions also pop up as toasts.
@@ -41,15 +41,19 @@ Presence and the lease live in the server's memory: run **one** uvicorn process 
 
 ## Run
 
-The page is part of the braco system: `make up` starts it with the rest, on port 8000 (`WEB_PORT` in `docker/.env`).
+The page is separate from `make up`: `make web` adds it to the machine's running container, on port 8000 (`WEB_PORT`
+in `docker/.env`), and runs `make up` first if that container is not running. `make web` again replaces it (after
+editing `web/`), `make web-stop` stops it; the arm nodes keep running either way (no zero, no park).
 
 **On the Jetson** it runs in the `real` container, next to `arm_driver` and the other arm nodes:
 
 ```bash
-make up                  # http://<jetson-ip>:8000 from any PC on the lab network
+make up                  # the arm (no page)
+make web                 # the page: http://<jetson-ip>:8000 from any PC on the lab network
 make logs S=web          # only the page's log lines
-make restart             # after editing web/: restarts the system container; the arm is not zeroed or parked
 ```
+
+After a reboot the boot service (`make boot-on`) starts only the arm: run `make web` for the page.
 
 There the page uses `ARM_SOURCE=ros`: it never opens the serial port, it is a client of `arm_driver`
 ([docker/README.md](../docker/README.md)). Without `ARM_SOURCE` or `ARM_MOCK=1` the server refuses to start: there
@@ -59,19 +63,21 @@ every 100 ms, exactly like `braco_bringup/src/arm_moves.cpp`; if the page dies, 
 arm. Park uses the firmware limits and, like `make park`, releases the servos and enters rest mode once it arrives (STOP or a newer command before that cancels it). Wake up leaves rest mode
 and powers the servos without moving the arm (rest mode is only entered with the *Rest on* button).
 
-**On a PC** it runs in the `sim` container with `ARM_SOURCE=gazebo` (http://localhost:8000):
+**On a PC** it runs in the `dev` container with `ARM_SOURCE=gazebo` (http://localhost:8000), on the PC's domain (77),
+so it drives whichever Gazebo runs there:
 
 ```bash
-make up                  # the page shows the arm as not connected until the Gazebo bringup (#34) exists
+make up SIM=1 # the simulation (the sim container)  - or gazebo.launch.py in a make shell
+make web                 # the page drives the Gazebo arm
 ```
 
 The ROS 2 page then shows the PC's graph. The server finds the machine's role like the root Makefile does
 (`SEAME_ROLE`, `COMPOSE_PROFILES`, then the CPU): `ARM_SOURCE=gazebo` refuses to start on the Jetson.
 
-**Without the arm, ROS or docker** (mock data, for working on the page itself):
+**Without the arm or Gazebo** (mock data, for working on the page itself), on either machine:
 
 ```bash
-make web                 # http://localhost:8080, reloads when a file changes
+make web MOCK=1          # the page with synthetic arm data; make web again for the real source
 ```
 
 ## Tests

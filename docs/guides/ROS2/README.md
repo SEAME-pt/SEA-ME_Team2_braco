@@ -2,7 +2,7 @@
 
 This folder is the team's reference for ROS 2 (Robot Operating System 2). The top of this README tells you **how braco uses ROS 2**: which nodes run, and the topics and services they use to talk to each other.
 
-ROS 2 runs in Docker: **ROS 2 Lyrical Luth on Ubuntu 26.04**, on both the PC and the Jetson Nano. The reasons are in [ADR-0001](../ADR-0001-ros2-in-docker-on-jetson-nano.md), and the container setup is in [docker/README.md](../../docker/README.md).
+ROS 2 runs in Docker: **ROS 2 Lyrical Luth on Ubuntu 26.04**, on both the PC and the Jetson Nano. The reasons are in [ADR-0001](../../decisions/ADR-0001-ros2-in-docker-on-jetson-nano.md), and the container setup is in [docker/README.md](../../../docker/README.md).
 
 ---
 
@@ -14,7 +14,7 @@ ROS 2 runs in Docker: **ROS 2 Lyrical Luth on Ubuntu 26.04**, on both the PC and
 |---|---|---|
 | 1 | [ROS 2 in braco](#ros-2-in-braco) (just below) | The nodes, the topics and services between them, and how the system starts. Read this first even if you already know ROS 2 |
 | 2 | Reference: [4. The computation graph](#4-the-computation-graph), [5. Nodes](#5-nodes), [7. Topics](#7-topics-publish--subscribe), [9. Services](#9-services-request--response), [11. Choosing between topic, service and action](#11-choosing-between-topic-service-and-action) | The five ideas you need to follow the diagram. Skip if you know ROS 2 |
-| 3 | [`braco_driver`](../../ros2_ws/src/braco_driver/README.md) and [`braco_teleop`](../../ros2_ws/src/braco_teleop/README.md) READMEs | What each node does, its safety rules (watchdog, rest mode) and how to run it by hand |
+| 3 | [`braco_driver`](../../../ros2_ws/src/braco_driver/README.md) and [`braco_teleop`](../../../ros2_ws/src/braco_teleop/README.md) READMEs | What each node does, its safety rules (watchdog, rest mode) and how to run it by hand |
 | 4 | [safety.md](../safety.md) | **Before you move the real arm** |
 | 5 | [INSTRUCTIONS.md](INSTRUCTIONS.md) | Hands-on: write and run your own publisher, subscriber, service, action and lifecycle nodes |
 | Later | [CHEATSHEET.md](CHEATSHEET.md), [TROUBLESHOOTING.md](TROUBLESHOOTING.md), the [Reference](#reference-ros-2-concepts) | Look things up when you need them |
@@ -50,7 +50,7 @@ The web page shows the same thing without a terminal: its health panel says whet
 
 ### The idea
 
-**`arm_driver` is the only process that opens the myCobot 280 serial port.** Everything else (the joystick, the zero and park routines, the web page, the `make` targets) is a client of its topics and services. Any client can start, stop or crash without touching the port, and the driver's watchdog stops the arm if motion commands stop arriving for 300 ms. Only one client moves the arm at a time: the control owner, kept by `arm_driver` ([ADR-0002](../ADR-0002-unique-control.md)); STOP is obeyed from anyone. Likewise `camera` is the only process that opens the USB camera.
+**`arm_driver` is the only process that opens the myCobot 280 serial port.** Everything else (the joystick, the zero and park routines, the web page, the `make` targets) is a client of its topics and services. Any client can start, stop or crash without touching the port, and the driver's watchdog stops the arm if motion commands stop arriving for 300 ms. Only one client moves the arm at a time: the control owner, kept by `arm_driver` ([ADR-0002](../../decisions/ADR-0002-unique-control.md)); STOP is obeyed from anyone. Likewise `camera` is the only process that opens the USB camera.
 
 ### Node diagram
 
@@ -80,19 +80,19 @@ The web page shows the same thing without a terminal: its health panel says whet
   camera node (USB camera → /camera/image_raw/compressed → braco_web).
 ```
 
-All of it runs on the Jetson, in the `real` container. The PC sees the same topics over DDS (same `ROS_DOMAIN_ID`, from `docker/.env`), so you can inspect the arm from the PC with `ros2 topic echo`, rqt or PlotJuggler.
+All of it runs on the Jetson, in the `real` container. The PC sees the same topics over DDS on the arm's domain (`ROS_DOMAIN_ID=42`, from `docker/.env`), so you can inspect the arm from the PC with `ros2 topic echo`, rqt or PlotJuggler. The PC's own containers run on `PC_ROS_DOMAIN_ID` (77, kept apart from the simulation), so prefix those commands: `ROS_DOMAIN_ID=42 ros2 topic echo /joint_states`.
 
 ### Nodes
 
 | Node | Package | Started by | Job |
 |---|---|---|---|
 | `arm_driver` | `braco_driver` | `braco.launch.py` (not respawned: a driver fault must be seen) | Owns the serial port. Publishes angles, temperatures and voltages, executes commands from the control owner, watchdog, rest mode |
-| `temperature_monitor` | `braco_driver` | `braco.launch.py` (respawned) | Servo temperatures to the LCD1602 and `/diagnostics` (warm from 55 °C, hot from 65 °C); at hot it runs `park` once per episode ([ADR-0003](../ADR-0003-rest-per-temp.md)) |
+| `temperature_monitor` | `braco_driver` | `braco.launch.py` (respawned) | Servo temperatures to the LCD1602 and `/diagnostics` (warm from 55 °C, hot from 65 °C); at hot it runs `park` once per episode ([ADR-0003](../../decisions/ADR-0003-rest-per-temp.md)) |
 | `joystick_teleop` | `braco_teleop` | `braco.launch.py` (respawned) | Joystick to joint jogging, gripper, homing and speed modes. Survives the joystick being unplugged |
 | `camera` | `braco_camera` | `braco.launch.py` (respawned) | Owns the eye-in-hand USB camera; publishes its JPEG frames. Waits for the camera when it is unplugged |
 | `arm_zero` | `braco_bringup` | `make zero` (runs once) | Leaves rest mode, powers on, moves all joints to 0° |
 | `arm_park` | `braco_bringup` | `make park` / `make down PARK=1` (runs once) | Folds the arm, releases the joints, enters rest mode |
-| `braco_web` | `web/server` (Python, `rclpy` inside the uvicorn web server; not a ROS package) | `arm_routine.sh` | The web page's single ROS node, shared by the arm controls, the health panel and the graph explorer, spun by a `MultiThreadedExecutor` (see [14. Executors](#14-executors-callbacks-and-threading)). A plain client of `arm_driver` like the joystick: a pose or joint move is a stream of `ALL_ANGLES` steps at most 15° ahead of the real angles, resent every 100 ms, the same as `arm_zero` and `arm_park` |
+| `braco_web` | `web/server` (Python, `rclpy` inside the uvicorn web server; not a ROS package) | `make web` (`web/restart.sh`) | The web page's single ROS node, shared by the arm controls, the health panel and the graph explorer, spun by a `MultiThreadedExecutor` (see [14. Executors](#14-executors-callbacks-and-threading)). A plain client of `arm_driver` like the joystick: a pose or joint move is a stream of `ALL_ANGLES` steps at most 15° ahead of the real angles, resent every 100 ms, the same as `arm_zero` and `arm_park` |
 
 ### Topics
 
@@ -114,7 +114,7 @@ All five are served by `arm_driver`.
 
 | Service | Type | Called by | What it does |
 |---|---|---|---|
-| `/arm/take_control` | `braco_interfaces/srv/TakeControl` | `joystick_teleop`, `arm_zero` / `arm_park` (forced), `braco_web` (the page lease) | Become the control owner (`source`, `force`) or give it back (`release`) ([ADR-0002](../ADR-0002-unique-control.md)) |
+| `/arm/take_control` | `braco_interfaces/srv/TakeControl` | `joystick_teleop`, `arm_zero` / `arm_park` (forced), `braco_web` (the page lease) | Become the control owner (`source`, `force`) or give it back (`release`) ([ADR-0002](../../decisions/ADR-0002-unique-control.md)) |
 | `/arm/power_on` | `std_srvs/srv/Trigger` | `joystick_teleop` (when a joystick connects), `arm_zero`, `braco_web` ("wake up", after leaving rest mode) | Locks the joints. Refused in rest mode |
 | `/arm/release_servos` | `std_srvs/srv/Trigger` | `arm_park`, `braco_web` (Park, once the pose is reached) | Frees the joints (the arm can be moved by hand). Drops pending motion |
 | `/arm/set_gripper` | `std_srvs/srv/SetBool` | `joystick_teleop` (A / B), `braco_web` | `true` closes, `false` opens. Refused in rest mode |
@@ -124,18 +124,18 @@ braco uses **no actions** yet. Long motions (zero, park) are short programs that
 
 ### Packages
 
-All in [`ros2_ws/src/`](../../ros2_ws/src/).
+All in [`ros2_ws/src/`](../../../ros2_ws/src/).
 
 | Package | Status | Contains |
 |---|---|---|
-| [`braco_interfaces`](../../ros2_ws/src/braco_interfaces/README.md) | In use | `ArmCommand`, `JointTarget`, `ServoTemperatures`, `ServoVoltages`, `TakeControl` |
-| [`braco_driver`](../../ros2_ws/src/braco_driver/README.md) | In use | `arm_driver`, `temperature_monitor` (on top of `mycobot_cpp`) |
-| [`braco_teleop`](../../ros2_ws/src/braco_teleop/README.md) | In use | `joystick_teleop`; the jogging logic without ROS and its tests |
-| [`braco_camera`](../../ros2_ws/src/braco_camera/README.md) | In use | `camera` (Python) |
-| [`braco_bringup`](../../ros2_ws/src/braco_bringup/README.md) | In use | `braco.launch.py`, `config/braco.yaml`, `arm_routine.sh`, `zero`, `park` |
-| [`braco_description`](../../ros2_ws/src/braco_description/README.md) | In use (PC), #25 | URDF model, meshes, Gazebo viewer (`gazebo.launch.py`), sim-to-real checks |
-| [`braco_moveit_config`](../../ros2_ws/src/braco_moveit_config/README.md) | Empty | MoveIt 2 configuration (runs on the PC) |
-| [`braco_mission`](../../ros2_ws/src/braco_mission/README.md) | Empty | Tasks (pick-and-place, drawing) as a state machine over MoveIt 2 |
+| [`braco_interfaces`](../../../ros2_ws/src/braco_interfaces/README.md) | In use | `ArmCommand`, `JointTarget`, `ServoTemperatures`, `ServoVoltages`, `TakeControl` |
+| [`braco_driver`](../../../ros2_ws/src/braco_driver/README.md) | In use | `arm_driver`, `temperature_monitor` (on top of `mycobot_cpp`) |
+| [`braco_teleop`](../../../ros2_ws/src/braco_teleop/README.md) | In use | `joystick_teleop`; the jogging logic without ROS and its tests |
+| [`braco_camera`](../../../ros2_ws/src/braco_camera/README.md) | In use | `camera` (Python) |
+| [`braco_bringup`](../../../ros2_ws/src/braco_bringup/README.md) | In use | `braco.launch.py`, `config/braco.yaml`, `arm_routine.sh`, `zero`, `park` |
+| [`braco_description`](../../../ros2_ws/src/braco_description/README.md) | In use (PC), #25 | URDF model, meshes, Gazebo viewer (`gazebo.launch.py`), sim-to-real checks |
+| [`braco_moveit_config`](../../../ros2_ws/src/braco_moveit_config/README.md) | Empty | MoveIt 2 configuration (runs on the PC) |
+| [`braco_mission`](../../../ros2_ws/src/braco_mission/README.md) | Empty | Tasks (pick-and-place, drawing) as a state machine over MoveIt 2 |
 
 ### How the system starts
 
@@ -148,14 +148,14 @@ make up ──► `real` container ──► arm_routine.sh ──┬──► r
                                                   └──► web page (uvicorn, port WEB_PORT)
 ```
 
-- **Parameters**: tuning values (rates, watchdog, timeouts) are in [`braco_bringup/config/braco.yaml`](../../ros2_ws/src/braco_bringup/config/braco.yaml); the wiring (`port`, `baud`, `lcd_bus`, `device`, `camera`) comes from launch arguments that the compose file fills from `docker/.env`.
+- **Parameters**: tuning values (rates, watchdog, timeouts) are in [`braco_bringup/config/braco.yaml`](../../../ros2_ws/src/braco_bringup/config/braco.yaml); the wiring (`port`, `baud`, `lcd_bus`, `device`, `camera`) comes from launch arguments that the compose file fills from `docker/.env`.
 - **The arm never moves on start or stop.** Zero and park are manual (`make zero`, `make park`, `make down PARK=1`).
 - If the launch dies (for example the driver lost the port), the container stops.
-- `sim:=true` (the `sim` container on the PC) is reserved for the Gazebo arm (#34) and starts no node yet. The web page still starts there, with `ARM_SOURCE=gazebo`: it reads `/joint_states` and sends moves as `trajectory_msgs/msg/JointTrajectory` on `/joint_trajectory_controller/joint_trajectory` (the `ros2_control` controller Gazebo will provide), so it only waits until #34 lands.
+- `sim:=true` (the `sim` container on the PC, ROS domain 77) starts the Gazebo arm (#34): `braco_description`'s `gazebo.launch.py`, with `gz_ros2_control` and the controllers `joint_state_broadcaster` and `arm_controller`. The web page runs there with `ARM_SOURCE=gazebo`: it reads `/joint_states` and sends moves as `trajectory_msgs/msg/JointTrajectory` on `/arm_controller/joint_trajectory`. See [Run the simulation](../../../ros2_ws/src/braco_description/README.md#run-the-simulation-step-by-step).
 
 ### ROS 2 features braco does not use yet
 
-The [Reference](#reference-ros-2-concepts) covers more than the code uses today. Not used yet on the real arm: actions, lifecycle nodes (`arm_driver` is a plain `rclcpp::Node`), tf2 and the URDF, `ros2_control`, MoveIt 2. The URDF, `gz_ros2_control` and Gazebo are used only by `braco_description`'s viewer on the PC (#25); the `sim:=true` bringup is #34.
+The [Reference](#reference-ros-2-concepts) covers more than the code uses today. Not used yet on the real arm: actions, lifecycle nodes (`arm_driver` is a plain `rclcpp::Node`), `ros2_control`, MoveIt 2. The simulation (#34) already uses `ros2_control` and the `FollowJointTrajectory` action; tf2 and the URDF come from `braco_description` (#25).
 
 ---
 
@@ -375,7 +375,7 @@ int32[] partial_sequence  # feedback
 | `example_interfaces` | `AddTwoInts`, `Fibonacci`: **for examples and learning only** |
 | `action_msgs`, `lifecycle_msgs` | Plumbing used by actions and lifecycle nodes |
 
-Custom interfaces live in their **own package** (convention: `<project>_interfaces`), built with CMake even if all your nodes are Python. [INSTRUCTIONS.md](INSTRUCTIONS.md#6-create-a-custom-interfaces-package) shows how.
+Custom interfaces live in their **own package** (convention: `<project>_interfaces`), built with CMake even if all your nodes are Python. [INSTRUCTIONS.md](INSTRUCTIONS.md#4-custom-interfaces) shows how.
 
 Fully qualified type names look like `package/kind/Name`, for example `sensor_msgs/msg/JointState` or `example_interfaces/srv/AddTwoInts`. Inspect any type with:
 
@@ -465,7 +465,7 @@ ros2 topic info -v /my_topic      # shows the QoS of every endpoint
 | Commands to the arm | Reliable, small depth (1 to 10) | Do not lose commands, but do not execute a backlog of stale ones |
 | Robot description, current mode | Reliable + `TRANSIENT_LOCAL`, depth 1 | Late joiners need the current value |
 
-The issue for Sprint 0 asks for publishers and subscribers **with explicit QoS**: always build a `QoSProfile` in code instead of relying on the integer shortcut (`create_publisher(..., 10)`), so the choice is visible and reviewed. Examples are in [INSTRUCTIONS.md](INSTRUCTIONS.md#7-publisher-and-subscriber-with-explicit-qos).
+The issue for Sprint 0 asks for publishers and subscribers **with explicit QoS**: always build a `QoSProfile` in code instead of relying on the integer shortcut (`create_publisher(..., 10)`), so the choice is visible and reviewed. Examples are in [INSTRUCTIONS.md](INSTRUCTIONS.md#5-publisher-and-subscriber-with-qos).
 
 ---
 
@@ -628,7 +628,7 @@ ros2 lifecycle set /arm_driver activate
 ros2 lifecycle set /arm_driver deactivate
 ```
 
-In launch files, transitions can be triggered automatically, and `nav2_lifecycle_manager`-style managers can bring up many nodes in order. `ros2_control` hardware interfaces follow the same lifecycle states, which is why the driver for our arm is planned as a lifecycle node (see [docker/README.md](../../docker/README.md)). Today `arm_driver` is still a plain node (see [ROS 2 in braco](#ros-2-in-braco)).
+In launch files, transitions can be triggered automatically, and `nav2_lifecycle_manager`-style managers can bring up many nodes in order. `ros2_control` hardware interfaces follow the same lifecycle states, which is why the driver for our arm is planned as a lifecycle node (see [docker/README.md](../../../docker/README.md)). Today `arm_driver` is still a plain node (see [ROS 2 in braco](#ros-2-in-braco)).
 
 ---
 
@@ -745,7 +745,7 @@ Launch also supports **arguments** (`DeclareLaunchArgument`), **conditions** (`I
 | `ROS_AUTOMATIC_DISCOVERY_RANGE` | `SUBNET` | How far discovery reaches: `OFF`, `LOCALHOST`, `SUBNET`, `SYSTEM_DEFAULT` |
 | `ROS_STATIC_PEERS` | unset | Extra IPs to contact directly when multicast is blocked (Wi-Fi networks often block it) |
 
-**All machines that must talk to each other need the same `ROS_DOMAIN_ID` and, in practice, the same `RMW_IMPLEMENTATION`.** In our project both come from the `.env` file of the Docker setup.
+**All machines that must talk to each other need the same `ROS_DOMAIN_ID` and, in practice, the same `RMW_IMPLEMENTATION`.** In our project both come from the `.env` file of the Docker setup: the real arm is on `ROS_DOMAIN_ID` (42) on every machine. The PC's `dev` and `sim` containers run on `PC_ROS_DOMAIN_ID` (77) on purpose, so a simulation never mixes with the real arm; to talk to the arm from the PC, set `ROS_DOMAIN_ID=42` for that command.
 
 ### Discovery
 
