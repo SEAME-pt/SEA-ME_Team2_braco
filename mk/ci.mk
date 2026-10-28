@@ -93,11 +93,16 @@ CI_CPPCHECK_SH    := cppcheck $(CPPCHECK_FLAGS) -j"$$(nproc)" $(CPPCHECK_INCLUDE
 # tidy: clang-tidy (checks in ros2_ws/.clang-tidy) on the sources of ros2_ws/src, from the compile_commands.json that
 # ci-ros's build leaves in build/<pkg> (colcon-defaults.yaml exports it): run make ci-ros first. It is installed at run
 # time, like gcovr, so the image does not carry it. Generated code (braco_interfaces) lives in build/, not src/, and is
-# skipped. A package's failure does not stop the others; the exit status is the worst.
-CI_TIDY_SH := ls build/*/compile_commands.json >/dev/null 2>&1 || { echo "no build in $(WS_DIR)/build: run make ci-ros first" >&2; exit 1; }; \
+# skipped. A package's failure does not stop the others; the exit status is the worst. Only the packages colcon finds
+# in src/ are checked: build/ is restored from CI's cache, and colcon never deletes the build of a removed or renamed
+# package, whose compile_commands.json still lists sources that are gone.
+CI_TIDY_SH := dbs=""; for pkg in $$(colcon list --base-paths $(WS_BASE_PATHS) -n); do \
+                [ -f "build/$$pkg/compile_commands.json" ] && dbs="$$dbs build/$$pkg"; \
+              done; \
+              [ -n "$$dbs" ] || { echo "no build of $(WS_DIR)/src in $(WS_DIR)/build: run make ci-ros first" >&2; exit 1; }; \
               sudo apt-get update -qq; sudo apt-get install -y -qq clang-tidy >/dev/null; \
-              rc=0; for db in build/*/compile_commands.json; do \
-                run-clang-tidy -quiet -p "$$(dirname "$$db")" -j "$$(nproc)" "^/ws/src/" 2>/dev/null || rc=1; \
+              rc=0; for dir in $$dbs; do \
+                run-clang-tidy -quiet -p "$$dir" -j "$$(nproc)" "^/ws/src/" 2>/dev/null || rc=1; \
               done; exit $$rc
 
 BUILDX_MISSING := docker buildx not found: the Dockerfile needs BuildKit (apt install docker-buildx, or docker-buildx-plugin from Docker's repo)
