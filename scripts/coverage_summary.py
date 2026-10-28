@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Print a markdown coverage summary for the GitHub Actions job summary ($GITHUB_STEP_SUMMARY).
 
-Reads gcovr's --json-summary (C++, one row per package) and coverage.py's `coverage json` (Python), and marks each
-gated total against its floor. A missing file is reported as "no data", not as an error: the report it comes from
-may not have been written (a failed build, or nothing left to measure). Standard library only, Python 3.8+.
+Reads gcovr's --json-summary (C++, one row per package) and coverage.py's `coverage json`
+(Python), and marks each gated total against its floor. A missing file is reported as "no data",
+not as an error: the report it comes from may not have been written (a failed build, or nothing
+left to measure). Standard library only, Python 3.8+.
 
-    coverage_summary.py --gcovr "C++ (ros2_ws)" cxx.json 80 --coverage-py "Web (web/server)" coverage.json 80
+    coverage_summary.py --gcovr "C++ (ros2_ws)" cxx.json 80 \
+        --coverage-py "Web (web/server)" coverage.json 80
 """
 
 from __future__ import annotations
@@ -25,7 +27,10 @@ def status(value: float, floor: float) -> str:
 
 
 def gcovr_rows(data: dict, floor: float) -> list[str]:
-    """The gated line total first, then one row per package (the first path component under the gcovr root)."""
+    """The gated line total first, then one row per package.
+
+    A package is the first path component under the gcovr root.
+    """
     rows = [
         f'| **total** | **{pct(data["line_covered"], data["line_total"])}** '
         f'| {pct(data["branch_covered"], data["branch_total"])} '
@@ -44,7 +49,10 @@ def gcovr_rows(data: dict, floor: float) -> list[str]:
 
 
 def coverage_py_rows(data: dict, floor: float) -> list[str]:
-    """coverage.py gates on statements and branches together (percent_covered), not on the line percentage."""
+    """coverage.py gates on statements and branches together, not on the line percentage.
+
+    The gated value is percent_covered.
+    """
     t = data['totals']
     gated = t['percent_covered']
     return [
