@@ -1,5 +1,5 @@
 # CI for every PR and every push to main (issue #16). Every job calls the Makefile, so a failure can be
-# reproduced locally with the same command:
+# reproduced locally with the same command. A PR that changes only docs/ and .md files skips ros and coverage.
 #
 #   host  make ci        (lint, web page tests with coverage; no robot, no docker image)
 #   ros   make ci-ros    (rosdep, colcon build, colcon test of ros2_ws/src)
@@ -25,6 +25,34 @@ permissions:
   contents: read
 
 jobs:
+  # code=false when every file a PR changes is under docs/ or a .md: ros and coverage are then skipped, which a
+  # required check counts as passed. Pushes to main and manual runs always build. If this job fails, code is empty and
+  # both run anyway.
+  changes:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        if: github.event_name == 'pull_request'
+        with:
+          fetch-depth: 0
+
+      - id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          code=true
+          if [ "$EVENT" = pull_request ]; then
+            files=$(git diff --name-only "$BASE...$HEAD")
+            printf '%s\n' "$files"
+            if [ -n "$files" ] && ! printf '%s\n' "$files" | grep -qvE '^docs/|\.md$'; then code=false; fi
+          fi
+          echo "code=$code" | tee -a "$GITHUB_OUTPUT"
+
   host:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -58,6 +86,8 @@ jobs:
         run: make web-test PYTHON=${{ steps.py.outputs.python-path }}
 
   ros:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
@@ -128,6 +158,8 @@ jobs:
   # A Debug build with --coverage in ros2_ws/coverage/, which shares nothing with ros's build/: as its own job it runs
   # alongside ros instead of after it, and a branch protection rule can require it by name.
   coverage:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:

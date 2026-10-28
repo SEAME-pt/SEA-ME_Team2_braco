@@ -142,6 +142,9 @@ the same commands:
 
 * shellcheck and hadolint need no install: without a local binary, `make lint` runs the images pinned in
   `SHELLCHECK_IMAGE` and `HADOLINT_IMAGE` through docker, so it never skips a check that CI runs.
+* A PR that changes only files under `docs/` or `.md` files skips `ros` and `coverage` (a small `changes` job
+  decides from `git diff`); a skipped job counts as passed for the required checks. `host` always runs, and pushes
+  to `main` always run everything.
 * Caches: pip (`actions/setup-python`), the image layers (BuildKit `type=gha`), and ccache + colcon `build/`
   (`actions/cache`, reset whenever `docker/` changes). A warm run only recompiles what changed.
 * Coverage floors: `COV_MIN_CXX`, `COV_MIN_PY` and `COV_MIN_WEB` in [`mk/ci.mk`](../../mk/ci.mk), 80% for every
