@@ -47,6 +47,10 @@ if(BUILD_TESTING)
   find_package(ament_cmake_ros REQUIRED)
   ament_add_ros_isolated_gtest(test_arm_driver test/test_arm_driver.cpp TIMEOUT 120)
   target_link_libraries(test_arm_driver braco_driver_nodes util)
+
+  # TemperatureMonitor with no LCD and a test node in place of arm_driver (same isolation)
+  ament_add_ros_isolated_gtest(test_temperature_monitor test/test_temperature_monitor.cpp TIMEOUT 120)
+  target_link_libraries(test_temperature_monitor braco_driver_nodes)
 endif()
 
 ament_package()
