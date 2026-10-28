@@ -146,8 +146,7 @@ the same commands:
   (`actions/cache`, reset whenever `docker/` changes). A warm run only recompiles what changed.
 * Coverage floors: `COV_MIN_CXX`, `COV_MIN_PY` and `COV_MIN_WEB` in [`mk/ci.mk`](../../mk/ci.mk), 80% for every
   component. A PR below a floor adds tests; the floors are not lowered to make it pass. `scripts/` directories are
-  not measured, so the ROS Python (today only `braco_camera/scripts/camera.py`) has nothing to report yet. The C++ of
-  `ros2_ws` is still below 80%, so the `coverage` job fails until its tests catch up.
+  not measured, so the ROS Python (today only `braco_camera/scripts/camera.py`) has nothing to report yet.
 * Each run's summary page shows the coverage totals against their floors, with the C++ per package
   (`scripts/coverage_summary.py`, from the JSON reports; written on failure too). Locally the table is dropped; to see
   it, run e.g. `GITHUB_STEP_SUMMARY=/dev/stdout make ci`.
