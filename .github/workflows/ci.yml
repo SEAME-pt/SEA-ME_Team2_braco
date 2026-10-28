@@ -104,7 +104,9 @@ jobs:
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
 
       # Same image as `make ci-image` (keep target and build-args in step with CI_TARGET there), but with the
-      # BuildKit layers cached in GitHub's cache between runs.
+      # BuildKit layers cached in GitHub's cache between runs. Only pushes to main export them: a PR can read main's
+      # cache but no other PR's, so PR exports only filled the 10 GB repo cache and evicted main's. A PR that changes
+      # the Dockerfile rebuilds its changed layers on each push until it merges.
       - name: Build the CI image (Dockerfile stage base)
         id: image
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
@@ -117,11 +119,13 @@ jobs:
             USER_UID=${{ steps.ids.outputs.uid }}
             USER_GID=${{ steps.ids.outputs.gid }}
           cache-from: type=gha,scope=ci-base
-          cache-to: type=gha,scope=ci-base,mode=max
+          cache-to: ${{ github.event_name == 'push' && 'type=gha,scope=ci-base,mode=max' || '' }}
 
       # ccache and colcon's build/ make warm runs incremental. The key changes with the image definition,
-      # so a new toolchain never reuses an old CMake cache.
-      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      # so a new toolchain never reuses an old CMake cache. Restored on every run, saved (last step) only on pushes to
+      # main, for the same reason as the image layers.
+      - id: colcon-cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
             ros2_ws/.ccache
@@ -154,6 +158,16 @@ jobs:
       - name: make tidy
         if: ${{ !cancelled() && steps.image.outcome == 'success' }}
         run: make tidy CI_IMAGE=${{ env.CI_IMAGE }}
+
+      # Only when every step passed, as actions/cache did: a failed build is never the next run's starting point.
+      - name: Save the colcon cache
+        if: github.event_name == 'push'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ros2_ws/.ccache
+            ros2_ws/build
+          key: ${{ steps.colcon-cache.outputs.cache-primary-key }}
 
   # A Debug build with --coverage in ros2_ws/coverage/, which shares nothing with ros's build/: as its own job it runs
   # alongside ros instead of after it, and a branch protection rule can require it by name.
@@ -189,8 +203,9 @@ jobs:
           cache-from: type=gha,scope=ci-base
 
       # Its own ccache: the --coverage objects never match ros's. The build tree is not cached; make coverage
-      # deletes the old counters, but a fresh tree is the simpler guarantee.
-      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      # deletes the old counters, but a fresh tree is the simpler guarantee. Saved only on pushes to main, like ros's.
+      - id: coverage-cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ros2_ws/.ccache
           key: coverage-${{ hashFiles('docker/Dockerfile', 'docker/config/**', 'docker/scripts/**') }}-${{ github.sha }}
@@ -208,3 +223,10 @@ jobs:
           path: ros2_ws/coverage/html/
           if-no-files-found: warn
           retention-days: 14
+
+      - name: Save the coverage ccache
+        if: github.event_name == 'push'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ros2_ws/.ccache
+          key: ${{ steps.coverage-cache.outputs.cache-primary-key }}

@@ -22,7 +22,9 @@ the same commands, from the repo folder.
   decides from `git diff`); a skipped job counts as passed for the required checks. `host` always runs, and pushes
   to `main` always run everything.
 - Caches: pip (`actions/setup-python`), the image layers (BuildKit `type=gha`), and ccache + colcon `build/`
-  (`actions/cache`, reset whenever `docker/` changes). A warm run only recompiles what changed.
+  (`actions/cache`, reset when the Dockerfile, `docker/config/` or `docker/scripts/` change). A warm run only
+  recompiles what changed. Only pushes to `main` save the image layers and the build caches: a PR reads `main`'s but
+  can't share its own with other PRs, so saving them would only fill the 10 GB repo cache.
 - The arm64 Jetson image is not built in CI (QEMU is too slow); build it by hand with `make jetson-image`.
 - `ci-ros` writes to `ros2_ws/build`, `install` and `log`, like `make build`, plus its ccache in `ros2_ws/.ccache`.
 
