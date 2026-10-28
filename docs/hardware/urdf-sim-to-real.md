@@ -6,12 +6,14 @@ measured on the hardware** (section "Open items"). Nothing below marked "to meas
 
 ## How to use
 
-Step by step, with the GPU, ROS domains and common problems: [Run Gazebo, step by step](../ros2_ws/src/braco_description/README.md#run-gazebo-step-by-step).
+Step by step, with the GPU, ROS domains and common problems: [Run the simulation, step by step](../../ros2_ws/src/braco_description/README.md#run-the-simulation-step-by-step).
 In short:
 
 ```bash
-# PC (pc-dev container, with X11): the model in Gazebo, holding its pose (gui:=false: server only)
-ros2 launch braco_description gazebo.launch.py
+# PC: `make up SIM=1` also starts the `sim` container = braco.launch.py sim:=true (Gazebo + controllers, ROS domain 77)
+make up SIM=1
+# in a dev shell (make shell, already on the simulation's domain 77): move one joint (degrees)
+ros2 run braco_description move_joint.py 2 30
 
 # Put the simulated arm at given joint angles (radians, reached in 2 s)
 ros2 topic pub --once /arm_controller/joint_trajectory trajectory_msgs/msg/JointTrajectory \
@@ -229,6 +231,24 @@ against the real arm (Gazebo on this shell's `ROS_DOMAIN_ID`, e.g. 77; the real 
   - To convert: `get_coords()` Z = `base_link` Z - 15.4 mm; X and Y are the same.
 
 - [x] `ros2 run tf2_tools view_frames` with Gazebo running, and attach the PDF: see "Frame tree" above.
+
+## What the simulation does not reproduce (#34)
+
+The simulated arm has the model above and the ros2_control controllers planned for the hardware
+(`config/controllers.yaml`), but not the firmware or `arm_driver` around the real servos. A move that works in
+Gazebo can still behave differently on the arm:
+
+| On the real arm | In Gazebo |
+|---|---|
+| Speed is the firmware's setting 1..100, about 0.0265 rad/s per unit (see "Limits") | The trajectory's `time_from_start`, capped by the URDF `velocity` limits |
+| A servo stops up to ~3° short of a target (dead zone, `DEADBAND_DEG` in `scripts/braco_arm.py`) | Reaches the target within the controller's tolerance |
+| `sendAngles` clamps to `JOINT_LIMITS` and refuses poses that hit the table (`minHeightMm`) | gz_ros2_control clamps to the URDF limits (and logs `Command of at least one joint is out of limits`); a pose under the table is not refused, the arm presses on the ground plane and stops short (J2 = 160° stops at 124°) |
+| Only the control owner moves the arm ([ADR-0002](../decisions/ADR-0002-unique-control.md)); STOP from anyone | `arm_controller` accepts any trajectory |
+| Rest on overheat, servo temperatures and voltages ([ADR-0003](../decisions/ADR-0003-rest-per-temp.md)) | No temperatures; never rests |
+| Masses and efforts are documented/approximated (see "Inertia") | Uses those values as if measured |
+
+So the simulation checks a motion's joints, directions, kinematics and timing order; the table clearance, the control
+owner and the speed setting are only checked on the real arm (`--real` of the `braco_arm.py` scripts).
 
 ## Known gaps
 

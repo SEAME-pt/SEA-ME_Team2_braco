@@ -4,13 +4,13 @@
     GazeboArm  the arm simulated in Gazebo (ROS 2, PC only)
     MockArm    synthetic data, for developing the page without the arm
 
-The page never opens the serial port: arm_driver owns it (docs/architecture.html).
+The page never opens the serial port: arm_driver owns it (docs/architecture/architecture.md).
 
 All of them expose start(), snapshot(), stop_motion(), go_to_pose(), move_joint()
 and wake_up() (leave rest, servos on, no movement); RosArm and MockArm also
 set_rest(), set_gripper() and set_led().
 take_control() / release_control() follow the page's control lease: RosArm asks arm_driver
-for the control (docs/ADR-0002-unique-control.md), the others have nobody to ask.
+for the control (docs/decisions/ADR-0002-unique-control.md), the others have nobody to ask.
 snapshot()["capabilities"] tells the page which of these a source supports.
 Commands only come from explicit actions on the page; nothing here powers the
 servos or moves the arm by itself, and no setting is written.
@@ -50,18 +50,13 @@ POSES = {'park': [0, 131, -148, 146, 4.5, 0], 'zero': [0, 0, 0, 0, 0, 0]}
 POSE_SPEED = 30
 POSE_HOLD = 10  # mock only: seconds to stay in the pose before wandering again
 
-# Gazebo (ros2_control) source. Joint names follow the myCobot 280 URDF; override
-# them with GZ_JOINT_NAMES (comma separated) if the simulated model differs.
-GZ_JOINT_NAMES = [
-    'joint2_to_joint1',
-    'joint3_to_joint2',
-    'joint4_to_joint3',
-    'joint5_to_joint4',
-    'joint6_to_joint5',
-    'joint6output_to_joint6',
-]
+# Gazebo (ros2_control) source: braco_bringup sim:=true. Joint names are braco_description's
+# (the same as arm_driver's /joint_states); override them with GZ_JOINT_NAMES (comma
+# separated) if the simulated model differs. The topic is arm_controller's, from
+# ros2_ws/src/braco_description/config/controllers.yaml.
+GZ_JOINT_NAMES = ['joint1', 'joint2', 'joint3', 'joint4', 'joint5', 'joint6']
 GZ_STATE_TOPIC = '/joint_states'
-GZ_TRAJ_TOPIC = '/joint_trajectory_controller/joint_trajectory'
+GZ_TRAJ_TOPIC = '/arm_controller/joint_trajectory'
 GZ_DEG_PER_SPEED = 1.0  # the arm's speed (1-100) in degrees per second
 GZ_MIN_MOVE_TIME = 0.5  # seconds, so a tiny move is not an instant jump
 GZ_MOVING_EPS = 0.05  # degrees: smaller changes between two states count as standing still

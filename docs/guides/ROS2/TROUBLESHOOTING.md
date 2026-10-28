@@ -1,6 +1,6 @@
 # ROS 2 Troubleshooting
 
-Common problems when installing and using ROS 2 in this project, and how to fix them. Problems specific to building the Docker images are also listed in [docker/README.md → If the build fails](../../docker/README.md#if-the-build-fails).
+Common problems when installing and using ROS 2 in this project, and how to fix them. Problems specific to building the Docker images are also listed in [docker/README.md → If the build fails](../../../docker/README.md#if-the-build-fails).
 
 When something fails, first collect the basics:
 
@@ -31,7 +31,7 @@ ros2 node list; ros2 topic list     # what this machine can see
 |---|---|---|
 | `Could not find a package configuration file provided by "X"` | Missing dependency | Add `<depend>X</depend>` to `package.xml`, then `rosdep install --from-paths src --ignore-src -y` (or `make run CMD='rosdep install --from-paths src --ignore-src -y'`). If it is your own package, build it first (colcon orders by `package.xml`) |
 | `colcon build` creates `build/` inside `src/` | Ran from the wrong folder | Always build from the workspace root `/ws`. Delete the stray folders |
-| Build of the interface package fails with action errors | Missing `action_msgs` dependency or `member_of_group` | See [INSTRUCTIONS.md §6](INSTRUCTIONS.md#6-create-a-custom-interfaces-package): `<depend>action_msgs</depend>` and `<member_of_group>rosidl_interface_packages</member_of_group>` |
+| Build of the interface package fails with action errors | Missing `action_msgs` dependency or `member_of_group` | See [INSTRUCTIONS.md §4](INSTRUCTIONS.md#4-custom-interfaces): `<depend>action_msgs</depend>` and `<member_of_group>rosidl_interface_packages</member_of_group>` |
 | `InvalidPackage: Invalid email "...@todo.todo" for person "..."` | `ros2 pkg create --maintainer-name` without `--maintainer-email` derives an address from the name; characters like `:` make it invalid | Put a real address in `<maintainer email="...">` in `package.xml` (and `maintainer_email` in `setup.py`), or pass `--maintainer-email` to `ros2 pkg create` |
 | `CMake Deprecation Warning ... Compatibility with CMake < 3.10 will be removed` | `cmake_minimum_required(VERSION 3.8)` in old tutorials | `cmake_minimum_required(VERSION 3.10)` |
 | `ament_target_dependencies` deprecation warning | Old tutorial style | Use `target_link_libraries(target rclcpp::rclcpp ${std_msgs_TARGETS})` |
@@ -41,12 +41,12 @@ ros2 node list; ros2 topic list     # what this machine can see
 
 ## Tests and linters (colcon test)
 
-How to run them: [INSTRUCTIONS.md §12.6](INSTRUCTIONS.md#126-run-the-tests-linters). See the failures with `colcon test-result --verbose`.
+How to run them: [INSTRUCTIONS.md §10](INSTRUCTIONS.md#tests-linters). See the failures with `colcon test-result --verbose`.
 
 | Symptom | Cause | Fix |
 |---|---|---|
 | Python package: `Ran 0 tests ... NO TESTS RAN` | `setup.py` has no `extras_require={'test': ['pytest']}`, so colcon falls back to `unittest` and skips all the linters | Keep the `extras_require` block that `ros2 pkg create` generates |
-| `copyright`: `could not find copyright notice` / cpplint `legal/copyright` | A `.cpp` file has no license header | Start the file with the Apache-2.0 header (`// Copyright 2026 SEA:ME Team 2` + the license text), see [INSTRUCTIONS.md §11.1](INSTRUCTIONS.md#111-ros2_basics_cppcmakeliststxt) |
+| `copyright`: `could not find copyright notice` / cpplint `legal/copyright` | A `.cpp` file has no license header | Start the file with the Apache-2.0 header (`// Copyright 2026 SEA:ME Team 2` + the license text), see [INSTRUCTIONS.md §9](INSTRUCTIONS.md#ros2_basics_cppcmakeliststxt-replace-the-generated-one) |
 | cpplint `runtime/int`: `Use int16/int64/etc, rather than the C type long` | `long long` (e.g. `static_cast<long long>(x)` for `printf`) | `#include <cinttypes>` and print with `"%" PRId64`, passing the `int64_t` directly |
 | uncrustify fails | Formatting differs from the ROS 2 style | `ament_uncrustify --reformat src/` inside the package |
 | flake8 `I100 Import statements are in the wrong order` | Imports not alphabetical inside a group. `rclpy`, `std_msgs` and your own packages (`ros2_basics_py`) all count as third party | Sort them alphabetically in one group: `from action_msgs... / import rclpy / from rclpy... / from ros2_basics_py... / from std_msgs...`. Standard library first (`from glob import glob` before `import os`) |
@@ -108,7 +108,7 @@ Go through this list in order.
 | `rqt_graph: command not found` on the PC | Lyrical no longer installs a `rqt_graph` shortcut in `/opt/ros/lyrical/bin` (only `rqt` and `rqt_bag`) | `ros2 run rqt_graph rqt_graph` or `rqt --standalone rqt_graph`, inside the container (`make shell`), not on the host |
 | `rqt_graph: command not found` on the Jetson | The Jetson image is headless on purpose | Run `ros2 run rqt_graph rqt_graph` on the PC; it shows the Jetson's nodes over the network |
 | rqt_graph is empty or outdated | Not refreshed, or filters | Press refresh; select "Nodes/Topics (all)"; uncheck the "Hide" options |
-| RViz2/Gazebo very slow | Software rendering | Use a GPU override: `make up GPU=nvidia` or `GPU=dri` (see docker/README.md) |
+| RViz2/Gazebo very slow | Software rendering | The PC uses the NVIDIA GPU by default: check `make doctor` (NVIDIA container runtime), or `GPU=dri` for Intel/AMD (see docker/README.md) |
 
 ## Jetson / hardware
 

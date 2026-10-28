@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# restart.sh - restart only the braco web page inside the running arm container.
+# restart.sh - start (or restart) the braco web page inside a running container; `stop` stops it.
 #
-# The arm container starts the page from arm_routine.sh and does not respawn it, so after a
-# change in web/ this replaces the uvicorn process without touching the driver or the arm
-# (no zero, no park). From the repo root (make restart restarts the whole system instead):
-#   docker compose --project-directory docker exec real bash /opt/braco/web/restart.sh
+# `make web` runs it in the arm container (`real`, Jetson) or in `dev` (PC), `make web-stop` with `stop`.
+# The page is not part of `make up`: the containers only run the ROS 2 nodes, so replacing the page
+# never touches the driver or the arm (no zero, no park). By hand, from the repo root:
+#   docker compose --project-directory docker exec real ros_entrypoint.sh bash /opt/braco/web/restart.sh
 #
-# The new server logs to the container's output, so `make logs S=web` keeps working.
+# The server logs to the container's output, so `make logs S=web` shows it.
 # Presence and the control lease live in the server's memory: everybody reconnects by
 # themselves and has to take control again.
 set -u
@@ -39,6 +39,10 @@ if [ -n "$old" ]; then
     [ -n "$(pids)" ] && kill -KILL $(pids) 2>/dev/null
     echo "web: old server stopped"
 fi
+if [ "${1:-}" = stop ]; then
+    [ -n "$old" ] || echo "web: not running"
+    exit 0
+fi
 
 if [ ! -f "$WEB_DIR/web/server/app.py" ]; then
     echo "web: $WEB_DIR/web is not mounted, nothing to start" >&2
@@ -46,13 +50,15 @@ if [ ! -f "$WEB_DIR/web/server/app.py" ]; then
 fi
 
 cd "$WEB_DIR" || exit 1
-ARM_SOURCE=${ARM_SOURCE:-ros} nohup setsid python3 -m uvicorn web.server.app:app \
-    --host 0.0.0.0 --port "$WEB_PORT" --workers 1 --no-access-log \
+# Into the container's output (make logs). Not nohup: when that output is a terminal (dev has tty: true) nohup
+# sends everything to ~/nohup.out instead; ignoring SIGHUP is the part of nohup the page needs.
+(trap '' HUP; ARM_SOURCE=${ARM_SOURCE:-ros} exec setsid python3 -m uvicorn web.server.app:app \
+    --host 0.0.0.0 --port "$WEB_PORT" --workers 1 --no-access-log) \
     > /proc/1/fd/1 2>&1 < /dev/null &
 
 sleep 3
 if [ -n "$(pids)" ]; then
-    echo "web: restarted on port $WEB_PORT"
+    if [ "${ARM_MOCK:-}" = 1 ]; then echo "web: started on port $WEB_PORT (mock arm data)"; else echo "web: started on port $WEB_PORT (ARM_SOURCE=${ARM_SOURCE:-ros})"; fi
 else
     echo "web: failed to start, see make logs" >&2
     exit 1

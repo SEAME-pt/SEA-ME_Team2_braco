@@ -22,9 +22,9 @@ system runs what `dev` built in `ros2_ws`. On the PC `dev` stays up; on the Jets
 
 | Compose service | Profile | Image (Dockerfile target) | Runs | Contains |
 |---|---|---|---|---|
-| `dev` | (always) | `braco-image/pc` (`pc`) or `braco-image/jetson` (`jetson`), from `COMPOSE_PROFILES` | PC: `sleep infinity`, you `exec` into it. Jetson: one throw-away container per command | PC: `ros-lyrical-desktop`, `ros-lyrical-ros-gz`, `ros-lyrical-moveit` **and** `ros-lyrical-moveit-servo` (a separate package), clang-tidy, cppcheck, lcov/gcovr, ruff, pre-commit, pytest-cov, **PlotJuggler 4**; optional gz_ros2_control, Foxglove bridge. Jetson: `base` plus serial tooling and the demo nodes |
-| `real` | `jetson` | `braco-image/jetson` | `arm_routine.sh`: the braco launch on the real arm + the web page | the serial port, the LCD's I2C bus, `/dev/input` |
-| `sim` | `pc` | `braco-image/pc` | `arm_routine.sh` with `SIM=true`: the launch with `sim:=true` + the web page on Gazebo | your display (X11) |
+| `dev` | (always) | `braco-image/pc` (`pc`) or `braco-image/jetson` (`jetson`), from `COMPOSE_PROFILES` | PC: `sleep infinity`, you `exec` into it; `make web` runs the page in it. Jetson: one throw-away container per command | PC: `ros-lyrical-desktop`, `ros-lyrical-ros-gz`, `ros-lyrical-moveit` **and** `ros-lyrical-moveit-servo` (a separate package), clang-tidy, cppcheck, lcov/gcovr, ruff, pre-commit, pytest-cov, **PlotJuggler 4**; optional gz_ros2_control, Foxglove bridge. Jetson: `base` plus serial tooling and the demo nodes |
+| `real` | `jetson` | `braco-image/jetson` | `arm_routine.sh`: the braco launch on the real arm (`make web` adds the web page) | the serial port, the LCD's I2C bus, `/dev/input` |
+| `sim` | `pc` | `braco-image/pc` | `arm_routine.sh` with `SIM=true`: the launch with `sim:=true` (Gazebo); optional, `make up SIM=1` | your display (X11) |
 
 `COMPOSE_PROFILES` in `.env` is the machine: exactly `pc` or `jetson`. It enables `sim` or `real` and picks the image
 of `dev`.
@@ -40,7 +40,7 @@ docker/
 ├── .dockerignore            keeps .env, compose files and tests out of the image build context
 ├── compose.yml              services dev, real, sim; found by plain `docker compose` without -f
 ├── compose/
-│   ├── nvidia.yml           optional GPU overrides for dev and sim (make up GPU=nvidia | dri)
+│   ├── nvidia.yml           GPU overrides for dev and sim (PC: nvidia by default; GPU=dri | none)
 │   └── dri.yml
 ├── Dockerfile               stages: base, jetson, pc
 ├── config/                  colcon-defaults.yaml
@@ -74,8 +74,8 @@ make down        # off (on the Jetson: make down PARK=1 parks the arm first)
 
 `make up` is **idempotent**: run it again and it skips the image and the build, and leaves running containers alone.
 After a source change it rebuilds (colcon only recompiles what changed) and restarts the system container. On the
-Jetson it waits until the web page says the arm is connected (`UP_TIMEOUT=90`); on the PC it waits less, because the
-simulated arm only connects once the Gazebo bringup (#34) exists. It ends by printing the page's URL.
+machine it waits until the web page says the arm is connected (`UP_TIMEOUT=90`): the real arm on the Jetson, the
+Gazebo arm on the PC. It ends by printing the page's URL.
 
 Without `make` (run these from inside `docker/`):
 
@@ -100,21 +100,26 @@ skips the entrypoint, so ROS is **not** sourced - prefix it with `ros_entrypoint
 
 | Group | Commands |
 |---|---|
-| System | `up`, `down` (`PARK=1`), `restart`, `status`, `logs` (`S=web`, `S=arm_driver`, any pattern) |
+| System | `up` (PC: `SIM=1`), `down` (`PARK=1`), `restart`, `status`, `logs` (`S=web`, `S=arm_driver`, any pattern) |
+| Web page | `web` (start or restart it in `real` / the PC's `dev`; `MOCK=1`: mock arm data), `web-stop` |
 | Arm (Jetson) | `zero`, `park`, `rest`, `resume`, `temps`, `bench` |
-| Development | `shell`, `run CMD='...'`, `build` (`COLCON_ARGS=...`), `test`, `web` (mock page on :8080), `clean` |
-| Setup | `setup`, `doctor`, `image` (`IMAGE_ARGS='--no-cache --pull'`), `boot-on`, `boot-off`, `jetson-image` (`NANO=user@host`), `reset` |
+| Development | `shell`, `run CMD='...'`, `build` (`COLCON_ARGS=...`), `test`, `sim-gui` (Gazebo window on `sim`), `clean` |
+| Setup | `setup`, `role` (dev PC or jetson, asked once by the first `make` command), `doctor`, `image` (`IMAGE_ARGS='--no-cache --pull'`), `boot-on`, `boot-off`, `jetson-image` (`NANO=user@host`), `re`, `fclean` |
 | Network | `net-test`, `net-talk`, `net-listen` |
 | CI | `ci`, `ci-image`, `ci-ros`, `lint`, `format`, `format-check` |
 
-- `make up GPU=nvidia` (or `GPU=dri`) adds `compose/nvidia.yml` or `compose/dri.yml` for `dev` and `sim` (PC only);
+- On the PC every command adds `compose/nvidia.yml` for `dev` and `sim` (every team PC has an NVIDIA GPU; `make doctor`
+  checks the NVIDIA container runtime). `GPU=dri` uses `compose/dri.yml` (Intel/AMD), `GPU=none` neither;
   `COMPOSE_FILE` in `.env` does the same permanently.
 - `make build` always runs colcon; `make up` only when something under `ros2_ws/src` changed
   (on the Jetson, only the packages of the real system: see below).
   After `make build`, `make restart` (or the next `make up`) runs the new build.
 - `make clean` deletes colcon's `build/ install/ log/` and the ROS logs (`~/.ros/log` on the host and in the
-  containers). `make reset` also removes the containers, the cache volumes and the images, and asks first
-  (`FORCE=1` skips the prompt).
+  containers). `make re` also removes this machine's containers, cache volumes and image, then rebuilds everything
+  with `make up` (`make re GPU=dri` for Intel/AMD). It asks first (`FORCE=1` skips the
+  prompt) and never touches the other machine's image.
+- `make fclean` removes **every** Docker container, image, volume and network on the machine, braco's and any
+  other project's, and rebuilds nothing (`make up` afterwards). It asks first (`FORCE=1` skips the prompt).
 - In CI (`CI=true`) or without a terminal, TTY allocation is turned off automatically.
 
 **The Jetson never simulates.** Its image has no Gazebo, MoveIt or RViz (those are only in the `pc` stage), and
@@ -179,7 +184,7 @@ Notes:
 
 Everything from `ros2_ws/src/braco_driver`, `braco_teleop`, `braco_camera` and `braco_bringup` runs all the time on the Nano **inside
 ROS 2, in one container**, `real` (same `braco-image/jetson` image as `dev`, no build of its own). `arm_routine.sh` is its
-entrypoint: it starts `ros2 launch braco_bringup braco.launch.py sim:=false` and the web page. It does **not** move
+entrypoint: it starts `ros2 launch braco_bringup braco.launch.py sim:=false`; `make web` adds the web page. It does **not** move
 the arm at start or stop:
 
 ```
@@ -196,8 +201,9 @@ temperature_monitor  ROS 2 node   temperatures -> /diagnostics + LCD1602 (port o
 joystick_teleop      ROS 2 node   joystick -> /arm/command (port of mycobot_cpp joystick_all_joints); respawned
 camera               ROS 2 node   the ONLY process that opens the USB camera -> /camera/image_raw/compressed
                                   (JPEG, 15 fps); waits for the camera when it is missing; respawned
-braco web page       uvicorn      http://<jetson>:8000 (WEB_PORT), ARM_SOURCE=ros: a plain client of the topics/services above
-arm_routine.sh       entrypoint   start: the launch + the page / stop: the page, then the launch (no zero, no park)
+braco web page       uvicorn      make web: http://<jetson>:8000 (WEB_PORT), ARM_SOURCE=ros: a plain client of the
+                                  topics/services above (web/restart.sh, started in this container)
+arm_routine.sh       entrypoint   start / stop the launch (no zero, no park)
 ```
 
 Launch arguments: `port`, `baud`, `lcd_bus`, `device`, `camera` (filled from `.env`). Use ROS 2 tools on the running graph from
@@ -211,7 +217,7 @@ Launch arguments: `port`, `baud`, `lcd_bus`, `device`, `camera` (filled from `.e
 - The teleop waits for the joystick and survives unplugging it (it stops the arm if it has the control, and opens
   the device again).
 - **One client at a time** moves the arm: the page, the joystick or zero/park, whoever holds `arm_driver`'s control
-  (`ros2 topic echo /arm/control_owner`). STOP always works. See [ADR-0002](../docs/ADR-0002-unique-control.md).
+  (`ros2 topic echo /arm/control_owner`). STOP always works. See [ADR-0002](../docs/decisions/ADR-0002-unique-control.md).
 - Zero and park are **manual**: nothing moves the arm when the container starts or stops (`make up`, `make down`,
   `make restart`, `systemctl stop braco`, a Jetson shutdown). Run them with `make zero` / `make park` (no container
   has to be stopped), or `make down PARK=1` to park and then stop. Park the arm before shutting down, or it will drop
@@ -219,8 +225,8 @@ Launch arguments: `port`, `baud`, `lcd_bus`, `device`, `camera` (filled from `.e
 - **Rest mode.** `make park` (`ros2 run braco_bringup park`) ends by putting the driver in rest mode: motion, gripper and `power_on` are
   refused, but angles and temperatures keep being published, so a hot arm can cool down under watch (LCD and
   `/diagnostics` keep updating). Leave it with `make resume` or `make zero`; `make rest` enters it without parking.
-  A servo at 65 °C enters it by itself ([ADR-0003](../docs/ADR-0003-rest-per-temp.md)).
-  Details: [../docs/arm-rest-mode.md](../docs/arm-rest-mode.md).
+  A servo at 65 °C enters it by itself ([ADR-0003](../docs/decisions/ADR-0003-rest-per-temp.md)).
+  Details: [../docs/arm-rest-mode.md](../docs/guides/arm-rest-mode.md).
 - The driver opens the port with `TIOCEXCL`: a second program (non-root) gets `Device or resource busy` immediately.
 - **The braco web page** ([../web/README.md](../web/README.md)) runs in this container too: the repository is mounted
   read-only at `/opt/braco` and `arm_routine.sh` starts uvicorn there (one process, `--workers 1`). It moves the arm
@@ -250,9 +256,24 @@ the container also stops the temperature readings.
 
 ## The system on the PC: simulation
 
-`sim` runs the same `arm_routine.sh` with `SIM=true`: `braco.launch.py sim:=true` and the web page with
-`ARM_SOURCE=gazebo` (http://localhost:8000). Until the Gazebo bringup (#34) exists (the model, #25, is in `braco_description`) the launch
-starts no node, so the page is up but shows the arm as not connected, and `make up` only warns about it.
+Optional: a plain `make up` on the PC starts only `dev`. `make up SIM=1` also starts `sim`
+(`make restart SIM=1` recreates it; `make down` stops both).
+
+`sim` runs the same `arm_routine.sh` with `SIM=true`: `braco.launch.py sim:=true` (Gazebo headless, the
+`braco_description` model, `joint_state_broadcaster` and `arm_controller`). `make web` runs the page in `dev` with `ARM_SOURCE=gazebo`
+(http://localhost:8000). Like `real`, the container stops when the launch ends (Gazebo gone).
+
+- **The PC's ROS domain**: `PC_ROS_DOMAIN_ID` (default 77), shared with the PC's `dev`, not the real arm's
+  `ROS_DOMAIN_ID` (42). The simulation also publishes `/joint_states`; on the real arm's domain the Jetson's clients
+  would mix the two. From `dev`, reach the real arm with `ROS_DOMAIN_ID=42 ros2 ...`.
+- **Its own Gazebo partition** (`GZ_PARTITION=braco-sim`), apart from a Gazebo started by hand in `dev`. A second
+  `gazebo.launch.py` in `dev` still shares domain 77 with `sim` and fights it (`Controller already loaded`,
+  `Moved backwards in time`): stop `sim` first, or `export ROS_DOMAIN_ID=78` in that shell.
+- **The Gazebo window**: `make sim-gui` opens one on the running simulation (Ctrl-C closes only the window). Or
+  `SIM_GUI=true` in `.env`, then `make restart SIM=1`. Default: headless.
+
+How to launch it, command a joint and the common problems:
+[Run the simulation, step by step](../ros2_ws/src/braco_description/README.md#run-the-simulation-step-by-step).
 
 ## The compatibility contract
 
@@ -282,7 +303,7 @@ Checked against the real thing:
   The two machines' services start without rebuilding, with the right user, volume ownership and environment.
 - A real PC image build (amd64) completed, and the smoke test (`make run CMD=seame-smoke-test`) passed except for the two items below.
 - The serial port: `/dev/ttyTHS1` at 1000000 baud, opened from a container on the Nano
-  ([ADR-0001](../docs/ADR-0001-ros2-in-docker-on-jetson-nano.md)). On stock JetPack the UART is held by the serial
+  ([ADR-0001](../docs/decisions/ADR-0001-ros2-in-docker-on-jetson-nano.md)). On stock JetPack the UART is held by the serial
   console: on the host run `sudo systemctl disable --now nvgetty` and re-login before the container can open it.
 
 Found by that real smoke test run:

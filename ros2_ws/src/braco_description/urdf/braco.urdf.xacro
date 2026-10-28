@@ -28,7 +28,7 @@
 
   <xacro:if value="$(arg gazebo)">
     <xacro:braco_gazebo
-      controllers="$(find braco_description)/config/gazebo_controllers.yaml"/>
+      controllers="$(find braco_description)/config/controllers.yaml"/>
   </xacro:if>
 
   <!-- world: the table surface. The arm stands on the G-shape base (a 150 x 110 mm plate,

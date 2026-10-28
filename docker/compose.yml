@@ -1,8 +1,9 @@
 # braco - SEA:ME 2.0 arm class (myCobot 280 Jetson Nano). Two containers on each machine:
 #
 #   dev    the tools: shell, colcon build/test, talker/listener. Same image as the system of that machine.
-#   real   the system on the Jetson (COMPOSE_PROFILES=jetson): the real arm, its ROS 2 nodes and the web page
-#   sim    the system on the PC     (COMPOSE_PROFILES=pc):     the simulated arm and the web page
+#          On the PC also the web page (make web).
+#   real   the system on the Jetson (COMPOSE_PROFILES=jetson): the real arm and its ROS 2 nodes; make web adds the page
+#   sim    the system on the PC     (COMPOSE_PROFILES=pc):     the simulated arm, Gazebo (make up SIM=1)
 #
 # COMPOSE_PROFILES in .env is the machine, exactly `pc` or `jetson`: it enables `real` or `sim` and picks the image
 # of `dev` (braco-image/pc or braco-image/jetson). Run it through the root Makefile (make up, make down, ...), which builds the
@@ -10,7 +11,11 @@
 
 name: braco
 
-# ROS 2 networking. Both machines MUST use the same domain and the same RMW.
+# ROS 2 networking. Every machine uses the same RMW. Domains (.env):
+#   ROS_DOMAIN_ID     42  the real arm: `real` and the Jetson's `dev`
+#   PC_ROS_DOMAIN_ID  77  the PC: `sim` and the PC's `dev` (make passes it as DEV_ROS_DOMAIN_ID). Never the real
+#                         arm's: the simulation also publishes /joint_states. From the PC, reach the real arm with
+#                         ROS_DOMAIN_ID=42 ros2 ... (the --real scripts use --real-domain 42 by themselves).
 x-ros-env: &ros-env
   ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-42}
   RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}
@@ -55,11 +60,11 @@ x-ros-system: &ros-system
   <<: *ros-common
   stdin_open: false
   tty: false
-  stop_grace_period: 20s     # room for the page and the launch to shut down before Docker kills it
+  stop_grace_period: 20s     # room for the launch (and a page started by make web) to shut down before Docker kills it
 
 x-system-env: &system-env
   <<: *ros-env
-  WEB_PORT: ${WEB_PORT:-8000}             # the braco page: http://<machine>:8000
+  WEB_PORT: ${WEB_PORT:-8000}             # the braco page (make web): http://<machine>:8000
   GITHUB_TOKEN: ${GITHUB_TOKEN:-}         # optional, for the Sprints page
   GITHUB_REPO: ${GITHUB_REPO:-SEAME-pt/SEA-ME_Team2_braco}
 
@@ -83,7 +88,8 @@ services:
       target: ${COMPOSE_PROFILES:-pc}       # Dockerfile stages `pc` and `jetson`
       args: *build-args
     environment:
-      <<: *ros-env
+      <<: *system-env                       # ROS + the web page's settings: on the PC `make web` runs the page here
+      ROS_DOMAIN_ID: ${DEV_ROS_DOMAIN_ID:-${ROS_DOMAIN_ID:-42}}   # the PC's domain on the PC (set by make)
       DISPLAY: ${DISPLAY:-:0}
       CCACHE_MAXSIZE: ${CCACHE_MAXSIZE:-1G}  # the Nano's SD card; colcon itself is limited by the Makefile
     volumes:
@@ -103,7 +109,7 @@ services:
   #   temperature_monitor  servo temperatures -> /diagnostics + LCD1602
   #   joystick_teleop      joystick control; waits for the joystick and survives unplugging
   #   camera               the eye-in-hand USB camera -> /camera/image_raw/compressed; waits for it
-  #   braco web page       uvicorn on WEB_PORT (default 8000), talks to the arm only through ROS 2
+  # The braco web page is not started with it: `make web` adds it (uvicorn on WEB_PORT, talks to the arm through ROS 2).
   # The arm is not moved when the container starts or stops: zero/park are manual (make zero / park, make down PARK=1).
   # ---------------------------------------------------------------------------------------
   real:
@@ -144,8 +150,14 @@ services:
       - /dev:/run/hostdev
 
   # ---------------------------------------------------------------------------------------
-  # sim - the system on the PC: the same launch with sim:=true (the Gazebo arm, issues #34/#25) and the web page
-  # on top of it (ARM_SOURCE=gazebo). Uses the image and the workspace that `dev` built.
+  # sim - the system on the PC: the same launch with sim:=true (Gazebo, the braco_description model and the
+  # ros2_control controllers, #34); `make web` runs the page in `dev` with ARM_SOURCE=gazebo. Uses the image and
+  # the workspace that `dev` built.
+  #   ROS_DOMAIN_ID  PC_ROS_DOMAIN_ID (default 77), like the PC's dev, NOT the real arm's 42: both publish
+  #                  /joint_states, and on one domain the Jetson's clients would read the simulated angles as the
+  #                  real arm's.
+  #   GZ_PARTITION   keeps its Gazebo apart from one started by hand in `dev` (gazebo.launch.py)
+  #   SIM_GUI=true   opens the Gazebo window (make up runs xhost +local:); default: headless (make sim-gui, or the page: make web)
   # ---------------------------------------------------------------------------------------
   sim:
     <<: *ros-system
@@ -153,9 +165,11 @@ services:
     image: ${IMAGE_PREFIX:-braco-image}/pc:${IMAGE_TAG:-lyrical}
     environment:
       <<: *system-env
+      ROS_DOMAIN_ID: ${PC_ROS_DOMAIN_ID:-77}
+      GZ_PARTITION: braco-sim
       SIM: "true"
       DISPLAY: ${DISPLAY:-:0}
-    command: ["/ws/install/braco_bringup/lib/braco_bringup/arm_routine.sh"]
+    command: ["/ws/install/braco_bringup/lib/braco_bringup/arm_routine.sh", "gui:=${SIM_GUI:-false}"]
     volumes:
       - *vol-ws
       - *vol-repo

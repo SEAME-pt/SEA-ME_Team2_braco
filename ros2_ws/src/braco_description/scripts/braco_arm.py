@@ -120,11 +120,23 @@ class SimArm(_Arm):
                                    '/arm_controller/follow_joint_trajectory')
 
     def prepare(self):
-        if self.client.wait_for_server(timeout_sec=10.0):
-            return True
-        self.log.error('arm_controller not found on ROS domain %d: is gazebo.launch.py running '
-                       '(with the same ROS_DOMAIN_ID)?' % self.domain)
-        return False
+        if not self.client.wait_for_server(timeout_sec=10.0):
+            self.log.error('arm_controller not found on ROS domain %d: is gazebo.launch.py '
+                           'running (with the same ROS_DOMAIN_ID)?' % self.domain)
+            return False
+        # Two simulations on one domain fight: two /clock (time jumps back), the controllers of
+        # one loaded into the other, /joint_states from both. Moves then never "arrive".
+        # Each simulation has one /clock bridge (node names linger ~20 s after a crash: not those)
+        self.pause(1.0)
+        clocks = self.node.count_publishers('/clock')
+        if clocks > 1:
+            self.log.error('%d Gazebo simulations on ROS domain %d (%d /clock publishers): a '
+                           'second gazebo.launch.py, the sim container, or another PC on this '
+                           'network with the same domain. One per domain: stop the other, or '
+                           'export another ROS_DOMAIN_ID here and for its Gazebo'
+                           % (clocks, self.domain, clocks))
+            return False
+        return True
 
     def move(self, degrees, seconds):
         goal = FollowJointTrajectory.Goal()
@@ -150,9 +162,11 @@ class SimArm(_Arm):
             current = self.fresh_angles()
             if current and max(abs(c - t) for c, t in zip(current, degrees)) <= TOLERANCE_DEG:
                 return True
-        self.log.error('the arm did not reach the pose within %.0f s after the trajectory: '
-                       'too fast for the joint velocity limits? give the move more seconds'
-                       % SETTLE_TIMEOUT_S)
+        now_at = [round(a, 1) for a in self.angles] if self.angles else None
+        self.log.error('the arm did not reach the pose within %.0f s after the trajectory '
+                       '(target %s, at %s): too fast for the joint velocity limits (give the '
+                       'move more seconds), or blocked (ground, itself)'
+                       % (SETTLE_TIMEOUT_S, [round(d, 1) for d in degrees], now_at))
         return False
 
     def stop(self):
@@ -232,6 +246,10 @@ class RealArm(_Arm):
         Stops the arm and logs why if it gets no closer for STALL_S, loses its joint states,
         or takes longer than MOVE_TIMEOUT_S.
         """
+        # The driver frees the control after control_idle_s (5 s) without motion, e.g. while
+        # sim_to_real.py waits for an answer: take it again, or every command is ignored
+        if not self.take_control():
+            return False
         start = time.monotonic()
         end = start + MOVE_TIMEOUT_S
         next_send = 0.0

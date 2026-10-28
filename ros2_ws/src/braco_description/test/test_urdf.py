@@ -24,6 +24,7 @@ Processes braco.urdf.xacro and checks that
   * every mesh file, and every texture image a mesh points to, exists
   * the model's zero pose has not moved by accident (see ZERO_TOOL0)
   * gazebo:=true controls exactly joint1..joint6, and the plain model has no ros2_control
+  * config/controllers.yaml: arm_controller drives joint1..joint6
 """
 
 import math
@@ -138,6 +139,15 @@ def test_park_script_matches_mycobot_hpp():
     hpp = re.search(r'PARK_ANGLES = \{(.*?)\};', mycobot_source('mycobot.hpp'))
     assert hpp, 'PARK_ANGLES not found in mycobot.hpp'
     assert script == [float(v) for v in hpp.group(1).split(',')]
+
+
+def test_move_joint_limits_match_mycobot_hpp():
+    # scripts/move_joint.py refuses an angle the real arm would clamp.
+    with open(os.path.join(PACKAGE_DIR, 'scripts', 'move_joint.py'), encoding='utf-8') as f:
+        match = re.search(r'LIMITS_DEG = \[(.*?)\]\n', f.read())
+    assert match, 'LIMITS_DEG not found in scripts/move_joint.py'
+    pairs = re.findall(r'\(\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\)', match.group(1))
+    assert [(float(lo), float(hi)) for lo, hi in pairs] == hpp_limits('JOINT_LIMITS')
 
 
 def test_every_link_with_geometry_has_positive_mass_and_inertia():
@@ -282,3 +292,18 @@ def test_gazebo_model_controls_the_arm_joints():
     assert [j.get('name') for j in control.findall('joint')] == ARM_JOINTS
     params = robot.find('gazebo/plugin/parameters').text
     assert os.path.isfile(params), params
+
+
+def test_controllers_drive_the_arm_joints():
+    # config/controllers.yaml is the one set for the simulation and the real arm: arm_controller
+    # (the name MoveIt and the web page use) commands exactly the joints of <ros2_control>.
+    yaml = pytest.importorskip('yaml')
+    with open(os.path.join(PACKAGE_DIR, 'config', 'controllers.yaml'), encoding='utf-8') as f:
+        config = yaml.safe_load(f)
+    manager = config['controller_manager']['ros__parameters']
+    assert manager['arm_controller']['type'] == \
+        'joint_trajectory_controller/JointTrajectoryController'
+    assert 'joint_state_broadcaster' in manager
+    arm = config['arm_controller']['ros__parameters']
+    assert arm['joints'] == ARM_JOINTS
+    assert arm['command_interfaces'] == ['position']
