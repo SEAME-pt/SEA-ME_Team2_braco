@@ -26,7 +26,6 @@ namespace braco_bringup
 namespace
 {
 
-constexpr auto MOVE_TIMEOUT = 20s;
 constexpr auto ZERO_DRIVER_TIMEOUT = 60s;   // at boot arm_driver may still be starting
 constexpr auto PARK_DRIVER_TIMEOUT = 10s;
 
@@ -39,7 +38,7 @@ bool zero(ArmMoves & arm)
   arm.setRest(false);
   arm.powerOn();   // the joints may still be free from the last park
   if (arm.moveTo(
-      mycobot::ZERO_ANGLES, mycobot::MOVE_SPEED, mycobot::POSE_TOLERANCE_DEG, MOVE_TIMEOUT))
+      mycobot::ZERO_ANGLES, mycobot::MOVE_SPEED, mycobot::POSE_TOLERANCE_DEG, arm.timeouts().move))
   {
     RCLCPP_INFO(arm.get_logger(), "At zero");
     return true;
@@ -53,7 +52,7 @@ bool park(ArmMoves & arm)
   if (!arm.waitForDriver(PARK_DRIVER_TIMEOUT) || !arm.takeControl()) {return false;}
   arm.setRest(false);   // rest mode refuses the park move itself
   if (!arm.moveTo(
-      mycobot::PARK_ANGLES, mycobot::MOVE_SPEED, mycobot::POSE_TOLERANCE_DEG, MOVE_TIMEOUT))
+      mycobot::PARK_ANGLES, mycobot::MOVE_SPEED, mycobot::POSE_TOLERANCE_DEG, arm.timeouts().move))
   {
     RCLCPP_ERROR(arm.get_logger(), "Park position not reached - joints left locked");
     return false;

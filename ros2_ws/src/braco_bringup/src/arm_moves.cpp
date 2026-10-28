@@ -37,14 +37,13 @@ constexpr double STEP_DEG = 15.0;      // max lead of a target over the real ang
 constexpr auto RESEND = 100ms;         // well below the driver's 300 ms watchdog
 constexpr auto STATE_TIMEOUT = 500ms;  // older /joint_states = no feedback
 constexpr auto LOOP_PERIOD = 20ms;
-constexpr auto CALL_TIMEOUT = 5s;
 constexpr double RAD_TO_DEG = 180.0 / M_PI;
 constexpr const char * SOURCE = "script";   // ArmCommand.source and the control owner name
 
 }  // namespace
 
-ArmMoves::ArmMoves(const std::string & name)
-: rclcpp::Node(name)
+ArmMoves::ArmMoves(const std::string & name, Timeouts timeouts)
+: rclcpp::Node(name), timeouts_(timeouts)
 {
   joint_sub_ = create_subscription<sensor_msgs::msg::JointState>(
     "joint_states", 10, [this](const sensor_msgs::msg::JointState & msg) {onJoints(msg);});
@@ -93,7 +92,7 @@ bool ArmMoves::callTrigger(
   rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr client, const char * what)
 {
   auto future = client->async_send_request(std::make_shared<std_srvs::srv::Trigger::Request>());
-  if (executor_.spin_until_future_complete(future, CALL_TIMEOUT) !=
+  if (executor_.spin_until_future_complete(future, timeouts_.call) !=
     rclcpp::FutureReturnCode::SUCCESS)
   {
     RCLCPP_ERROR(get_logger(), "%s failed: timeout", what);
@@ -113,7 +112,7 @@ bool ArmMoves::takeControl()
   request->source = SOURCE;
   request->force = true;
   auto future = control_client_->async_send_request(request);
-  if (executor_.spin_until_future_complete(future, CALL_TIMEOUT) !=
+  if (executor_.spin_until_future_complete(future, timeouts_.call) !=
     rclcpp::FutureReturnCode::SUCCESS)
   {
     RCLCPP_ERROR(get_logger(), "take control failed: timeout");
@@ -137,7 +136,7 @@ void ArmMoves::releaseControl()
   request->source = SOURCE;
   request->release = true;
   auto future = control_client_->async_send_request(request);
-  if (executor_.spin_until_future_complete(future, CALL_TIMEOUT) !=
+  if (executor_.spin_until_future_complete(future, timeouts_.call) !=
     rclcpp::FutureReturnCode::SUCCESS)
   {
     RCLCPP_WARN(get_logger(), "release control: no answer (arm_driver frees it when idle)");
@@ -163,7 +162,7 @@ bool ArmMoves::setRest(bool on)
   auto request = std::make_shared<std_srvs::srv::SetBool::Request>();
   request->data = on;
   auto future = rest_client_->async_send_request(request);
-  if (executor_.spin_until_future_complete(future, CALL_TIMEOUT) !=
+  if (executor_.spin_until_future_complete(future, timeouts_.call) !=
     rclcpp::FutureReturnCode::SUCCESS)
   {
     RCLCPP_WARN(get_logger(), "rest mode not set: timeout");
