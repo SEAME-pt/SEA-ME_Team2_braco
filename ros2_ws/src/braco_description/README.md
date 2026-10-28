@@ -3,7 +3,7 @@
 Model of the myCobot 280 with the adaptive gripper and a camera mount, for the braco stack: links, joints,
 limits, meshes and the TF frames the rest of the system uses. Issue **#25**. The validation against the real
 arm (zero pose, joint directions, forward kinematics) and the open measurements are in
-[`docs/urdf-sim-to-real.md`](../../../docs/hardware/urdf-sim-to-real.md).
+[`docs/hardware/urdf-sim-to-real.md`](../../../docs/hardware/urdf-sim-to-real.md).
 
 | Folder | Content |
 |---|---|
@@ -36,7 +36,7 @@ arm (zero pose, joint directions, forward kinematics) and the open measurements 
 
 The controllers are `config/controllers.yaml`, the set planned for the real arm too: on the hardware only the
 `<hardware>` plugin of the URDF changes (planned: a braco `SystemInterface`), so MoveIt, the mission and the page see the same names.
-The validation of the model against the real arm is [`docs/urdf-sim-to-real.md`](../../../docs/hardware/urdf-sim-to-real.md).
+The validation of the model against the real arm is [`docs/hardware/urdf-sim-to-real.md`](../../../docs/hardware/urdf-sim-to-real.md).
 
 ## Run the simulation, step by step
 
@@ -167,7 +167,7 @@ xacro urdf/braco.urdf.xacro > /tmp/braco.urdf && check_urdf /tmp/braco.urdf
 - **Frames**: `world` is the table; `g_base` is the G-shape base plate the arm stands on; `tool0` is the flange (z out of it, REP-103); `tcp` is between the fingertips;
   `camera_optical_frame` has z forward, x right, y down (REP-103).
 - Values still **not measured** (velocity, effort, masses/inertia, camera mount, `tcp` length) are marked in the
-  xacro and listed in `docs/urdf-sim-to-real.md`.
+  xacro and listed in `docs/hardware/urdf-sim-to-real.md`.
 
 ## Origin of the model
 

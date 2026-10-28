@@ -14,7 +14,7 @@
 # limitations under the License.
 
 """
-Sim-to-real checks of issue #25 (docs/urdf-sim-to-real.md): Gazebo against the real arm.
+Sim-to-real checks of issue #25 (docs/hardware/urdf-sim-to-real.md): Gazebo against the real arm.
 
 Gazebo on this shell's ROS_DOMAIN_ID (e.g. 77), the real arm on --real-domain (default 42).
 
