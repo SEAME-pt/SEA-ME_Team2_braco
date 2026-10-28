@@ -56,7 +56,7 @@ public:
     std::set<std::string> silent;    // events recorded but never answered
   };
 
-  FakeDriver(const Angles & start, Options options)
+  FakeDriver(const Angles & start, const Options & options)
   : rclcpp::Node("fake_arm_driver"), angles_(start), options_(options)
   {
     using std_srvs::srv::SetBool;
@@ -191,7 +191,7 @@ protected:
 
   // Start the fake driver, spinning in its own thread, and the ArmMoves under test.
   void start(
-    const Angles & from, FakeDriver::Options options = {},
+    const Angles & from, const FakeDriver::Options & options = {},
     braco_bringup::Timeouts timeouts = {})
   {
     driver_ = std::make_shared<FakeDriver>(from, options);
