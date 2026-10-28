@@ -1,4 +1,4 @@
-# ROS 2 Cheat Sheet
+# ROS 2 Command Reference
 
 The commands for working with ROS 2 in braco, on one page.
 First time? Set up your machine: [dev-setup.md](../dev-setup.md).
