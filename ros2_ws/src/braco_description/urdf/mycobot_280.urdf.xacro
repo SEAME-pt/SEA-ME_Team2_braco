@@ -13,7 +13,7 @@
       properties below); test/test_urdf.py keeps them in sync
     * inertials added, velocity/effort set (see the UNMEASURED markers)
   Joint origins and mesh offsets are the vendor's, unchanged. Whether the model's zero pose
-  looks like the real arm's upright pose is checked on the real arm (docs/urdf-sim-to-real.md).
+  looks like the real arm's upright pose is checked on the real arm (docs/hardware/urdf-sim-to-real.md).
 -->
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
 
@@ -24,7 +24,7 @@
   <xacro:property name="limit_max" value="${[166.0, 138.0, 149.0, 149.0, 158.0, 178.0]}"/>
 
   <!-- Joint velocity limits, rad/s, J1..J6: MEASURED on the real arm at speed 100
-       (sim_to_real.py velocity, middle 80 % of a -A..+A sweep; docs/urdf-sim-to-real.md).
+       (sim_to_real.py velocity, middle 80 % of a -A..+A sweep; docs/hardware/urdf-sim-to-real.md).
        joint3 measured 2.79 average but 2.72 peak (a 0.6 s sweep at 20 Hz joint states):
        the lower one is used. The firmware speed setting scales linearly: rad/s = 0.0265 x speed. -->
   <xacro:property name="joint_velocity" value="${[2.64, 2.44, 2.72, 2.69, 2.65, 2.60]}"/>
@@ -35,7 +35,7 @@
        pose (J2 1.89, J3 1.15, J4 0.67, J5 0.57, with the camera plate), rounded up. J1 and J6 carry no gravity load and
        take their neighbour's value. Replace with stall torques if a datasheet turns up. -->
   <xacro:property name="joint_effort" value="${[1.9, 1.9, 1.2, 0.7, 0.6, 0.6]}"/>
-  <!-- Masses, kg. ESTIMATED from documented totals (no scale yet, see docs/urdf-sim-to-real.md):
+  <!-- Masses, kg. ESTIMATED from documented totals (no scale yet, see docs/hardware/urdf-sim-to-real.md):
        whole arm 1.03 kg (myCobot 280 Jetson Nano spec sheet); moving links 1..6 about 0.65 kg
        (the standard 280 is 850 g with a ~0.2 kg M5 base), split by mesh volume
        (21 / 35 / 27 / 3 / 12 / 2 %); base_link (Jetson casing) the rest. -->
