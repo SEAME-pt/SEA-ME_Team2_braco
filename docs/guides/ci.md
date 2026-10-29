@@ -18,6 +18,8 @@ the same commands, from the repo folder.
   `requirements-dev.txt` to the same venv.
 - shellcheck and hadolint need no install: without a local binary, `make lint` runs the images pinned in
   `SHELLCHECK_IMAGE` and `HADOLINT_IMAGE` through docker, so it never skips a check that CI runs.
+- `make lint`, `make format` and `make format-check` take their files from `git ls-files`: a new file is skipped
+  until it is `git add`ed. Add it first, or a check that passes locally can fail once the file is on the PR.
 - A PR that changes only files under `docs/` or `.md` files skips `ros` and `coverage` (a small `changes` job
   decides from `git diff`); a skipped job counts as passed for the required checks. `host` always runs, and pushes
   to `main` always run everything.
