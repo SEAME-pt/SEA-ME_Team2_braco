@@ -9,13 +9,14 @@
 #
 # No robot and no display needed.
 
-# The `ros` job builds the workspace in a throw-away container from the Dockerfile's `base` stage: everything the
-# packages depend on, without the GUI/Gazebo/MoveIt layers of the PC image. The image's user gets your UID/GID so
-# the bind-mounted ros2_ws stays writable (GitHub runners are UID 1001).
+# The `ros` job builds the workspace in a throw-away container from the Dockerfile's `ci` stage: `base` (everything
+# the packages depend on, without the GUI/Gazebo/MoveIt layers of the PC image) plus clang-tidy, gcovr and
+# pytest-cov. The image's user gets your UID/GID so the bind-mounted ros2_ws stays writable (GitHub runners are
+# UID 1001).
 # ci.yml builds the same image with docker/build-push-action (layer cache): keep its target and build-args in step.
 # CI caches ros2_ws/build, where test results live: delete the old ones first, or a removed test would still count.
 # colcon test exits 0 even when tests fail; colcon test-result is what fails the job.
-CI_TARGET ?= base
+CI_TARGET ?= ci
 CI_IMAGE  ?= $(IMAGE_PREFIX)/ci:$(IMAGE_TAG)
 CI_ROS_SH := set -e; rosdep update --rosdistro "$$ROS_DISTRO" >/dev/null 2>&1 || echo "rosdep update failed - using the rosdep cache from the image"; \
              sudo apt-get update -qq; rosdep install --from-paths $(WS_BASE_PATHS) --ignore-src -y; \
@@ -53,7 +54,7 @@ COV_FLAGS     := -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_FLAGS=--coverage -DCMAKE_CXX
                  -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
                  -DAMENT_CMAKE_PYTEST_WITH_COVERAGE=ON
 COV_PY    := --data-file=coverage/.coverage --omit="*/test/*,*/scripts/*"
-CI_COV_SH := set -eo pipefail; sudo apt-get update -qq; sudo apt-get install -y -qq gcovr python3-pytest-cov >/dev/null; \
+CI_COV_SH := set -eo pipefail; sudo apt-get update -qq; \
              rosdep install --from-paths $(WS_BASE_PATHS) --ignore-src -y >/dev/null; \
              colcon --log-base coverage/log build --base-paths $(WS_BASE_PATHS) --packages-up-to $(COVERAGE_PKGS) \
                  $(COV_DIRS) --cmake-args $(COV_FLAGS); \
@@ -91,16 +92,14 @@ CPPCHECK_FLAGS    := --enable=warning,style,performance,portability --std=c++17 
 CI_CPPCHECK_SH    := cppcheck $(CPPCHECK_FLAGS) -j"$$(nproc)" $(CPPCHECK_INCLUDES) $(WS_BASE_PATHS) && echo "cppcheck: clean"
 
 # tidy: clang-tidy (checks in ros2_ws/.clang-tidy) on the sources of ros2_ws/src, from the compile_commands.json that
-# ci-ros's build leaves in build/<pkg> (colcon-defaults.yaml exports it): run make ci-ros first. It is installed at run
-# time, like gcovr, so the image does not carry it. Generated code (braco_interfaces) lives in build/, not src/, and is
-# skipped. A package's failure does not stop the others; the exit status is the worst. Only the packages colcon finds
+# ci-ros's build leaves in build/<pkg> (colcon-defaults.yaml exports it): run make ci-ros first. Generated code
+# (braco_interfaces) lives in build/, not src/, and is skipped. A package's failure does not stop the others; the exit status is the worst. Only the packages colcon finds
 # in src/ are checked: build/ is restored from CI's cache, and colcon never deletes the build of a removed or renamed
 # package, whose compile_commands.json still lists sources that are gone.
 CI_TIDY_SH := dbs=""; for pkg in $$(colcon list --base-paths $(WS_BASE_PATHS) -n); do \
                 [ -f "build/$$pkg/compile_commands.json" ] && dbs="$$dbs build/$$pkg"; \
               done; \
               [ -n "$$dbs" ] || { echo "no build of $(WS_DIR)/src in $(WS_DIR)/build: run make ci-ros first" >&2; exit 1; }; \
-              sudo apt-get update -qq; sudo apt-get install -y -qq clang-tidy >/dev/null; \
               rc=0; for dir in $$dbs; do \
                 run-clang-tidy -quiet -p "$$dir" -j "$$(nproc)" "^/ws/src/" 2>/dev/null || rc=1; \
               done; exit $$rc
@@ -143,7 +142,7 @@ web-test: $(VENV)/.web-test-installed ## Web page tests (pytest web/tests) with 
 	$(VENV)/bin/python scripts/coverage_summary.py --coverage-py "Web (web/server)" coverage.json $(COV_MIN_WEB) \
 		>> $(STEP_SUMMARY); exit $$st
 
-ci-image: ## Build the `ros` CI job's image (Dockerfile stage CI_TARGET=base) as CI_IMAGE, for your UID/GID
+ci-image: ## Build the `ros` CI job's image (Dockerfile stage CI_TARGET=ci) as CI_IMAGE, for your UID/GID
 	@docker buildx version >/dev/null 2>&1 || { echo "$(BUILDX_MISSING)" >&2; exit 1; }
 	docker buildx build --load --target $(CI_TARGET) --build-arg USER_UID=$$(id -u) --build-arg USER_GID=$$(id -g) -t $(CI_IMAGE) $(DOCKER_DIR)
 
