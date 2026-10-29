@@ -6,8 +6,8 @@ Ubuntu 26.04 + ROS 2 Lyrical for the myCobot 280 Jetson Nano, in Docker.
 
 - **Each machine has two containers:** `dev` for the tools, and the braco system (`real` on the Jetson, `sim` on
   the PC).
-- **One `Dockerfile`, three stages:** `base` (ROS 2, ros2_control, pymycobot), then `pc` and `jetson` built on top
-  of it. So ROS is the same on both machines.
+- **One `Dockerfile`, four stages:** `base` (ROS 2, ros2_control, pymycobot), then `pc` and `jetson` built on top
+  of it. So ROS is the same on both machines. `ci` is `base` plus the CI-only tools, for the CI jobs.
 - **On each machine, `dev` and the system use the same image.** The system runs what `dev` built in `ros2_ws`.
 - **`COMPOSE_PROFILES` in `docker/.env` says which machine this is** (`pc` or `jetson`). It turns on `sim` or `real`
   and picks the image of `dev`.
@@ -27,7 +27,7 @@ Ubuntu 26.04 + ROS 2 Lyrical for the myCobot 280 Jetson Nano, in Docker.
 | `Makefile`, `mk/*.mk` (repo root) | Every command. Paths are defined once in `mk/config.mk` |
 | `docker/compose.yml` | The services `dev`, `real`, `sim` |
 | `docker/compose/nvidia.yml`, `dri.yml` | GPU overrides for the PC |
-| `docker/Dockerfile` | Stages `base`, `jetson`, `pc` |
+| `docker/Dockerfile` | Stages `base`, `jetson`, `pc`, `ci` |
 | `docker/.env.example` | Copied to `docker/.env` by `make setup` |
 | `docker/config/` | `colcon-defaults.yaml` |
 | `docker/scripts/` | Entrypoint, environment, smoke test, installers |
