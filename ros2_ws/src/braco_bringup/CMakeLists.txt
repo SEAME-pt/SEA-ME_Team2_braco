@@ -33,6 +33,8 @@ endforeach()
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
+  # ament_cppcheck skips every file with cppcheck >= 2.0; make cppcheck runs cppcheck directly instead
+  list(APPEND AMENT_LINT_AUTO_EXCLUDE ament_cmake_cppcheck)
   ament_lint_auto_find_test_dependencies()
 
   # ArmMoves and the zero/park routines against a fake arm_driver in the same process. Isolated:
