@@ -28,18 +28,7 @@ target_include_directories(mycobot_cpp PUBLIC
   $<INSTALL_INTERFACE:include/${PROJECT_NAME}>
 )
 
-# The stand-alone programs of the Makefile, built (not installed) here too, so CI compiles them and
-# make tidy sees them in compile_commands.json. Keep the list in step with PROGRAMS in the Makefile.
-set(TOOLS park zero joystick_all_joints joystick_display pid_tool temps_lcd)
-foreach(program ${TOOLS})
-  add_executable(${program} srcs/${program}.cpp)
-  target_compile_options(${program} PRIVATE -Wall -Wextra)
-  target_link_libraries(${program} mycobot_cpp)
-endforeach()
-
 install(DIRECTORY includes/ DESTINATION include/${PROJECT_NAME})
-# Test code, not part of the library: the fake arm on a pseudo-terminal, for other packages' tests.
-install(FILES test/pty_arm.hpp DESTINATION include/${PROJECT_NAME})
 install(TARGETS mycobot_cpp EXPORT export_${PROJECT_NAME}
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
@@ -47,6 +36,20 @@ install(TARGETS mycobot_cpp EXPORT export_${PROJECT_NAME}
 )
 
 if(BUILD_TESTING)
+  # The stand-alone programs of the Makefile, built (not installed) here too, so test_tools can run them
+  # and make tidy sees them in compile_commands.json. Only with tests: the Jetson build (BUILD_TESTING=OFF)
+  # does not need them. Keep the list in step with PROGRAMS in the Makefile.
+  set(TOOLS park zero joystick_all_joints joystick_display pid_tool temps_lcd)
+  foreach(program ${TOOLS})
+    add_executable(${program} srcs/${program}.cpp)
+    target_compile_options(${program} PRIVATE -Wall -Wextra)
+    target_link_libraries(${program} mycobot_cpp)
+  endforeach()
+
+  # Test code, not part of the library: the fake arm on a pseudo-terminal, for other packages' tests
+  # (built with BUILD_TESTING too, as colcon passes it to every package).
+  install(FILES test/pty_arm.hpp DESTINATION include/${PROJECT_NAME})
+
   # No hardware needed: test_mycobot opens no port, test_serial and test_tools talk to a pseudo-terminal
   # (test/pty_arm.hpp). No ament linters: the package is formatted with clang-format
   # (make format-check) instead of uncrustify.
