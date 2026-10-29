@@ -180,6 +180,8 @@ private:
 class ArmMovesTest : public ::testing::Test
 {
 protected:
+  using Options = FakeDriver::Options;
+
   static void SetUpTestSuite() {rclcpp::init(0, nullptr);}
   static void TearDownTestSuite() {rclcpp::shutdown();}
 
@@ -217,6 +219,14 @@ protected:
     return options;
   }
 
+  // Options with this one flag off, e.g. without(&Options::follow)
+  static Options without(bool Options::* flag)
+  {
+    Options options;
+    options.*flag = false;
+    return options;
+  }
+
   std::shared_ptr<FakeDriver> driver_;
   std::shared_ptr<rclcpp::executors::SingleThreadedExecutor> executor_;
   std::thread spinner_;
@@ -232,7 +242,7 @@ const braco_bringup::Timeouts SHORT{1s, 1s};
 
 TEST_F(ArmMovesTest, WaitForDriverFailsWithoutAngles)
 {
-  start(mycobot::ZERO_ANGLES, {false, true, true, true});
+  start(mycobot::ZERO_ANGLES, without(&Options::publish_joints));
   EXPECT_FALSE(arm_->waitForDriver(1s));
 }
 
@@ -250,7 +260,7 @@ TEST_F(ArmMovesTest, TakeControlIsForcedAsScript)
 
 TEST_F(ArmMovesTest, RefusedControlIsAFailure)
 {
-  start(mycobot::ZERO_ANGLES, {true, true, false, true});
+  start(mycobot::ZERO_ANGLES, without(&Options::grant_control));
   ASSERT_TRUE(arm_->waitForDriver(5s));
   EXPECT_FALSE(arm_->takeControl());
 }
@@ -323,7 +333,7 @@ TEST_F(ArmMovesTest, RefusedCallsReturnFalse)
 
 TEST_F(ArmMovesTest, MissingRestServiceIsNotFatal)
 {
-  start(mycobot::ZERO_ANGLES, {true, true, true, false});
+  start(mycobot::ZERO_ANGLES, without(&Options::rest_service));
   ASSERT_TRUE(arm_->waitForDriver(5s));
   EXPECT_FALSE(arm_->setRest(true));
 }
@@ -360,7 +370,7 @@ TEST_F(ArmMovesTest, MoveToAlreadyThereSendsNothing)
 
 TEST_F(ArmMovesTest, MoveToTimeoutStopsTheArm)
 {
-  start({60, 0, 0, 0, 0, 0}, {true, false, true, true});   // the arm never moves
+  start({60, 0, 0, 0, 0, 0}, without(&Options::follow));   // the arm never moves
   ASSERT_TRUE(arm_->waitForDriver(5s));
   EXPECT_FALSE(arm_->moveTo(mycobot::ZERO_ANGLES, 30, 2.0, 1s));
   arm_->wait(200ms);
@@ -371,7 +381,7 @@ TEST_F(ArmMovesTest, MoveToTimeoutStopsTheArm)
 
 TEST_F(ArmMovesTest, MoveToWithoutFeedbackStopsTheArm)
 {
-  start(mycobot::ZERO_ANGLES, {false, true, true, true});
+  start(mycobot::ZERO_ANGLES, without(&Options::publish_joints));
   EXPECT_FALSE(arm_->moveTo(mycobot::PARK_ANGLES, 30, 2.0, 1s));
   arm_->wait(200ms);
   EXPECT_NE(indexOf("stop"), -1);
@@ -404,7 +414,7 @@ TEST_F(ArmMovesTest, ParkMovesThenReleasesThenRests)
 
 TEST_F(ArmMovesTest, RoutinesStopWhenControlIsRefused)
 {
-  start(mycobot::ZERO_ANGLES, {true, true, false, true});
+  start(mycobot::ZERO_ANGLES, without(&Options::grant_control));
   EXPECT_FALSE(braco_bringup::park(*arm_));
   EXPECT_FALSE(braco_bringup::zero(*arm_));
   EXPECT_EQ(
@@ -415,7 +425,7 @@ TEST_F(ArmMovesTest, RoutinesStopWhenControlIsRefused)
 
 TEST_F(ArmMovesTest, ZeroStopsWhenThePoseIsNotReached)
 {
-  start({20, 10, -10, 0, 0, 0}, {true, false, true, true}, SHORT);   // the arm never moves
+  start({20, 10, -10, 0, 0, 0}, without(&Options::follow), SHORT);   // the arm never moves
   EXPECT_FALSE(braco_bringup::zero(*arm_));
   arm_->wait(200ms);
   EXPECT_NE(indexOf("stop"), -1);
@@ -423,7 +433,7 @@ TEST_F(ArmMovesTest, ZeroStopsWhenThePoseIsNotReached)
 
 TEST_F(ArmMovesTest, ParkLeavesTheJointsLockedWhenNotReached)
 {
-  start(mycobot::ZERO_ANGLES, {true, false, true, true}, SHORT);
+  start(mycobot::ZERO_ANGLES, without(&Options::follow), SHORT);
   EXPECT_FALSE(braco_bringup::park(*arm_));
   arm_->wait(200ms);
   EXPECT_NE(indexOf("stop"), -1);
