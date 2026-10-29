@@ -1,0 +1,4 @@
+# On top of ros2_ws/.clang-tidy. unchecked-optional-access is off: the tests check an optional with
+# ASSERT_TRUE(x.has_value()) before *x, and clang-tidy does not see that a failed ASSERT_* returns.
+InheritParentConfig: true
+Checks: -bugprone-unchecked-optional-access

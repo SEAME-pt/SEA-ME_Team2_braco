@@ -1,6 +1,7 @@
 # CMakeLists.txt - builds the shared classes as the ROS 2 package `mycobot_cpp`
 # (colcon finds it through package.xml). The Makefile next to it still builds
-# the stand-alone programs; this file only builds the library they share.
+# and is the way to get the stand-alone programs; this file installs only the
+# library they share.
 #
 # Other packages use it with:
 #   find_package(mycobot_cpp REQUIRED)
@@ -33,6 +34,44 @@ install(TARGETS mycobot_cpp EXPORT export_${PROJECT_NAME}
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin
 )
+
+if(BUILD_TESTING)
+  # The stand-alone programs of the Makefile, built (not installed) here too, so test_tools can run them
+  # and make tidy sees them in compile_commands.json. Only with tests: the Jetson build (BUILD_TESTING=OFF)
+  # does not need them. Keep the list in step with PROGRAMS in the Makefile.
+  set(TOOLS park zero joystick_all_joints joystick_display pid_tool temps_lcd)
+  foreach(program ${TOOLS})
+    add_executable(${program} srcs/${program}.cpp)
+    target_compile_options(${program} PRIVATE -Wall -Wextra)
+    target_link_libraries(${program} mycobot_cpp)
+  endforeach()
+
+  # Test code, not part of the library: the fake arm on a pseudo-terminal, for other packages' tests
+  # (built with BUILD_TESTING too, as colcon passes it to every package).
+  install(FILES test/pty_arm.hpp DESTINATION include/${PROJECT_NAME})
+
+  # No hardware needed: test_mycobot opens no port, test_serial and test_tools talk to a pseudo-terminal
+  # (test/pty_arm.hpp). No ament linters: the package is formatted with clang-format
+  # (make format-check) instead of uncrustify.
+  find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(test_mycobot test/test_mycobot.cpp)
+  target_link_libraries(test_mycobot mycobot_cpp)
+  ament_add_gtest(test_serial test/test_serial.cpp TIMEOUT 120)
+  target_link_libraries(test_serial mycobot_cpp util)
+  # The displays and the joystick without their devices: stdout on a pseudo-terminal, the LCD's I2C
+  # bus on a file (with its own ioctl(), hence dl), the joystick on a FIFO.
+  ament_add_gtest(test_display test/test_display.cpp)
+  target_link_libraries(test_display mycobot_cpp util)
+  ament_add_gtest(test_lcd_display test/test_lcd_display.cpp)
+  target_link_libraries(test_lcd_display mycobot_cpp ${CMAKE_DL_LIBS})
+  ament_add_gtest(test_joystick test/test_joystick.cpp)
+  target_link_libraries(test_joystick mycobot_cpp)
+  # Runs the stand-alone programs themselves (built next to each other, in TOOLS_DIR).
+  ament_add_gtest(test_tools test/test_tools.cpp TIMEOUT 300)
+  target_link_libraries(test_tools mycobot_cpp util)
+  target_compile_definitions(test_tools PRIVATE TOOLS_DIR="$<TARGET_FILE_DIR:park>")
+  add_dependencies(test_tools ${TOOLS})
+endif()
 
 ament_export_targets(export_${PROJECT_NAME} HAS_LIBRARY_TARGET)
 ament_package()

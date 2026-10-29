@@ -35,6 +35,7 @@ Everything runs in Docker, so you only install Docker, `make` and `git`. You run
 7. **Start:** `make up`
    - The first time it builds the image: tens of minutes.
 8. **Check:** `make net-test` must print `PASS`.
+9. **Before your first PR:** `make ci` runs the CI `host` checks locally. All the jobs: [ci.md](ci.md).
 
 ## Jetson
 

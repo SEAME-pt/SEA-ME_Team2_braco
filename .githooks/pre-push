@@ -10,11 +10,11 @@ RESET='\033[0m'
 PATH="$(git rev-parse --show-toplevel)/.venv/bin:$PATH"
 
 for tool in clang-format ruff; do
-    command -v "$tool" >/dev/null || { printf "${RED}ERROR:${RESET} '%s' not installed. Run: ${YELLOW}make setup${RESET}\n" "$tool"; exit 1; }
+    command -v "$tool" >/dev/null || { printf "%bERROR:%b '%s' not installed. Run: %bmake setup%b\n" "$RED" "$RESET" "$tool" "$YELLOW" "$RESET"; exit 1; }
 done
 
 if ! make -s format-check; then
-    printf "${RED}ERROR:${RESET} formatting errors found, push aborted.\n"
-    printf "  Fix with: ${YELLOW}make format${RESET}\n"
+    printf "%bERROR:%b formatting errors found, push aborted.\n" "$RED" "$RESET"
+    printf "  Fix with: %bmake format%b\n" "$YELLOW" "$RESET"
     exit 1
 fi

@@ -2,6 +2,10 @@
 
 The nodes that sit next to the hardware of the real arm. Built on `mycobot_cpp` (`../mycobot_cpp`).
 
+Both nodes are classes in `include/braco_driver/` (`arm_driver.hpp`, `temperature_monitor.hpp`), built into the static
+library `braco_driver_nodes`, so the tests can run them in-process; `src/arm_driver.cpp` and
+`src/temperature_monitor.cpp` only hold `main()`.
+
 ## arm_driver
 
 The **only** process that opens the myCobot 280 serial port (`/dev/ttyTHS1`, 1 Mbaud). Every other node, the
