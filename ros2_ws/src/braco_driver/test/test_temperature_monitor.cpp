@@ -263,9 +263,15 @@ TEST_F(TemperatureMonitorTest, RefusedRestModeIsAskedAgain)
   offerRest(false);
   send({35, 35, 35, 70, 35, 35});
   ASSERT_TRUE(waitUntil([this] {return restCalls() == 1;}));
-  std::this_thread::sleep_for(100ms);   // the answer re-arms the episode
-  send({35, 35, 35, 70, 35, 35});
-  EXPECT_TRUE(waitUntil([this] {return restCalls() == 2;}));
+  // Hot readings until the refused answer has re-armed the episode: the ones before it are
+  // still the first episode and ask nothing; without the re-arm, none ever asks again.
+  // Every answer is refused and re-arms, so >= 2.
+  EXPECT_TRUE(
+    waitUntil(
+      [this] {
+        send({35, 35, 35, 70, 35, 35});
+        return restCalls() >= 2;
+      }));
 }
 
 TEST_F(TemperatureMonitorTest, ParkRunsThenRestModeIsConfirmed)
