@@ -1,6 +1,6 @@
 // pty_arm.hpp - a fake myCobot 280 on a pseudo-terminal, for tests. Header-only, test code: it is
-// installed with the package (other packages' tests use it) but is not part of the library, and it
-// lives in test/ so coverage does not measure it. Link `util` for openpty().
+// installed with the package when tests are built (other packages' tests use it) but is not part
+// of the library, and it lives in test/ so coverage does not measure it. Link `util` for openpty().
 //
 // The test holds the master side; MyCobot280, or a program started by the test, opens path().
 // Two ways to use it, not both at once:

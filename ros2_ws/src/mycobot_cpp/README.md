@@ -38,5 +38,6 @@ Their devices can be changed with environment variables (the tests point them at
 | `MYCOBOT_LCD_BUS` | `/dev/i2c-0` | `temps_lcd` |
 
 **Tests** (`test/`, run by `make test` and `make coverage`): `test_serial` and `test_tools` use `PtyArm`
-(`test/pty_arm.hpp`), a fake arm on a pseudo-terminal that answers like the real one. It is installed with the
-headers, so other packages' tests can use it too: `#include "pty_arm.hpp"` and link `util`.
+(`test/pty_arm.hpp`), a fake arm on a pseudo-terminal that answers like the real one. When tests are built (not on
+the Jetson) it is installed with the headers, so other packages' tests can use it too: `#include "pty_arm.hpp"` and
+link `util`.
