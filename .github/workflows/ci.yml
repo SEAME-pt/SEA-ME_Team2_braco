@@ -1,8 +1,11 @@
-# CI for every PR and every push to main (issue #16). Both jobs call the Makefile, so a failure can be
-# reproduced locally with the same command:
+# CI for every PR and every push to main (issue #16). Every job calls the Makefile, so a failure can be
+# reproduced locally with the same command. A PR that changes only docs/ and .md files skips ros and coverage.
 #
-#   host  make ci        (lint, web page tests; no robot, no docker image)
+#   host  make ci        (lint, web page tests with coverage; no robot, no docker image)
 #   ros   make ci-ros    (rosdep, colcon build, colcon test of ros2_ws/src)
+#         make cppcheck  (cppcheck on the C++ packages, same image)
+#         make tidy      (clang-tidy on the C++ packages, from the ci-ros build)
+#   coverage  make coverage  (GoogleTests with gcovr, pytests with pytest-cov; same image as ros)
 #
 # The Jetson (arm64) image is not built here: a QEMU build is too slow, use make jetson-image by hand.
 name: CI
@@ -22,14 +25,42 @@ permissions:
   contents: read
 
 jobs:
+  # code=false when every file a PR changes is under docs/ or a .md: ros and coverage are then skipped, which a
+  # required check counts as passed. Pushes to main and manual runs always build. If this job fails, code is empty and
+  # both run anyway. --no-renames lists both paths of a rename, so moving code into docs/ still builds.
+  changes:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        if: github.event_name == 'pull_request'
+        with:
+          fetch-depth: 0
+
+      - id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          code=true
+          if [ "$EVENT" = pull_request ]; then
+            files=$(git diff --name-only --no-renames "$BASE...$HEAD")
+            printf '%s\n' "$files"
+            if [ -n "$files" ] && ! printf '%s\n' "$files" | grep -qvE '^docs/|\.md$'; then code=false; fi
+          fi
+          echo "code=$code" | tee -a "$GITHUB_OUTPUT"
+
   host:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
       - id: py
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.11"
           cache: pip
@@ -40,17 +71,29 @@ jobs:
       # shellcheck and hadolint need no install step: without a local binary, make lint runs the images pinned in
       # SHELLCHECK_IMAGE and HADOLINT_IMAGE (Makefile) through docker.
 
+      # make ci, one step per part so the failing one is named; each runs even when an earlier one failed. The first
+      # creates .venv with this Python, the others reuse it.
+      - name: make format-check
+        run: make format-check PYTHON=${{ steps.py.outputs.python-path }}
+
       # Also creates docker/.env as every user gets it: lint validates the compose files against it.
-      - name: make ci
-        run: make ci PYTHON=${{ steps.py.outputs.python-path }}
+      - name: make lint
+        if: ${{ !cancelled() }}
+        run: make lint PYTHON=${{ steps.py.outputs.python-path }}
+
+      - name: make web-test
+        if: ${{ !cancelled() }}
+        run: make web-test PYTHON=${{ steps.py.outputs.python-path }}
 
   ros:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
       CI_IMAGE: braco-image/ci:lyrical
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
       # The image's `dev` user gets the runner's UID/GID (1001 on GitHub), so the bind-mounted ros2_ws is writable.
       - id: ids
@@ -58,26 +101,31 @@ jobs:
           echo "uid=$(id -u)" >> "$GITHUB_OUTPUT"
           echo "gid=$(id -g)" >> "$GITHUB_OUTPUT"
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
 
       # Same image as `make ci-image` (keep target and build-args in step with CI_TARGET there), but with the
-      # BuildKit layers cached in GitHub's cache between runs.
-      - name: Build the CI image (Dockerfile stage base)
-        uses: docker/build-push-action@v6
+      # BuildKit layers cached in GitHub's cache between runs. Only pushes to main export them: a PR can read main's
+      # cache but no other PR's, so PR exports only filled the 10 GB repo cache and evicted main's. A PR that changes
+      # the Dockerfile rebuilds its changed layers on each push until it merges.
+      - name: Build the CI image (Dockerfile stage ci)
+        id: image
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: docker
-          target: base
+          target: ci
           load: true
           tags: ${{ env.CI_IMAGE }}
           build-args: |
             USER_UID=${{ steps.ids.outputs.uid }}
             USER_GID=${{ steps.ids.outputs.gid }}
           cache-from: type=gha,scope=ci-base
-          cache-to: type=gha,scope=ci-base,mode=max
+          cache-to: ${{ github.event_name == 'push' && 'type=gha,scope=ci-base,mode=max' || '' }}
 
       # ccache and colcon's build/ make warm runs incremental. The key changes with the image definition,
-      # so a new toolchain never reuses an old CMake cache.
-      - uses: actions/cache@v4
+      # so a new toolchain never reuses an old CMake cache. Restored on every run, saved (last step) only on pushes to
+      # main, for the same reason as the image layers.
+      - id: colcon-cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
             ros2_ws/.ccache
@@ -87,3 +135,98 @@ jobs:
 
       - name: make ci-ros
         run: make ci-ros CI_IMAGE=${{ env.CI_IMAGE }}
+
+      # JUnit XML of every gtest, pytest and linter, also (above all) when a test failed. ci-ros deletes the old
+      # results first, so the cached build/ never adds those of a removed test.
+      - name: Upload test results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: test-results
+          path: ros2_ws/build/*/test_results/
+          if-no-files-found: warn
+          retention-days: 14
+
+      # Static analysis needs only the image, not the build: it also runs when a test failed, so one red step never
+      # hides the other.
+      - name: make cppcheck
+        if: ${{ !cancelled() && steps.image.outcome == 'success' }}
+        run: make cppcheck CI_IMAGE=${{ env.CI_IMAGE }}
+
+      # clang-tidy reads the compile_commands.json of make ci-ros's build, so it also runs when a test failed (the build
+      # is there); after a failed build it stops at the missing database or reports the compile errors.
+      - name: make tidy
+        if: ${{ !cancelled() && steps.image.outcome == 'success' }}
+        run: make tidy CI_IMAGE=${{ env.CI_IMAGE }}
+
+      # Only when every step passed, as actions/cache did: a failed build is never the next run's starting point.
+      - name: Save the colcon cache
+        if: github.event_name == 'push'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ros2_ws/.ccache
+            ros2_ws/build
+          key: ${{ steps.colcon-cache.outputs.cache-primary-key }}
+
+  # A Debug build with --coverage in ros2_ws/coverage/, which shares nothing with ros's build/: as its own job it runs
+  # alongside ros instead of after it, and a branch protection rule can require it by name.
+  coverage:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      CI_IMAGE: braco-image/ci:lyrical
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      - id: ids
+        run: |
+          echo "uid=$(id -u)" >> "$GITHUB_OUTPUT"
+          echo "gid=$(id -g)" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
+      # The ros job's image and layer cache. Only ros writes the cache back: two jobs exporting the same scope at
+      # the same time would only race to store the same layers.
+      - name: Build the CI image (Dockerfile stage ci)
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: docker
+          target: ci
+          load: true
+          tags: ${{ env.CI_IMAGE }}
+          build-args: |
+            USER_UID=${{ steps.ids.outputs.uid }}
+            USER_GID=${{ steps.ids.outputs.gid }}
+          cache-from: type=gha,scope=ci-base
+
+      # Its own ccache: the --coverage objects never match ros's. The build tree is not cached; make coverage
+      # deletes the old counters, but a fresh tree is the simpler guarantee. Saved only on pushes to main, like ros's.
+      - id: coverage-cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ros2_ws/.ccache
+          key: coverage-${{ hashFiles('docker/Dockerfile', 'docker/config/**', 'docker/scripts/**') }}-${{ github.sha }}
+          restore-keys: coverage-${{ hashFiles('docker/Dockerfile', 'docker/config/**', 'docker/scripts/**') }}-
+
+      - name: make coverage
+        run: make coverage CI_IMAGE=${{ env.CI_IMAGE }}
+
+      # gcovr's HTML report, per file and line. Also uploaded when a test failed, if gcovr got that far.
+      - name: Upload the coverage report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: coverage
+          path: ros2_ws/coverage/html/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Save the coverage ccache
+        if: github.event_name == 'push'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ros2_ws/.ccache
+          key: ${{ steps.coverage-cache.outputs.cache-primary-key }}

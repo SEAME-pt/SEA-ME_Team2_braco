@@ -66,14 +66,14 @@ int main() {
 
     try {
         // 1. LCD: never throws, check ok() instead
-        ui::LcdDisplay lcd;
+        ui::LcdDisplay lcd(mycobot::envOr("MYCOBOT_LCD_BUS", ui::LcdDisplay::DEFAULT_BUS));
         if (!lcd.ok()) {
             std::printf("LCD not available (%s) - showing temperatures here only\n",
                         lcd.error().c_str());
         }
 
         // 2. Arm: throws if the serial port cannot be opened
-        mycobot::MyCobot280 mc;
+        mycobot::MyCobot280 mc(mycobot::envOr("MYCOBOT_PORT", mycobot::MyCobot280::DEFAULT_PORT));
         std::this_thread::sleep_for(std::chrono::seconds(1));
         std::printf("Reading servo temperatures every %lld s. Ctrl+C quits.\n\n",
                     static_cast<long long>(TEMP_PERIOD.count()));

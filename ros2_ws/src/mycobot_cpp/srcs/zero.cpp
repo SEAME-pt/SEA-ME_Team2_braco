@@ -32,7 +32,7 @@ void printAngles(const char* label, const std::optional<mycobot::Angles>& angles
 
 int main() {
     try {
-        mycobot::MyCobot280 mc;  // /dev/ttyTHS1 at 1000000 baud
+        mycobot::MyCobot280 mc(mycobot::envOr("MYCOBOT_PORT", mycobot::MyCobot280::DEFAULT_PORT));
         std::this_thread::sleep_for(1s);
 
         printAngles("Before:", mc.getAngles());

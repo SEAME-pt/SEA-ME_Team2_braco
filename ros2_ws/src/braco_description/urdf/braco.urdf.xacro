@@ -9,7 +9,7 @@
                                                                                   -> camera_optical_frame
 
   Offsets marked MEASURE are not measured yet: they are zero or a rough value until someone
-  puts calipers on the real hardware (docs/urdf-sim-to-real.md, "Open items").
+  puts calipers on the real hardware (docs/hardware/urdf-sim-to-real.md, "Open items").
 
   Arguments:
     gripper_actuated  false (default): fingers fixed open, the real driver publishes no gripper state
@@ -50,7 +50,7 @@
        middle of the closed fingertips. -->
   <xacro:property name="tcp_length" value="0.130"/>
 
-  <!-- Camera: Elephant Robotics' camera flange (in the arm's box, docs/inventory), a 83 x 34 mm
+  <!-- Camera: Elephant Robotics' camera flange (in the arm's box, docs/hardware/inventory), a 83 x 34 mm
        plate, 16 mm thick with the camera module. Its LEGO hole grid goes on the flange's and the
        gripper pins onto the same holes on its front face: flange -> camera plate -> gripper. The
        lens is at the other end of the plate, on the gripper side. Mesh and mount from the vendor

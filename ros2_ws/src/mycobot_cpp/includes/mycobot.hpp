@@ -75,6 +75,11 @@ constexpr double TABLE_MARGIN_MM = 20.0;    // lowest point must stay above this
 // sideways size of the gripper are not modelled.
 double minHeightMm(const Angles& angles);
 
+// The environment variable `name` if it is set and not empty, else `fallback`. The stand-alone
+// programs take their devices this way (MYCOBOT_PORT, MYCOBOT_JOYSTICK, MYCOBOT_LCD_BUS), so tests
+// can point them at a pseudo-terminal or a FIFO.
+std::string envOr(const char* name, const std::string& fallback);
+
 // Command codes, taken from pymycobot's ProtocolCode.
 // Verify against your installed version:
 //   grep -nE "= 0x" ~/.local/lib/python3.8/site-packages/pymycobot/common.py
@@ -247,7 +252,7 @@ private:
     std::optional<Angles> lastAngles_;  // last angles read or commanded
 
     // Clamp one angle to JOINT_LIMITS of `joint` (1..6); sets `clamped`.
-    double limitAngle(int joint, double angle, bool& clamped) const;
+    static double limitAngle(int joint, double angle, bool& clamped);
 
     // Build a frame and write it to the port.
     void sendCommand(uint8_t cmd, const std::vector<uint8_t>& data = {});

@@ -17,36 +17,9 @@
 // ROS 2 version of mycobot_cpp/srcs/zero.cpp: goes through arm_driver instead of opening the
 // serial port. Same pose (mycobot::ZERO_ANGLES) and speed. Run by hand with `make zero`.
 
-#include "braco_bringup/arm_moves.hpp"
-#include "mycobot.hpp"
-
-using namespace std::chrono_literals;
-
-namespace
-{
-
-constexpr auto TIMEOUT = 20s;
-constexpr auto DRIVER_TIMEOUT = 60s;   // at boot arm_driver may still be starting
-
-bool zero(braco_bringup::ArmMoves & arm)
-{
-  if (!arm.waitForDriver(DRIVER_TIMEOUT) || !arm.takeControl()) {return false;}
-  // Leave rest mode (set by park), otherwise power_on and the move are refused.
-  arm.setRest(false);
-  arm.powerOn();   // the joints may still be free from the last park
-  if (arm.moveTo(
-      mycobot::ZERO_ANGLES, mycobot::MOVE_SPEED, mycobot::POSE_TOLERANCE_DEG, TIMEOUT))
-  {
-    RCLCPP_INFO(arm.get_logger(), "At zero");
-    return true;
-  }
-  RCLCPP_ERROR(arm.get_logger(), "Zero position not reached - arm stopped");
-  return false;
-}
-
-}  // namespace
+#include "braco_bringup/routines.hpp"
 
 int main(int argc, char ** argv)
 {
-  return braco_bringup::run(argc, argv, "arm_zero", zero);
+  return braco_bringup::run(argc, argv, "arm_zero", braco_bringup::zero);
 }

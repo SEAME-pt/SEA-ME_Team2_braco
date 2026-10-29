@@ -14,6 +14,7 @@ os.environ['ARM_MOCK'] = '1'  # before importing the app: the mock, never ROS or
 os.environ['BRACO_ROS'] = '0'  # and never start ROS 2, even where it is installed
 
 from fastapi.testclient import TestClient  # noqa: E402
+from starlette.websockets import WebSocketDisconnect  # noqa: E402
 
 from web.server import app as app_module  # noqa: E402
 from web.server import arm, camera, docs, github, role, ros  # noqa: E402
@@ -614,8 +615,9 @@ def hello(ws, cid, name, page='arm'):
 def test_ws_needs_hello(client):
     with client.websocket_connect('/ws') as ws:
         ws.send_json({'type': 'nope'})
-        with pytest.raises(Exception):
+        with pytest.raises(WebSocketDisconnect) as closed:
             ws.receive_json()
+        assert closed.value.code == 4400
 
 
 def test_ws_welcome_presence_and_telemetry(client):
@@ -704,7 +706,7 @@ def test_speed_is_shared_capped_and_operator_only(client):
     A, B = {'X-Client-Id': 't-eva'}, {'X-Client-Id': 't-fabio'}
     with client.websocket_connect('/ws') as wa, client.websocket_connect('/ws') as wb:
         hello(wa, 't-eva', 'Eva')
-        welcome_b = hello(wb, 't-fabio', 'Fabio')
+        hello(wb, 't-fabio', 'Fabio')
         assert next_of(wb, 'speed')['limit'] == 80
         try:
             # nobody in control, or a viewer: locked

@@ -75,12 +75,12 @@ world -> g_base -> base_link -> link1 -> link2 -> link3 -> link4 -> link5 -> lin
   the flange's hole grid.
 - `tcp`: on the z axis of `tool0`, at `tcp_length` = 0.130 m (from `TOOL_LENGTH_MM`: flange to the tip of the closed
   gripper with camera). **Placeholder**: measure to the middle of the fingertips.
-- `camera_mount`: the camera plate, Elephant Robotics' **camera flange** (in the arm's box, `docs/inventory`), an
+- `camera_mount`: the camera plate, Elephant Robotics' **camera flange** (in the arm's box, `docs/hardware/inventory`), an
   83 × 34 mm plate, 16 mm thick with the USB camera. Its LEGO hole grid goes on the flange's, and the gripper pins onto
   the same holes on its front face: **flange → camera plate → gripper** (the gripper is 16.3 mm further out than on a
   bare flange). Mesh and mount are the vendor's (`mycobot_280_pi/camera_flange.dae`,
   `mycobot_280_pi_with_camera_flange.urdf`); its direction (`tool0` +x) matches the real arm's front and back photos at
-  the zero pose (`camera_flange` photos in `docs/inventory`).
+  the zero pose (`camera_flange` photos in `docs/hardware/inventory`).
 - `camera_link`: on the lens, from the vendor mesh: **(41.5, 0, 12) mm in `tool0`**, looking along `tool0` +z like the
   gripper (`camera_link` x = `tool0` z, REP-103). The roll of the image about the viewing axis is not known from the
   model: the hand-eye calibration sets it.

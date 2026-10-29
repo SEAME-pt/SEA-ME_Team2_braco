@@ -6,8 +6,8 @@ Ubuntu 26.04 + ROS 2 Lyrical for the myCobot 280 Jetson Nano, in Docker.
 
 - **Each machine has two containers:** `dev` for the tools, and the braco system (`real` on the Jetson, `sim` on
   the PC).
-- **One `Dockerfile`, three stages:** `base` (ROS 2, ros2_control, pymycobot), then `pc` and `jetson` built on top
-  of it. So ROS is the same on both machines.
+- **One `Dockerfile`, four stages:** `base` (ROS 2, ros2_control, pymycobot), then `pc` and `jetson` built on top
+  of it. So ROS is the same on both machines. `ci` is `base` plus the CI-only tools, for the CI jobs.
 - **On each machine, `dev` and the system use the same image.** The system runs what `dev` built in `ros2_ws`.
 - **`COMPOSE_PROFILES` in `docker/.env` says which machine this is** (`pc` or `jetson`). It turns on `sim` or `real`
   and picks the image of `dev`.
@@ -27,7 +27,7 @@ Ubuntu 26.04 + ROS 2 Lyrical for the myCobot 280 Jetson Nano, in Docker.
 | `Makefile`, `mk/*.mk` (repo root) | Every command. Paths are defined once in `mk/config.mk` |
 | `docker/compose.yml` | The services `dev`, `real`, `sim` |
 | `docker/compose/nvidia.yml`, `dri.yml` | GPU overrides for the PC |
-| `docker/Dockerfile` | Stages `base`, `jetson`, `pc` |
+| `docker/Dockerfile` | Stages `base`, `jetson`, `pc`, `ci` |
 | `docker/.env.example` | Copied to `docker/.env` by `make setup` |
 | `docker/config/` | `colcon-defaults.yaml` |
 | `docker/scripts/` | Entrypoint, environment, smoke test, installers |
@@ -80,7 +80,7 @@ docker compose exec dev bash            # ROS ready
 | Development | `shell`, `run CMD='...'`, `build` (`COLCON_ARGS=...`), `test`, `sim-gui`, `clean` |
 | Setup | `setup`, `role`, `doctor`, `image` (`IMAGE_ARGS='--no-cache --pull'`), `boot-on`, `boot-off`, `jetson-image` (`NANO=user@host`), `re`, `fclean` |
 | Network | `net-test`, `net-talk`, `net-listen` |
-| CI | `ci`, `ci-image`, `ci-ros`, `lint`, `format`, `format-check` |
+| CI | `ci`, `web-test`, `ci-image`, `ci-ros`, `cppcheck`, `tidy`, `coverage`, `lint`, `format`, `format-check` ([CI guide](../docs/guides/ci.md)) |
 
 **Options**
 
@@ -193,8 +193,6 @@ plotjuggler4
 
 ## 9. Not verified yet
 
-- **The Jetson (arm64) image build.** If `dbus-fast` has no wheel, pip compiles it. Missing optional packages are
-  listed by `make run CMD=seame-smoke-test`.
 - **Live ROS 2 topics in PlotJuggler** (recordings work).
 - **E-stop:** how it reaches the Jetson is unknown. If it is a GPIO line, uncomment `/dev/gpiochip0` in `compose.yml`.
 
@@ -211,11 +209,13 @@ plotjuggler4
 | `Unable to locate package ros-lyrical-...` | ROS repo not reachable, or the package does not exist for your CPU |
 | `Cannot uninstall ... installed by debian` | A pip/apt conflict: pin `PYMYCOBOT_VERSION` |
 
-## 11. Jetson host checks
+## 11. Jetson host
 
-The Jetson's host is old (JetPack 4.6, Ubuntu 20.04, kernel 4.9), and the containers share its kernel.
+The Jetson's host is old (JetPack 4.6, Ubuntu 20.04, kernel 4.9), and the containers share its kernel. **Verified:**
+the `jetson` image (Ubuntu 26.04 + ROS 2 Lyrical) runs the whole `real` system on it: the arm, the temperatures, the
+joystick, the camera and the LCD.
 
-- **Test that Ubuntu 26.04 runs on it:**
+- **After reflashing or updating the host,** check that the userland still runs:
 
   ```bash
   docker run --rm ubuntu:26.04 bash -c 'uname -r && echo userland-ok'
