@@ -146,7 +146,7 @@ def test_list_docs_skips_caches_and_groups_in_order():
         'docs/../Makefile',
         'docs/../README.md',
         'docs/../../../../etc/passwd.md',
-        'docs/inventory/../../web/server/app.py',
+        'docs/hardware/../../web/server/app.py',
         'Makefile',
         '/etc/passwd',
         'docs/missing.md',
@@ -157,7 +157,7 @@ def test_read_doc_rejects_paths_outside_docs(path):
 
 
 def test_read_doc_reads_nested_doc():
-    assert docs.read_doc('docs/hardware/inventory/inventory.md')
+    assert docs.read_doc('docs/hardware/inventory.md')
 
 
 # ---- github.py ------------------------------------------------------------------
