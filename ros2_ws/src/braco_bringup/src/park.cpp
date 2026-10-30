@@ -18,38 +18,9 @@
 // serial port. Same pose (mycobot::PARK_ANGLES) and speed. Run by hand with `make park`
 // or before `make down PARK=1`.
 
-#include "braco_bringup/arm_moves.hpp"
-#include "mycobot.hpp"
-
-using namespace std::chrono_literals;
-
-namespace
-{
-
-constexpr auto TIMEOUT = 20s;
-constexpr auto DRIVER_TIMEOUT = 10s;
-
-bool park(braco_bringup::ArmMoves & arm)
-{
-  if (!arm.waitForDriver(DRIVER_TIMEOUT) || !arm.takeControl()) {return false;}
-  arm.setRest(false);   // rest mode refuses the park move itself
-  if (!arm.moveTo(
-      mycobot::PARK_ANGLES, mycobot::MOVE_SPEED, mycobot::POSE_TOLERANCE_DEG, TIMEOUT))
-  {
-    RCLCPP_ERROR(arm.get_logger(), "Park position not reached - joints left locked");
-    return false;
-  }
-  arm.wait(500ms);   // let the arm settle
-  if (!arm.releaseServos()) {return false;}
-  // The driver stays up, only watching temperatures, until `make resume`
-  arm.setRest(true);
-  RCLCPP_INFO(arm.get_logger(), "Parked - joints released, rest mode on");
-  return true;
-}
-
-}  // namespace
+#include "braco_bringup/routines.hpp"
 
 int main(int argc, char ** argv)
 {
-  return braco_bringup::run(argc, argv, "arm_park", park);
+  return braco_bringup::run(argc, argv, "arm_park", braco_bringup::park);
 }

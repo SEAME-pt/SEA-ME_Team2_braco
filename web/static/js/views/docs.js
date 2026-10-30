@@ -2,7 +2,7 @@
 
 import { esc, getJSON } from "../util.js";
 
-const DEFAULT_DOC = "docs/dev-setup.md";
+const DEFAULT_DOC = "docs/guides/dev-setup.md";
 
 let state = null;   // { root, list, current }
 

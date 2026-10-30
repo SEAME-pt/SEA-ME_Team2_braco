@@ -52,6 +52,7 @@ The myCobot 280 is wired to the Nano's UART (`/dev/ttyTHS1`, 1 Mbaud) and the ca
 | Container opens `/dev/ttyTHS1` and reads the arm via `pymycobot` | Pass |
 | Container reads camera frames (640x480) | Pass |
 | ROS 2 Lyrical Luth on Ubuntu 26.04 runs on the Nano | Pass |
+| The `jetson` image runs the whole `real` system (arm, temperatures, joystick, camera, LCD) | Pass |
 | GPU stack usable from a plain ROS container | Fail (see Consequences) |
 
 ## Links

@@ -301,6 +301,8 @@ int menu(mycobot::MyCobot280& mc) {
     return 0;
 }
 
+std::string port() { return mycobot::envOr("MYCOBOT_PORT", mycobot::MyCobot280::DEFAULT_PORT); }
+
 void usage() {
     std::printf(
         "Usage:\n"
@@ -316,19 +318,19 @@ void usage() {
 int main(int argc, char** argv) {
     try {
         if (argc == 1) {
-            mycobot::MyCobot280 mc;
+            mycobot::MyCobot280 mc(port());
             return menu(mc);
         }
 
         const std::string action = argv[1];
         if (action == "read" && argc == 2) {
-            mycobot::MyCobot280 mc;
+            mycobot::MyCobot280 mc(port());
             return readAll(mc);
         }
         if (action == "set" && argc == 6) {
             const int joint = std::atoi(argv[2]);
             const mycobot::Pid pid{std::atoi(argv[3]), std::atoi(argv[4]), std::atoi(argv[5])};
-            mycobot::MyCobot280 mc;
+            mycobot::MyCobot280 mc(port());
             return setOne(mc, joint, pid);
         }
         if (action == "factory" && argc == 3) {
@@ -337,11 +339,11 @@ int main(int argc, char** argv) {
                 std::printf("joint must be 1..6\n");
                 return 1;
             }
-            mycobot::MyCobot280 mc;
+            mycobot::MyCobot280 mc(port());
             return setOne(mc, joint, mycobot::FACTORY_PID[joint - 1]);
         }
         if (action == "all" && argc == 2) {
-            mycobot::MyCobot280 mc;
+            mycobot::MyCobot280 mc(port());
             return setAll(mc);
         }
         usage();

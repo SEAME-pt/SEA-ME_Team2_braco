@@ -1,4 +1,4 @@
-"""Discover and read every Markdown file in the repository (and the HTML pages in docs/), grouped by topic."""
+"""Discover and read every Markdown file in the repository (and docs/'s HTML pages), by topic."""
 
 import re
 from pathlib import Path
@@ -19,8 +19,9 @@ SKIP_DIRS = {
     'log',
 }
 
-# (group label, matcher) in display order; the first matching rule wins. The docs/ groups follow its folders,
-# so a new file lands in its folder's group; the two pinned files come first to stay on top.
+# (group label, matcher) in display order; the first matching rule wins. The docs/ groups follow
+# its folders, so a new file lands in its folder's group; the two pinned files come first to stay
+# on top.
 GROUPS = [
     ('Getting started', lambda p: p in ('README.md', 'docs/guides/dev-setup.md')),
     ('Safety', lambda p: p == 'docs/guides/safety.md'),

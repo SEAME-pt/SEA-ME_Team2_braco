@@ -1,0 +1,24 @@
+# clang-tidy for the C++ packages of ros2_ws/src (make tidy, in the ci-ros container). Here and not at the repo root:
+# the container mounts only ros2_ws, and clang-tidy looks for this file upwards from each source file.
+# Start small: bugs, performance and the static analyzer. Off:
+#   bugprone-easily-swappable-parameters  every (int joint, double angle)-style signature; not actionable
+#   bugprone-reserved-identifier          the ROS include guards (PKG__FILE_HPP_), which cpplint requires
+#   performance-enum-size                 a 1-byte base for a 3-value enum class saves nothing that matters
+# Each test/ directory has a .clang-tidy of its own on top of this one.
+Checks: >
+  -*,
+  bugprone-*,
+  performance-*,
+  clang-analyzer-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-reserved-identifier,
+  -performance-enum-size
+# Any finding fails make tidy (clang-tidy exits 0 on plain warnings): fix it, or NOLINT it with a reason.
+WarningsAsErrors: '*'
+# Our headers only, not those of ROS or of the generated braco_interfaces code (in build/ and install/).
+HeaderFilterRegex: '(/ws|.*/ros2_ws)/src/.*'
+# rclcpp callbacks take their message, request, response and future by value (SharedPtr, SharedFuture), as in the
+# rclcpp API: copying one is a reference-count increment, not a copy of the data.
+CheckOptions:
+  performance-unnecessary-value-param.AllowedTypes: 'SharedPtr$;SharedFuture$;shared_ptr;shared_future'
+  performance-unnecessary-copy-initialization.AllowedTypes: 'SharedPtr$;SharedFuture$;shared_ptr;shared_future'

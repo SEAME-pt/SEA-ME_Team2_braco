@@ -15,21 +15,34 @@ find_package(std_msgs REQUIRED)
 find_package(std_srvs REQUIRED)
 find_package(braco_interfaces REQUIRED)
 
-add_executable(joystick_teleop src/joystick_teleop.cpp)
-target_link_libraries(joystick_teleop
+# The node in a library, so the tests can run it in-process; the program only holds main()
+add_library(braco_teleop_node STATIC src/joystick_teleop_node.cpp)
+target_include_directories(braco_teleop_node PUBLIC include)
+target_link_libraries(braco_teleop_node PUBLIC
   mycobot_cpp::mycobot_cpp rclcpp::rclcpp
   ${sensor_msgs_TARGETS} ${std_msgs_TARGETS} ${std_srvs_TARGETS} ${braco_interfaces_TARGETS})
+
+add_executable(joystick_teleop src/joystick_teleop.cpp)
+target_link_libraries(joystick_teleop braco_teleop_node)
 
 install(TARGETS joystick_teleop
   DESTINATION lib/${PROJECT_NAME})
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
+  # ament_cppcheck skips every file with cppcheck >= 2.0; make cppcheck runs cppcheck directly instead
+  list(APPEND AMENT_LINT_AUTO_EXCLUDE ament_cmake_cppcheck)
   ament_lint_auto_find_test_dependencies()
 
   find_package(ament_cmake_gtest REQUIRED)
   ament_add_gtest(test_teleop_logic test/test_teleop_logic.cpp)
   target_link_libraries(test_teleop_logic mycobot_cpp::mycobot_cpp)
+
+  # JoystickTeleop on a FIFO joystick with a fake arm_driver node in the same process.
+  # Isolated: its own ROS graph, so a real arm_driver on the same machine is never seen.
+  find_package(ament_cmake_ros REQUIRED)
+  ament_add_ros_isolated_gtest(test_joystick_teleop test/test_joystick_teleop.cpp TIMEOUT 120)
+  target_link_libraries(test_joystick_teleop braco_teleop_node)
 endif()
 
 ament_package()
