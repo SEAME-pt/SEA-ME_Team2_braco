@@ -19,6 +19,11 @@
        The split is ESTIMATED: body 80 g (it holds the servo), each of the 6 finger parts 5 g.
        Replace with a scale reading when one is available. -->
   <xacro:property name="gripper_base_mass" value="0.080"/>
+  <!-- gripper_controller (the master) range, rad: closed (tips 3.6 mm apart) .. open. The five
+       followers get exactly this range times their mimic multiplier: the vendor's own follower
+       limits were narrower (e.g. -0.5..0.5), so they could not follow the master to its ends. -->
+  <xacro:property name="gripper_lower" value="-0.74"/>
+  <xacro:property name="gripper_upper" value="0.15"/>
   <xacro:property name="finger_link_mass" value="0.005"/>
 
   <xacro:macro name="finger_link" params="name mass xyz">
@@ -45,15 +50,17 @@
   </xacro:macro>
 
   <!-- One finger joint: fixed at 0 unless `actuated`; `mimic` = "" for the master joint,
-       "multiplier" for the others (they follow gripper_controller). -->
-  <xacro:macro name="finger_joint" params="name parent child xyz lower upper actuated mimic:=''">
+       "multiplier" for the others (they follow gripper_controller, limits from its range). -->
+  <xacro:macro name="finger_joint" params="name parent child xyz actuated mimic:=''">
+    <xacro:property name="m" value="${1.0 if mimic == '' else float(mimic)}"/>
     <xacro:if value="${actuated}">
       <joint name="${name}" type="revolute">
         <parent link="${parent}"/>
         <child link="${child}"/>
         <origin xyz="${xyz}" rpy="0 0 0"/>
         <axis xyz="0 0 1"/>
-        <limit lower="${lower}" upper="${upper}" velocity="1.0" effort="1.0"/>
+        <limit lower="${min(m * gripper_lower, m * gripper_upper)}"
+               upper="${max(m * gripper_lower, m * gripper_upper)}" velocity="1.0" effort="1.0"/>
         <xacro:if value="${mimic != ''}">
           <mimic joint="gripper_controller" multiplier="${mimic}" offset="0"/>
         </xacro:if>
@@ -83,23 +90,27 @@
       <xacro:insert_block name="origin"/>
     </joint>
 
-    <!-- gripper_controller is the master; the other five follow it (vendor linkage) -->
+    <!-- gripper_controller is the master; the other five follow it (vendor linkage).
+         The four joints on gripper_base sit 7.5 mm lower than the vendor's (y 0.005 -> -0.0025,
+         0.027 -> 0.0195): each part's mesh offset is minus its pivot in the gripper frame, and the
+         body's front face has the central pins' holes at (+-5.5, 19.5) mm; the vendor values put
+         the whole linkage 7.5 mm above the body (checked against a photo of our gripper). -->
     <xacro:finger_joint name="gripper_controller" parent="gripper_base" child="gripper_left3"
-                        xyz="-0.012 0.005 0" lower="-0.74" upper="0.15" actuated="${actuated}"/>
+                        xyz="-0.012 -0.0025 0" actuated="${actuated}"/>
     <xacro:finger_joint name="gripper_base_to_gripper_left2" parent="gripper_base"
-                        child="gripper_left2" xyz="-0.005 0.027 0" lower="-0.8" upper="0.5"
+                        child="gripper_left2" xyz="-0.005 0.0195 0"
                         actuated="${actuated}" mimic="1.0"/>
     <xacro:finger_joint name="gripper_left3_to_gripper_left1" parent="gripper_left3"
-                        child="gripper_left1" xyz="-0.027 0.016 0" lower="-0.5" upper="0.5"
+                        child="gripper_left1" xyz="-0.027 0.016 0"
                         actuated="${actuated}" mimic="-1.0"/>
     <xacro:finger_joint name="gripper_base_to_gripper_right3" parent="gripper_base"
-                        child="gripper_right3" xyz="0.012 0.005 0" lower="-0.15" upper="0.7"
+                        child="gripper_right3" xyz="0.012 -0.0025 0"
                         actuated="${actuated}" mimic="-1.0"/>
     <xacro:finger_joint name="gripper_base_to_gripper_right2" parent="gripper_base"
-                        child="gripper_right2" xyz="0.005 0.027 0" lower="-0.5" upper="0.8"
+                        child="gripper_right2" xyz="0.005 0.0195 0"
                         actuated="${actuated}" mimic="-1.0"/>
     <xacro:finger_joint name="gripper_right3_to_gripper_right1" parent="gripper_right3"
-                        child="gripper_right1" xyz="0.027 0.016 0" lower="-0.5" upper="0.5"
+                        child="gripper_right1" xyz="0.027 0.016 0"
                         actuated="${actuated}" mimic="1.0"/>
   </xacro:macro>
 
