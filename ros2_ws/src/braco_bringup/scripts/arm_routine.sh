@@ -20,6 +20,8 @@ set -u
 launch_pid=""
 SIM=${SIM:-false}
 
+# Reached through the trap below, which shellcheck does not follow (SC2317 before 0.11, SC2329 from 0.11).
+# shellcheck disable=SC2317,SC2329
 on_stop() {
     trap - TERM INT
     echo "arm_routine: stopping"

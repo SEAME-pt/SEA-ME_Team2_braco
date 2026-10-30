@@ -76,7 +76,7 @@ void TerminalDisplay::addMessage(const std::string& text) noexcept {
         }
         messages_.emplace_back(text, 1);
         while (messages_.size() > MAX_MESSAGES) messages_.pop_front();
-    } catch (...) {
+    } catch (...) {  // NOLINT(bugprone-empty-catch): deliberate, see below
         // Never let the display affect the arm program
     }
 }
@@ -88,7 +88,7 @@ void TerminalDisplay::show(const Status& status, bool force) noexcept {
         if (!force && now - lastDraw_ < refresh_) return;
         lastDraw_ = now;
         render(status);
-    } catch (...) {
+    } catch (...) {  // NOLINT(bugprone-empty-catch): deliberate, see below
         // Never let the display affect the arm program
     }
 }

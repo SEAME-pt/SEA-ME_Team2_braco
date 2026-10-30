@@ -1,8 +1,9 @@
 """RosArm and the ROS panels without ROS: the bridge, messages and services are faked.
 
 What matters most: a move is a stream of bounded steps resent faster than
-arm_driver's 300 ms watchdog, STOP cancels it, wake never powers or rests the arm by itself (park releases and rests on arrival),
-and the page moves the arm only while it is arm_driver's control owner ("web").
+arm_driver's 300 ms watchdog, STOP cancels it, wake never powers or rests the arm by itself
+(park releases and rests on arrival), and the page moves the arm only while it is
+arm_driver's control owner ("web").
 """
 
 import math

@@ -161,7 +161,7 @@ void LcdDisplay::show(const Status& status, bool force) noexcept {
         if (!updateLine(0, lines[0])) return;
         if (!updateLine(1, lines[1])) return;
         setBacklight(status.r, status.g, status.b);
-    } catch (...) {
+    } catch (...) {  // NOLINT(bugprone-empty-catch): deliberate, see below
         // Never let the display affect the arm program
     }
 }

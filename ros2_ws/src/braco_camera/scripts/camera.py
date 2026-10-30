@@ -40,6 +40,20 @@ TOPIC = '/camera/image_raw/compressed'
 JPEG_START = b'\xff\xd8'
 
 
+def to_jpeg(frame, quality=80):
+    """Return the JPEG bytes of a frame: the camera's own, or encoded here."""
+    if frame.ndim == 1 or frame.shape[0] == 1:   # a raw MJPG buffer
+        data = frame.tobytes()
+        return data if data.startswith(JPEG_START) else None
+    ok, buf = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, int(quality)])
+    return buf.tobytes() if ok else None
+
+
+def frame_period(fps):
+    """Return the seconds between frames, at least 1 fps."""
+    return 1.0 / max(1.0, float(fps))
+
+
 class Camera(Node):
     """Read the camera in a thread and publish every frame."""
 
@@ -71,18 +85,10 @@ class Camera(Node):
             cap.set(cv2.CAP_PROP_CONVERT_RGB, 0)  # hand over the camera's own JPEG
         return cap
 
-    def _jpeg(self, frame):
-        """Return the JPEG bytes of a frame: the camera's own, or encoded here."""
-        if frame.ndim == 1 or frame.shape[0] == 1:   # a raw MJPG buffer
-            data = frame.tobytes()
-            return data if data.startswith(JPEG_START) else None
-        ok, buf = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, int(self.quality)])
-        return buf.tobytes() if ok else None
-
     def _run(self):
         cap = None
         warned = False
-        period = 1.0 / max(1.0, float(self.fps))
+        period = frame_period(self.fps)
         while not self._stop.is_set() and rclpy.ok():
             if cap is None:
                 cap = self._open()
@@ -100,7 +106,7 @@ class Camera(Node):
                     int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)), self.fps))
             started = time.monotonic()
             ok, frame = cap.read()
-            data = self._jpeg(frame) if ok and frame is not None else None
+            data = to_jpeg(frame, self.quality) if ok and frame is not None else None
             if data is None:
                 self.get_logger().warn('camera {} stopped giving frames'.format(self.device))
                 cap.release()

@@ -7,7 +7,8 @@
 The page never opens the serial port: arm_driver owns it (docs/architecture/architecture.md).
 
 All of them expose start(), snapshot(), stop_motion(), go_to_pose(), move_joint()
-and wake_up() (leave rest, servos on, no movement); RosArm and MockArm also set_rest(), set_gripper() and set_led().
+and wake_up() (leave rest, servos on, no movement); RosArm and MockArm also
+set_rest(), set_gripper() and set_led().
 take_control() / release_control() follow the page's control lease: RosArm asks arm_driver
 for the control (docs/decisions/ADR-0002-unique-control.md), the others have nobody to ask.
 snapshot()["capabilities"] tells the page which of these a source supports.
@@ -24,8 +25,8 @@ from . import ros
 from .ros_health import level_name
 from .session import ControlError
 
-# Same thresholds as TEMP_WARM_C / TEMP_HOT_C in ros2_ws/src/mycobot_cpp/includes/mycobot.hpp. Only the mock
-# uses them: on the real arm the level comes from temperature_monitor (/diagnostics).
+# Same thresholds as TEMP_WARM_C / TEMP_HOT_C in ros2_ws/src/mycobot_cpp/includes/mycobot.hpp.
+# Only the mock uses them: on the real arm the level comes from temperature_monitor (/diagnostics).
 TEMP_WARM_C = 55
 TEMP_HOT_C = 65
 
@@ -140,12 +141,12 @@ class _Base:
             'temp_levels': None,
             'volts': None,  # servo supply voltage per joint, V
             'power_on': None,
-            'resting': False,  # rest mode (motion refused): set by set_rest(), cleared by wake_up()
+            'resting': False,  # rest mode (motion refused): set_rest() sets it, wake_up() clears
             'moving': None,
             'gripper': None,  # "open" | "closed" | None (unknown), last commanded
             'led': None,  # [r, g, b] 0-255, last commanded
-            'control_owner': None,  # arm_driver's control owner ("web", "joystick", ...; "" free)
-            'notice': None,  # {"t", "text"}: something the operators should know (move timed out...)
+            'control_owner': None,  # arm_driver's control owner ("web", "joystick"...; "" free)
+            'notice': None,  # {"t", "text"}: for the operators to know (move timed out...)
             'capabilities': list(self.CAPABILITIES),
             'updated': None,
         }
@@ -564,9 +565,8 @@ class RosArm(_Base):
                 self._update(
                     connected=False,
                     moving=None,
-                    error='no /joint_states for {:.0f} s, is arm_driver running? (make logs)'.format(
-                        ROS_STALE_AFTER
-                    ),
+                    error='no /joint_states for {:.0f} s, is arm_driver running? '
+                    '(make logs)'.format(ROS_STALE_AFTER),
                 )
 
     def _fresh_angles(self):
@@ -674,7 +674,10 @@ class RosArm(_Base):
         return self._bridge.call(self._clients['take_control'], request)
 
     def take_control(self):
-        """Become arm_driver's control owner, or renew it. ControlError if another client has it."""
+        """Become arm_driver's control owner, or renew it.
+
+        ControlError if another client has it.
+        """
         result = self._control_call()
         self._update(control_owner=result.owner)
         if not result.success:

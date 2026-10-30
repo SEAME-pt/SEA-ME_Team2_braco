@@ -10,6 +10,8 @@
 #include <algorithm>
 #include <cerrno>
 #include <cmath>
+#include <cstddef>
+#include <cstdlib>
 #include <cstring>
 #include <stdexcept>
 #include <thread>
@@ -176,7 +178,7 @@ std::optional<bool> MyCobot280::isPowerOn() {
 
 // ------------------------------------------------------------ joint limits
 
-double MyCobot280::limitAngle(int joint, double angle, bool& clamped) const {
+double MyCobot280::limitAngle(int joint, double angle, bool& clamped) {
     if (!std::isfinite(angle)) {
         throw std::invalid_argument("J" + std::to_string(joint) + ": angle is not a finite number");
     }
@@ -478,7 +480,8 @@ std::optional<std::vector<uint8_t>> MyCobot280::readReply(uint8_t cmd,
             const size_t footer = i + 2 + len;
             if (len < 2 || footer >= buf.size()) continue;  // incomplete or invalid
             if (buf[i + 3] == cmd && buf[footer] == protocol::FOOTER) {
-                return std::vector<uint8_t>(buf.begin() + i + 4, buf.begin() + footer);
+                return std::vector<uint8_t>(buf.begin() + static_cast<std::ptrdiff_t>(i + 4),
+                                            buf.begin() + static_cast<std::ptrdiff_t>(footer));
             }
         }
     }
@@ -511,6 +514,11 @@ std::optional<std::vector<uint8_t>> MyCobot280::queryWithData(uint8_t cmd,
 }
 
 // ------------------------------------------------------------------ helpers
+
+std::string envOr(const char* name, const std::string& fallback) {
+    const char* value = std::getenv(name);
+    return value && *value ? value : fallback;
+}
 
 void MyCobot280::appendInt16(std::vector<uint8_t>& out, int16_t value) {
     const uint16_t v = static_cast<uint16_t>(value);

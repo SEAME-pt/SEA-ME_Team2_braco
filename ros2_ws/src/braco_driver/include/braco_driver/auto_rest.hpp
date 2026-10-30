@@ -13,7 +13,7 @@
 // limitations under the License.
 
 // AutoRest - when temperature_monitor puts the arm to rest
-// (docs/ADR-0003-rest-per-temp.md).
+// (docs/decisions/ADR-0003-rest-per-temp.md).
 //
 // An episode starts with the first reading at TEMP_HOT_C or above and ends when every joint
 // is below REARM_BELOW_C. The gap between the two is hysteresis: a servo hovering at 64/65 C

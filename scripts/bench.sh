@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Bench test of issue #55 (docs/ADR-0002-unique-control.md, docs/ADR-0003-rest-per-temp.md).
+# Bench test of issue #55 (docs/decisions/ADR-0002-unique-control.md, docs/decisions/ADR-0003-rest-per-temp.md).
 #
 # Run it with `make bench` on the Jetson with the system up and the arm powered. Checks that can be read from
 # ROS (owner, rest mode) are automatic; the ones that need eyes or hands (the arm moving, the stick, killing the

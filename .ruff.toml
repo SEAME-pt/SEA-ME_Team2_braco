@@ -6,6 +6,14 @@ line-length = 99
 extend-exclude = ["ros2_ws/src"]
 force-exclude = true
 
+[lint]
+# Listed, not ruff's defaults (400+ rules in 0.17, more with each release): pycodestyle and pyflakes as in
+# ament_flake8, isort, and bugbear for the likely bugs. make lint runs it.
+select = ["E", "W", "F", "I", "B"]
+# zip() without strict=: the joint lists are six long by construction, and strict=True would turn a short
+# JointState in a ROS callback into an exception; strict=False on every call would only be noise.
+ignore = ["B905"]
+
 [format]
 quote-style = "single"
 # Compact: join a call or a collection onto one line when it fits, even with a trailing comma.

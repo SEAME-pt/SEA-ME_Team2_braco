@@ -10,7 +10,7 @@ running is refused as busy). The lease ends when the operator releases it,
 closes the page (after RECONNECT_GRACE, so a reload keeps it) or does nothing
 for IDLE_TIMEOUT seconds.
 
-The lease is also the page's claim on the arm itself (docs/ADR-0002-unique-control.md):
+The lease is also the page's claim on the arm itself (docs/decisions/ADR-0002-unique-control.md):
 with a `control` (the arm source), taking the lease asks arm_driver for the control
 (ControlError while the joystick or zero/park has it), every tick renews it while the
 lease is held, and the lease ends when the lease is released or another client forces
@@ -277,7 +277,10 @@ class Hub:
         return True
 
     def control_lost(self, owner):
-        """arm_driver gave the control to `owner` (the joystick forced it): the lease ends. Any thread."""
+        """arm_driver gave the control to `owner` (the joystick forced it): the lease ends.
+
+        Any thread.
+        """
         with self._lock:
             holder = self._holder
         if holder is not None:
@@ -336,7 +339,7 @@ class Hub:
         now = self.clock()
         gone = []
         with self._lock:
-            for cid, client in list(self._clients.items()):
+            for client in list(self._clients.values()):
                 if (
                     client.connections == 0
                     and client.left_at
