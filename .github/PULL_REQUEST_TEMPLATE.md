@@ -21,9 +21,9 @@ e.g. `make ci`, `make ci-ros`, `make coverage`.
 <!--
 Indicate CI status and any documentation updates (e.g., README, ADR, wiring/pinout diagrams, or ROS topic definitions).
 -->
-- [ ] unit test (coverage ≥ 80%)
-- [ ] CI green (`host`, `ros`)
-- [ ] `docs/architecture/architecture.md` updated <!--(sections listed in "Keeping this document current"), or N/A: no change to nodes, topics, packages, folders, `make` commands or deployment-->
+- [ ] unit test (coverage ≥ 80%), or N/A
+- [ ] CI green (`host`, `ros`, `coverage`)
+- [ ] `docs/architecture/architecture.md` updated, or N/A <!-- sections listed in "Keeping this document current"; N/A when there is no change to nodes, topics, packages, folders, `make` commands or deployment -->
 - [ ] Package README and ADR (`docs/decisions/`) updated, or N/A
 
 ### Safety (Mark N/A if the real arm does not move)
@@ -31,3 +31,5 @@ Indicate CI status and any documentation updates (e.g., README, ADR, wiring/pino
 Required when this PR can move the real arm (driver, controllers, MoveIt 2, launch files, joint limits).
 -->
 - [ ] `docs/guides/safety.md` checklist followed
+- [ ] Velocity scaling set low for the first run on the real arm
+- [ ] STOP checked: it halts the arm during the move
