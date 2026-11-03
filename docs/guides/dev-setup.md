@@ -64,6 +64,7 @@ Everything runs in Docker, so you only install Docker, `make` and `git`. You run
 |---|---|
 | `permission denied` when running `docker` | Log out and back in after step 3 |
 | `docker has no NVIDIA runtime` | Install the NVIDIA Container Toolkit, or use `GPU=dri` / `GPU=none` |
+| RViz2 / MoveIt Setup Assistant abort: `BadValue ... (NV-GLX)`, `Unable to create the rendering window` | Hybrid laptop (NVIDIA + iGPU): recreate `dev` so it gets `__NV_PRIME_RENDER_OFFLOAD=1` from `compose/nvidia.yml` (`docker compose up -d --force-recreate dev`, or `make down` + `make up`) |
 | `Run make as your normal user, not root/sudo` | Run `make` without `sudo` |
 | `docker compose ... is too old` | Update Docker (Compose 2.20 or newer) |
 | Jetson: `/dev/ttyTHS1 not found` | Jetson step 1, then log out and back in |
