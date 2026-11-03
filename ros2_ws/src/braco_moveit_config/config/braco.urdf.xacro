@@ -1,0 +1,47 @@
+<?xml version="1.0"?>
+<!--
+  The braco model for the MoveIt demo (launch/demo.launch.py): braco_description's model
+  plus a ros2_control system with mock_components/GenericSystem, so arm_controller runs
+  without Gazebo or the real arm. The mock "hardware" reports back exactly the position
+  it is commanded.
+
+  The geometry is NOT copied: it comes from braco_description/urdf/braco.urdf.xacro, with
+  gazebo:=false (the plain model, no ros2_control of its own). The joint names and interfaces
+  are those of braco_description's braco.gazebo.xacro, so config/controllers.yaml of
+  braco_description drives this model unchanged.
+
+  Arguments:
+    gripper_actuated  passed to braco.urdf.xacro (default false: fingers fixed open)
+-->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="braco">
+
+  <xacro:arg name="gripper_actuated" default="false"/>
+
+  <xacro:include filename="$(find braco_description)/urdf/braco.urdf.xacro"/>
+
+  <!-- One arm joint, position-controlled, starting at 0 (the zero pose, = home). -->
+  <xacro:macro name="mock_joint" params="n">
+    <joint name="joint${n}">
+      <command_interface name="position"/>
+      <state_interface name="position">
+        <param name="initial_value">0.0</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+    </joint>
+  </xacro:macro>
+
+  <ros2_control name="MockSystem" type="system">
+    <hardware>
+      <plugin>mock_components/GenericSystem</plugin>
+      <!-- velocity state = the change of the commanded position, not a constant 0 -->
+      <param name="calculate_dynamics">true</param>
+    </hardware>
+    <xacro:mock_joint n="1"/>
+    <xacro:mock_joint n="2"/>
+    <xacro:mock_joint n="3"/>
+    <xacro:mock_joint n="4"/>
+    <xacro:mock_joint n="5"/>
+    <xacro:mock_joint n="6"/>
+  </ros2_control>
+
+</robot>
