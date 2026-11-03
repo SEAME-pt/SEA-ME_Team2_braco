@@ -25,7 +25,7 @@ Safety rules for the arm, its gripper and its camera.
 
 - **Nothing within 350 mm of the base** while the arm has power: no objects, no loose clothes, no hands.
 - **The base is always clamped** to the table.
-- **Put the arm straight up (all joints ≈ 0°) before you turn on the motors.**
+- **If the arm is not in park position, put the arm straight up (all joints ≈ 0°) before you turn on the motors.**
   - If the arm is bent, its weight pulls hard on J2 and J3: it jumps, can break the gears and can hit the camera or
     gripper.
 - **Never move a joint by hand while the motors are on.** Turn them off first (section 6.3).
