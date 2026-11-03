@@ -7,6 +7,11 @@ services:
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: all
       __GLX_VENDOR_LIBRARY_NAME: nvidia
+      # Hybrid laptops (NVIDIA + Intel/AMD iGPU, X on the iGPU): without PRIME render offload NVIDIA's GLX asks
+      # the iGPU's X screen and every OpenGL window fails with "BadValue ... (NV-GLX)" (RViz2, the MoveIt Setup
+      # Assistant: "Unable to create the rendering window"). Harmless when X already runs on the NVIDIA card.
+      __NV_PRIME_RENDER_OFFLOAD: "1"
+      __VK_LAYER_NV_optimus: NVIDIA_only    # the same for Vulkan
     deploy:
       resources:
         reservations:
