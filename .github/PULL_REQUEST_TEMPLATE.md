@@ -13,6 +13,7 @@ Closes #
 ### Manual Tests (Mark N/A if not applicable)
 <!--
 List the commands you ran and their result, and say where: "sim", "real arm" or "CI only".
+e.g. `make ci`, `make ci-ros`, `make coverage`.
 -->
 
 
