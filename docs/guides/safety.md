@@ -105,10 +105,11 @@ Go/no-go checklist. If any box is not ticked, do not move the arm.
   42, nothing else on it.
 - [ ] Limits test green ([#99](https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/99)).
 - [ ] MoveIt `max_velocity_scaling_factor` and `max_acceleration_scaling_factor` **≤ 0.1**.
+- [ ] Everyone present has signed the induction (section 1).
 - [ ] Work area clear (section 3).
-- [ ] Arm at park, then powered on (`/arm/power_on`) by the MoveIt client.
-- [ ] `/arm/control_owner` shows the MoveIt client's source
-  ([ADR-0002](../decisions/ADR-0002-unique-control.md)).
+- [ ] Arm at park. The MoveIt client takes control (`/arm/take_control`, source `script`), and
+  `/arm/control_owner` shows `script` ([ADR-0002](../decisions/ADR-0002-unique-control.md)).
+- [ ] Rest mode left (`make resume`), then motors on (`/arm/power_on`).
 - [ ] Motor temperatures OK (section 7, [overheating.md](overheating.md)).
 
 ### 9.2 During
