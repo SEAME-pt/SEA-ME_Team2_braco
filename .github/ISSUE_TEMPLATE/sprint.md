@@ -12,6 +12,10 @@ labels: sprint
 |-------|-----|-----------|----------|
 | e.g. 2026-10-19 | e.g. 2026-11-02 | e.g. 1 | e.g. 2026-11-02 |
 
+### Project Manager
+e.g. @d-branco
+- [ ] `.github/CODEOWNERS` updated to the new PM
+
 ### Sprint Goal
 e.g. Shared ROS 2 workspace in Docker, built and tested on every PR, and the arm running in simulation, so from the next sprint we can develop without the real robot.
 
