@@ -94,3 +94,34 @@ Safety rules for the arm, its gripper and its camera.
 2. Put the arm straight up by hand.
 3. Turn the power back on.
 4. Move it to zero slowly (speed ≤ 15%) and check the angles and the camera.
+
+## 9. First MoveIt 2 motion on the real arm
+
+Go/no-go checklist. If any box is not ticked, do not move the arm.
+
+### 9.1 Before
+
+- [ ] Domain check passed ([#103](https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/103)).
+- [ ] Limits test green ([#99](https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/99)).
+- [ ] Velocity scaling **≤ 0.1**.
+- [ ] Work area clear (section 3).
+- [ ] Arm at park.
+- [ ] Motor temperatures OK (section 7, [overheating.md](overheating.md)).
+
+### 9.2 During
+
+- [ ] One person on STOP (`/arm/command`, section 6.2).
+- [ ] One person on the power switch (section 6.1).
+- [ ] First move small, in a direction with nothing in the way.
+
+### 9.3 After
+
+- [ ] Return the arm to park.
+- [ ] Record what happened (date, people, motion, result, problems).
+
+### 9.4 Abort
+
+- **Stop at once if:** the arm leaves the planned path, moves faster than expected, makes unusual noise, gets hot,
+  hits something or loses communication, or for any reason in section 6.1.
+- **Who decides:** anyone can call STOP. Only the test lead, named before the test, decides whether to continue.
+  After an abort, follow section 8.
