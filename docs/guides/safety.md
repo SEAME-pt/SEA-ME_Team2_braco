@@ -42,7 +42,7 @@ Safety rules for the arm, its gripper and its camera.
 ### 5.1 Turning on
 
 1. Clear the 350 mm area and check the camera cable.
-2. Put the arm straight up by hand.
+2. If the arm is not in the park position, put the arm straight up by hand.
 3. Start the Jetson.
 4. Press the round switch on the base.
 5. Hold the arm lightly while you send `power_on` (the motors turn on).
