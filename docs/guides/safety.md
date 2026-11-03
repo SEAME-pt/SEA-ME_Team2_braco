@@ -101,23 +101,28 @@ Go/no-go checklist. If any box is not ticked, do not move the arm.
 
 ### 9.1 Before
 
-- [ ] Domain check passed ([#103](https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/103)).
+- [ ] Domain check passed ([#103](https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/103)): real arm on domain
+  42, nothing else on it.
 - [ ] Limits test green ([#99](https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/99)).
-- [ ] Velocity scaling **≤ 0.1**.
+- [ ] MoveIt `max_velocity_scaling_factor` and `max_acceleration_scaling_factor` **≤ 0.1**.
 - [ ] Work area clear (section 3).
-- [ ] Arm at park.
+- [ ] Arm at park, then powered on (`/arm/power_on`) by the MoveIt client.
+- [ ] `/arm/control_owner` shows the MoveIt client's source
+  ([ADR-0002](../decisions/ADR-0002-unique-control.md)).
 - [ ] Motor temperatures OK (section 7, [overheating.md](overheating.md)).
 
 ### 9.2 During
 
-- [ ] One person on STOP (`/arm/command`, section 6.2).
+- [ ] One person on STOP (section 6.2): the web page's STOP button, or
+  `ROS_DOMAIN_ID=42 ros2 topic pub --once /arm/command braco_interfaces/msg/ArmCommand '{type: 0}'`.
 - [ ] One person on the power switch (section 6.1).
 - [ ] First move small, in a direction with nothing in the way.
 
 ### 9.3 After
 
 - [ ] Return the arm to park.
-- [ ] Record what happened (date, people, motion, result, problems).
+- [ ] Record what happened (date, people, motion, result, problems) in a comment on
+  [#101](https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/101).
 
 ### 9.4 Abort
 
