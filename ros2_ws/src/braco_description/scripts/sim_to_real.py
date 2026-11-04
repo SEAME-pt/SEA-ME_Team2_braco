@@ -244,7 +244,8 @@ def main():
     args = parser.parse_args(remove_ros_args(sys.argv)[1:])
     if args.sim_domain == args.real_domain:
         parser.error('Gazebo and the real arm are both on ROS domain %d: export another '
-                     'ROS_DOMAIN_ID for Gazebo and this script (e.g. 27)' % args.sim_domain)
+                     'ROS_DOMAIN_ID for Gazebo and this script (e.g. your PC_ROS_DOMAIN_ID '
+                     'from docker/.env)' % args.sim_domain)
 
     sim = SimArm('sim_to_real_sim', args.sim_domain)
     real = RealArm('sim_to_real_real', args.real_domain, args.speed)

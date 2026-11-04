@@ -48,7 +48,8 @@ host$ make shell              # (pc-dev) dev@host:/ws$
 ```
 
 - `/ws` in the container is `ros2_ws/` in the repo: edit on the host, build and run in the container.
-- The PC's containers use **domain 27**, the real arm **domain 22**. To reach the arm from the PC:
+- The PC's containers use **your own domain** (20–29, set by `make setup`:
+  [table](../../../docker/README.md#ros-domain-per-teammate)), the real arm **domain 22**. To reach the arm from the PC:
   `ROS_DOMAIN_ID=22 ros2 ...`
 - The Jetson has no GUI tools: inspect its nodes from the PC ([section 14](#14-pc-and-jetson-together)).
 

@@ -10,9 +10,9 @@ Step by step, with the GPU, ROS domains and common problems: [Run the simulation
 In short:
 
 ```bash
-# PC: `make up SIM=1` also starts the `sim` container = braco.launch.py sim:=true (Gazebo + controllers, ROS domain 27)
+# PC: `make up SIM=1` also starts the `sim` container = braco.launch.py sim:=true (Gazebo + controllers, your PC_ROS_DOMAIN_ID)
 make up SIM=1
-# in a dev shell (make shell, already on the simulation's domain 27): move one joint (degrees)
+# in a dev shell (make shell, already on the simulation's domain): move one joint (degrees)
 ros2 run braco_description move_joint.py 2 30
 
 # Put the simulated arm at given joint angles (radians, reached in 2 s)

@@ -19,11 +19,11 @@ braco is a set of ROS 2 nodes. `arm_driver` is the only one that talks to the ar
 | World | ROS domain | Command |
 |---|---|---|
 | Real arm (Jetson) | 22 | On the Jetson: `make run CMD='ros2 node list'`. From the PC: `ROS_DOMAIN_ID=22 ros2 node list` |
-| Simulation (PC, `make up SIM=1`) | 27 | `make run CMD='ros2 node list'` |
+| Simulation (PC, `make up SIM=1`) | yours, 20–29 ([per teammate](../../../docker/README.md#ros-domain-per-teammate); 27 if unlisted) | `make run CMD='ros2 node list'` |
 
-- **Why 22 and 27:** DDS turns the domain ID into UDP ports (`7400 + 250 × domain + offset`). Above 232 the port
+- **Why 20–29:** DDS turns the domain ID into UDP ports (`7400 + 250 × domain + offset`). Above 232 the port
   passes 65535 and nodes cannot start. On Linux, domains 102–214 collide with the ephemeral ports (32768–60999).
-  So we pick from 0–101, and keep the two domains apart so each has room for its participants. Source:
+  So the real arm (22) and every teammate's PC (20–29) stay inside 0–101. Source:
   [ROS 2 docs, *The ROS_DOMAIN_ID*](https://github.com/ros2/ros2_documentation/blob/rolling/source/ROS-Framework/nodes/About-Domain-ID.rst).
 
 - Also: `ros2 topic list`, `ros2 service list`, `ros2 action list`, `ros2 topic echo /joint_states`.

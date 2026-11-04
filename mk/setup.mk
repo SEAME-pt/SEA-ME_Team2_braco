@@ -8,8 +8,10 @@ JETSON_TAG := $(IMAGE_TAG)-arm64
 
 ##@ Setup (once per machine)
 
-# On the PC, setup also creates the venv: the pre-push hook needs its ruff and clang-format (requirements-dev.txt).
-setup: _role $(ENV_FILE) $(if $(filter pc,$(ROLE)),$(VENV)/.installed) | $(WS_DIRS) ## docker/.env for this machine, venv (PC), git hooks, folders, then doctor
+# On the PC, setup also creates the venv: the pre-push hook needs its ruff and clang-format (requirements-dev.txt),
+# and sets PC_ROS_DOMAIN_ID from the GitHub login (docker/config/team-domains.tsv; TEAM_LOGIN=<login> skips gh).
+setup: _role $(ENV_FILE) $(if $(filter pc,$(ROLE)),$(VENV)/.installed) | $(WS_DIRS) ## docker/.env for this machine, venv (PC), your ROS domain (PC), git hooks, folders, then doctor
+	$(if $(filter pc,$(ROLE)),@bash $(TEAM_DOMAIN) set $(ENV_FILE))
 	git config core.hooksPath .githooks
 	@$(DOCTOR_RUN)
 

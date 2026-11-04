@@ -29,8 +29,8 @@ Ubuntu 26.04 + ROS 2 Lyrical for the myCobot 280 Jetson Nano, in Docker.
 | `docker/compose/nvidia.yml`, `dri.yml` | GPU overrides for the PC |
 | `docker/Dockerfile` | Stages `base`, `jetson`, `pc`, `ci` |
 | `docker/.env.example` | Copied to `docker/.env` by `make setup` |
-| `docker/config/` | `colcon-defaults.yaml` |
-| `docker/scripts/` | Entrypoint, environment, smoke test, installers |
+| `docker/config/` | `colcon-defaults.yaml`; `team-domains.tsv`: each teammate's ROS domain ([section 6](#6-the-sim-container-pc)) |
+| `docker/scripts/` | Entrypoint, environment, smoke test, installers; `team-domain.sh` (used by `make setup` and `make lint`) |
 | `docker/tests/talker-listener.sh` | The ROS 2 network test (mounted read-only in `dev`) |
 | `docker/systemd/braco.service` | Starts the system at boot on the Jetson (`make boot-on`) |
 | `ros2_ws/` | The workspace, mounted at `/ws` in every container (`src/` = packages, `bags/` = recordings) |
@@ -78,7 +78,7 @@ docker compose exec dev bash            # ROS ready
 | Web page | `web` (`MOCK=1`: fake arm data), `web-stop` |
 | Arm (Jetson) | `zero`, `park`, `rest`, `resume`, `temps`, `bench` |
 | Development | `shell`, `run CMD='...'`, `build` (`COLCON_ARGS=...`), `test`, `sim-gui`, `clean` |
-| Setup | `setup`, `role`, `doctor`, `image` (`IMAGE_ARGS='--no-cache --pull'`), `boot-on`, `boot-off`, `jetson-image` (`NANO=user@host`), `re`, `fclean` |
+| Setup | `setup` (on the PC also your ROS domain, [section 6](#ros-domain-per-teammate)), `role`, `doctor`, `image` (`IMAGE_ARGS='--no-cache --pull'`), `boot-on`, `boot-off`, `jetson-image` (`NANO=user@host`), `re`, `fclean` |
 | Network | `net-test`, `net-talk`, `net-listen` |
 | CI | `ci`, `web-test`, `ci-image`, `ci-ros`, `cppcheck`, `tidy`, `coverage`, `lint`, `format`, `format-check` ([CI guide](../docs/guides/ci.md)) |
 
@@ -140,10 +140,32 @@ docker compose exec dev bash            # ROS ready
 
 - **Starts only with** `make up SIM=1` (`make restart SIM=1` recreates it; `make down` stops it).
 - **Runs** the same launch with `sim:=true`: Gazebo (no window), the model, the controllers. Stops when Gazebo ends.
-- **ROS domain 27** (the PC), never 22 (the real arm): both publish `/joint_states`, and on one domain they would
-  mix. To reach the real arm from `dev`: `ROS_DOMAIN_ID=22 ros2 ...`
-- **Its own Gazebo** (`GZ_PARTITION=braco-sim`). A second Gazebo in `dev` on domain 27 fights it: stop `sim`, or
-  `export ROS_DOMAIN_ID=78` in that shell.
+- **ROS domain `PC_ROS_DOMAIN_ID`** (the PC; yours, from the table below), never 22 (the real arm): both publish
+  `/joint_states`, and on one domain they would mix. To reach the real arm from `dev`: `ROS_DOMAIN_ID=22 ros2 ...`
+- **Its own Gazebo** (`GZ_PARTITION=braco-sim`). A second Gazebo in `dev` on the same domain fights it: stop `sim`,
+  or `export ROS_DOMAIN_ID=78` in that shell (outside 20–29, so no teammate's).
+
+### ROS domain per teammate
+
+Each teammate's PC (`sim` and `dev`) has its own domain, so two simulations on the lab network never mix:
+
+| Teammate | GitHub login | `PC_ROS_DOMAIN_ID` |
+|---|---|---|
+| Daniel | `Denionline` | 20 |
+| Gabriel | `larocqueg` | 21 |
+| *(real arm, `ROS_DOMAIN_ID`)* | | *22* |
+| Carlos | `carlos-lvt` | 23 |
+| Magusk | `magusk89` | 24 |
+| Dinis | `d-branco` | 25 |
+| *(not in the table)* | | *27* |
+
+- **Set by `make setup`** (on the PC): it reads your GitHub login with `gh api user` and writes your domain to
+  `docker/.env`. Then `make restart` (`SIM=1` if `sim` runs). Without `gh`: `TEAM_LOGIN=<login> make setup`.
+- **Not found** (`gh` missing or not logged in, login not listed): a warning, and `PC_ROS_DOMAIN_ID` stays as it was.
+- **Source of truth:** [config/team-domains.tsv](config/team-domains.tsv). Change it there and here together.
+  `make lint` (and CI) checks it: 20–29, never 22 or 27, each domain once. Free: 26, 28, 29.
+- **Why 20–29:** inside 0–101, the range that is safe on Linux
+  ([ROS 2 docs, *The ROS_DOMAIN_ID*](https://github.com/ros2/ros2_documentation/blob/rolling/source/ROS-Framework/nodes/About-Domain-ID.rst)).
 - **Gazebo window:** `make sim-gui`, or `SIM_GUI=true` in `.env` + `make restart SIM=1`.
 - **Web page:** `make web` (runs in `dev`), http://localhost:8000.
 - Step by step: [Run the simulation](../ros2_ws/src/braco_description/README.md#run-the-simulation-step-by-step).

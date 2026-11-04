@@ -13,10 +13,12 @@ name: braco
 
 # ROS 2 networking. Every machine uses the same RMW. Domains (.env):
 #   ROS_DOMAIN_ID     22  the real arm: `real` and the Jetson's `dev`
-#   PC_ROS_DOMAIN_ID  27  the PC: `sim` and the PC's `dev` (make passes it as DEV_ROS_DOMAIN_ID). Never the real
-#                         arm's: the simulation also publishes /joint_states. From the PC, reach the real arm with
-#                         ROS_DOMAIN_ID=22 ros2 ... (the --real scripts use --real-domain 22 by themselves).
-#   Why 22 and 27: domain IDs must stay within 0-101 on Linux (DDS UDP ports, ephemeral port range), see
+#   PC_ROS_DOMAIN_ID  27  the PC: `sim` and the PC's `dev` (make passes it as DEV_ROS_DOMAIN_ID). Each teammate's
+#                         own (20-29), set by make setup from the GitHub login (config/team-domains.tsv); 27 when
+#                         not listed. Never the real arm's: the simulation also publishes /joint_states. From the
+#                         PC, reach the real arm with ROS_DOMAIN_ID=22 ros2 ... (the --real scripts use
+#                         --real-domain 22 by themselves).
+#   Why 20-29: domain IDs must stay within 0-101 on Linux (DDS UDP ports, ephemeral port range), see
 #   https://github.com/ros2/ros2_documentation/blob/rolling/source/ROS-Framework/nodes/About-Domain-ID.rst
 x-ros-env: &ros-env
   ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-22}
@@ -155,7 +157,7 @@ services:
   # sim - the system on the PC: the same launch with sim:=true (Gazebo, the braco_description model and the
   # ros2_control controllers, #34); `make web` runs the page in `dev` with ARM_SOURCE=gazebo. Uses the image and
   # the workspace that `dev` built.
-  #   ROS_DOMAIN_ID  PC_ROS_DOMAIN_ID (default 27), like the PC's dev, NOT the real arm's 22: both publish
+  #   ROS_DOMAIN_ID  PC_ROS_DOMAIN_ID (your team domain, else 27), like the PC's dev, NOT the real arm's 22: both publish
   #                  /joint_states, and on one domain the Jetson's clients would read the simulated angles as the
   #                  real arm's.
   #   GZ_PARTITION   keeps its Gazebo apart from one started by hand in `dev` (gazebo.launch.py)

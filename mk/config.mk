@@ -31,9 +31,10 @@ WS_DIRS := $(WS_SRC) $(WS_BAGS)
 
 # Files that must be present for the project to work (checked by `make doctor`).
 PROJECT_FILES := $(COMPOSE_BASE) $(ENV_EXAMPLE) $(DOCKERFILE) $(CONFIG_DIR)/colcon-defaults.yaml $(SYSTEMD_UNIT) \
+                 $(CONFIG_DIR)/team-domains.tsv \
                  $(TESTS_DIR)/talker-listener.sh $(addprefix $(COMPOSE_DIR)/,nvidia.yml dri.yml) \
                  $(addprefix $(SCRIPTS_DIR)/,apt-install-optional.sh env.sh install-plotjuggler.sh \
-                                             install-ros-apt-source.sh ros_entrypoint.sh smoke-test.sh)
+                                             install-ros-apt-source.sh ros_entrypoint.sh smoke-test.sh team-domain.sh)
 
 # Host side (no docker): Python venv for the web page and its tests (web/requirements*.txt) and the dev tools
 # (requirements-dev.txt: the formatters, plus the container's arm libraries for the editor).
@@ -100,6 +101,8 @@ DC      := docker compose --project-directory $(DOCKER_DIR) $(if $(GPU_FILE),-f 
 # the PC's `dev`), see docker/compose.yml. Defaults for a .env written before PC_ROS_DOMAIN_ID existed.
 ARM_ROS_DOMAIN_ID ?= $(or $(call dotenv,ROS_DOMAIN_ID),22)
 PC_ROS_DOMAIN_ID  ?= $(or $(call dotenv,PC_ROS_DOMAIN_ID),27)
+# Each teammate's PC_ROS_DOMAIN_ID, from the GitHub login (make setup) and checked by make lint
+TEAM_DOMAIN := $(SCRIPTS_DIR)/team-domain.sh
 COMPOSE := COMPOSE_PROFILES=$(ROLE) $(if $(filter pc,$(ROLE)),DEV_ROS_DOMAIN_ID=$(PC_ROS_DOMAIN_ID)) $(DC)
 
 # No TTY in CI (GitHub Actions sets CI=true) or when stdin is not a terminal.

@@ -341,7 +341,7 @@ def run(name, moves, description='', after_real=None, after_real_note=''):
     if args.real and not args.skip_sim and args.sim_domain == args.real_domain:
         parser.error('Gazebo and the real arm are both on ROS domain %d: their /joint_states '
                      'would mix. Run Gazebo and this script with another ROS_DOMAIN_ID '
-                     '(e.g. export ROS_DOMAIN_ID=27).' % args.sim_domain)
+                     '(e.g. your PC_ROS_DOMAIN_ID from docker/.env).' % args.sim_domain)
     if not 1 <= args.speed <= 100:
         parser.error('--speed must be 1..100')
 
