@@ -6,7 +6,8 @@ GitHub Release with notes. Nothing is pushed to a registry: users build from the
 
 Team decisions (2026-11-04, [#108](https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/108)):
 
-- braco is at **`v0.1.0`**: `v1.0.0` was rolled back, see [§4.4](#44-the-v100--v010-rollback).
+- braco is at **`v0.1.0`**: `v1.0.0` was renumbered and deleted. A clone from before 2026-11-04 has to run
+  `git tag -d v1.0.0`, see [§4.4](#44-the-v100--v010-rollback).
 - **Every sprint has its own release**: sprint N ends with `v0.N.0`, see [§3](#3-timing).
 
 ## 1. Why release at all
@@ -117,23 +118,27 @@ This is the **only exception** to "never delete a published tag" ([§8](#8-when-
 written down here. It was accepted because `v1.0.0` had existed for one day and nothing depends on it. Leaving it
 would also break version ordering: `v1.0.0` sorts above every later `v0.N.0`.
 
-One-time steps, by the person cutting the rollback:
+**Done on 2026-11-04**: [`v0.1.0`](https://github.com/SEAME-pt/SEA-ME_Team2_braco/releases/tag/v0.1.0) is an
+annotated tag on `1957c67` (the merge of PR #105, where `v1.0.0` was), published with the `v1.0.0` notes. The
+`v1.0.0` release and tag are deleted from GitHub.
+
+**Every clone made before that date** still has the old tag, because `git fetch` never deletes a tag that is gone
+from the remote. Remove it once:
 
 ```bash
-git fetch --tags
-git rev-parse v1.0.0^{commit}                       # 1957c67..., the merge of PR #105
+git tag -l v1.0.0      # prints v1.0.0: the clone still has it
+git tag -d v1.0.0
+git fetch --tags       # gets v0.1.0
+```
+
+For the record, the rollback ran:
+
+```bash
 git tag -a v0.1.0 -m "braco v0.1.0 (sprint 1)" v1.0.0^{commit}
 git push origin v0.1.0
 gh release view v1.0.0 --json body -q .body > /tmp/notes-v0.1.0.md
 gh release create v0.1.0 --verify-tag --title "braco v0.1.0" --notes-file /tmp/notes-v0.1.0.md
 gh release delete v1.0.0 --cleanup-tag --yes        # deletes the release and the remote tag
-```
-
-Then everyone, in their clone (`git fetch` never deletes a tag that is gone from the remote):
-
-```bash
-git tag -d v1.0.0
-git fetch --tags
 ```
 
 ## 5. Pre-release checklist
