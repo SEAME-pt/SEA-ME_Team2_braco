@@ -2,7 +2,7 @@
 
 How the braco software is built today: layers, nodes, topics, packages and deployment. If the code and this document disagree, the code wins. CPU and memory: [resources.md](resources.md).
 
-Last checked against the code: **2026-10-27**.
+Last checked against the code: **2026-11-03**.
 
 **Contents:** [Principles](#1-principles) · [Layers](#2-layers) · [Nodes and devices](#3-nodes-and-devices) · [Topics and services](#4-topics-and-services) · [Control of the arm](#5-control-of-the-arm) · [Packages](#6-packages) · [Deployment](#7-deployment) · [Launch and parameters](#8-launch-and-parameters) · [Simulation and planned layers](#9-simulation-and-planned-layers) · [Status](#10-status) · [Changing the architecture](#11-changing-the-architecture)
 
@@ -183,7 +183,7 @@ Key parameters: `command_timeout_ms` 300 (watchdog), `control_idle_s` 5.0, `stat
 ## 9. Simulation and planned layers
 
 ```
-braco_mission ┄► MoveIt 2 ──trajectory──┬──► real: arm_driver   (path to decide)
+braco_mission ┄► MoveIt 2 ──trajectory──┬──► real: braco SystemInterface ──/arm/command──► arm_driver
    planned                              └──► sim: Gazebo + gz_ros2_control
 ```
 
@@ -195,7 +195,8 @@ braco_mission ┄► MoveIt 2 ──trajectory──┬──► real: arm_drive
 - Every mesh declares the COLLADA unit 1 and the URDF scales the millimetre ones: MoveIt ignores the unit and would
   otherwise check collisions on meshes 1000x too big.
 - The URDF (`braco_description`) uses the joint names of `/joint_states` and the limits of `JOINT_LIMITS`.
-- `sim:=true` runs the controllers of `braco_description/config/controllers.yaml`, the set planned for the real arm. On the real arm only the URDF's hardware plugin changes (a braco `SystemInterface`, planned).
+- `sim:=true` runs the controllers of `braco_description/config/controllers.yaml`, the set planned for the real arm. On the real arm only the URDF's hardware plugin changes (a braco `SystemInterface`, planned), and `joint_state_broadcaster` is not spawned: `arm_driver` keeps publishing `/joint_states`.
+- Real arm ([ADR-0004](../decisions/ADR-0004-trajectories-through-arm-driver.md)): the plugin sends `ALL_ANGLES` with `source: "mission"` to `arm_driver`, so trajectories pass the same gates as every client. `braco_mission` takes the control before each goal; STOP or a lost control aborts the trajectory.
 - How to run it: [Run the simulation](../../ros2_ws/src/braco_description/README.md#run-the-simulation-step-by-step).
 
 ---
@@ -218,7 +219,7 @@ braco_mission ┄► MoveIt 2 ──trajectory──┬──► real: arm_drive
 **Pending:**
 - `arm_driver` as a lifecycle node
 - E-stop node
-- ros2_control `SystemInterface` for the real arm, and how trajectories reach `arm_driver`
+- ros2_control `SystemInterface` for the real arm (path decided in [ADR-0004](../decisions/ADR-0004-trajectories-through-arm-driver.md); #87, #101)
 - `braco_moveit_config`
 - `braco_mission`
 - Measured CPU/RAM ([resources.md](resources.md))
