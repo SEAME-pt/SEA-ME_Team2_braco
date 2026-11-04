@@ -25,7 +25,7 @@ Safety rules for the arm, its gripper and its camera.
 
 - **Nothing within 350 mm of the base** while the arm has power: no objects, no loose clothes, no hands.
 - **The base is always clamped** to the table.
-- **Put the arm straight up (all joints ≈ 0°) before you turn on the motors.**
+- **If the arm is not in park position, put the arm straight up (all joints ≈ 0°) before you turn on the motors.**
   - If the arm is bent, its weight pulls hard on J2 and J3: it jumps, can break the gears and can hit the camera or
     gripper.
 - **Never move a joint by hand while the motors are on.** Turn them off first (section 6.3).
@@ -42,7 +42,7 @@ Safety rules for the arm, its gripper and its camera.
 ### 5.1 Turning on
 
 1. Clear the 350 mm area and check the camera cable.
-2. Put the arm straight up by hand.
+2. If the arm is not in the park position, put the arm straight up by hand.
 3. Start the Jetson.
 4. Press the round switch on the base.
 5. Hold the arm lightly while you send `power_on` (the motors turn on).
@@ -94,3 +94,40 @@ Safety rules for the arm, its gripper and its camera.
 2. Put the arm straight up by hand.
 3. Turn the power back on.
 4. Move it to zero slowly (speed ≤ 15%) and check the angles and the camera.
+
+## 9. First MoveIt 2 motion on the real arm
+
+Go/no-go checklist. If any box is not ticked, do not move the arm.
+
+### 9.1 Before
+
+- [ ] Domain check passed ([#103](https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/103)): real arm on domain
+  42, nothing else on it.
+- [ ] Limits test green ([#99](https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/99)).
+- [ ] MoveIt `max_velocity_scaling_factor` and `max_acceleration_scaling_factor` **≤ 0.1**.
+- [ ] Everyone present has signed the induction (section 1).
+- [ ] Work area clear (section 3).
+- [ ] Arm at park. The MoveIt client takes control (`/arm/take_control`, source `script`), and
+  `/arm/control_owner` shows `script` ([ADR-0002](../decisions/ADR-0002-unique-control.md)).
+- [ ] Rest mode left (`make resume`), then motors on (`/arm/power_on`).
+- [ ] Motor temperatures OK (section 7, [overheating.md](overheating.md)).
+
+### 9.2 During
+
+- [ ] One person on STOP (section 6.2): the web page's STOP button, or
+  `ROS_DOMAIN_ID=42 ros2 topic pub --once /arm/command braco_interfaces/msg/ArmCommand '{type: 0}'`.
+- [ ] One person on the power switch (section 6.1).
+- [ ] First move small, in a direction with nothing in the way.
+
+### 9.3 After
+
+- [ ] Return the arm to park.
+- [ ] Record what happened (date, people, motion, result, problems) in a comment on
+  [#101](https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/101).
+
+### 9.4 Abort
+
+- **Stop at once if:** the arm leaves the planned path, moves faster than expected, makes unusual noise, gets hot,
+  hits something or loses communication, or for any reason in section 6.1.
+- **Who decides:** anyone can call STOP. Only the test lead, named before the test, decides whether to continue.
+  After an abort, follow section 8.
