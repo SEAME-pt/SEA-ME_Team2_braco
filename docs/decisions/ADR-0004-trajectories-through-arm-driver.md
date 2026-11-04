@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-11-03
 deciders: all
 ---
@@ -38,7 +38,7 @@ MoveIt 2 sends `FollowJointTrajectory` goals to `arm_controller` (`JointTrajecto
 |---|---|
 | Serial port | `arm_driver` only. The plugin never opens it |
 | `read()` | Positions from the latest `/joint_states` (radians), velocities from it or 0. No message yet → `ERROR` |
-| `write()` | Publishes `ALL_ANGLES` on `/arm/command` with `source: "mission"`, only when the target changed, at most at `state_rate_hz` (20 Hz). Angles are clamped by `arm_driver` (`JOINT_LIMITS`) |
+| `write()` | Publishes `ALL_ANGLES` on `/arm/command` with `source: "mission"` at `state_rate_hz` (20 Hz) while the controller is active, **even when the target has not changed**: the watchdog stops the arm after `command_timeout_ms` (300 ms) without a motion command, which would leave it short of the last point. Angles are clamped by `arm_driver` (`JOINT_LIMITS`) |
 | Control | `braco_mission` calls `take_control("mission")` **without `force`** before each goal and releases it after the result, also on failure (like zero / park). Refused → the goal is not sent; nothing is queued. The plugin never calls `/arm/take_control` |
 | Lost control or STOP | The plugin reads `/arm/control_owner` and `/arm/command`. If the owner is not `mission` or a STOP is seen, `write()` returns `ERROR`, so ros2_control stops `arm_controller` and the goal is aborted. Covers a STOP from any client, a forced take by the page or joystick, and `park` on overheat |
 | Safety commands | STOP and entering rest need no control: `mission` may send them at any time. To end its own trajectory it cancels the goal. `mission` never leaves rest mode (ADR-0003) |
