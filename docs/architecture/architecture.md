@@ -29,7 +29,7 @@ Each layer talks only to the one below it. Layers 1–2 are identical in simulat
 | Layer | Role | Real arm (`sim:=false`, Jetson) | Simulation (`sim:=true`, PC) |
 |---|---|---|---|
 | **1 Mission and clients** | Decide what the arm does; take the control before moving | `braco_web`, `joystick_teleop`, `temperature_monitor`, `zero` / `park`; planned: `braco_mission`, MoveIt 2 | same nodes |
-| **2 ROS 2 middleware** | The contract: names and types | DDS domain 42; `/joint_states`, `/arm/command`, `/arm/*`, `/diagnostics` | same names, domain 77; `FollowJointTrajectory` on `/arm_controller` |
+| **2 ROS 2 middleware** | The contract: names and types | DDS domain 22; `/joint_states`, `/arm/command`, `/arm/*`, `/diagnostics` | same names, domain 27; `FollowJointTrajectory` on `/arm_controller` |
 | **3 Hardware abstraction** | Device access and safety | `arm_driver`, `camera`, `mycobot_cpp` | `gz_ros2_control` (`controller_manager`, `arm_controller`, `joint_state_broadcaster`) |
 | **4 Servo controller** | Drives the servo bus | Atom (ESP32, firmware 7.3) | Gazebo physics |
 | **5 Sensors and actuators** | What moves and senses | 6 servos, gripper; camera, joystick, LCD1602 wired to the Jetson | simulated `joint1..joint6`, gripper |
@@ -46,7 +46,7 @@ Each layer talks only to the one below it. Layers 1–2 are identical in simulat
                                        │                       ┌────────┐  V4L2  ┌────────────┐
                                        │                       │ camera │ ◄───── │ USB camera │
                                        │                       └───┬────┘        └────────────┘
- ══════════════════════════ ROS 2 · DDS · domain 42 ═══════════════╧══════════════════
+ ══════════════════════════ ROS 2 · DDS · domain 22 ═══════════════╧══════════════════
         │                         │                          │
  ┌──────┴──────┐          ┌───────┴─────────┐       ┌────────┴────────────┐
  │ braco_web   │          │ joystick_teleop │       │ temperature_monitor │
@@ -148,13 +148,15 @@ braco_driver ╳   braco_teleop       braco_description ┄► braco_moveit_conf
 | Image | `braco-image/pc` | `braco-image/jetson` |
 | `dev` | stays up: shell, build, test, RViz2, PlotJuggler, web page | throw-away (`run --rm`): build, zero, park |
 | System | `sim` (optional, `SIM=1`): Gazebo + controllers | `real`: `arm_driver`, `temperature_monitor`, `joystick_teleop`, `camera` |
-| ROS domain | 77 | 42 |
+| ROS domain | 27 | 22 |
 | Page source | `ARM_SOURCE=gazebo` | `ARM_SOURCE=ros` |
 
 - Same image family (ROS 2 Lyrical, Ubuntu 26.04) and workspace on both machines. `dev` builds; the system container runs what was built.
 - **Heavy work stays on the PC:** MoveIt 2 and the mission run there and reach the arm over DDS.
 - `make up` starts the system container. If the launch ends, the container stops. `make web` starts the page in the running container.
-- The PC uses domain 77 so its `/joint_states` never mix with the real arm's. To reach the arm from the PC: `ROS_DOMAIN_ID=42 ros2 ...`.
+- The PC uses domain 27 so its `/joint_states` never mix with the real arm's. To reach the arm from the PC: `ROS_DOMAIN_ID=22 ros2 ...`.
+  Both are in the 0–101 range that is safe on Linux
+  ([ROS 2 docs, *The ROS_DOMAIN_ID*](https://github.com/ros2/ros2_documentation/blob/rolling/source/ROS-Framework/nodes/About-Domain-ID.rst)).
 - Gazebo transport is kept local (`GZ_IP=127.0.0.1`).
 
 ---
@@ -183,13 +185,14 @@ Key parameters: `command_timeout_ms` 300 (watchdog), `control_idle_s` 5.0, `stat
 ## 9. Simulation and planned layers
 
 ```
-braco_mission ┄► MoveIt 2 ──trajectory──┬──► real: arm_driver   (path to decide)
+braco_mission ┄► MoveIt 2 ──trajectory──┬──► real: braco SystemInterface ──/arm/command──► arm_driver
    planned                              └──► sim: Gazebo + gz_ros2_control
 ```
 
 - The mission talks only to MoveIt 2, so the same code runs on real and simulated arms.
 - The URDF (`braco_description`) uses the joint names of `/joint_states` and the limits of `JOINT_LIMITS`.
-- `sim:=true` runs the controllers of `braco_description/config/controllers.yaml`, the set planned for the real arm. On the real arm only the URDF's hardware plugin changes (a braco `SystemInterface`, planned).
+- `sim:=true` runs the controllers of `braco_description/config/controllers.yaml`, the set planned for the real arm. On the real arm only the URDF's hardware plugin changes (a braco `SystemInterface`, planned), and `joint_state_broadcaster` is not spawned: `arm_driver` keeps publishing `/joint_states`.
+- Real arm ([ADR-0004](../decisions/ADR-0004-trajectories-through-arm-driver.md)): the plugin sends `ALL_ANGLES` with `source: "mission"` to `arm_driver`, so trajectories pass the same gates as every client. `braco_mission` takes the control before each goal; STOP or a lost control aborts the trajectory.
 - How to run it: [Run the simulation](../../ros2_ws/src/braco_description/README.md#run-the-simulation-step-by-step).
 
 ---
@@ -212,7 +215,7 @@ braco_mission ┄► MoveIt 2 ──trajectory──┬──► real: arm_drive
 **Pending:**
 - `arm_driver` as a lifecycle node
 - E-stop node
-- ros2_control `SystemInterface` for the real arm, and how trajectories reach `arm_driver`
+- ros2_control `SystemInterface` for the real arm (path decided in [ADR-0004](../decisions/ADR-0004-trajectories-through-arm-driver.md); #87, #101)
 - `braco_moveit_config`
 - `braco_mission`
 - Measured CPU/RAM ([resources.md](resources.md))

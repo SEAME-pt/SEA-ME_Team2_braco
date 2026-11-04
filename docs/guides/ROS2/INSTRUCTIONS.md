@@ -48,8 +48,8 @@ host$ make shell              # (pc-dev) dev@host:/ws$
 ```
 
 - `/ws` in the container is `ros2_ws/` in the repo: edit on the host, build and run in the container.
-- The PC's containers use **domain 77**, the real arm **domain 42**. To reach the arm from the PC:
-  `ROS_DOMAIN_ID=42 ros2 ...`
+- The PC's containers use **domain 27**, the real arm **domain 22**. To reach the arm from the PC:
+  `ROS_DOMAIN_ID=22 ros2 ...`
 - The Jetson has no GUI tools: inspect its nodes from the PC ([section 14](#14-pc-and-jetson-together)).
 
 ### Daily commands
@@ -1199,8 +1199,8 @@ container$ colcon build --packages-up-to ros2_basics_cpp --parallel-workers 1 &&
 container$ ros2 run ros2_basics_cpp talker
 
 host$ make shell
-container$ ROS_DOMAIN_ID=42 ros2 run ros2_basics_py listener     # the Jetson's domain
-container$ ROS_DOMAIN_ID=42 ros2 run rqt_graph rqt_graph
+container$ ROS_DOMAIN_ID=22 ros2 run ros2_basics_py listener     # the Jetson's domain
+container$ ROS_DOMAIN_ID=22 ros2 run rqt_graph rqt_graph
 ```
 
 Nothing arrives? Check the firewall (UDP between the machines), the domain/RMW values, or set `ROS_STATIC_PEERS` in `docker/compose.yml`. See [TROUBLESHOOTING.md → Between machines](TROUBLESHOOTING.md#communication-between-machines-pc--jetson).

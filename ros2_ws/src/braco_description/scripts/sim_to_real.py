@@ -16,7 +16,7 @@
 """
 Sim-to-real checks of issue #25 (docs/hardware/urdf-sim-to-real.md): Gazebo against the real arm.
 
-Gazebo on this shell's ROS_DOMAIN_ID (e.g. 77), the real arm on --real-domain (default 42).
+Gazebo on this shell's ROS_DOMAIN_ID (e.g. 27), the real arm on --real-domain (default 22).
 
   directions   step 2: each joint +30 deg in Gazebo, then on the real arm; you answer whether
                they moved the same joint the same way; prints the table for the report
@@ -236,7 +236,7 @@ def main():
     parser.add_argument('check', choices=['directions', 'fk', 'velocity'])
     parser.add_argument('--sim-domain', type=int,
                         default=int(os.environ.get('ROS_DOMAIN_ID', '0')))
-    parser.add_argument('--real-domain', type=int, default=42)
+    parser.add_argument('--real-domain', type=int, default=22)
     parser.add_argument('--speed', type=int, default=15,
                         help='real arm speed for directions and fk positioning (default 15)')
     parser.add_argument('--pose', type=float, nargs=6, metavar='DEG',
@@ -244,7 +244,7 @@ def main():
     args = parser.parse_args(remove_ros_args(sys.argv)[1:])
     if args.sim_domain == args.real_domain:
         parser.error('Gazebo and the real arm are both on ROS domain %d: export another '
-                     'ROS_DOMAIN_ID for Gazebo and this script (e.g. 77)' % args.sim_domain)
+                     'ROS_DOMAIN_ID for Gazebo and this script (e.g. 27)' % args.sim_domain)
 
     sim = SimArm('sim_to_real_sim', args.sim_domain)
     real = RealArm('sim_to_real_real', args.real_domain, args.speed)

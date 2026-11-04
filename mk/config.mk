@@ -98,8 +98,8 @@ IMAGE         := $(IMAGE_PREFIX)/$(ROLE):$(IMAGE_TAG)
 DC      := docker compose --project-directory $(DOCKER_DIR) $(if $(GPU_FILE),-f $(COMPOSE_BASE) -f $(COMPOSE_DIR)/$(GPU_FILE).yml)
 # Domains: the real arm (ROS_DOMAIN_ID, Jetson) and the PC (PC_ROS_DOMAIN_ID: `sim` and, through DEV_ROS_DOMAIN_ID,
 # the PC's `dev`), see docker/compose.yml. Defaults for a .env written before PC_ROS_DOMAIN_ID existed.
-ARM_ROS_DOMAIN_ID ?= $(or $(call dotenv,ROS_DOMAIN_ID),42)
-PC_ROS_DOMAIN_ID  ?= $(or $(call dotenv,PC_ROS_DOMAIN_ID),77)
+ARM_ROS_DOMAIN_ID ?= $(or $(call dotenv,ROS_DOMAIN_ID),22)
+PC_ROS_DOMAIN_ID  ?= $(or $(call dotenv,PC_ROS_DOMAIN_ID),27)
 COMPOSE := COMPOSE_PROFILES=$(ROLE) $(if $(filter pc,$(ROLE)),DEV_ROS_DOMAIN_ID=$(PC_ROS_DOMAIN_ID)) $(DC)
 
 # No TTY in CI (GitHub Actions sets CI=true) or when stdin is not a terminal.

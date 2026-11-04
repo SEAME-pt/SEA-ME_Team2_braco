@@ -18,7 +18,7 @@ Move the arm through a few poses: in Gazebo, then with --real on the real arm.
 
 An example to copy: write the moves once, try them in Gazebo, then run them on the arm.
 
-  ros2 launch braco_description gazebo.launch.py          # Gazebo (ROS_DOMAIN_ID=77)
+  ros2 launch braco_description gazebo.launch.py          # Gazebo (ROS_DOMAIN_ID=27)
   ros2 run braco_description move_arm_example.py          # Gazebo only
   ros2 run braco_description move_arm_example.py --real   # Gazebo, then the real arm (asks first)
 """

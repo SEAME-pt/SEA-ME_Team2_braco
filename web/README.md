@@ -63,7 +63,7 @@ every 100 ms, exactly like `braco_bringup/src/arm_moves.cpp`; if the page dies, 
 arm. Park uses the firmware limits and, like `make park`, releases the servos and enters rest mode once it arrives (STOP or a newer command before that cancels it). Wake up leaves rest mode
 and powers the servos without moving the arm (rest mode is only entered with the *Rest on* button).
 
-**On a PC** it runs in the `dev` container with `ARM_SOURCE=gazebo` (http://localhost:8000), on the PC's domain (77),
+**On a PC** it runs in the `dev` container with `ARM_SOURCE=gazebo` (http://localhost:8000), on the PC's domain (27),
 so it drives whichever Gazebo runs there:
 
 ```bash

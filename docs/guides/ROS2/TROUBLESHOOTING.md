@@ -84,7 +84,7 @@ Go through this list in order.
 | Still nothing | Firewall | `sudo ufw status`. Allow UDP from the other machine: `sudo ufw allow from <other-ip>` |
 | Still nothing | Discovery range | `ROS_AUTOMATIC_DISCOVERY_RANGE` must be `SUBNET` (our default), not `LOCALHOST`, and both machines in the same subnet |
 | Nodes appear but no data, or only small messages arrive | Network MTU / fragmentation, or very large messages over Wi-Fi | Test with small messages first; for images use `SensorDataQoS`, lower resolution or compressed images |
-| Two teams see each other's nodes | Same domain ID on a shared network | Agree on a different `ROS_DOMAIN_ID` per team (0 to 101) |
+| Two teams see each other's nodes | Same domain ID on a shared network | Agree on a different `ROS_DOMAIN_ID` per team (0 to 101, [why](https://github.com/ros2/ros2_documentation/blob/rolling/source/ROS-Framework/nodes/About-Domain-ID.rst)) |
 | Timestamps / tf look wrong across machines | Clocks out of sync | Enable NTP on both hosts (`timedatectl status`; install `chrony`) |
 | `ros2 node list` shows nodes that were stopped, or misses new ones | CLI daemon cache | `ros2 daemon stop; ros2 daemon start` |
 | Duplicate node names warning | Two nodes with the same name (e.g. same program on both machines) | Rename one: `--ros-args -r __node:=talker_jetson` |

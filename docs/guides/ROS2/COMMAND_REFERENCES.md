@@ -32,7 +32,7 @@ source /opt/ros/lyrical/setup.bash      # underlay (automatic in the containers)
 source /ws/install/setup.bash           # your workspace, after every build
 printenv | grep -E 'ROS|RMW'            # ROS_DISTRO, ROS_DOMAIN_ID, RMW_IMPLEMENTATION...
 ros2 doctor --report                    # environment + network report
-ROS_DOMAIN_ID=42 ros2 topic list        # the real arm, from the PC (the PC itself is on domain 77)
+ROS_DOMAIN_ID=22 ros2 topic list        # the real arm, from the PC (the PC itself is on domain 27)
 ```
 
 ## Workspace and packages

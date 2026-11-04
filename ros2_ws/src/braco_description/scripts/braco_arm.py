@@ -26,7 +26,7 @@ Used by park.py and move_arm_example.py. A move is (six angles in degrees, secon
              table-clearance check still applies to every target.
 
 Gazebo and the real arm both publish /joint_states, so they must be on different ROS domains:
-Gazebo on the shell's ROS_DOMAIN_ID (e.g. 77), the real arm on --real-domain (default 42).
+Gazebo on the shell's ROS_DOMAIN_ID (e.g. 27), the real arm on --real-domain (default 22).
 """
 
 import argparse
@@ -330,8 +330,8 @@ def run(name, moves, description='', after_real=None, after_real_note=''):
     parser.add_argument('--sim-domain', type=int,
                         default=int(os.environ.get('ROS_DOMAIN_ID', '0')),
                         help="Gazebo's ROS domain (default: this shell's ROS_DOMAIN_ID)")
-    parser.add_argument('--real-domain', type=int, default=42,
-                        help="the real arm's ROS domain (default 42, as in docker/.env)")
+    parser.add_argument('--real-domain', type=int, default=22,
+                        help="the real arm's ROS domain (default 22, as in docker/.env)")
     parser.add_argument('--speed', type=int, default=30,
                         help='real arm speed, 1..100 (default 30, like zero and park)')
     args = parser.parse_args(remove_ros_args(sys.argv)[1:])
@@ -341,7 +341,7 @@ def run(name, moves, description='', after_real=None, after_real_note=''):
     if args.real and not args.skip_sim and args.sim_domain == args.real_domain:
         parser.error('Gazebo and the real arm are both on ROS domain %d: their /joint_states '
                      'would mix. Run Gazebo and this script with another ROS_DOMAIN_ID '
-                     '(e.g. export ROS_DOMAIN_ID=77).' % args.sim_domain)
+                     '(e.g. export ROS_DOMAIN_ID=27).' % args.sim_domain)
     if not 1 <= args.speed <= 100:
         parser.error('--speed must be 1..100')
 
