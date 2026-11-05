@@ -1,0 +1,9 @@
+moveit_setup_assistant_config:
+  urdf:
+    package: braco_moveit_config
+    relative_path: config/braco.urdf.xacro
+  srdf:
+    relative_path: config/braco.srdf
+  package_settings:
+    author_name: Daniel Ximenes
+    author_email: danielximenes164@gmail.com
