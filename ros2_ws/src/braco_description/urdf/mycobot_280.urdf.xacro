@@ -12,6 +12,9 @@
     * limits in radians come from JOINT_LIMITS in ros2_ws/src/mycobot_cpp/includes/mycobot.hpp (see the
       properties below); test/test_urdf.py keeps them in sync
     * inertials added, velocity/effort set (see the UNMEASURED markers)
+    * millimetre meshes (base_link, link4) declare <unit meter="1"> and are scaled by 0.001 here:
+      MoveIt's mesh loader ignores the COLLADA unit, so it would load them 1000x too big
+      (test/test_urdf.py keeps every mesh at <unit meter="1">)
   Joint origins and mesh offsets are the vendor's, unchanged. Whether the model's zero pose
   looks like the real arm's upright pose is checked on the real arm (docs/hardware/urdf-sim-to-real.md).
 -->
@@ -54,19 +57,20 @@
     </inertial>
   </xacro:macro>
 
-  <!-- One link: the vendor mesh with the vendor's visual offset, also used for collision. -->
-  <xacro:macro name="arm_link" params="name mesh mass xyz rpy">
+  <!-- One link: the vendor mesh with the vendor's visual offset, also used for collision.
+       scale: 0.001 for a mesh drawn in millimetres, 1 for one drawn in metres. -->
+  <xacro:macro name="arm_link" params="name mesh mass xyz rpy scale:=1">
     <link name="${name}">
       <visual>
         <origin xyz="${xyz}" rpy="${rpy}"/>
         <geometry>
-          <mesh filename="package://braco_description/meshes/arm/${mesh}.dae"/>
+          <mesh filename="package://braco_description/meshes/arm/${mesh}.dae" scale="${scale} ${scale} ${scale}"/>
         </geometry>
       </visual>
       <collision>
         <origin xyz="${xyz}" rpy="${rpy}"/>
         <geometry>
-          <mesh filename="package://braco_description/meshes/arm/${mesh}.dae"/>
+          <mesh filename="package://braco_description/meshes/arm/${mesh}.dae" scale="${scale} ${scale} ${scale}"/>
         </geometry>
       </collision>
       <xacro:cylinder_inertial mass="${mass}" radius="0.03" length="0.08"/>
@@ -87,7 +91,7 @@
 
   <!-- flange_yaw (rad): turns the flange mesh about the joint 6 axis (see braco.urdf.xacro). -->
   <xacro:macro name="mycobot_280" params="parent:=world flange_yaw:=0 *origin">
-    <xacro:arm_link name="base_link" mesh="base_link" mass="${base_mass}"
+    <xacro:arm_link name="base_link" mesh="base_link" mass="${base_mass}" scale="0.001"
                     xyz="0 0 0" rpy="0 0 3.14159"/>
     <joint name="${parent}_to_base_link" type="fixed">
       <parent link="${parent}"/>
@@ -101,7 +105,7 @@
                     xyz="0 0 0.03256" rpy="0 -1.5708 0"/>
     <xacro:arm_link name="link3" mesh="link3" mass="${link_masses[2]}"
                     xyz="0 0 0.03056" rpy="0 -1.5708 0"/>
-    <xacro:arm_link name="link4" mesh="link4" mass="${link_masses[3]}"
+    <xacro:arm_link name="link4" mesh="link4" mass="${link_masses[3]}" scale="0.001"
                     xyz="0 0 -0.03356" rpy="0 -1.5708 1.5708"/>
     <xacro:arm_link name="link5" mesh="link5" mass="${link_masses[4]}"
                     xyz="0 0 -0.038" rpy="0 0 0"/>

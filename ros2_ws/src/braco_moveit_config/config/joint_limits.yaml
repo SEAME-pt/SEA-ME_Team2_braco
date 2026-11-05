@@ -1,0 +1,66 @@
+# Joint limits MoveIt plans with, joint1..joint6 (radians, rad/s, rad/s^2). They override and
+# extend the <limit> of the URDF; they must not be wider than the rest of the stack:
+#
+#   position      = JOINT_LIMITS of ros2_ws/src/mycobot_cpp/includes/mycobot.hpp, in radians
+#                   (the arm's firmware limits minus 1-2 deg; the URDF uses the same numbers).
+#                   Change them in mycobot.hpp first, then here and in mycobot_280.urdf.xacro.
+#   velocity      = joint_velocity of braco_description/urdf/mycobot_280.urdf.xacro: MEASURED on
+#                   the real arm at speed 100 (docs/hardware/urdf-sim-to-real.md).
+#   acceleration  UNMEASURED: the URDF has none and no one has measured it. 5 rad/s^2 reaches
+#                   the measured top speed (about 2.6 rad/s) in about 0.5 s, gentle for the servos.
+#                   Measure it (sim_to_real.py) and replace.
+
+# Fraction of the limits below used when a request gives none (RViz, MoveGroupInterface).
+# 1.0 = full measured speed; requests can ask for up to 1.0.
+default_velocity_scaling_factor: 0.3
+default_acceleration_scaling_factor: 0.3
+
+joint_limits:
+  joint1:   # J1 -166 .. 166 deg
+    has_position_limits: true
+    min_position: -2.897247
+    max_position: 2.897247
+    has_velocity_limits: true
+    max_velocity: 2.64
+    has_acceleration_limits: true
+    max_acceleration: 5.0
+  joint2:   # J2 -138 .. 138 deg
+    has_position_limits: true
+    min_position: -2.408554
+    max_position: 2.408554
+    has_velocity_limits: true
+    max_velocity: 2.44
+    has_acceleration_limits: true
+    max_acceleration: 5.0
+  joint3:   # J3 -149 .. 149 deg
+    has_position_limits: true
+    min_position: -2.600541
+    max_position: 2.600541
+    has_velocity_limits: true
+    max_velocity: 2.72
+    has_acceleration_limits: true
+    max_acceleration: 5.0
+  joint4:   # J4 -149 .. 149 deg
+    has_position_limits: true
+    min_position: -2.600541
+    max_position: 2.600541
+    has_velocity_limits: true
+    max_velocity: 2.69
+    has_acceleration_limits: true
+    max_acceleration: 5.0
+  joint5:   # J5 -153 .. 158 deg
+    has_position_limits: true
+    min_position: -2.670354
+    max_position: 2.757620
+    has_velocity_limits: true
+    max_velocity: 2.65
+    has_acceleration_limits: true
+    max_acceleration: 5.0
+  joint6:   # J6 -178 .. 178 deg
+    has_position_limits: true
+    min_position: -3.106686
+    max_position: 3.106686
+    has_velocity_limits: true
+    max_velocity: 2.60
+    has_acceleration_limits: true
+    max_acceleration: 5.0

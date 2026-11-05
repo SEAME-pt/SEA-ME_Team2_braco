@@ -22,6 +22,7 @@ Processes braco.urdf.xacro and checks that
   * every link with geometry has a positive mass and a positive-definite inertia
   * the frames the system uses exist (world, base_link, tool0, tcp, camera_optical_frame)
   * every mesh file, and every texture image a mesh points to, exists
+  * every mesh declares the COLLADA unit 1 (MoveIt ignores the unit; the URDF scales instead)
   * the model's zero pose has not moved by accident (see ZERO_TOOL0)
   * gazebo:=true controls exactly joint1..joint6, and the plain model has no ros2_control
   * config/controllers.yaml: arm_controller drives joint1..joint6
@@ -232,6 +233,19 @@ def test_meshes_are_triangulated():
     for mesh in {m.get('filename')[len(prefix):] for m in robot.iter('mesh')}:
         with open(os.path.join(PACKAGE_DIR, mesh), encoding='utf-8') as f:
             assert '<polygons' not in f.read(), mesh
+
+
+def test_meshes_are_in_metres():
+    # MoveIt's mesh loader (geometric_shapes) ignores the COLLADA <unit>, Gazebo and RViz apply
+    # it: a millimetre mesh with <unit meter="0.001"> looks right but collides 1000x too big in
+    # MoveIt. So every mesh declares unit 1 and the URDF scales the millimetre ones by 0.001
+    # (the scale attribute, which all three apply).
+    robot = load_urdf()
+    prefix = 'package://braco_description/'
+    for mesh in {m.get('filename')[len(prefix):] for m in robot.iter('mesh')}:
+        with open(os.path.join(PACKAGE_DIR, mesh), encoding='utf-8') as f:
+            unit = re.search(r'<unit [^>]*meter="([^"]+)"', f.read())
+        assert unit and float(unit.group(1)) == 1.0, (mesh, unit and unit.group(0))
 
 
 def test_actuated_gripper_has_one_master_and_five_mimics():

@@ -83,7 +83,7 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 ${pi / 2}"/>
       <geometry>
-        <mesh filename="package://braco_description/meshes/arm/g_base.dae"/>
+        <mesh filename="package://braco_description/meshes/arm/g_base.dae" scale="0.001 0.001 0.001"/>
       </geometry>
     </visual>
     <collision>
@@ -138,7 +138,7 @@
     <visual>
       <origin xyz="0.024 0 0.002" rpy="${pi / 2} 0 ${pi}"/>
       <geometry>
-        <mesh filename="package://braco_description/meshes/arm/camera_flange.dae"/>
+        <mesh filename="package://braco_description/meshes/arm/camera_flange.dae" scale="0.001 0.001 0.001"/>
       </geometry>
     </visual>
     <collision>
