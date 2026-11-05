@@ -24,6 +24,7 @@ The braco system in one ROS 2 launch, on the real arm or in simulation.
                 braco_description model and the ros2_control controllers planned for the
                 real arm (braco_description's gazebo.launch.py). When Gazebo exits the launch
                 shuts down, like with arm_driver. gui:=true opens the Gazebo window.
+                moveit:=true adds move_group on it; rviz:=true also opens RViz.
 
 Tuning parameters of the nodes live in config/braco.yaml. The wiring (port, baud, lcd_bus,
 device, camera) comes from the launch arguments, which the compose file fills from docker/.env.
@@ -36,7 +37,8 @@ from launch.actions import (DeclareLaunchArgument, IncludeLaunchDescription, Reg
 from launch.conditions import IfCondition, UnlessCondition
 from launch.event_handlers import OnProcessExit
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
+from launch.substitutions import (AndSubstitution, LaunchConfiguration, NotSubstitution,
+                                  PathJoinSubstitution)
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
@@ -51,13 +53,23 @@ def generate_launch_description():
     camera = LaunchConfiguration('camera')
     config = PathJoinSubstitution([FindPackageShare('braco_bringup'), 'config', 'braco.yaml'])
     real = UnlessCondition(sim)
+    moveit = LaunchConfiguration('moveit')
     # Not an exec_depend: braco_description needs Gazebo, which only the PC image has. The
     # package is looked up only when sim:=true, so the Jetson never needs it.
     gazebo = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(PathJoinSubstitution(
             [FindPackageShare('braco_description'), 'launch', 'gazebo.launch.py'])),
         launch_arguments={'gui': LaunchConfiguration('gui')}.items(),
-        condition=IfCondition(sim))
+        condition=IfCondition(AndSubstitution(sim, NotSubstitution(moveit))))
+
+    # Not an exec_depend either: MoveIt only exists in the PC image
+    moveit_sim = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(PathJoinSubstitution(
+            [FindPackageShare('braco_moveit_config'), 'launch', 'sim.launch.py'])),
+        launch_arguments={'gui': LaunchConfiguration('gui'),
+                          'rviz': LaunchConfiguration('rviz')}.items(),
+        condition=IfCondition(AndSubstitution(sim, moveit)))
+
     # The only process that opens the serial port. Not respawned: a fault must be seen.
     arm_driver = Node(package='braco_driver', executable='arm_driver', name='arm_driver',
                       output='screen', condition=real,
@@ -72,8 +84,12 @@ def generate_launch_description():
         DeclareLaunchArgument('device', default_value='/dev/input/js0'),
         DeclareLaunchArgument('camera', default_value='/dev/video0',
                               description='video device of the eye-in-hand camera'),
-        DeclareLaunchArgument('gui', default_value='false',
+              DeclareLaunchArgument('gui', default_value='false',
                               description='sim:=true only: true opens the Gazebo window'),
+        DeclareLaunchArgument('moveit', default_value='false',
+                              description='sim:=true only: true adds move_group'),
+        DeclareLaunchArgument('rviz', default_value='false',
+                              description='moveit:=true only: true opens RViz'),
         arm_driver,
         # Without the driver nothing else is useful: end the launch instead of idling
         RegisterEventHandler(
@@ -91,4 +107,5 @@ def generate_launch_description():
              output='screen', respawn=True, condition=real,
              parameters=[config, {'device': camera}]),
         gazebo,
+        moveit_sim,
     ])
