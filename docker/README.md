@@ -32,7 +32,8 @@ Ubuntu 26.04 + ROS 2 Lyrical for the myCobot 280 Jetson Nano, in Docker.
 | `docker/config/` | `colcon-defaults.yaml`; `team-domains.tsv`: each teammate's ROS domain ([section 6](#6-the-sim-container-pc)) |
 | `docker/scripts/` | Entrypoint, environment, smoke test, installers; `team-domain.sh` (used by `make setup` and `make lint`) |
 | `docker/tests/talker-listener.sh` | The ROS 2 network test (mounted read-only in `dev`) |
-| `docker/tests/domain-check.sh` | Before MoveIt (#103): right domain, exactly one arm. `make domain-check [TARGET=sim]`, or in the MoveIt shell: `bash /opt/seame/tests/domain-check.sh --target real\|sim` |
+| `docker/tests/team-domain-test.sh` | Tests `team-domain.sh` (run by `make lint`) |
+| `docker/tests/domain-check.sh`, `domain_check.py` | Before MoveIt (#103): right domain, exactly one arm. `make domain-check [TARGET=sim]`, or in the MoveIt shell: `bash /opt/seame/tests/domain-check.sh --target real\|sim` |
 | `docker/systemd/braco.service` | Starts the system at boot on the Jetson (`make boot-on`) |
 | `ros2_ws/` | The workspace, mounted at `/ws` in every container (`src/` = packages, `bags/` = recordings) |
 

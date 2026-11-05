@@ -8,18 +8,19 @@
 # table): PC_ROS_DOMAIN_ID is left as it is (27 by default) with a warning, and setup goes on.
 set -euo pipefail
 
-TABLE="$(cd "$(dirname "$0")/.." && pwd)/config/team-domains.tsv"
+TABLE="${TEAM_DOMAINS_TABLE:-$(cd "$(dirname "$0")/.." && pwd)/config/team-domains.tsv}"   # override: tests
 ARM_DOMAIN=22       # ROS_DOMAIN_ID: the real arm
 DEFAULT_DOMAIN=27   # PC_ROS_DOMAIN_ID when the login is not listed
 MIN=20
 MAX=29
 
-rows() { grep -vE '^[[:space:]]*(#|$)' "$TABLE"; }
+rows() { grep -vE '^[[:space:]]*(#|$)' "$TABLE" || true; }   # no rows: empty, not an error (check reports it)
 
 check() {
     local fail=0 login name domain
     declare -A seen_login=() seen_domain=()
     [ -r "$TABLE" ] || { echo "team-domain: $TABLE not found" >&2; return 1; }
+    [ -n "$(rows)" ] || { echo "team-domains.tsv: no teammates listed" >&2; return 1; }
     while IFS=$'\t' read -r login name domain; do
         if [ -z "$login" ] || [ -z "$name" ] || [ -z "$domain" ]; then
             echo "team-domains.tsv: '$login' needs 3 tab-separated columns: login name domain" >&2; fail=1; continue

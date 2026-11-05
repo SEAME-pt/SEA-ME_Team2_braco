@@ -171,6 +171,7 @@ lint: $(ENV_FILE) $(VENV)/.installed ## Compose files, the team's ROS domains, r
 	@for g in nvidia dri; do COMPOSE_PROFILES=pc docker compose --project-directory $(DOCKER_DIR) -f $(COMPOSE_BASE) -f $(COMPOSE_DIR)/$$g.yml config -q && echo "  $(COMPOSE_DIR)/$$g.yml: ok"; done
 	@echo "== ROS domains =="
 	@bash $(TEAM_DOMAIN) check
+	@bash $(TESTS_DIR)/team-domain-test.sh
 	@echo "== Python =="
 	@$(VENV)/bin/ruff check -q $(PY_FILES) && echo "  ruff check: clean"
 	@echo "== shell scripts =="
