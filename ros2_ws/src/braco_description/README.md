@@ -167,6 +167,10 @@ xacro urdf/braco.urdf.xacro > /tmp/braco.urdf && check_urdf /tmp/braco.urdf
   the arm itself is limited by `mycobot::MyCobot280::sendAngles`.
 - **Frames**: `world` is the table; `g_base` is the G-shape base plate the arm stands on; `tool0` is the flange (z out of it, REP-103); `tcp` is between the fingertips;
   `camera_optical_frame` has z forward, x right, y down (REP-103).
+- **Mesh units**: every `.dae` declares `<unit meter="1">`; the ones drawn in millimetres (`base_link`, `link4`,
+  `g_base`, `camera_flange`, the gripper) get `scale="0.001 0.001 0.001"` in the xacro. MoveIt's mesh loader ignores
+  the COLLADA unit (Gazebo and RViz apply it): with `<unit meter="0.001">` those meshes looked right but collided
+  1000x too big in MoveIt. `test_urdf.py` fails on any other unit.
 - Values still **not measured** (velocity, effort, masses/inertia, camera mount, `tcp` length) are marked in the
   xacro and listed in `docs/hardware/urdf-sim-to-real.md`.
 

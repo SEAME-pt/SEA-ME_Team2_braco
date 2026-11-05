@@ -101,7 +101,8 @@ docker compose exec dev bash            # ROS ready
 - `make re`: also removes this machine's containers, volumes and image, then rebuilds everything. Never touches the
   other machine's image.
 - `make fclean`: removes **every** Docker container, image, volume and network on the machine, **other projects'
-  too**. Rebuilds nothing.
+  too**, and `docker/.env`. Rebuilds nothing: the next `make setup` or `make up` creates `docker/.env` again and asks
+  dev or jetson.
 
 **The Jetson**
 

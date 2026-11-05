@@ -1,0 +1,27 @@
+# Where move_group sends the trajectories it plans: the ros2_control controllers of
+# braco_description/config/controllers.yaml (the same names in the demo, Gazebo and, planned,
+# the real arm). MoveIt does not start them; the launch file that brings up ros2_control does.
+moveit_controller_manager: moveit_simple_controller_manager/MoveItSimpleControllerManager
+
+moveit_simple_controller_manager:
+  controller_names:
+    - arm_controller
+
+  arm_controller:
+    type: FollowJointTrajectory
+    action_ns: follow_joint_trajectory   # -> /arm_controller/follow_joint_trajectory
+    default: true
+    joints:
+      - joint1
+      - joint2
+      - joint3
+      - joint4
+      - joint5
+      - joint6
+
+trajectory_execution:
+  # A trajectory may take this much longer than planned (x1.2 + 0.5 s) before it is aborted.
+  allowed_execution_duration_scaling: 1.2
+  allowed_goal_duration_margin: 0.5
+  # Start state check: the arm must be within 0.01 rad of where the plan begins.
+  allowed_start_tolerance: 0.01

@@ -26,18 +26,20 @@
   <xacro:property name="gripper_upper" value="0.15"/>
   <xacro:property name="finger_link_mass" value="0.005"/>
 
+  <!-- The gripper meshes are drawn in millimetres: scaled by 0.001 here, their COLLADA unit is
+       1 (MoveIt ignores that unit, see mycobot_280.urdf.xacro). -->
   <xacro:macro name="finger_link" params="name mass xyz">
     <link name="${name}">
       <visual>
         <origin xyz="${xyz}" rpy="0 0 0"/>
         <geometry>
-          <mesh filename="package://braco_description/meshes/gripper/${name}.dae"/>
+          <mesh filename="package://braco_description/meshes/gripper/${name}.dae" scale="0.001 0.001 0.001"/>
         </geometry>
       </visual>
       <collision>
         <origin xyz="${xyz}" rpy="0 0 0"/>
         <geometry>
-          <mesh filename="package://braco_description/meshes/gripper/${name}.dae"/>
+          <mesh filename="package://braco_description/meshes/gripper/${name}.dae" scale="0.001 0.001 0.001"/>
         </geometry>
       </collision>
       <inertial>
