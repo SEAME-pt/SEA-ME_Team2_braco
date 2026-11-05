@@ -10,7 +10,7 @@
     </contributor>
     <created>2022-08-26T08:09:40Z</created>
     <modified>2022-08-26T08:09:40Z</modified>
-    <unit meter="0.001" name="Millimeters" />
+    <unit name="meter" meter="1"/>
     <up_axis>Z_UP</up_axis>
   </asset>
   <library_cameras>

@@ -1,0 +1,12 @@
+# Inverse kinematics of the planning group `arm` (config/braco.srdf: base_link -> tcp).
+#
+# KDL: the numerical solver shipped with MoveIt (moveit_kinematics), no extra package. It is only
+# used for Cartesian goals (a pose for tcp, computeCartesianPath); the named states home and park
+# are joint values and never need it. If it fails often on reachable poses near the joint limits,
+# swap the plugin here (TRAC-IK, pick_ik): nothing else changes.
+arm:
+  kinematics_solver: kdl_kinematics_plugin/KDLKinematicsPlugin
+  # Joint step (rad) KDL uses when it searches over a redundant joint; the arm has none (6 DOF).
+  kinematics_solver_search_resolution: 0.005
+  # Time for one IK request (s). KDL restarts from random seeds until it runs out.
+  kinematics_solver_timeout: 0.05

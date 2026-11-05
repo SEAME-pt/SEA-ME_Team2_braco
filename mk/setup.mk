@@ -50,15 +50,21 @@ re: _role ## Rebuild from zero: remove containers, cache volumes, image and buil
 	rm -rf $(WS_DIR)/build $(WS_DIR)/install $(WS_DIR)/log $(HOME)/.ros/log
 	@$(MAKE) --no-print-directory up
 
-# EVERY container, image, volume and network on this machine, braco's or not (other projects too). No rebuild:
-# make up afterwards. The default networks (bridge, host, none) cannot be removed: those errors are hidden.
-fclean: ## Remove ALL Docker containers, images, volumes and networks of this machine, not only braco's (FORCE=1: no prompt)
-	$(call confirm,Remove ALL Docker containers + images + volumes + networks on this machine (not only braco)?)
-	-docker ps -qa | xargs -r docker stop
-	-docker ps -qa | xargs -r docker rm
-	-docker images -qa | xargs -r docker rmi -f
-	-docker volume ls -q | xargs -r docker volume rm
-	-docker network ls -q | xargs -r docker network rm 2>/dev/null
+# EVERY container, image, volume and network on this machine, braco's or not (other projects too), and docker/.env.
+# No rebuild: make setup or make up afterwards (they create docker/.env again and ask dev or jetson).
+# Containers started with --rm delete themselves once stopped, so a plain stop + rm races them ("No such container",
+# "removal already in progress"). rm -f stops and removes in one step; then wait until none is left, and fail with
+# the list only if some really cannot be removed. prune skips what cannot be removed (the default networks bridge,
+# host, none; images shared by several tags) instead of failing on it. --all: named volumes too, not only anonymous.
+fclean: ## Remove ALL Docker containers, images, volumes and networks of this machine (not only braco's) and docker/.env (FORCE=1: no prompt)
+	$(call confirm,Remove ALL Docker containers + images + volumes + networks on this machine (not only braco) and $(ENV_FILE)?)
+	@ids=$$(docker ps -aq); [ -z "$$ids" ] || docker rm -f $$ids >/dev/null 2>&1 || true; \
+	for i in 1 2 3 4 5 6 7 8 9 10; do [ -z "$$(docker ps -aq)" ] && break; sleep 1; done; \
+	if [ -n "$$(docker ps -aq)" ]; then echo "fclean: these containers could not be removed:" >&2; docker ps -a >&2; exit 1; fi
+	docker system prune --all --force
+	docker volume prune --all --force
+	rm -f $(ENV_FILE) $(MACHINE_STAMP)
+	@echo "fclean done. make setup (or make up) creates $(ENV_FILE) again"
 
 # ---- dev or jetson: asked once, kept in docker/.env as COMPOSE_PROFILES (pc or jetson) ------------
 # Enter keeps the detected machine. Without a terminal (boot service, CI) or with ROLE=... it does not ask.

@@ -120,7 +120,7 @@ One colcon workspace, `ros2_ws/src`, mounted at `/ws`. Each package has a README
 | [`braco_camera`](../../ros2_ws/src/braco_camera/README.md) | `camera` (Python) | done |
 | [`braco_bringup`](../../ros2_ws/src/braco_bringup/README.md) | `braco.launch.py`, `braco.yaml`, entrypoint, `zero` / `park` | done |
 | [`braco_description`](../../ros2_ws/src/braco_description/README.md) | URDF, Gazebo launch, sim-to-real check | done |
-| [`braco_moveit_config`](../../ros2_ws/src/braco_moveit_config/README.md) | MoveIt 2 config | placeholder |
+| [`braco_moveit_config`](../../ros2_ws/src/braco_moveit_config/README.md) | MoveIt 2 config (SRDF, kinematics, joint limits, controllers), demo with mock hardware | done |
 | [`braco_mission`](../../ros2_ws/src/braco_mission/README.md) | Mission state machine | placeholder |
 
 ```
@@ -188,6 +188,12 @@ braco_mission ┄► MoveIt 2 ──trajectory──┬──► real: braco Sys
 ```
 
 - The mission talks only to MoveIt 2, so the same code runs on real and simulated arms.
+- `braco_moveit_config` plans for the group `arm` (joint1..joint6, for `tcp`) and sends to `arm_controller`
+  (`FollowJointTrajectory`), the controller name of `braco_description/config/controllers.yaml`. Its joint limits are
+  `JOINT_LIMITS`; its named states `home`/`park` are `ZERO_ANGLES`/`PARK_ANGLES` of `mycobot.hpp`. Its demo runs the
+  same controllers on `mock_components` (no Gazebo, no arm): [Run the demo](../../ros2_ws/src/braco_moveit_config/README.md#run-the-demo).
+- Every mesh declares the COLLADA unit 1 and the URDF scales the millimetre ones: MoveIt ignores the unit and would
+  otherwise check collisions on meshes 1000x too big.
 - The URDF (`braco_description`) uses the joint names of `/joint_states` and the limits of `JOINT_LIMITS`.
 - `sim:=true` runs the controllers of `braco_description/config/controllers.yaml`, the set planned for the real arm. On the real arm only the URDF's hardware plugin changes (a braco `SystemInterface`, planned), and `joint_state_broadcaster` is not spawned: `arm_driver` keeps publishing `/joint_states`.
 - Real arm ([ADR-0004](../decisions/ADR-0004-trajectories-through-arm-driver.md)): the plugin sends `ALL_ANGLES` with `source: "mission"` to `arm_driver`, so trajectories pass the same gates as every client. `braco_mission` takes the control before each goal; STOP or a lost control aborts the trajectory.
