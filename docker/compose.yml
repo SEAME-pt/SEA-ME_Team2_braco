@@ -22,6 +22,7 @@ name: braco
 #   https://github.com/ros2/ros2_documentation/blob/rolling/source/ROS-Framework/nodes/About-Domain-ID.rst
 x-ros-env: &ros-env
   ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-22}
+  ARM_ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-22}   # the real arm's, kept where ROS_DOMAIN_ID is overridden (domain-check.sh)
   RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}
   ROS_AUTOMATIC_DISCOVERY_RANGE: ${ROS_AUTOMATIC_DISCOVERY_RANGE:-SUBNET}
   # When multicast is blocked (campus Wi-Fi, some switches) add the other machine's IP:

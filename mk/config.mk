@@ -32,7 +32,7 @@ WS_DIRS := $(WS_SRC) $(WS_BAGS)
 # Files that must be present for the project to work (checked by `make doctor`).
 PROJECT_FILES := $(COMPOSE_BASE) $(ENV_EXAMPLE) $(DOCKERFILE) $(CONFIG_DIR)/colcon-defaults.yaml $(SYSTEMD_UNIT) \
                  $(CONFIG_DIR)/team-domains.tsv \
-                 $(TESTS_DIR)/talker-listener.sh $(addprefix $(COMPOSE_DIR)/,nvidia.yml dri.yml) \
+                 $(TESTS_DIR)/talker-listener.sh $(TESTS_DIR)/domain-check.sh $(addprefix $(COMPOSE_DIR)/,nvidia.yml dri.yml) \
                  $(addprefix $(SCRIPTS_DIR)/,apt-install-optional.sh env.sh install-plotjuggler.sh \
                                              install-ros-apt-source.sh ros_entrypoint.sh smoke-test.sh team-domain.sh)
 

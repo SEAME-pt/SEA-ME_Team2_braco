@@ -32,6 +32,7 @@ Ubuntu 26.04 + ROS 2 Lyrical for the myCobot 280 Jetson Nano, in Docker.
 | `docker/config/` | `colcon-defaults.yaml`; `team-domains.tsv`: each teammate's ROS domain ([section 6](#6-the-sim-container-pc)) |
 | `docker/scripts/` | Entrypoint, environment, smoke test, installers; `team-domain.sh` (used by `make setup` and `make lint`) |
 | `docker/tests/talker-listener.sh` | The ROS 2 network test (mounted read-only in `dev`) |
+| `docker/tests/domain-check.sh` | Before MoveIt (#103): right domain, exactly one arm. `make domain-check [TARGET=sim]`, or in the MoveIt shell: `bash /opt/seame/tests/domain-check.sh --target real\|sim` |
 | `docker/systemd/braco.service` | Starts the system at boot on the Jetson (`make boot-on`) |
 | `ros2_ws/` | The workspace, mounted at `/ws` in every container (`src/` = packages, `bags/` = recordings) |
 
@@ -79,7 +80,7 @@ docker compose exec dev bash            # ROS ready
 | Arm (Jetson) | `zero`, `park`, `rest`, `resume`, `temps`, `bench` |
 | Development | `shell`, `run CMD='...'`, `build` (`COLCON_ARGS=...`), `test`, `sim-gui`, `clean` |
 | Setup | `setup` (on the PC also your ROS domain, [section 6](#ros-domain-per-teammate)), `role`, `doctor`, `image` (`IMAGE_ARGS='--no-cache --pull'`), `boot-on`, `boot-off`, `jetson-image` (`NANO=user@host`), `re`, `fclean` |
-| Network | `net-test`, `net-talk`, `net-listen` |
+| Network | `net-test`, `net-talk`, `net-listen`, `domain-check` (before MoveIt; `TARGET=sim`, `WAIT=<s>`) |
 | CI | `ci`, `web-test`, `ci-image`, `ci-ros`, `cppcheck`, `tidy`, `coverage`, `lint`, `format`, `format-check` ([CI guide](../docs/guides/ci.md)) |
 
 **Options**

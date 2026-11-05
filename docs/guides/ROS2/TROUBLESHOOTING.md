@@ -81,7 +81,7 @@ Go through this list in order.
 |---|---|---|
 | Nodes on the other machine do not appear at all | Different `ROS_DOMAIN_ID` or `RMW_IMPLEMENTATION` | Compare `printenv | grep -E 'ROS_DOMAIN_ID|RMW'` on both. They come from `docker/.env`; make them identical and `make down && make up` |
 | Still nothing, IDs match | Multicast blocked (typical on Wi-Fi / campus networks) | Test with `ros2 multicast receive` (A) and `ros2 multicast send` (B). If it fails, set `ROS_STATIC_PEERS` to the other machine's IP in `docker/compose.yml` (`x-ros-env`), or use a wired connection / own router |
-| Still nothing | Firewall | `sudo ufw status`. Allow UDP from the other machine: `sudo ufw allow from <other-ip>` |
+| Still nothing (`make domain-check`: 0 `/joint_states`), though ping and the web page work | Firewall: ufw drops incoming DDS UDP (default `DROP`) | `sudo ufw status`. Allow DDS for domains 20–29 from the lab subnet: `sudo ufw allow proto udp from 10.20.0.0/16 to any port 12400:14899 comment 'ROS 2 DDS, domains 20-29'` (each PC) |
 | Still nothing | Discovery range | `ROS_AUTOMATIC_DISCOVERY_RANGE` must be `SUBNET` (our default), not `LOCALHOST`, and both machines in the same subnet |
 | Nodes appear but no data, or only small messages arrive | Network MTU / fragmentation, or very large messages over Wi-Fi | Test with small messages first; for images use `SensorDataQoS`, lower resolution or compressed images |
 | Two teams see each other's nodes | Same domain ID on a shared network | Agree on a different `ROS_DOMAIN_ID` per team (0 to 101, [why](https://github.com/ros2/ros2_documentation/blob/rolling/source/ROS-Framework/nodes/About-Domain-ID.rst)) |
