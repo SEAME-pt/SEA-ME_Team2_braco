@@ -54,7 +54,8 @@ Gazebo draws on the CPU (`llvmpipe`) and is slow or freezes. Pass `SIM=1` on eve
 should keep the simulation.
 
 That is the simulation: the `sim` container runs `braco.launch.py sim:=true` (Gazebo headless, the model, the
-controllers). `make up SIM=1` waits until it publishes `/joint_states`.
+controllers and, with `SIM_MOVEIT=true`, the default, `move_group`). `make up SIM=1` waits until it publishes
+`/joint_states`. To plan in RViz: [Run on the Gazebo arm](../braco_moveit_config/README.md#run-on-the-gazebo-arm).
 It runs on **ROS domain 77** (`PC_ROS_DOMAIN_ID` in `docker/.env`, also the PC's `dev`), never the real arm's 42:
 both publish `/joint_states`. If Gazebo exits, the container stops, like `real` when `arm_driver` exits.
 
