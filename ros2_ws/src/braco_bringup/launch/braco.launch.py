@@ -84,7 +84,7 @@ def generate_launch_description():
         DeclareLaunchArgument('device', default_value='/dev/input/js0'),
         DeclareLaunchArgument('camera', default_value='/dev/video0',
                               description='video device of the eye-in-hand camera'),
-              DeclareLaunchArgument('gui', default_value='false',
+        DeclareLaunchArgument('gui', default_value='false',
                               description='sim:=true only: true opens the Gazebo window'),
         DeclareLaunchArgument('moveit', default_value='false',
                               description='sim:=true only: true adds move_group'),
