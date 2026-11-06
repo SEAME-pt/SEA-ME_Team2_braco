@@ -1,10 +1,10 @@
-# mk/dev.mk - working on the code, in the `dev` container: shell run build test sim-gui, plus clean.
+# mk/dev.mk - working on the code, in the `dev` container: shell run build test sim-gui gaze-gui rviz-gui, plus clean.
 #
 # `dev` is the same image as the system, with the workspace mounted at /ws, so a build here is what the system runs
 # after `make restart`. PC: started by `make up` or by these commands, and kept up. Jetson: a throw-away container
 # per command (`run --rm`), gone when the command ends.
 
-.PHONY: shell run build test sim-gui clean
+.PHONY: shell run build test sim-gui gaze-gui rviz-gui clean
 
 ##@ Development (in the dev container)
 
@@ -23,13 +23,34 @@ test: _image _dev_up ## colcon test, then the results (unit tests and ament lint
 	@[ "$(ROLE)" != jetson ] || { echo "the Jetson builds without tests (BUILD_TESTING=OFF): run make test on the PC, or make ci-ros" >&2; exit 1; }
 	$(call dev_cmd) bash -c 'colcon test --base-paths $(WS_BASE_PATHS) && colcon test-result --verbose'
 
-# A Gazebo window on the simulation the `sim` container already runs (its GZ_PARTITION), not a second simulation:
-# a second gazebo.launch.py on the same ROS domain fights it for /clock and /controller_manager.
+# Windows on the simulation the `sim` container already runs (its GZ_PARTITION), not a second simulation: a second
+# gazebo.launch.py on the same ROS domain fights it for /clock and /controller_manager. In the background: make returns
+# at once, closing a window ends its process, closing them leaves the simulation running. Each one opens only once.
+# Their output goes to ~/.ros/log in dev.
 SIM_GZ_ENV := -e GZ_PARTITION=braco-sim -e GZ_SIM_RESOURCE_PATH=/ws/install/braco_description/share
-sim-gui: _image _dev_up ## PC: open the Gazebo window on the running simulation (make up SIM=1 first; Ctrl-C closes only the window)
-	@[ "$(ROLE)" = pc ] || { echo "sim-gui: the simulation runs on the PC" >&2; exit 1; }
+GAZE_GUI := ros2 launch ros_gz_sim gz_sim.launch.py gz_args:=-g
+RVIZ_GUI := ros2 launch braco_moveit_config rviz.launch.py
+define gui_checks
+	@[ "$(ROLE)" = pc ] || { echo "$@: the simulation runs on the PC" >&2; exit 1; }
 	@[ -n "$$($(COMPOSE) ps -q --status running sim)" ] || { echo "sim is not running: make up SIM=1 first" >&2; exit 1; }
-	$(call dev_cmd,$(SIM_GZ_ENV)) ros2 launch ros_gz_sim gz_sim.launch.py gz_args:=-g
+endef
+# $(1): the command, $(2): extra options of exec
+define gui_start
+	@if $(COMPOSE) exec -T $(DEV) pgrep -f '$(1)' >/dev/null; then echo "$@: already open"; \
+	else $(COMPOSE) exec -d $(2) $(DEV) ros_entrypoint.sh $(1) && echo "$@: opening in the background (close the window to end it)"; fi
+endef
+
+gaze-gui: _image _dev_up ## PC: open the Gazebo window on the running simulation, in the background
+	$(gui_checks)
+	$(call gui_start,$(GAZE_GUI),$(SIM_GZ_ENV))
+
+rviz-gui: _image _dev_up ## PC: open RViz + MoveIt on the running simulation, in the background (needs SIM_MOVEIT=true)
+	$(gui_checks)
+	@$(COMPOSE) exec -T sim pgrep -f moveit_ros_move_group/move_group >/dev/null || { \
+	  echo "move_group is not running: set SIM_MOVEIT=true in docker/.env, then make restart SIM=1" >&2; exit 1; }
+	$(call gui_start,$(RVIZ_GUI))
+
+sim-gui: gaze-gui rviz-gui ## PC: open both windows on the running simulation, in the background (make up SIM=1 first)
 
 clean: _role ## Delete colcon's build/ install/ log/ and the ROS logs (~/.ros/log, here and in the containers)
 	rm -rf $(WS_DIR)/build $(WS_DIR)/install $(WS_DIR)/log $(HOME)/.ros/log
