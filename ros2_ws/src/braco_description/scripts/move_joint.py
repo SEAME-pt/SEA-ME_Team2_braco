@@ -21,9 +21,9 @@ Move one joint of the simulated arm to an angle; the other five stay where they 
 
 Sends one goal to /arm_controller/follow_joint_trajectory (the controllers of
 config/controllers.yaml) and waits until /joint_states shows the joint there. Gazebo must be
-running on this shell's ROS_DOMAIN_ID (a dev shell and the `sim` container: PC_ROS_DOMAIN_ID). Simulation
-only: the real arm is moved by the page, the joystick, make zero / park, or braco_arm.py's
---real.
+running on this shell's ROS_DOMAIN_ID (a dev shell and the `sim` container:
+PC_ROS_DOMAIN_ID). Simulation only: the real arm is moved by the page, the joystick,
+make zero / park, or braco_arm.py's --real.
 """
 
 import argparse
