@@ -62,9 +62,10 @@ both publish `/joint_states`. If Gazebo exits, the container stops, like `real` 
 
 - the **web page**: `make web`, then http://localhost:8000: the 3D arm follows the simulation, and the Control tab
   moves it; or
-- the **Gazebo window**: `make sim-gui` opens a window on that running simulation (Ctrl-C closes the window, the
-  simulation keeps running). Or `SIM_GUI=true` in `docker/.env`, then `make restart SIM=1`: the `sim` container
-  opens it itself. Do **not** run `gazebo.launch.py` in `dev` for this: that is a second simulation (step 4).
+- the **windows**: `make gaze-gui` opens Gazebo on that running simulation, `make rviz-gui` opens RViz with MoveIt, and
+  `make sim-gui` opens both. They run in the background: closing a window ends only that window, the simulation keeps
+  running. Or `SIM_GUI=true` in `docker/.env`, then `make restart SIM=1`: the `sim` container opens Gazebo itself. Do
+  **not** run `gazebo.launch.py` in `dev` for this: that is a second simulation (step 4).
 
 **3. Command a joint.** In a dev shell (already on the simulation's domain, 77):
 
@@ -137,8 +138,8 @@ python3 /ws/src/braco_description/scripts/my_test.py --real --speed 15
 ## Commands in short
 
 ```bash
-# The simulation is the sim container (make up SIM=1); its Gazebo window, from the host:
-make sim-gui
+# The simulation is the sim container (make up SIM=1); its windows, from the host:
+make sim-gui      # Gazebo and RViz (only one: make gaze-gui, make rviz-gui)
 # a second Gazebo by hand, on its own domain (gui:=false for server only)
 ROS_DOMAIN_ID=78 ros2 launch braco_description gazebo.launch.py
 # move it there (radians, reached in 2 s)
