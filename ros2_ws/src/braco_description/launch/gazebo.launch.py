@@ -43,6 +43,7 @@ from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import (AppendEnvironmentVariable, DeclareLaunchArgument,
                             IncludeLaunchDescription, RegisterEventHandler)
+from launch.conditions import IfCondition
 from launch.event_handlers import OnProcessExit
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import (Command, FindExecutable, LaunchConfiguration,
@@ -58,6 +59,7 @@ def generate_launch_description():
     share = FindPackageShare('braco_description')
     model = PathJoinSubstitution([share, 'urdf', 'braco.urdf.xacro'])
     controllers = PathJoinSubstitution([share, 'config', 'controllers.yaml'])
+    gui_config = PathJoinSubstitution([share, 'config', 'gazebo_gui.config'])
     robot_description = ParameterValue(
         Command([FindExecutable(name='xacro'), ' ', model, ' gazebo:=true']),
         value_type=str)
@@ -105,7 +107,7 @@ def generate_launch_description():
                 [FindPackageShare('ros_gz_sim'), 'launch', 'gz_sim.launch.py'])),
             launch_arguments={'gz_args': [
                 PythonExpression(["'' if '", gui, "' == 'true' else '-s '"]),
-                '-r -v 1 ', LaunchConfiguration('world')],
+                '-r -v 1 --gui-config ', gui_config, ' ', LaunchConfiguration('world')],
                 # Gazebo gone (crash, window closed) = no arm: end the launch, so the
                 # sim container stops like the real one does when arm_driver exits
                 'on_exit_shutdown': 'true'}.items()),
@@ -114,6 +116,9 @@ def generate_launch_description():
         Node(package='ros_gz_bridge', executable='parameter_bridge', output='screen',
              arguments=['/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock']),
         spawn,
+        # The window starts tracking the arm (gui:=true only)
+        Node(package='braco_description', executable='gz_track_arm.sh', output='screen',
+             condition=IfCondition(gui)),
         # Controllers only once the model (and with it gz_ros2_control) exists
         RegisterEventHandler(OnProcessExit(target_action=spawn,
                                            on_exit=[joint_state_broadcaster])),
