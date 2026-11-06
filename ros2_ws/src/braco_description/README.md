@@ -12,7 +12,7 @@ arm (zero pose, joint directions, forward kinematics) and the open measurements 
 | `urdf/adaptive_gripper.xacro` | The gripper (macro), fingers fixed open or with the vendor linkage |
 | `urdf/braco.gazebo.xacro` | `gz_ros2_control` on `joint1..joint6`, added only with `gazebo:=true` |
 | `config/gazebo_gui.config` | The Gazebo window: the first view of the camera, close to the arm |
-| `config/controllers.yaml` | The ros2_control controllers, one set for the simulation and (planned) the real arm: `joint_state_broadcaster` + `arm_controller` (joint trajectory) |
+| `config/controllers.yaml` | The ros2_control controllers: `arm_controller` (joint trajectory, sim and real arm) and `joint_state_broadcaster` (sim and MoveIt demo, not the real arm: ADR-0004) |
 | `meshes/` | Visual and collision meshes of Elephant Robotics (`LICENSE.elephantrobotics`) |
 | `worlds/lab_bench.sdf` | The default scene: floor, light and the two tables of the real bench |
 | `models/lab_table/` | One table of the bench (static, the top collides) |
@@ -39,8 +39,10 @@ arm (zero pose, joint directions, forward kinematics) and the open measurements 
         robot_state_publisher ──► /tf        ros_gz_bridge ──► /clock
 ```
 
-The controllers are `config/controllers.yaml`, the set planned for the real arm too: on the hardware only the
-`<hardware>` plugin of the URDF changes (planned: a braco `SystemInterface`), so MoveIt, the mission and the page see the same names.
+The controllers are `config/controllers.yaml`. On the real arm only the URDF `<hardware>` plugin changes (planned: a
+braco `SystemInterface` over `arm_driver`, #87), so MoveIt, the mission and the page see the same `arm_controller`.
+`joint_state_broadcaster` is not used on the real arm: there `arm_driver` is the only `/joint_states` publisher
+([ADR-0004](../../../docs/decisions/ADR-0004-trajectories-through-arm-driver.md), #97).
 The validation of the model against the real arm is [`docs/hardware/urdf-sim-to-real.md`](../../../docs/hardware/urdf-sim-to-real.md).
 
 ## The lab bench
