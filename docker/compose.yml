@@ -157,7 +157,8 @@ services:
   #                  /joint_states, and on one domain the Jetson's clients would read the simulated angles as the
   #                  real arm's.
   #   GZ_PARTITION   keeps its Gazebo apart from one started by hand in `dev` (gazebo.launch.py)
-  #   SIM_GUI=true   opens the Gazebo window (make up runs xhost +local:); default: headless (make sim-gui, or the page: make web)
+  #   SIM_GUI=true   opens the Gazebo window (make up runs xhost +local:); default: headless (make gaze-gui, make sim-gui, or the page: make web)
+  #   SIM_MOVEIT     true (default): also runs move_group on the simulated arm; make rviz-gui opens RViz on it
   # ---------------------------------------------------------------------------------------
   sim:
     <<: *ros-system
@@ -169,7 +170,8 @@ services:
       GZ_PARTITION: braco-sim
       SIM: "true"
       DISPLAY: ${DISPLAY:-:0}
-    command: ["/ws/install/braco_bringup/lib/braco_bringup/arm_routine.sh", "gui:=${SIM_GUI:-false}"]
+    command: ["/ws/install/braco_bringup/lib/braco_bringup/arm_routine.sh",
+              "gui:=${SIM_GUI:-false}", "moveit:=${SIM_MOVEIT:-true}"]
     volumes:
       - *vol-ws
       - *vol-repo

@@ -11,13 +11,18 @@ arm (zero pose, joint directions, forward kinematics) and the open measurements 
 | `urdf/mycobot_280.urdf.xacro` | The arm (macro): `base_link`, `link1..link6`, `joint1..joint6` |
 | `urdf/adaptive_gripper.xacro` | The gripper (macro), fingers fixed open or with the vendor linkage |
 | `urdf/braco.gazebo.xacro` | `gz_ros2_control` on `joint1..joint6`, added only with `gazebo:=true` |
+| `config/gazebo_gui.config` | The Gazebo window: the first view of the camera, close to the arm |
 | `config/controllers.yaml` | The ros2_control controllers: `arm_controller` (joint trajectory, sim and real arm) and `joint_state_broadcaster` (sim and MoveIt demo, not the real arm: ADR-0004) |
 | `meshes/` | Visual and collision meshes of Elephant Robotics (`LICENSE.elephantrobotics`) |
-| `launch/gazebo.launch.py` | The simulated arm: Gazebo (gz sim), the model and the controllers. Included by `braco_bringup`'s `sim:=true` |
+| `worlds/lab_bench.sdf` | The default scene: floor, light and the two tables of the real bench |
+| `models/lab_table/` | One table of the bench (static, the top collides) |
+| `launch/gazebo.launch.py` | The simulated arm: Gazebo (gz sim), the scene, the model and the controllers. Included by `braco_bringup`'s `sim:=true` |
 | `scripts/braco_arm.py` | Runs a list of moves in Gazebo, then (`--real`) the same moves on the real arm |
 | `scripts/move_joint.py` | Moves one joint of the simulated arm (`move_joint.py 2 30`: joint2 to 30°) |
 | `scripts/move_arm_example.py` | Example: a few poses, written once, run in Gazebo and on the arm |
 | `scripts/park.py` | The park pose (`PARK_ANGLES` of `mycobot.hpp`), in Gazebo and on the arm |
+| `launch/gazebo_gui.launch.py` | Only the Gazebo window, on a simulation already running (`make gaze-gui`) |
+| `scripts/gz_track_arm.sh` | Turns on Track in the Gazebo window, so the camera keeps looking at the arm |
 | `scripts/sim_to_real.py` | Issue #25 checks against the real arm: `directions`, `fk`, `velocity` |
 | `test/test_urdf.py` | Keeps the URDF and the code in sync |
 
@@ -26,7 +31,7 @@ arm (zero pose, joint directions, forward kinematics) and the open measurements 
 ```
  braco_bringup  braco.launch.py sim:=true            (the `sim` container, ROS domain 77)
    └─ braco_description  gazebo.launch.py
-        gz sim (empty world) ── spawns braco.urdf.xacro gazebo:=true
+        gz sim (lab_bench.sdf) ── spawns braco.urdf.xacro gazebo:=true, on the table
           └─ gz_ros2_control (hardware: GazeboSimSystem, joint1..joint6, position)
                ├─ joint_state_broadcaster  ──► /joint_states
                └─ arm_controller           ◄── /arm_controller/follow_joint_trajectory  (action)
@@ -39,6 +44,31 @@ braco `SystemInterface` over `arm_driver`, #87), so MoveIt, the mission and the 
 `joint_state_broadcaster` is not used on the real arm: there `arm_driver` is the only `/joint_states` publisher
 ([ADR-0004](../../../docs/decisions/ADR-0004-trajectories-through-arm-driver.md), #97).
 The validation of the model against the real arm is [`docs/hardware/urdf-sim-to-real.md`](../../../docs/hardware/urdf-sim-to-real.md).
+
+## The lab bench
+
+The scene mirrors the real bench: two white tables joined along their long sides with a narrow gap, the arm at the rear
+edge (a short side) of one of them, next to the gap, facing the table top.
+
+- **Gazebo's origin** is on the floor, under the gap, at the rear edge. x points from the rear edge along the gap, y
+  across it, z up. The top is at 0.75 m.
+- **The model's `world` frame stays the table surface**, so TF, MoveIt and the table-clearance check see no change. Only
+  the spawn pose puts the arm in the scene.
+- **The pedestal** (grey) is only the look of `g_base` with `gazebo:=true`. It has the
+  height of the measured mount (`g_base_height`, 30 mm), so the kinematics do not change. The plain model keeps the mesh.
+- **Collisions:** the table top stops the arm in Gazebo. `arm_controller` still ends such a goal as successful (no goal
+  tolerances set): compare `/joint_states` with the target. MoveIt does not know the table, so it can plan through it.
+- **Unmeasured:** the sizes of the table and the pedestal and the arm's position are provisional, marked `UNMEASURED` in
+  `models/lab_table/model.sdf`, `worlds/lab_bench.sdf`, `braco.urdf.xacro` and `gazebo.launch.py`.
+
+Move the arm without editing a file (`braco.launch.py sim:=true` passes the same arguments on):
+
+```bash
+ros2 launch braco_description gazebo.launch.py robot_x:=0.2 robot_y:=0.3 robot_yaw:=0.5   # metres, radians
+ros2 launch braco_description gazebo.launch.py world:=empty.sdf robot_z:=0                # the empty world
+```
+
+In the `sim` container these are not set: to try another position, stop it and use a dev shell (step 4 below).
 
 ## Run the simulation, step by step
 
@@ -56,7 +86,8 @@ Gazebo draws on the CPU (`llvmpipe`) and is slow or freezes. Pass `SIM=1` on eve
 should keep the simulation.
 
 That is the simulation: the `sim` container runs `braco.launch.py sim:=true` (Gazebo headless, the model, the
-controllers). `make up SIM=1` waits until it publishes `/joint_states`.
+controllers and, with `SIM_MOVEIT=true`, the default, `move_group`). `make up SIM=1` waits until it publishes
+`/joint_states`. To plan in RViz: [Run on the Gazebo arm](../braco_moveit_config/README.md#run-on-the-gazebo-arm).
 It runs on **ROS domain 77** (`PC_ROS_DOMAIN_ID` in `docker/.env`, also the PC's `dev`), never the real arm's 42:
 both publish `/joint_states`. If Gazebo exits, the container stops, like `real` when `arm_driver` exits.
 
@@ -64,9 +95,11 @@ both publish `/joint_states`. If Gazebo exits, the container stops, like `real` 
 
 - the **web page**: `make web`, then http://localhost:8000: the 3D arm follows the simulation, and the Control tab
   moves it; or
-- the **Gazebo window**: `make sim-gui` opens a window on that running simulation (Ctrl-C closes the window, the
-  simulation keeps running). Or `SIM_GUI=true` in `docker/.env`, then `make restart SIM=1`: the `sim` container
-  opens it itself. Do **not** run `gazebo.launch.py` in `dev` for this: that is a second simulation (step 4).
+- the **windows**: `make gaze-gui` opens Gazebo on that running simulation, `make rviz-gui` opens RViz with MoveIt, and
+  `make sim-gui` opens both. They run in the background: closing a window ends only that window, the simulation keeps
+  running. The Gazebo window starts about 0.65 m from the arm, tracking it: the camera stays where it is and turns to
+  keep looking at the arm. To change the first view, edit `camera_pose` in `config/gazebo_gui.config`. Or `SIM_GUI=true` in `docker/.env`, then `make restart SIM=1`: the `sim` container opens Gazebo itself. Do
+  **not** run `gazebo.launch.py` in `dev` for this: that is a second simulation (step 4).
 
 **3. Command a joint.** In a dev shell (already on the simulation's domain, 77):
 
@@ -139,8 +172,8 @@ python3 /ws/src/braco_description/scripts/my_test.py --real --speed 15
 ## Commands in short
 
 ```bash
-# The simulation is the sim container (make up SIM=1); its Gazebo window, from the host:
-make sim-gui
+# The simulation is the sim container (make up SIM=1); its windows, from the host:
+make sim-gui      # Gazebo and RViz (only one: make gaze-gui, make rviz-gui)
 # a second Gazebo by hand, on its own domain (gui:=false for server only)
 ROS_DOMAIN_ID=78 ros2 launch braco_description gazebo.launch.py
 # move it there (radians, reached in 2 s)

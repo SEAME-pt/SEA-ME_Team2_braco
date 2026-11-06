@@ -77,7 +77,7 @@ docker compose exec dev bash            # ROS ready
 | System | `up` (`SIM=1` on the PC), `down` (`PARK=1`), `restart`, `status`, `logs` (`S=web`, `S=arm_driver`, any word) |
 | Web page | `web` (`MOCK=1`: fake arm data), `web-stop` |
 | Arm (Jetson) | `zero`, `park`, `rest`, `resume`, `temps`, `bench` |
-| Development | `shell`, `run CMD='...'`, `build` (`COLCON_ARGS=...`), `test`, `sim-gui`, `clean` |
+| Development | `shell`, `run CMD='...'`, `build` (`COLCON_ARGS=...`), `test`, `sim-gui`, `gaze-gui`, `rviz-gui`, `clean` |
 | Setup | `setup`, `role`, `doctor`, `image` (`IMAGE_ARGS='--no-cache --pull'`), `boot-on`, `boot-off`, `jetson-image` (`NANO=user@host`), `re`, `fclean` |
 | Network | `net-test`, `net-talk`, `net-listen` |
 | CI | `ci`, `web-test`, `ci-image`, `ci-ros`, `cppcheck`, `tidy`, `coverage`, `lint`, `format`, `format-check` ([CI guide](../docs/guides/ci.md)) |
@@ -140,12 +140,15 @@ docker compose exec dev bash            # ROS ready
 ## 6. The `sim` container (PC)
 
 - **Starts only with** `make up SIM=1` (`make restart SIM=1` recreates it; `make down` stops it).
-- **Runs** the same launch with `sim:=true`: Gazebo (no window), the model, the controllers. Stops when Gazebo ends.
+- **Runs** the same launch with `sim:=true`: Gazebo (no window), the model, the controllers, `move_group`. Stops when
+  Gazebo ends.
 - **ROS domain 77** (the PC), never 42 (the real arm): both publish `/joint_states`, and on one domain they would
   mix. To reach the real arm from `dev`: `ROS_DOMAIN_ID=42 ros2 ...`
 - **Its own Gazebo** (`GZ_PARTITION=braco-sim`). A second Gazebo in `dev` on domain 77 fights it: stop `sim`, or
   `export ROS_DOMAIN_ID=78` in that shell.
-- **Gazebo window:** `make sim-gui`, or `SIM_GUI=true` in `.env` + `make restart SIM=1`.
+- **Windows, in the background:** `make sim-gui` opens Gazebo and RViz (only one: `make gaze-gui`, `make rviz-gui`). Or
+  `SIM_GUI=true` in `.env` + `make restart SIM=1`: `sim` opens Gazebo itself.
+- **MoveIt:** `SIM_MOVEIT=true` (the default) also runs `move_group` in `sim`; `make rviz-gui` needs it.
 - **Web page:** `make web` (runs in `dev`), http://localhost:8000.
 - Step by step: [Run the simulation](../ros2_ws/src/braco_description/README.md#run-the-simulation-step-by-step).
 

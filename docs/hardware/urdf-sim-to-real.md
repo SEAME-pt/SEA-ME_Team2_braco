@@ -67,7 +67,8 @@ world -> g_base -> base_link -> link1 -> link2 -> link3 -> link4 -> link5 -> lin
 - `world`: the table surface.
 - `g_base`: the G-shape base, a 150 x 110 mm plate clamped to the table with its black grip. Mesh from the vendor
   (`mycobot_280_pi/G_base.dae`), turned 90° so its long side runs along y like the Jetson casing; collision is a box
-  of the same size.
+  of the same size. With `gazebo:=true` it looks like the lab bench's grey pedestal, at the same height
+  and with the same collision box: only the look changes.
 - `base_link`: the bottom of the Jetson casing, in the plate's pocket: `g_base_height` = 0.030 m above the table.
   **Measured**: table to the top of the casing = 140 mm (`BASE_HEIGHT_MM`), minus the 109.7 mm casing
   (`CASING_HEIGHT_MM`) = 30.3 mm; the vendor mounts it at 30 mm.
@@ -190,6 +191,8 @@ Tick them here as they are measured and update the URDF and the tables above. `s
 against the real arm (Gazebo on this shell's `ROS_DOMAIN_ID`, e.g. 77; the real arm on 42):
 `ros2 run braco_description sim_to_real.py directions | fk | velocity`.
 
+- [ ] **Lab bench** (`worlds/lab_bench.sdf`): the tables' size and height, the pedestal's footprint and the arm's position
+  on the table are provisional. Also confirm that the pedestal's height is the measured 30 mm (`g_base_height`).
 - [x] **Velocity** of each joint (`sim_to_real.py velocity`): each joint across a known range at speeds 25/50/75/100,
   timed from `/joint_states`. Results in "Limits" above; `joint_velocity` per joint in `mycobot_280.urdf.xacro`.
 - [x] **Effort**: no datasheet published; approximation from the rated payload (see "Limits"), marked as such.
