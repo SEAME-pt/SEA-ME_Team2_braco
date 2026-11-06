@@ -11,6 +11,7 @@ arm (zero pose, joint directions, forward kinematics) and the open measurements 
 | `urdf/mycobot_280.urdf.xacro` | The arm (macro): `base_link`, `link1..link6`, `joint1..joint6` |
 | `urdf/adaptive_gripper.xacro` | The gripper (macro), fingers fixed open or with the vendor linkage |
 | `urdf/braco.gazebo.xacro` | `gz_ros2_control` on `joint1..joint6`, added only with `gazebo:=true` |
+| `urdf/braco.real.xacro` | `braco_hardware` (the real arm's ros2_control plugin, over `arm_driver`) on `joint1..joint6`, added only with `real_arm:=true` |
 | `config/controllers.yaml` | The ros2_control controllers: `arm_controller` (joint trajectory, sim and real arm) and `joint_state_broadcaster` (sim and MoveIt demo, not the real arm: ADR-0004) |
 | `meshes/` | Visual and collision meshes of Elephant Robotics (`LICENSE.elephantrobotics`) |
 | `launch/gazebo.launch.py` | The simulated arm: Gazebo (gz sim), the model and the controllers. Included by `braco_bringup`'s `sim:=true` |
@@ -34,8 +35,9 @@ arm (zero pose, joint directions, forward kinematics) and the open measurements 
         robot_state_publisher ──► /tf        ros_gz_bridge ──► /clock
 ```
 
-The controllers are `config/controllers.yaml`. On the real arm only the URDF `<hardware>` plugin changes (planned: a
-braco `SystemInterface` over `arm_driver`, #87), so MoveIt, the mission and the page see the same `arm_controller`.
+The controllers are `config/controllers.yaml`. On the real arm only the URDF `<hardware>` plugin changes:
+`braco_hardware/BracoSystem` (with `real_arm:=true`, `urdf/braco.real.xacro`), which reads the joints from
+`arm_driver`, so MoveIt, the mission and the page see the same `arm_controller`.
 `joint_state_broadcaster` is not used on the real arm: there `arm_driver` is the only `/joint_states` publisher
 ([ADR-0004](../../../docs/decisions/ADR-0004-trajectories-through-arm-driver.md), #97).
 The validation of the model against the real arm is [`docs/hardware/urdf-sim-to-real.md`](../../../docs/hardware/urdf-sim-to-real.md).
