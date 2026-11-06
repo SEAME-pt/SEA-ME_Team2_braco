@@ -295,6 +295,49 @@ def test_zero_pose_tool0_position_is_unchanged():
         assert got == pytest.approx(want, abs=1e-3)
 
 
+def test_pedestal_look_does_not_change_the_mount():
+    # The bench's pedestal is only the simulated look of g_base: the height of the arm (the
+    # table-clearance check depends on it) and the collision box are the same in both models.
+    plain, gazebo = load_urdf(), load_urdf(gazebo='true')
+    assert plain.find("link[@name='g_base']/visual/geometry/mesh") is not None
+    names = [v.get('name') for v in gazebo.findall("link[@name='g_base']/visual")]
+    assert names == ['pedestal']
+    assert ET.tostring(plain.find("link[@name='g_base']/collision")) == \
+        ET.tostring(gazebo.find("link[@name='g_base']/collision"))
+    joint = "joint[@name='g_base_to_base_link']/origin"
+    assert plain.find(joint).get('xyz') == gazebo.find(joint).get('xyz')
+
+
+def test_arm_spawns_on_the_lab_bench_table():
+    # The model's world frame is the table surface: robot_z must be the height of the table top,
+    # and the default robot_x, robot_y must put the mount on one table, flush with its rear edge.
+    # The tables are turned 90 deg in the world: their long side runs along x, along the gap.
+    with open(os.path.join(PACKAGE_DIR, 'launch', 'gazebo.launch.py'), encoding='utf-8') as f:
+        launch = f.read()
+
+    def default(name):
+        match = re.search(r"'%s', default_value='([^']+)'" % name, launch)
+        assert match, name
+        return float(match.group(1))
+
+    table = ET.parse(os.path.join(PACKAGE_DIR, 'models', 'lab_table', 'model.sdf')).getroot()
+    top = table.find(".//collision[@name='top_collision']")
+    short_side, long_side, thickness = floats(top.find('geometry/box/size').text)
+    assert floats(top.find('pose').text)[2] + thickness / 2 == pytest.approx(default('robot_z'))
+
+    world = ET.parse(os.path.join(PACKAGE_DIR, 'worlds', 'lab_bench.sdf')).getroot()
+    poses = {i.find('name').text: floats(i.find('pose').text) for i in world.iter('include')}
+    centre = poses['lab_table_left']
+    assert centre[5] == pytest.approx(math.pi / 2, abs=1e-3)
+    assert poses['lab_table_right'][5] == pytest.approx(math.pi / 2, abs=1e-3)
+    pedestal = load_urdf(gazebo='true').find(
+        "link[@name='g_base']/visual[@name='pedestal']/geometry/box")
+    pedestal_depth, pedestal_width, _ = floats(pedestal.get('size'))
+    assert default('robot_x') - pedestal_depth / 2 == pytest.approx(centre[0] - long_side / 2)
+    assert default('robot_y') - pedestal_width / 2 >= centre[1] - short_side / 2
+    assert default('robot_y') + pedestal_width / 2 <= centre[1] + short_side / 2
+
+
 def test_plain_model_has_no_ros2_control():
     assert load_urdf().find('ros2_control') is None
 

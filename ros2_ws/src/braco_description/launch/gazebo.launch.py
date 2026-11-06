@@ -15,14 +15,20 @@
 """
 The simulated braco arm: the model in Gazebo (gz sim), driven by ros2_control.
 
-Starts Gazebo with an empty world, spawns the model (gazebo:=true adds gz_ros2_control),
-bridges /clock and starts the controllers of config/controllers.yaml (the same set planned
-for the real arm): joint_state_broadcaster, then arm_controller, once the model is in.
+Starts Gazebo with the lab bench (worlds/lab_bench.sdf), spawns the model on the table
+(gazebo:=true adds gz_ros2_control), bridges /clock and starts the controllers of
+config/controllers.yaml (the same set planned for the real arm): joint_state_broadcaster, then
+arm_controller, once the model is in.
+
+The model's `world` frame is the table surface, so its spawn pose is where the arm stands in the
+scene: robot_x and robot_y on the table, robot_z its height, robot_yaw about z (0: the arm's front
+along the gap, towards the table top). TF and MoveIt keep working in the model's frames.
 
 braco_bringup's braco.launch.py sim:=true (the `sim` container) includes this file; it also
 runs on its own in the dev container:
   ros2 launch braco_description gazebo.launch.py              # Gazebo window
   ros2 launch braco_description gazebo.launch.py gui:=false   # server only (headless)
+  ros2 launch braco_description gazebo.launch.py robot_x:=0.2 robot_yaw:=0.5
 
 Move one joint (degrees), or all six (radians, reached in 2 s):
   ros2 run braco_description move_joint.py 2 30
@@ -57,11 +63,19 @@ def generate_launch_description():
         value_type=str)
 
     # gz resolves package://braco_description/... by looking for a braco_description
-    # folder on GZ_SIM_RESOURCE_PATH: add the share/ folder that contains it.
-    share_parent = os.path.dirname(get_package_share_directory('braco_description'))
+    # folder on GZ_SIM_RESOURCE_PATH: add the share/ folder that contains it, and models/ for
+    # the world's model://lab_table.
+    share_dir = get_package_share_directory('braco_description')
+    share_parent = os.path.dirname(share_dir)
+    models = os.path.join(share_dir, 'models')
+    world = os.path.join(share_dir, 'worlds', 'lab_bench.sdf')
 
     spawn = Node(package='ros_gz_sim', executable='create', output='screen',
-                 arguments=['-topic', 'robot_description', '-name', 'braco'])
+                 arguments=['-topic', 'robot_description', '-name', 'braco',
+                            '-x', LaunchConfiguration('robot_x'),
+                            '-y', LaunchConfiguration('robot_y'),
+                            '-z', LaunchConfiguration('robot_z'),
+                            '-Y', LaunchConfiguration('robot_yaw')])
     joint_state_broadcaster = Node(
         package='controller_manager', executable='spawner',
         arguments=['joint_state_broadcaster', '--param-file', controllers])
@@ -72,13 +86,26 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('gui', default_value='true',
                               description='true: Gazebo window; false: server only'),
+        DeclareLaunchArgument('world', default_value=world,
+                              description='world file, e.g. empty.sdf (then set robot_z:=0)'),
+        # Default: the mount's rear edge flush with the table's (0.07 = half its depth), on the
+        # table at y > 0 next to the gap (0.085 = half its width + half the gap). UNMEASURED.
+        DeclareLaunchArgument('robot_x', default_value='0.07',
+                              description='arm position along x in the world, metres'),
+        DeclareLaunchArgument('robot_y', default_value='0.085',
+                              description='arm position along y in the world, metres'),
+        DeclareLaunchArgument('robot_z', default_value='0.75',
+                              description='height of the surface the arm stands on, metres'),
+        DeclareLaunchArgument('robot_yaw', default_value='0.0',
+                              description='arm rotation about z in the world, radians'),
         AppendEnvironmentVariable('GZ_SIM_RESOURCE_PATH', share_parent),
+        AppendEnvironmentVariable('GZ_SIM_RESOURCE_PATH', models),
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(PathJoinSubstitution(
                 [FindPackageShare('ros_gz_sim'), 'launch', 'gz_sim.launch.py'])),
             launch_arguments={'gz_args': [
                 PythonExpression(["'' if '", gui, "' == 'true' else '-s '"]),
-                '-r -v 1 empty.sdf'],
+                '-r -v 1 ', LaunchConfiguration('world')],
                 # Gazebo gone (crash, window closed) = no arm: end the launch, so the
                 # sim container stops like the real one does when arm_driver exits
                 'on_exit_shutdown': 'true'}.items()),
