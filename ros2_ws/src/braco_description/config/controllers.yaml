@@ -1,14 +1,16 @@
-# The ros2_control controllers of the braco arm: ONE set, for the simulation and the real arm.
+# The ros2_control controllers of the braco arm, for the simulation and the real arm.
 #
-#   joint_state_broadcaster       publishes /joint_states (joint1..joint6, radians)
+#   joint_state_broadcaster       NOT ON THE REAL ARM: publishes /joint_states (joint1..joint6, radians).
+#                                 Never spawned with sim:=false: there arm_driver is the only
+#                                 /joint_states publisher (ADR-0004, #97)
 #   arm_controller                holds joint1..joint6 and follows trajectories:
 #                                   action /arm_controller/follow_joint_trajectory (MoveIt, planned)
 #                                   topic  /arm_controller/joint_trajectory      (web page, by hand)
 #
 # Only the hardware under them changes, in the URDF's <ros2_control> block:
 #   simulation  gz_ros2_control/GazeboSimSystem (urdf/braco.gazebo.xacro, gazebo:=true)   #34
-#   real arm    planned: a braco hardware interface over arm_driver, same names
-# so MoveIt, the mission and the page use the same controller names on both.
+#   real arm    planned: a braco SystemInterface over arm_driver (#87)
+# so MoveIt, the mission and the page use the same arm_controller on both.
 controller_manager:
   ros__parameters:
     update_rate: 100  # Hz
