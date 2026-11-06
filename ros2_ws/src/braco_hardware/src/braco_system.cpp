@@ -15,9 +15,11 @@
 #include "braco_hardware/braco_system.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cstddef>
 #include <iterator>
 #include <string>
+#include <thread>
 
 #include "hardware_interface/types/hardware_interface_type_values.hpp"
 #include "pluginlib/class_list_macros.hpp"
@@ -64,6 +66,26 @@ hardware_interface::CallbackReturn BracoSystem::on_configure(
       latest_joint_states_ = msg;
     });
   return hardware_interface::CallbackReturn::SUCCESS;
+}
+
+hardware_interface::CallbackReturn BracoSystem::on_activate(
+  const rclcpp_lifecycle::State & /*previous_state*/)
+{
+  // read() runs right after this, too soon for the first /joint_states to have arrived, and a
+  // read() without one stops the hardware. So wait here (up to 2 s) until it arrives: the
+  // controller manager delivers it to our subscription on another thread while we wait.
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+  while (std::chrono::steady_clock::now() < deadline) {
+    {
+      std::lock_guard<std::mutex> lock(joint_states_mutex_);
+      if (latest_joint_states_) {
+        return hardware_interface::CallbackReturn::SUCCESS;
+      }
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  RCLCPP_ERROR(get_logger(), "no /joint_states in 2 s: is arm_driver running?");
+  return hardware_interface::CallbackReturn::ERROR;
 }
 
 hardware_interface::return_type BracoSystem::read(
