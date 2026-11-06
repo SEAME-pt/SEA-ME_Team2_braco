@@ -25,6 +25,7 @@ Processes braco.urdf.xacro and checks that
   * every mesh declares the COLLADA unit 1 (MoveIt ignores the unit; the URDF scales instead)
   * the model's zero pose has not moved by accident (see ZERO_TOOL0)
   * gazebo:=true controls exactly joint1..joint6, and the plain model has no ros2_control
+  * real_arm:=true puts the braco_hardware plugin on exactly joint1..joint6
   * config/controllers.yaml: arm_controller drives joint1..joint6
 """
 
@@ -50,13 +51,14 @@ ARM_JOINTS = ['joint%d' % n for n in range(1, 7)]
 ZERO_TOOL0 = (0.0456, -0.06462, 0.030 + 0.43614)   # G-base + arm
 
 
-def load_urdf(gripper_actuated='false', gazebo='false'):
+def load_urdf(gripper_actuated='false', gazebo='false', real_arm='false'):
     """Process braco.urdf.xacro without needing the workspace to be sourced."""
     path = os.path.join(PACKAGE_DIR, 'urdf', 'braco.urdf.xacro')
     with open(path, encoding='utf-8') as f:
         text = f.read().replace('$(find braco_description)', PACKAGE_DIR)
     doc = xacro.parse(text)
-    xacro.process_doc(doc, mappings={'gripper_actuated': gripper_actuated, 'gazebo': gazebo})
+    xacro.process_doc(doc, mappings={'gripper_actuated': gripper_actuated, 'gazebo': gazebo,
+                                     'real_arm': real_arm})
     return ET.fromstring(doc.toxml())
 
 
@@ -306,6 +308,19 @@ def test_gazebo_model_controls_the_arm_joints():
     assert [j.get('name') for j in control.findall('joint')] == ARM_JOINTS
     params = robot.find('gazebo/plugin/parameters').text
     assert os.path.isfile(params), params
+
+
+def test_real_arm_model_reads_the_arm_joints_through_braco_hardware():
+    robot = load_urdf(real_arm='true')
+    controls = robot.findall('ros2_control')
+    assert len(controls) == 1
+    assert controls[0].find('hardware/plugin').text == 'braco_hardware/BracoSystem'
+    joints = controls[0].findall('joint')
+    assert [j.get('name') for j in joints] == ARM_JOINTS
+    for joint in joints:
+        states = [s.get('name') for s in joint.findall('state_interface')]
+        assert states == ['position', 'velocity'], joint.get('name')
+    assert robot.find('gazebo') is None
 
 
 def test_controllers_drive_the_arm_joints():

@@ -1,0 +1,38 @@
+<?xml version="1.0"?>
+<!--
+  Real-arm additions to the braco model: the braco_hardware SystemInterface (#87, ADR-0004) on
+  joint1..joint6. It reads the joints from arm_driver's /joint_states and never opens the serial
+  port. Included by braco.urdf.xacro only with real_arm:=true; the plain model (MoveIt demo,
+  tests) and the simulation never see it.
+
+  Same joints and interfaces as braco.gazebo.xacro, so config/controllers.yaml drives both: only
+  this <hardware> plugin differs. The position command interface is there for arm_controller;
+  BracoSystem::write() does not send it yet (#101).
+-->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- One arm joint: position command, position and velocity state (velocity 0: arm_driver
+       publishes positions only). -->
+  <xacro:macro name="real_joint" params="n">
+    <joint name="joint${n}">
+      <command_interface name="position"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+    </joint>
+  </xacro:macro>
+
+  <xacro:macro name="braco_real">
+    <ros2_control name="BracoSystem" type="system">
+      <hardware>
+        <plugin>braco_hardware/BracoSystem</plugin>
+      </hardware>
+      <xacro:real_joint n="1"/>
+      <xacro:real_joint n="2"/>
+      <xacro:real_joint n="3"/>
+      <xacro:real_joint n="4"/>
+      <xacro:real_joint n="5"/>
+      <xacro:real_joint n="6"/>
+    </ros2_control>
+  </xacro:macro>
+
+</robot>
