@@ -10,9 +10,9 @@ Step by step, with the GPU, ROS domains and common problems: [Run the simulation
 In short:
 
 ```bash
-# PC: `make up SIM=1` also starts the `sim` container = braco.launch.py sim:=true (Gazebo + controllers, ROS domain 77)
+# PC: `make up SIM=1` also starts the `sim` container = braco.launch.py sim:=true (Gazebo + controllers, your PC_ROS_DOMAIN_ID)
 make up SIM=1
-# in a dev shell (make shell, already on the simulation's domain 77): move one joint (degrees)
+# in a dev shell (make shell, already on the simulation's domain): move one joint (degrees)
 ros2 run braco_description move_joint.py 2 30
 
 # Put the simulated arm at given joint angles (radians, reached in 2 s)
@@ -187,7 +187,7 @@ position is checked against the real arm with `get_coords()` (FK table below).
 ## Open items (need the hardware)
 
 Tick them here as they are measured and update the URDF and the tables above. `scripts/sim_to_real.py` runs the checks
-against the real arm (Gazebo on this shell's `ROS_DOMAIN_ID`, e.g. 77; the real arm on 42):
+against the real arm (Gazebo on this shell's `ROS_DOMAIN_ID`, e.g. 27; the real arm on 22):
 `ros2 run braco_description sim_to_real.py directions | fk | velocity`.
 
 - [x] **Velocity** of each joint (`sim_to_real.py velocity`): each joint across a known range at speeds 25/50/75/100,
