@@ -2,7 +2,7 @@
 
 How the braco software is built today: layers, nodes, topics, packages and deployment. If the code and this document disagree, the code wins. CPU and memory: [resources.md](resources.md).
 
-Last checked against the code: **2026-11-05**.
+Last checked against the code: **2026-11-07**.
 
 **Contents:** [Principles](#1-principles) · [Layers](#2-layers) · [Nodes and devices](#3-nodes-and-devices) · [Topics and services](#4-topics-and-services) · [Control of the arm](#5-control-of-the-arm) · [Packages](#6-packages) · [Deployment](#7-deployment) · [Launch and parameters](#8-launch-and-parameters) · [Simulation and planned layers](#9-simulation-and-planned-layers) · [Status](#10-status) · [Changing the architecture](#11-changing-the-architecture)
 
@@ -175,6 +175,7 @@ Devices come from launch arguments (filled from `docker/.env`); tuning comes fro
 | Argument | Default |
 |---|---|
 | `sim` / `gui` | `false` / `false` |
+| `moveit` / `rviz` (`sim:=true` only) | `false` / `false` |
 | `port`, `baud` | `/dev/ttyTHS1`, `1000000` |
 | `lcd_bus` | `/dev/i2c-0` |
 | `device` (joystick) | `/dev/input/js0` |
