@@ -101,8 +101,8 @@ Go/no-go checklist. If any box is not ticked, do not move the arm.
 
 ### 9.1 Before
 
-- [ ] Domain check passed ([#103](https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/103)): real arm on domain
-  42, nothing else on it.
+- [ ] `make domain-check` passed ([#103](https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/103)): real arm
+  on domain 22, nothing else on it.
 - [ ] Limits test green ([#99](https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/99)).
 - [ ] MoveIt `max_velocity_scaling_factor` and `max_acceleration_scaling_factor` **≤ 0.1**.
 - [ ] Everyone present has signed the induction (section 1).
@@ -115,7 +115,7 @@ Go/no-go checklist. If any box is not ticked, do not move the arm.
 ### 9.2 During
 
 - [ ] One person on STOP (section 6.2): the web page's STOP button, or
-  `ROS_DOMAIN_ID=42 ros2 topic pub --once /arm/command braco_interfaces/msg/ArmCommand '{type: 0}'`.
+  `ROS_DOMAIN_ID=22 ros2 topic pub --once /arm/command braco_interfaces/msg/ArmCommand '{type: 0}'`.
 - [ ] One person on the power switch (section 6.1).
 - [ ] First move small, in a direction with nothing in the way.
 

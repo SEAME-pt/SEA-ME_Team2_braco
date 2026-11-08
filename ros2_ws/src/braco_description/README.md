@@ -24,7 +24,7 @@ arm (zero pose, joint directions, forward kinematics) and the open measurements 
 ## The simulation (issue #34)
 
 ```
- braco_bringup  braco.launch.py sim:=true            (the `sim` container, ROS domain 77)
+ braco_bringup  braco.launch.py sim:=true            (the `sim` container, ROS domain PC_ROS_DOMAIN_ID)
    └─ braco_description  gazebo.launch.py
         gz sim (empty world) ── spawns braco.urdf.xacro gazebo:=true
           └─ gz_ros2_control (hardware: GazeboSimSystem, joint1..joint6, position)
@@ -57,7 +57,8 @@ should keep the simulation.
 
 That is the simulation: the `sim` container runs `braco.launch.py sim:=true` (Gazebo headless, the model, the
 controllers). `make up SIM=1` waits until it publishes `/joint_states`.
-It runs on **ROS domain 77** (`PC_ROS_DOMAIN_ID` in `docker/.env`, also the PC's `dev`), never the real arm's 42:
+It runs on **your ROS domain** (`PC_ROS_DOMAIN_ID` in `docker/.env`, set by `make setup`: see the
+[table](../../../docker/README.md#ros-domain-per-teammate); also the PC's `dev`), never the real arm's 22:
 both publish `/joint_states`. If Gazebo exits, the container stops, like `real` when `arm_driver` exits.
 
 **2. Watch it.** Either:
@@ -68,7 +69,7 @@ both publish `/joint_states`. If Gazebo exits, the container stops, like `real` 
   simulation keeps running). Or `SIM_GUI=true` in `docker/.env`, then `make restart SIM=1`: the `sim` container
   opens it itself. Do **not** run `gazebo.launch.py` in `dev` for this: that is a second simulation (step 4).
 
-**3. Command a joint.** In a dev shell (already on the simulation's domain, 77):
+**3. Command a joint.** In a dev shell (already on the simulation's domain, your `PC_ROS_DOMAIN_ID`):
 
 ```bash
 make shell
@@ -88,15 +89,15 @@ ros2 control list_controllers                       # joint_state_broadcaster an
 ```
 
 **4. Gazebo by hand instead (optional).** To work on the model (a URDF or mesh change needs a new launch), run
-a second Gazebo yourself in `dev`, with a window. `dev` is on the `sim` container's domain (77), so either stop
+a second Gazebo yourself in `dev`, with a window. `dev` is on the `sim` container's domain (yours), so either stop
 `sim` first (`make down`, then `make shell`) or give your Gazebo another domain as below. Two simulations on one domain
 fight: `Controller already loaded`, `no controller with this name exists`, `Moved backwards in time`.
 
 ```bash
 make shell
 source /ws/install/setup.bash
-export ROS_DOMAIN_ID=78     # not 42 (the real arm), not 77 (the sim container); teammates: another number
-                            # (each new shell starts on 77 again: export it there too)
+export ROS_DOMAIN_ID=78     # not 22 (the real arm), not 20-29 (the teammates' sim containers)
+                            # (each new shell starts on your PC_ROS_DOMAIN_ID again: export it there too)
 ros2 launch braco_description gazebo.launch.py      # gui:=false: no window
 ```
 
@@ -112,7 +113,7 @@ python3 /ws/src/braco_description/scripts/my_test.py
 **6. Then on the real arm (optional).** With the Jetson up (`make up` there), `--real` runs the same moves on the
 arm after Gazebo, and asks first. Like `make zero` / `make park`, the script takes the arm's control as `script`
 (forced: it takes it from the web page or the joystick, [ADR-0002](../../../docs/decisions/ADR-0002-unique-control.md)) and
-gives it back when it ends. Check first that the PC sees the arm: `ROS_DOMAIN_ID=42 ros2 node list` shows
+gives it back when it ends. Check first that the PC sees the arm: `ROS_DOMAIN_ID=22 ros2 node list` shows
 `/arm_driver`.
 
 ```bash
@@ -129,9 +130,9 @@ python3 /ws/src/braco_description/scripts/my_test.py --real --speed 15
 | No window, or Gazebo aborts with `Authorization required ... could not connect to display :0` | The display refused the container: see [TROUBLESHOOTING → GUI tools](../../../docs/guides/ROS2/TROUBLESHOOTING.md#gui-tools-rqt-rqt_graph-rviz2-gazebo) |
 | Slow, or "Gazebo is taking too long to start" | No GPU: `glxinfo -B \| grep "OpenGL renderer"` says `llvmpipe`. Restart with `make down && make up SIM=1` |
 | Stuck on `Requesting list of world names` | Gazebo's processes cannot find each other: `GZ_IP` must be `127.0.0.1` (set by `docker/compose.yml`; recreate the containers after pulling it) |
-| `Moved backwards in time`, `Controller already loaded`, `no controller with this name exists` | Two simulations on one `ROS_DOMAIN_ID`: `gazebo.launch.py` in `dev` while the `sim` container runs (both 77). For a window on `sim`: `make sim-gui`. For a second Gazebo: step 4 |
-| `arm_controller not found on ROS domain ...` | The shell is not on the simulation's domain: a `dev` shell is on 77 (the `sim` container); for your own Gazebo, `export` its domain |
-| `/joint_states` values like `1e-11` on domain 42 | That is a simulation, not the real arm: someone runs Gazebo on 42. Give it its own domain |
+| `Moved backwards in time`, `Controller already loaded`, `no controller with this name exists` | Two simulations on one `ROS_DOMAIN_ID`: `gazebo.launch.py` in `dev` while the `sim` container runs (both on your `PC_ROS_DOMAIN_ID`). For a window on `sim`: `make sim-gui`. For a second Gazebo: step 4 |
+| `arm_controller not found on ROS domain ...` | The shell is not on the simulation's domain: a `dev` shell is on your `PC_ROS_DOMAIN_ID` (the `sim` container); for your own Gazebo, `export` its domain |
+| `/joint_states` values like `1e-11` on domain 22 | That is a simulation, not the real arm: someone runs Gazebo on 22. Give it its own domain |
 | The `sim` container stopped | Gazebo exited: `make logs`, then `make up` |
 | `Command of at least one joint is out of limits` | The joint limiter capping a move faster than the measured joint speed; the move still finishes |
 | The model looks old after a change to the URDF or meshes | Gazebo reads the model at launch: Ctrl-C and launch again |
@@ -148,11 +149,11 @@ ros2 topic pub --once /arm_controller/joint_trajectory trajectory_msgs/msg/Joint
   "{joint_names: [joint1, joint2, joint3, joint4, joint5, joint6],
     points: [{positions: [0.5, 0.3, -0.3, 0.0, 0.0, 0.0], time_from_start: {sec: 2}}]}"
 
-# moves in Gazebo (running, same ROS_DOMAIN_ID: the sim container and dev are on 77), then --real: the same on the real arm
+# moves in Gazebo (running, same ROS_DOMAIN_ID: the sim container and dev are on your PC_ROS_DOMAIN_ID), then --real: the same on the real arm
 ros2 run braco_description move_arm_example.py
 ros2 run braco_description park.py --real       # asks before the real arm moves; --yes skips
 # Gazebo and the real arm must be on different ROS domains (both publish /joint_states):
-# Gazebo on this shell's ROS_DOMAIN_ID, the real arm on --real-domain (default 42)
+# Gazebo on this shell's ROS_DOMAIN_ID, the real arm on --real-domain (default 22)
 
 # fingers with the vendor linkage (one slider): gripper_actuated:=true
 # check the model by hand
