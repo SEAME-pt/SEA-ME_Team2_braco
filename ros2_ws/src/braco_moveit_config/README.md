@@ -75,7 +75,8 @@ the controller. If it fails, the launch shuts down, so RViz never opens: look fo
 ## Rules of the config
 
 - **Joint limits** must never be wider than `JOINT_LIMITS` of `mycobot.hpp`: MoveIt would plan moves the driver
-  then clamps. Change `mycobot.hpp` first, then the URDF and `config/joint_limits.yaml`.
+  then clamps. Change `mycobot.hpp` first, then the URDF and `config/joint_limits.yaml`; `test/test_joint_limits.py`
+  fails if they disagree.
 - **Speed**: the default scaling (0.3 of the measured speed) is applied by the clients (RViz, `MoveGroupInterface`),
   which read it from `robot_description_planning`. A raw `/move_action` request with scaling 0 runs at full speed.
 - **Collisions**: the disabled pairs come from `collisions_updater` (below) plus three set by hand, each explained
@@ -102,3 +103,5 @@ controller matches `braco_description/config/controllers.yaml`, and the mock `<r
 `test/test_plan_execute.launch.py` runs `demo.launch.py` headless, plans and executes to `park`, and checks the result
 and the final `/joint_states` (120 s timeout). It fails on a config MoveIt cannot plan or execute with, which the
 static test misses (e.g. a joint with `max_velocity: 0`, or the SRDF's disabled collision pairs removed).
+`test/test_joint_limits.py`: the positions of `joint_limits.yaml` equal `JOINT_LIMITS` and the URDF `<limit>`, and its
+velocities are not above the measured URDF ones.

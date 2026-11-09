@@ -9,6 +9,8 @@
 #   acceleration  UNMEASURED: the URDF has none and no one has measured it. 5 rad/s^2 reaches
 #                   the measured top speed (about 2.6 rad/s) in about 0.5 s, gentle for the servos.
 #                   Measure it (sim_to_real.py) and replace.
+#
+# test/test_joint_limits.py fails if position or velocity drift from mycobot.hpp or the URDF.
 
 # Fraction of the limits below used when a request gives none (RViz, MoveGroupInterface).
 # 1.0 = full measured speed; requests can ask for up to 1.0.
