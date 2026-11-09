@@ -10,9 +10,9 @@
 # No robot and no display needed.
 
 # The `ros` job builds the workspace in a throw-away container from the Dockerfile's `ci` stage: `base` (everything
-# the packages depend on, without the GUI/Gazebo/MoveIt layers of the PC image) plus clang-tidy, gcovr and
-# pytest-cov. The image's user gets your UID/GID so the bind-mounted ros2_ws stays writable (GitHub runners are
-# UID 1001).
+# the packages depend on, without the GUI/Gazebo layers of the PC image) plus clang-tidy, gcovr, pytest-cov and
+# MoveIt 2 (braco_moveit_config's launch test). The image's user gets your UID/GID so the bind-mounted ros2_ws stays
+# writable (GitHub runners are UID 1001).
 # ci.yml builds the same image with docker/build-push-action (layer cache): keep its target and build-args in step.
 # CI caches ros2_ws/build, where test results live: delete the old ones first, or a removed test would still count.
 # colcon test exits 0 even when tests fail; colcon test-result is what fails the job.

@@ -17,7 +17,7 @@ the arm on the Jetson through DDS.
 | `config/moveit_controllers.yaml` | `arm_controller`, `FollowJointTrajectory` on `/arm_controller/follow_joint_trajectory` |
 | `config/braco.urdf.xacro` | The demo's model: `braco_description`'s `braco.urdf.xacro` + a `mock_components/GenericSystem` `<ros2_control>` |
 | `config/moveit.rviz` | RViz with the MotionPlanning panel on `arm` |
-| `launch/demo.launch.py` | RViz + `move_group` + ros2_control with the mock hardware |
+| `launch/demo.launch.py` | ros2_control with the mock hardware, then `move_group` and RViz once `arm_controller` is active |
 | `launch/sim.launch.py` | Gazebo (`braco_description`'s `gazebo.launch.py`), then `move_group` and RViz once `arm_controller` is active |
 | `launch/rviz.launch.py` | RViz only, on a `move_group` already running (`make rviz-gui`) |
 | `.setup_assistant` | Lets MoveItConfigsBuilder and the Setup Assistant find the model and the SRDF |
@@ -98,3 +98,7 @@ ros2 run moveit_setup_assistant collisions_updater --urdf /tmp/braco_moveit.urdf
 `test/test_moveit_config.py` (`colcon test --packages-select braco_moveit_config`): the SRDF names exist in the
 model, `arm` is joint1..joint6, `home`/`park` match `mycobot.hpp` and lie inside `joint_limits.yaml`, the MoveIt
 controller matches `braco_description/config/controllers.yaml`, and the mock `<ros2_control>` matches the Gazebo one.
+
+`test/test_plan_execute.launch.py` runs `demo.launch.py` headless, plans and executes to `park`, and checks the result
+and the final `/joint_states` (120 s timeout). It fails on a config MoveIt cannot plan or execute with, which the
+static test misses (e.g. a joint with `max_velocity: 0`, or the SRDF's disabled collision pairs removed).
