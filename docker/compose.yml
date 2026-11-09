@@ -12,12 +12,17 @@
 name: braco
 
 # ROS 2 networking. Every machine uses the same RMW. Domains (.env):
-#   ROS_DOMAIN_ID     42  the real arm: `real` and the Jetson's `dev`
-#   PC_ROS_DOMAIN_ID  77  the PC: `sim` and the PC's `dev` (make passes it as DEV_ROS_DOMAIN_ID). Never the real
-#                         arm's: the simulation also publishes /joint_states. From the PC, reach the real arm with
-#                         ROS_DOMAIN_ID=42 ros2 ... (the --real scripts use --real-domain 42 by themselves).
+#   ROS_DOMAIN_ID     22  the real arm: `real` and the Jetson's `dev`
+#   PC_ROS_DOMAIN_ID  27  the PC: `sim` and the PC's `dev` (make passes it as DEV_ROS_DOMAIN_ID). Each teammate's
+#                         own (20-29), set by make setup from the GitHub login (config/team-domains.tsv); 27 when
+#                         not listed. Never the real arm's: the simulation also publishes /joint_states. From the
+#                         PC, reach the real arm with ROS_DOMAIN_ID=22 ros2 ... (the --real scripts use
+#                         --real-domain 22 by themselves).
+#   Why 20-29: domain IDs must stay within 0-101 on Linux (DDS UDP ports, ephemeral port range), see
+#   https://github.com/ros2/ros2_documentation/blob/rolling/source/ROS-Framework/nodes/About-Domain-ID.rst
 x-ros-env: &ros-env
-  ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-42}
+  ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-22}
+  ARM_ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-22}   # the real arm's, kept where ROS_DOMAIN_ID is overridden (domain-check.sh)
   RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}
   ROS_AUTOMATIC_DISCOVERY_RANGE: ${ROS_AUTOMATIC_DISCOVERY_RANGE:-SUBNET}
   # When multicast is blocked (campus Wi-Fi, some switches) add the other machine's IP:
@@ -89,7 +94,7 @@ services:
       args: *build-args
     environment:
       <<: *system-env                       # ROS + the web page's settings: on the PC `make web` runs the page here
-      ROS_DOMAIN_ID: ${DEV_ROS_DOMAIN_ID:-${ROS_DOMAIN_ID:-42}}   # the PC's domain on the PC (set by make)
+      ROS_DOMAIN_ID: ${DEV_ROS_DOMAIN_ID:-${ROS_DOMAIN_ID:-22}}   # the PC's domain on the PC (set by make)
       DISPLAY: ${DISPLAY:-:0}
       CCACHE_MAXSIZE: ${CCACHE_MAXSIZE:-1G}  # the Nano's SD card; colcon itself is limited by the Makefile
     volumes:
@@ -153,7 +158,7 @@ services:
   # sim - the system on the PC: the same launch with sim:=true (Gazebo, the braco_description model and the
   # ros2_control controllers, #34); `make web` runs the page in `dev` with ARM_SOURCE=gazebo. Uses the image and
   # the workspace that `dev` built.
-  #   ROS_DOMAIN_ID  PC_ROS_DOMAIN_ID (default 77), like the PC's dev, NOT the real arm's 42: both publish
+  #   ROS_DOMAIN_ID  PC_ROS_DOMAIN_ID (your team domain, else 27), like the PC's dev, NOT the real arm's 22: both publish
   #                  /joint_states, and on one domain the Jetson's clients would read the simulated angles as the
   #                  real arm's.
   #   GZ_PARTITION   keeps its Gazebo apart from one started by hand in `dev` (gazebo.launch.py)
@@ -166,7 +171,7 @@ services:
     image: ${IMAGE_PREFIX:-braco-image}/pc:${IMAGE_TAG:-lyrical}
     environment:
       <<: *system-env
-      ROS_DOMAIN_ID: ${PC_ROS_DOMAIN_ID:-77}
+      ROS_DOMAIN_ID: ${PC_ROS_DOMAIN_ID:-27}
       GZ_PARTITION: braco-sim
       SIM: "true"
       DISPLAY: ${DISPLAY:-:0}

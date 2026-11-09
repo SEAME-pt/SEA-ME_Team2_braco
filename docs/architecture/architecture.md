@@ -2,7 +2,7 @@
 
 How the braco software is built today: layers, nodes, topics, packages and deployment. If the code and this document disagree, the code wins. CPU and memory: [resources.md](resources.md).
 
-Last checked against the code: **2026-11-03**.
+Last checked against the code: **2026-11-07**.
 
 **Contents:** [Principles](#1-principles) · [Layers](#2-layers) · [Nodes and devices](#3-nodes-and-devices) · [Topics and services](#4-topics-and-services) · [Control of the arm](#5-control-of-the-arm) · [Packages](#6-packages) · [Deployment](#7-deployment) · [Launch and parameters](#8-launch-and-parameters) · [Simulation and planned layers](#9-simulation-and-planned-layers) · [Status](#10-status) · [Changing the architecture](#11-changing-the-architecture)
 
@@ -29,7 +29,7 @@ Each layer talks only to the one below it. Layers 1–2 are identical in simulat
 | Layer | Role | Real arm (`sim:=false`, Jetson) | Simulation (`sim:=true`, PC) |
 |---|---|---|---|
 | **1 Mission and clients** | Decide what the arm does; take the control before moving | `braco_web`, `joystick_teleop`, `temperature_monitor`, `zero` / `park`; planned: `braco_mission`, MoveIt 2 | same nodes |
-| **2 ROS 2 middleware** | The contract: names and types | DDS domain 42; `/joint_states`, `/arm/command`, `/arm/*`, `/diagnostics` | same names, domain 77; `FollowJointTrajectory` on `/arm_controller` |
+| **2 ROS 2 middleware** | The contract: names and types | DDS domain 22; `/joint_states`, `/arm/command`, `/arm/*`, `/diagnostics` | same names, each teammate's domain (20–29); `FollowJointTrajectory` on `/arm_controller` |
 | **3 Hardware abstraction** | Device access and safety | `arm_driver`, `camera`, `mycobot_cpp` | `gz_ros2_control` (`controller_manager`, `arm_controller`, `joint_state_broadcaster`) |
 | **4 Servo controller** | Drives the servo bus | Atom (ESP32, firmware 7.3) | Gazebo physics |
 | **5 Sensors and actuators** | What moves and senses | 6 servos, gripper; camera, joystick, LCD1602 wired to the Jetson | simulated `joint1..joint6`, gripper |
@@ -46,7 +46,7 @@ Each layer talks only to the one below it. Layers 1–2 are identical in simulat
                                        │                       ┌────────┐  V4L2  ┌────────────┐
                                        │                       │ camera │ ◄───── │ USB camera │
                                        │                       └───┬────┘        └────────────┘
- ══════════════════════════ ROS 2 · DDS · domain 42 ═══════════════╧══════════════════
+ ══════════════════════════ ROS 2 · DDS · domain 22 ═══════════════╧══════════════════
         │                         │                          │
  ┌──────┴──────┐          ┌───────┴─────────┐       ┌────────┴────────────┐
  │ braco_web   │          │ joystick_teleop │       │ temperature_monitor │
@@ -147,14 +147,18 @@ braco_driver ╳   braco_teleop       braco_description ┄► braco_moveit_conf
 |---|---|---|
 | Image | `braco-image/pc` | `braco-image/jetson` |
 | `dev` | stays up: shell, build, test, RViz2, PlotJuggler, web page | throw-away (`run --rm`): build, zero, park |
-| System | `sim` (optional, `SIM=1`): Gazebo + controllers | `real`: `arm_driver`, `temperature_monitor`, `joystick_teleop`, `camera` |
-| ROS domain | 77 | 42 |
+| System | `sim` (optional, `SIM=1`): Gazebo + controllers + `move_group` (`SIM_MOVEIT=true`, the default) | `real`: `arm_driver`, `temperature_monitor`, `joystick_teleop`, `camera` |
+| ROS domain | per teammate, 20–29 (27 if unlisted) | 22 |
 | Page source | `ARM_SOURCE=gazebo` | `ARM_SOURCE=ros` |
 
 - Same image family (ROS 2 Lyrical, Ubuntu 26.04) and workspace on both machines. `dev` builds; the system container runs what was built.
 - **Heavy work stays on the PC:** MoveIt 2 and the mission run there and reach the arm over DDS.
 - `make up` starts the system container. If the launch ends, the container stops. `make web` starts the page in the running container.
-- The PC uses domain 77 so its `/joint_states` never mix with the real arm's. To reach the arm from the PC: `ROS_DOMAIN_ID=42 ros2 ...`.
+- Each PC uses its teammate's domain (`PC_ROS_DOMAIN_ID`, set by `make setup` from the GitHub login, see the
+  [table](../../docker/README.md#ros-domain-per-teammate)) so its `/joint_states` never mix with the real arm's or
+  another PC's. To reach the arm from the PC: `ROS_DOMAIN_ID=22 ros2 ...`.
+  All are in the 0–101 range that is safe on Linux
+  ([ROS 2 docs, *The ROS_DOMAIN_ID*](https://github.com/ros2/ros2_documentation/blob/rolling/source/ROS-Framework/nodes/About-Domain-ID.rst)).
 - Gazebo transport is kept local (`GZ_IP=127.0.0.1`).
 
 ---
@@ -171,6 +175,7 @@ Devices come from launch arguments (filled from `docker/.env`); tuning comes fro
 | Argument | Default |
 |---|---|
 | `sim` / `gui` | `false` / `false` |
+| `moveit` / `rviz` (`sim:=true` only) | `false` / `false` |
 | `port`, `baud` | `/dev/ttyTHS1`, `1000000` |
 | `lcd_bus` | `/dev/i2c-0` |
 | `device` (joystick) | `/dev/input/js0` |
