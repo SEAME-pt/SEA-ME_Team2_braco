@@ -26,7 +26,7 @@ Running, braco is light. **The risk is the build:** on a 2 GB Nano or with the d
 
 | Process | RAM | CPU (1 core = 100%) |
 |---|---|---|
-| `arm_driver` | 15–25 MB | 4–8% |
+| `arm_driver` | 15–25 MB | **5–8% idle, 11–19% under continuous commands** (measured, [timing-budget.md](timing-budget.md)) |
 | `temperature_monitor` | 10–20 MB | <1% |
 | `joystick_teleop` | 10–20 MB | 1–3% |
 | `camera` (Python + OpenCV) | 60–90 MB | 3–8% |

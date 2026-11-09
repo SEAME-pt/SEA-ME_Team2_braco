@@ -8,7 +8,7 @@ deciders: all
 
 ## Context
 
-MoveIt 2 sends `FollowJointTrajectory` goals to `arm_controller` (`JointTrajectoryController`, 100 Hz). In simulation, `gz_ros2_control` moves the joints. On the real arm, `arm_driver` is the only process that opens the serial port, and it holds every safety rule: the STOP, rest, owner and watchdog gates, the control lease (ADR-0002) and rest on overheat (ADR-0003). It also publishes `/joint_states` at 20 Hz and stops publishing when angle feedback fails, which clients read as "stale".
+MoveIt 2 sends `FollowJointTrajectory` goals to `arm_controller` (`JointTrajectoryController`, 100 Hz). In simulation, `gz_ros2_control` moves the joints. On the real arm, `arm_driver` is the only process that opens the serial port, and it holds every safety rule: the STOP, rest, owner and watchdog gates, the control lease (ADR-0002) and rest on overheat (ADR-0003). It also publishes `/joint_states` at 20 Hz (18.7 Hz measured idle, ~14 Hz under continuous commands, [timing budget](../architecture/timing-budget.md)) and stops publishing when angle feedback fails, which clients read as "stale".
 
 **Question:** how does a trajectory from `arm_controller` reach the real arm without bypassing `arm_driver`'s safety rules, and who holds the control, publishes `/joint_states` and stops the trajectory?
 
@@ -38,7 +38,7 @@ MoveIt 2 sends `FollowJointTrajectory` goals to `arm_controller` (`JointTrajecto
 |---|---|
 | Serial port | `arm_driver` only. The plugin never opens it |
 | `read()` | Positions from the latest `/joint_states` (radians), velocities from it or 0. No message yet → `ERROR` |
-| `write()` | Publishes `ALL_ANGLES` on `/arm/command` with `source: "mission"` at `state_rate_hz` (20 Hz) while the controller is active, **even when the target has not changed**: the watchdog stops the arm after `command_timeout_ms` (300 ms) without a motion command, which would leave it short of the last point. Angles are clamped by `arm_driver` (`JOINT_LIMITS`) |
+| `write()` | Publishes `ALL_ANGLES` on `/arm/command` with `source: "mission"` at `state_rate_hz` (20 Hz; `arm_driver` sends at most ~14 of them per second, the rest are overwritten, [measured](../architecture/timing-budget.md)) while the controller is active, **even when the target has not changed**: the watchdog stops the arm after `command_timeout_ms` (300 ms) without a motion command, which would leave it short of the last point. Angles are clamped by `arm_driver` (`JOINT_LIMITS`) |
 | Control | `braco_mission` calls `take_control("mission")` **without `force`** before each goal and releases it after the result, also on failure (like zero / park). Refused → the goal is not sent; nothing is queued. The plugin never calls `/arm/take_control` |
 | Lost control or STOP | The plugin reads `/arm/control_owner` and `/arm/command`. If the owner is not `mission` or a STOP is seen, `write()` returns `ERROR`, so ros2_control stops `arm_controller` and the goal is aborted. Covers a STOP from any client, a forced take by the page or joystick, and `park` on overheat |
 | Safety commands | STOP and entering rest need no control: `mission` may send them at any time. To end its own trajectory it cancels the goal. `mission` never leaves rest mode (ADR-0003) |
@@ -52,7 +52,7 @@ MoveIt 2 sends `FollowJointTrajectory` goals to `arm_controller` (`JointTrajecto
 - ✅ STOP, a forced take and `park` on overheat all stop a running trajectory
 - ✅ `/joint_states` keeps its rate, its consumers and its stale-state signal
 - ✅ Sim and real share `arm_controller`; MoveIt and the mission do not know which arm they drive
-- ❌ One extra hop (plugin → topic → `arm_driver` → serial); 100 Hz controller setpoints are thinned to 20 Hz
+- ❌ One extra hop (plugin → topic → `arm_driver` → serial); 100 Hz controller setpoints are thinned to ~14 Hz measured (20 Hz nominal: `COMMAND_GAP` bounds the serial loop), and motion starts ~200 ms after a command ([timing budget](../architecture/timing-budget.md), #90)
 - ❌ After an `ERROR`, the hardware component and `arm_controller` must be activated again before the next goal (#101)
 - ❌ A goal sent straight to `/arm_controller/follow_joint_trajectory` (e.g. from RViz) needs `take_control("mission")` first, as a bare `ros2 topic pub` does today
 - ⚠️ `joint_state_broadcaster` runs in sim but not on the real arm, so the controller sets differ by one
@@ -65,6 +65,6 @@ MoveIt 2 sends `FollowJointTrajectory` goals to `arm_controller` (`JointTrajecto
 
 ## Links
 
-- Issues [#86](https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/86), [#87](https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/87), [#97](https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/97), [#101](https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/101); parent [#5](https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/5)
+- Issues [#86](https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/86), [#87](https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/87), [#97](https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/97), [#101](https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/101), [#90](https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/90) (timing); parent [#5](https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/5)
 - [ADR-0002](ADR-0002-unique-control.md), [ADR-0003](ADR-0003-rest-per-temp.md), [Architecture §9](../architecture/architecture.md)
 - Revisit if: the extra hop makes trajectories visibly jerky on the bench, or a tool needs `joint_state_broadcaster` on the real arm
