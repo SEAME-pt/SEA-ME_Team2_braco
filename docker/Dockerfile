@@ -106,7 +106,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         ros-${ROS_DISTRO}-launch-testing \
         ros-${ROS_DISTRO}-launch-testing-ament-cmake \
         ros-${ROS_DISTRO}-launch-testing-ros \
-        ros-${ROS_DISTRO}-domain-coordinator \
  && rm -rf /var/lib/apt/lists/*
 
 # Helper used for packages whose binary build might be missing on one architecture.

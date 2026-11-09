@@ -159,12 +159,13 @@ Each teammate's PC (`sim` and `dev`) has its own domain, so two simulations on t
 | Magusk | `magusk89` | 24 |
 | Dinis | `d-branco` | 25 |
 | *(not in the table)* | | *27* |
+| *(MoveIt launch test, [CI guide](../docs/guides/ci.md#moveit-test))* | | *29* |
  
 - **Set by `make setup`** (on the PC): it reads your GitHub login with `gh api user` and writes your domain to
   `docker/.env`. Then `make restart` (`SIM=1` if `sim` runs). Without `gh`: `TEAM_LOGIN=<login> make setup`.
 - **Not found** (`gh` missing or not logged in, login not listed): a warning, and `PC_ROS_DOMAIN_ID` stays as it was.
 - **Source of truth:** [config/team-domains.tsv](config/team-domains.tsv). Change it there and here together.
-  `make lint` (and CI) checks it: 20–29, never 22 or 27, each domain once. Free: 26, 28, 29.
+  `make lint` (and CI) checks it: 20–29, never 22, 27 or 29, each domain once. Free: 26, 28.
 - **Why 20–29:** inside 0–101, the range that is safe on Linux
   ([ROS 2 docs, *The ROS_DOMAIN_ID*](https://github.com/ros2/ros2_documentation/blob/rolling/source/ROS-Framework/nodes/About-Domain-ID.rst)).
 ## 7. Tools

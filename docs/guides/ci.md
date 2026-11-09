@@ -36,8 +36,8 @@ the same commands, from the repo folder.
 or Gazebo), plans and executes to `park`, and checks the result and the final `/joint_states`.
 
 - A hang fails after 120 s (`add_launch_test ... TIMEOUT 120`); a run takes about 6 s.
-- It takes a free `ROS_DOMAIN_ID` from `domain_coordinator` (the lowest free one from 1, as the isolated gtests) and
-  discovers only on localhost, so tests running in parallel don't cross-talk.
+- It runs on `ROS_DOMAIN_ID` 29, kept free for it (`make lint` refuses it in `team-domains.tsv`), and discovers only
+  on localhost, so it never meets a teammate's `sim`, `dev` or the real arm.
 - `move_group`'s exit code is not checked: it segfaults on Ctrl+C/SIGINT (MoveIt 2.15), after the test.
 - Alone, in `make shell`: `colcon test --packages-select braco_moveit_config --ctest-args -R plan_execute`, then
   `colcon test-result --verbose`.

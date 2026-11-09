@@ -36,7 +36,6 @@
   <test_depend>xacro</test_depend>
   <!-- test/test_plan_execute.launch.py -->
   <test_depend>ament_index_python</test_depend>
-  <test_depend>domain_coordinator</test_depend>
   <test_depend>launch_testing</test_depend>
   <test_depend>launch_testing_ament_cmake</test_depend>
   <test_depend>moveit_msgs</test_depend>

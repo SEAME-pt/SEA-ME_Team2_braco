@@ -25,7 +25,6 @@ import unittest
 import xml.etree.ElementTree as ET
 
 from ament_index_python.packages import get_package_share_directory
-import domain_coordinator
 import launch
 from launch.actions import IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
@@ -38,9 +37,8 @@ import rclpy
 from rclpy.action import ActionClient
 from sensor_msgs.msg import JointState
 
-# A domain no other test on this host uses, held until the test exits; launched nodes inherit it.
-_DOMAIN = domain_coordinator.domain_id()
-os.environ['ROS_DOMAIN_ID'] = str(_DOMAIN.__enter__())
+# Domain 29 is reserved for this test (docker/config/team-domains.tsv); launched nodes inherit it.
+os.environ['ROS_DOMAIN_ID'] = '29'
 os.environ['ROS_AUTOMATIC_DISCOVERY_RANGE'] = 'LOCALHOST'
 
 SHARE = get_package_share_directory('braco_moveit_config')
