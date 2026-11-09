@@ -80,12 +80,29 @@
        so its long side runs along y, like the Jetson casing. Collision is a box of the same size
        (the mesh has 40k vertices and the plate never moves). -->
   <link name="g_base">
-    <visual>
-      <origin xyz="0 0 0" rpy="0 0 ${pi / 2}"/>
-      <geometry>
-        <mesh filename="package://braco_description/meshes/arm/g_base.dae" scale="0.001 0.001 0.001"/>
-      </geometry>
-    </visual>
+    <xacro:unless value="$(arg gazebo)">
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 ${pi / 2}"/>
+        <geometry>
+          <mesh filename="package://braco_description/meshes/arm/g_base.dae" scale="0.001 0.001 0.001"/>
+        </geometry>
+      </visual>
+    </xacro:unless>
+    <!-- The look of the lab bench's mount, in simulation only: a grey pedestal. Only the look: its
+         height is g_base_height, so the kinematics and the table-clearance check stay those of the
+         measured mount, and the collision is the box below.
+         UNMEASURED: the 140 x 160 mm footprint. -->
+    <xacro:if value="$(arg gazebo)">
+      <visual name="pedestal">
+        <origin xyz="0 0 ${g_base_height / 2}" rpy="0 0 0"/>
+        <geometry>
+          <box size="0.140 0.160 ${g_base_height}"/>
+        </geometry>
+        <material name="pedestal_grey">
+          <color rgba="0.45 0.45 0.47 1"/>
+        </material>
+      </visual>
+    </xacro:if>
     <collision>
       <origin xyz="0 0 ${g_base_thickness / 2}" rpy="0 0 0"/>
       <geometry>
