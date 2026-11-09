@@ -228,7 +228,7 @@ braco_mission ┄► MoveIt 2 ──trajectory──┬──► real: braco_har
 **Pending:**
 - `arm_driver` as a lifecycle node
 - E-stop node
-- `braco_hardware` ([ADR-0004](../decisions/ADR-0004-trajectories-through-arm-driver.md)): checked on the real arm (#87), sending commands (#101)
+- `braco_hardware` ([ADR-0004](../decisions/ADR-0004-trajectories-through-arm-driver.md)): sending commands (#101)
 - `braco_moveit_config`
 - `braco_mission`
 - Measured CPU/RAM ([resources.md](resources.md))
