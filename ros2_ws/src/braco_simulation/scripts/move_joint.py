@@ -16,8 +16,8 @@
 """
 Move one joint of the simulated arm to an angle; the other five stay where they are.
 
-  ros2 run braco_description move_joint.py 2 30              # joint2 to +30 deg, in 2 s
-  ros2 run braco_description move_joint.py 1 -45 --seconds 4
+  ros2 run braco_simulation move_joint.py 2 30              # joint2 to +30 deg, in 2 s
+  ros2 run braco_simulation move_joint.py 1 -45 --seconds 4
 
 Sends one goal to /arm_controller/follow_joint_trajectory (the controllers of
 config/controllers.yaml) and waits until /joint_states shows the joint there. Gazebo must be

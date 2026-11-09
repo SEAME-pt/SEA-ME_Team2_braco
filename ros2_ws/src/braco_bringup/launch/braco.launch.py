@@ -22,7 +22,7 @@ The braco system in one ROS 2 launch, on the real arm or in simulation.
                 arm_routine.sh ends and the container stops (a driver fault is always seen).
     sim:=true   the simulated arm (PC only), what the `sim` container runs: Gazebo with the
                 braco_description model and the ros2_control controllers planned for the
-                real arm (braco_description's gazebo.launch.py). When Gazebo exits the launch
+                real arm (braco_simulation's gazebo.launch.py). When Gazebo exits the launch
                 shuts down, like with arm_driver. gui:=true opens the Gazebo window.
 
 Tuning parameters of the nodes live in config/braco.yaml. The wiring (port, baud, lcd_bus,
@@ -51,11 +51,11 @@ def generate_launch_description():
     camera = LaunchConfiguration('camera')
     config = PathJoinSubstitution([FindPackageShare('braco_bringup'), 'config', 'braco.yaml'])
     real = UnlessCondition(sim)
-    # Not an exec_depend: braco_description needs Gazebo, which only the PC image has. The
+    # Not an exec_depend: braco_simulation needs Gazebo, which only the PC image has. The
     # package is looked up only when sim:=true, so the Jetson never needs it.
     gazebo = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(PathJoinSubstitution(
-            [FindPackageShare('braco_description'), 'launch', 'gazebo.launch.py'])),
+            [FindPackageShare('braco_simulation'), 'launch', 'gazebo.launch.py'])),
         launch_arguments={'gui': LaunchConfiguration('gui')}.items(),
         condition=IfCondition(sim))
     # The only process that opens the serial port. Not respawned: a fault must be seen.

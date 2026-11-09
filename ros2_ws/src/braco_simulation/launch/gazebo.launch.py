@@ -21,11 +21,11 @@ for the real arm): joint_state_broadcaster, then arm_controller, once the model 
 
 braco_bringup's braco.launch.py sim:=true (the `sim` container) includes this file; it also
 runs on its own in the dev container:
-  ros2 launch braco_description gazebo.launch.py              # Gazebo window
-  ros2 launch braco_description gazebo.launch.py gui:=false   # server only (headless)
+  ros2 launch braco_simulation gazebo.launch.py              # Gazebo window
+  ros2 launch braco_simulation gazebo.launch.py gui:=false   # server only (headless)
 
 Move one joint (degrees), or all six (radians, reached in 2 s):
-  ros2 run braco_description move_joint.py 2 30
+  ros2 run braco_simulation move_joint.py 2 30
   ros2 topic pub --once /arm_controller/joint_trajectory trajectory_msgs/msg/JointTrajectory \
     "{joint_names: [joint1, joint2, joint3, joint4, joint5, joint6],
       points: [{positions: [0.5, 0.3, -0.3, 0.0, 0.0, 0.0], time_from_start: {sec: 2}}]}"
