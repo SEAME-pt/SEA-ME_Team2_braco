@@ -91,7 +91,10 @@ def main():
                 missed += 1
             else:
                 lat_ms.append(found)
-            print(f'step {i + 1}/{args.n}: ' + (f'{found:.0f} ms' if found is not None else 'no motion seen'))
+            print(
+                f'step {i + 1}/{args.n}: '
+                + (f'{found:.0f} ms' if found is not None else 'no motion seen')
+            )
     finally:
         take_control(node, release=True)
         node.destroy_node()

@@ -17,7 +17,7 @@ import serial
 
 REQUEST = bytes([0xFE, 0xFE, 0x02, 0x20, 0xFA])  # FE FE <len=2> <cmd> FA
 REPLY_HEAD = bytes([0xFE, 0xFE, 0x0E, 0x20])  # len = 12 data bytes + 2
-REPLY_LEN = 16
+REPLY_LEN = 17  # FE FE 0E 20 <12 data bytes> FA
 REPLY_TIMEOUT_S = 0.5  # as mycobot.cpp (REPLY_TIMEOUT)
 
 
@@ -26,15 +26,17 @@ def percentile(sorted_ms, p):
 
 
 def read_reply(port):
-    """True once a complete getAngles reply has arrived, False after REPLY_TIMEOUT_S."""
+    """(True, bytes) once a complete getAngles reply has arrived, (False, bytes) on timeout."""
     deadline = time.perf_counter() + REPLY_TIMEOUT_S
     buf = bytearray()
     while time.perf_counter() < deadline:
         buf += port.read(port.in_waiting or 1)
         i = buf.find(REPLY_HEAD)
-        if i >= 0 and len(buf) >= i + REPLY_LEN:
-            return buf[i + REPLY_LEN - 1] == 0xFA
-    return False
+        while i >= 0 and len(buf) >= i + REPLY_LEN:
+            if buf[i + REPLY_LEN - 1] == 0xFA:
+                return True, bytes(buf)
+            i = buf.find(REPLY_HEAD, i + 1)  # not a full frame: look for the next header
+    return False, bytes(buf)
 
 
 def main():
@@ -53,11 +55,13 @@ def main():
             t0 = time.perf_counter()
             port.write(REQUEST)
             port.flush()  # tcdrain: the request has left the UART
-            ok = read_reply(port)
+            ok, raw = read_reply(port)
             dt_ms = (time.perf_counter() - t0) * 1000.0
             if ok:
                 samples.append(dt_ms)
             else:
+                if failures == 0:
+                    print(f'first failed read, {len(raw)} bytes: {raw.hex(" ") or "(nothing)"}')
                 failures += 1
             time.sleep(args.gap_ms / 1000.0)
 
