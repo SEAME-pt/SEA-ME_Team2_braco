@@ -30,7 +30,7 @@ Each layer talks only to the one below it. Layers 1–2 are identical in simulat
 |---|---|---|---|
 | **1 Mission and clients** | Decide what the arm does; take the control before moving | `braco_web`, `joystick_teleop`, `temperature_monitor`, `zero` / `park`; planned: `braco_mission`, MoveIt 2 | same nodes |
 | **2 ROS 2 middleware** | The contract: names and types | DDS domain 42; `/joint_states`, `/arm/command`, `/arm/*`, `/diagnostics` | same names, domain 77; `FollowJointTrajectory` on `/arm_controller` |
-| **3 Hardware abstraction** | Device access and safety | `arm_driver`, `camera`, `mycobot_cpp`; next: `braco_hardware` in `ros2_control_node` | `gz_ros2_control` (`controller_manager`, `arm_controller`, `joint_state_broadcaster`) |
+| **3 Hardware abstraction** | Device access and safety | `arm_driver`, `camera`, `mycobot_cpp`; `ros2_control_node` with `braco_hardware` | `gz_ros2_control` (`controller_manager`, `arm_controller`, `joint_state_broadcaster`) |
 | **4 Servo controller** | Drives the servo bus | Atom (ESP32, firmware 7.3) | Gazebo physics |
 | **5 Sensors and actuators** | What moves and senses | 6 servos, gripper; camera, joystick, LCD1602 wired to the Jetson | simulated `joint1..joint6`, gripper |
 
@@ -116,7 +116,7 @@ One colcon workspace, `ros2_ws/src`, mounted at `/ws`. Each package has a README
 | [`mycobot_cpp`](../../ros2_ws/src/mycobot_cpp/README.md) | Serial protocol, joint limits, joystick, LCD, teleop logic (no ROS) | done |
 | [`braco_interfaces`](../../ros2_ws/src/braco_interfaces/README.md) | `ArmCommand`, `JointTarget`, `ServoTemperatures`, `ServoVoltages`, `TakeControl` | done |
 | [`braco_driver`](../../ros2_ws/src/braco_driver/README.md) | `arm_driver`, `temperature_monitor` | done |
-| [`braco_hardware`](../../ros2_ws/src/braco_hardware/README.md) | ros2_control plugin of the real arm: joints from `arm_driver`'s `/joint_states` (ADR-0004) | reads; not launched yet; does not write yet |
+| [`braco_hardware`](../../ros2_ws/src/braco_hardware/README.md) | ros2_control plugin of the real arm: joints from `arm_driver`'s `/joint_states` (ADR-0004) | reads; does not write yet |
 | [`braco_teleop`](../../ros2_ws/src/braco_teleop/README.md) | `joystick_teleop` | done |
 | [`braco_camera`](../../ros2_ws/src/braco_camera/README.md) | `camera` (Python) | done |
 | [`braco_bringup`](../../ros2_ws/src/braco_bringup/README.md) | `braco.launch.py`, `braco.yaml`, entrypoint, `zero` / `park` | done |
@@ -151,7 +151,7 @@ braco_camera braco_hardware braco_description ◄┄ braco_simulation, braco_mov
 |---|---|---|
 | Image | `braco-image/pc` | `braco-image/jetson` |
 | `dev` | stays up: shell, build, test, RViz2, PlotJuggler, web page | throw-away (`run --rm`): build, zero, park |
-| System | `sim` (optional, `SIM=1`): Gazebo + controllers | `real`: `arm_driver`, `temperature_monitor`, `joystick_teleop`, `camera` |
+| System | `sim` (optional, `SIM=1`): Gazebo + controllers | `real`: `arm_driver`, `temperature_monitor`, `joystick_teleop`, `camera`, `robot_state_publisher`, `ros2_control_node` |
 | ROS domain | 77 | 42 |
 | Page source | `ARM_SOURCE=gazebo` | `ARM_SOURCE=ros` |
 
@@ -228,7 +228,7 @@ braco_mission ┄► MoveIt 2 ──trajectory──┬──► real: braco_har
 **Pending:**
 - `arm_driver` as a lifecycle node
 - E-stop node
-- `braco_hardware` on the real arm ([ADR-0004](../decisions/ADR-0004-trajectories-through-arm-driver.md)): started by `braco.launch.py sim:=false` (#87), sending commands (#101)
+- `braco_hardware` ([ADR-0004](../decisions/ADR-0004-trajectories-through-arm-driver.md)): checked on the real arm (#87), sending commands (#101)
 - `braco_moveit_config`
 - `braco_mission`
 - Measured CPU/RAM ([resources.md](resources.md))

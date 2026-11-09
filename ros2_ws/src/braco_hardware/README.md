@@ -48,7 +48,8 @@ For each joint, `joint1` to `joint6`:
 
 ## How it works
 
-Nobody runs the plugin by hand. `ros2_control_node` (the program that runs ros2_control) starts it:
+Nobody runs the plugin by hand. On the real arm, `make up` runs `braco.launch.py sim:=false`, which starts
+`ros2_control_node` (the program that runs ros2_control), and that loads the plugin:
 
 | # | What happens | Where |
 |---|---|---|
