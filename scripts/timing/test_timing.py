@@ -1,11 +1,16 @@
-"""Unit tests of the timing scripts' pure parts: the getAngles reply framing and the percentile.
+"""Unit tests of the timing scripts: reply framing, statistics, and the STOP handling.
 
-make timing-test (part of make ci). No serial port, no ROS.
+make timing-test (part of make ci). No serial port and no ROS: the ROS modules that hold_load
+imports are replaced by small fakes, so its STOP logic runs on the host.
 """
+
+import importlib
+import sys
+import types
 
 import pytest
 import serial_rtt
-from stats import percentile
+from stats import interval_stats, percentile
 
 FRAME = serial_rtt.REPLY_HEAD + bytes(range(12)) + b'\xfa'  # a complete getAngles reply
 
@@ -81,3 +86,104 @@ def test_percentile_one_value():
 def test_percentile_empty():
     with pytest.raises(ValueError):
         percentile([], 0.5)
+
+
+def test_interval_stats_steady_rate():
+    s = interval_stats([0.0, 0.05, 0.10, 0.15, 0.20], 20)
+    assert s['achieved_hz'] == pytest.approx(20.0)
+    assert s['mean_ms'] == pytest.approx(50.0)
+    assert s['max_ms'] == pytest.approx(50.0)
+    assert s['late_pct'] == 0.0
+
+
+def test_interval_stats_counts_late_intervals():
+    s = interval_stats([0.0, 0.05, 0.20], 20)  # 50 ms, then 150 ms (> 1.5 x 50 ms)
+    assert s['late_pct'] == pytest.approx(50.0)
+    assert s['max_ms'] == pytest.approx(150.0)
+    assert s['achieved_hz'] == pytest.approx(10.0)
+
+
+@pytest.mark.parametrize('stamps', [[], [1.0], [1.0, 1.0]])
+def test_interval_stats_needs_advancing_stamps(stamps):
+    with pytest.raises(ValueError):
+        interval_stats(stamps, 20)
+
+
+# ---- hold_load's STOP handling, with fake ROS modules -----------------------------------------
+
+STOP, ALL_ANGLES = 0, 2
+
+
+class FakeMsg:
+    STOP, JOINTS, ALL_ANGLES = STOP, 1, ALL_ANGLES
+
+    def __init__(self, **fields):
+        self.__dict__.update(fields)
+
+
+class FakeNode:
+    def __init__(self):
+        self.subscriptions = []
+
+    def create_subscription(self, msg_type, topic, callback, qos):
+        self.subscriptions.append((topic, callback))
+
+
+class FakePublisher:
+    def __init__(self):
+        self.sent = []
+
+    def publish(self, msg):
+        self.sent.append(msg)
+
+
+@pytest.fixture
+def hold_load(monkeypatch):
+    """hold_load imported against fake rclpy, braco_interfaces and sensor_msgs."""
+    fakes = {
+        'rclpy': types.ModuleType('rclpy'),
+        'rclpy.node': types.ModuleType('rclpy.node'),
+        'braco_interfaces': types.ModuleType('braco_interfaces'),
+        'braco_interfaces.msg': types.ModuleType('braco_interfaces.msg'),
+        'braco_interfaces.srv': types.ModuleType('braco_interfaces.srv'),
+        'sensor_msgs': types.ModuleType('sensor_msgs'),
+        'sensor_msgs.msg': types.ModuleType('sensor_msgs.msg'),
+    }
+    fakes['rclpy.node'].Node = FakeNode
+    fakes['braco_interfaces.msg'].ArmCommand = FakeMsg
+    fakes['braco_interfaces.srv'].TakeControl = FakeMsg
+    fakes['sensor_msgs.msg'].JointState = FakeMsg
+    for name, module in fakes.items():
+        monkeypatch.setitem(sys.modules, name, module)
+    monkeypatch.delitem(sys.modules, 'hold_load', raising=False)
+    module = importlib.import_module('hold_load')
+    yield module
+    sys.modules.pop('hold_load', None)
+
+
+def test_watch_stop_is_set_by_a_stop_only(hold_load):
+    node = FakeNode()
+    stop = hold_load.watch_stop(node)
+    [(topic, on_command)] = node.subscriptions
+    assert topic == 'arm/command'
+    on_command(FakeMsg(type=ALL_ANGLES))
+    assert stop['stop'] is False
+    on_command(FakeMsg(type=STOP))
+    assert stop['stop'] is True
+
+
+def test_nothing_is_published_after_a_stop(hold_load):
+    pub, stop, cmd = FakePublisher(), {'stop': False}, FakeMsg(type=ALL_ANGLES)
+    assert hold_load.publish_unless_stopped(pub, cmd, stop) is True
+    stop['stop'] = True
+    assert hold_load.publish_unless_stopped(pub, cmd, stop) is False
+    assert pub.sent == [cmd]
+
+
+def test_release_control_never_raises(hold_load, monkeypatch, capsys):
+    def gone(node, release=False):
+        raise RuntimeError('arm/take_control not available')
+
+    monkeypatch.setattr(hold_load, 'take_control', gone)
+    hold_load.release_control(FakeNode())
+    assert 'could not release the control' in capsys.readouterr().out

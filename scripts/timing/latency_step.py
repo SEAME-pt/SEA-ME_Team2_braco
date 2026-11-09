@@ -20,7 +20,14 @@ import time
 
 import rclpy
 from braco_interfaces.msg import ArmCommand
-from hold_load import SOURCE, current_pose_deg, take_control, watch_stop
+from hold_load import (
+    SOURCE,
+    current_pose_deg,
+    publish_unless_stopped,
+    release_control,
+    take_control,
+    watch_stop,
+)
 from rclpy.node import Node
 from sensor_msgs.msg import JointState
 from stats import percentile
@@ -76,7 +83,8 @@ def main():
             rclpy.spin_once(node, timeout_sec=0.05)
             start_deg = latest['deg']
             t_send = clock.now().nanoseconds * 1e-9
-            pub.publish(cmd)
+            if not publish_unless_stopped(pub, cmd, stop):  # a STOP seen by the spin above
+                break
             found = None
             nxt = time.monotonic() + 1.0 / args.rate
             end = time.monotonic() + args.settle
@@ -88,7 +96,8 @@ def main():
                     if abs(latest['deg'] - start_deg) > args.threshold:
                         found = (latest['stamp'] - t_send) * 1000.0
                 if time.monotonic() >= nxt:
-                    pub.publish(cmd)
+                    if not publish_unless_stopped(pub, cmd, stop):
+                        break
                     nxt += 1.0 / args.rate
             if found is None:
                 missed += 1
@@ -99,7 +108,7 @@ def main():
                 + (f'{found:.0f} ms' if found is not None else 'no motion seen')
             )
     finally:
-        take_control(node, release=True)
+        release_control(node)
         node.destroy_node()
         rclpy.shutdown()
 

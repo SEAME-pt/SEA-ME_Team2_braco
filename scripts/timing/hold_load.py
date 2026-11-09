@@ -53,6 +53,25 @@ def watch_stop(node):
     return seen
 
 
+def publish_unless_stopped(pub, cmd, stop):
+    """Publish cmd only while no STOP has been seen; True when it was published.
+
+    Every motion command of the bench scripts goes through here, so none follows a STOP.
+    """
+    if stop['stop']:
+        return False
+    pub.publish(cmd)
+    return True
+
+
+def release_control(node):
+    """Give the control back. Best effort, never raises: arm_driver may already be gone."""
+    try:
+        take_control(node, release=True)
+    except Exception as e:  # do not hide the error that ended the run
+        print(f'could not release the control: {e}')
+
+
 def current_pose_deg(node):
     pose = []
     sub = node.create_subscription(
@@ -88,15 +107,14 @@ def main():
         period = 1.0 / args.rate
         nxt = time.monotonic()
         end = nxt + args.duration
-        while time.monotonic() < end and not stop['stop']:
-            pub.publish(cmd)
+        while time.monotonic() < end and publish_unless_stopped(pub, cmd, stop):
             nxt += period
             while not stop['stop'] and time.monotonic() < nxt:
                 rclpy.spin_once(node, timeout_sec=max(0.0, nxt - time.monotonic()))
         if stop['stop']:
             print('STOP seen on /arm/command: stopped sending')
     finally:
-        take_control(node, release=True)
+        release_control(node)
         node.destroy_node()
         rclpy.shutdown()
 

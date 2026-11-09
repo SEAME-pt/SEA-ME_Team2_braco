@@ -17,7 +17,7 @@ import time
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import JointState
-from stats import percentile
+from stats import interval_stats
 
 HEADER = (
     '| requested Hz | load | msgs | achieved Hz | mean ms | p50 ms | p99 ms | max ms '
@@ -38,9 +38,13 @@ def driver_pid():
 
 
 def cpu_seconds(pid):
-    with open(f'/proc/{pid}/stat') as f:
-        fields = f.read().rsplit(')', 1)[1].split()
-    return (int(fields[11]) + int(fields[12])) / os.sysconf('SC_CLK_TCK')  # utime + stime
+    """utime + stime of the process in seconds, or None when it is gone."""
+    try:
+        with open(f'/proc/{pid}/stat') as f:
+            fields = f.read().rsplit(')', 1)[1].split()
+    except OSError:
+        return None  # arm_driver exited or restarted during the run
+    return (int(fields[11]) + int(fields[12])) / os.sysconf('SC_CLK_TCK')
 
 
 def main():
@@ -62,25 +66,28 @@ def main():
     )
 
     pid = driver_pid()
-    cpu0, t0 = (cpu_seconds(pid), time.monotonic()) if pid else (None, None)
+    cpu0, t0 = (cpu_seconds(pid) if pid else None), time.monotonic()
     end = time.monotonic() + args.duration
     while time.monotonic() < end:
         rclpy.spin_once(node, timeout_sec=0.1)
-    cpu = f'{100 * (cpu_seconds(pid) - cpu0) / (time.monotonic() - t0):.0f}' if pid else 'n/a'
+    cpu1 = cpu_seconds(pid) if pid else None
+    cpu = (
+        'n/a'
+        if cpu0 is None or cpu1 is None
+        else f'{100 * (cpu1 - cpu0) / (time.monotonic() - t0):.0f}'
+    )
     node.destroy_node()
     rclpy.shutdown()
 
     if len(stamps) < 2:
         print('fewer than 2 messages on /joint_states: is arm_driver running?')
         return
-    iv = sorted((b - a) * 1000.0 for a, b in zip(stamps, stamps[1:]))
-    period_ms = 1000.0 / args.requested
-    late = sum(1 for x in iv if x > 1.5 * period_ms)
+    s = interval_stats(stamps, args.requested)
     row = (
         f'| {args.requested:g} | {args.label} | {len(stamps)} '
-        f'| {1000.0 * len(iv) / sum(iv):.1f} | {sum(iv) / len(iv):.1f} '
-        f'| {percentile(iv, 0.50):.1f} | {percentile(iv, 0.99):.1f} | {iv[-1]:.1f} '
-        f'| {100.0 * late / len(iv):.1f} % | {cpu} |\n'
+        f'| {s["achieved_hz"]:.1f} | {s["mean_ms"]:.1f} '
+        f'| {s["p50_ms"]:.1f} | {s["p99_ms"]:.1f} | {s["max_ms"]:.1f} '
+        f'| {s["late_pct"]:.1f} % | {cpu} |\n'
     )
     new = not os.path.exists(args.out)
     with open(args.out, 'a') as f:
