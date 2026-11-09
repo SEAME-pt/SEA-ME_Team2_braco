@@ -19,7 +19,8 @@ Starts the model (config/braco.urdf.xacro: braco_description + mock_components),
 with the controllers of braco_description/config/controllers.yaml (joint_state_broadcaster,
 arm_controller), move_group with the config/ of this package, and RViz with the
 MotionPlanning panel. The mock hardware reports back the position it is commanded, so an
-executed plan "moves" the arm at once.
+executed plan "moves" the arm at once. move_group and RViz start once arm_controller is
+active, so the first goal can execute; if it fails to start, the launch shuts down.
 
 In the dev container (pc image):
   ros2 launch braco_moveit_config demo.launch.py              # RViz window
@@ -29,7 +30,7 @@ In RViz, MotionPlanning > Planning: Goal State `home` or `park`, then Plan & Exe
 """
 
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, RegisterEventHandler
+from launch.actions import DeclareLaunchArgument, RegisterEventHandler, Shutdown
 from launch.conditions import IfCondition
 from launch.event_handlers import OnProcessExit
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
@@ -64,6 +65,23 @@ def generate_launch_description():
         package='controller_manager', executable='spawner',
         arguments=['arm_controller', '--param-file', controllers])
 
+    move_group = Node(package='moveit_ros_move_group', executable='move_group', output='screen',
+                      parameters=[moveit_config.to_dict()])
+    rviz = Node(package='rviz2', executable='rviz2', output='log',
+                arguments=['-d', rviz_config],
+                parameters=[moveit_config.robot_description,
+                            moveit_config.robot_description_semantic,
+                            moveit_config.robot_description_kinematics,
+                            moveit_config.planning_pipelines,
+                            moveit_config.joint_limits],
+                condition=IfCondition(LaunchConfiguration('rviz')))
+
+    def on_arm_controller_exit(event, context):
+        # OnProcessExit also fires on failure: without the controller nothing can execute
+        if event.returncode != 0:
+            return [Shutdown(reason='arm_controller did not start')]
+        return [move_group, rviz]
+
     return LaunchDescription([
         DeclareLaunchArgument('rviz', default_value='true',
                               description='true: RViz with the MotionPlanning panel'),
@@ -77,14 +95,7 @@ def generate_launch_description():
         # arm_controller after joint_state_broadcaster, as in braco_description's Gazebo launch
         RegisterEventHandler(OnProcessExit(target_action=joint_state_broadcaster,
                                            on_exit=[arm_controller])),
-        Node(package='moveit_ros_move_group', executable='move_group', output='screen',
-             parameters=[moveit_config.to_dict()]),
-        Node(package='rviz2', executable='rviz2', output='log',
-             arguments=['-d', rviz_config],
-             parameters=[moveit_config.robot_description,
-                         moveit_config.robot_description_semantic,
-                         moveit_config.robot_description_kinematics,
-                         moveit_config.planning_pipelines,
-                         moveit_config.joint_limits],
-             condition=IfCondition(LaunchConfiguration('rviz'))),
+        # move_group after arm_controller, as in sim.launch.py
+        RegisterEventHandler(OnProcessExit(target_action=arm_controller,
+                                           on_exit=on_arm_controller_exit)),
     ])
