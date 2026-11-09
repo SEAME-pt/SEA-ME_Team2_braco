@@ -14,7 +14,7 @@ crash independently while the port keeps a single owner. It never powers the arm
 
 | | Name | Type |
 |---|---|---|
-| pub | `/joint_states` | `sensor_msgs/JointState` (radians, `joint1..joint6`, 20 Hz) |
+| pub | `/joint_states` | `sensor_msgs/JointState` (radians, `joint1..joint6`, `state_rate_hz` 20: 18.7 Hz measured idle, ~14 Hz under continuous commands, [timing](../../../docs/architecture/timing-budget.md)) |
 | pub | `/arm/servo_temperatures` | `braco_interfaces/ServoTemperatures` (every 2 s, also in rest mode) |
 | pub | `/arm/servo_voltages` | `braco_interfaces/ServoVoltages` (every 2 s, also in rest mode) |
 | pub | `/arm/read_only` | `std_msgs/Bool`, latched: rest mode on/off |

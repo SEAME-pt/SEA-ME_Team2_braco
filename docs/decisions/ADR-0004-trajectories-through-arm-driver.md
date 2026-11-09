@@ -8,7 +8,7 @@ deciders: all
 
 ## Context
 
-MoveIt 2 sends `FollowJointTrajectory` goals to `arm_controller` (`JointTrajectoryController`, 100 Hz). In simulation, `gz_ros2_control` moves the joints. On the real arm, `arm_driver` is the only process that opens the serial port, and it holds every safety rule: the STOP, rest, owner and watchdog gates, the control lease (ADR-0002) and rest on overheat (ADR-0003). It also publishes `/joint_states` at 20 Hz and stops publishing when angle feedback fails, which clients read as "stale".
+MoveIt 2 sends `FollowJointTrajectory` goals to `arm_controller` (`JointTrajectoryController`, 100 Hz). In simulation, `gz_ros2_control` moves the joints. On the real arm, `arm_driver` is the only process that opens the serial port, and it holds every safety rule: the STOP, rest, owner and watchdog gates, the control lease (ADR-0002) and rest on overheat (ADR-0003). It also publishes `/joint_states` at 20 Hz (18.7 Hz measured idle, ~14 Hz under continuous commands, [timing budget](../architecture/timing-budget.md)) and stops publishing when angle feedback fails, which clients read as "stale".
 
 **Question:** how does a trajectory from `arm_controller` reach the real arm without bypassing `arm_driver`'s safety rules, and who holds the control, publishes `/joint_states` and stops the trajectory?
 

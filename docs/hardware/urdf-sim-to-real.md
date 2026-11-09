@@ -108,7 +108,7 @@ All in degrees (the URDF uses radians; the test checks the conversion).
 ### Measured joint speed per firmware speed setting
 
 `sim_to_real.py velocity`: each joint swept from -A to +A (J1 and J6 ±90°, J2 ±45°, J3 to J5 ±60°) with the other
-joints at 0, timed from `/joint_states` (20 Hz) over the middle 80 % of the sweep (leaves out the acceleration and the
+joints at 0, timed from `/joint_states` (20 Hz nominal; with the target resent every 0.1 s the real rate is lower, ~14 to 19 Hz, [timing budget](../architecture/timing-budget.md)) over the middle 80 % of the sweep (leaves out the acceleration and the
 final approach). rad/s, peak in brackets:
 
 | Joint | speed 25 | speed 50 | speed 75 | speed 100 |
@@ -123,7 +123,7 @@ final approach). rad/s, peak in brackets:
 - **The speed setting is linear:** about **0.0265 rad/s (1.5°/s) per speed unit** on every joint, up to about 2.6 to
   2.8 rad/s at 100. joint2, which carries the whole arm, is the slowest at speed 100 (2.44).
 - The URDF `velocity` limit is the speed-100 value per joint. joint3's 2.79 average is above its 2.72 peak, which
-  cannot be: the fast 120° sweep lasts about 0.6 s, so the 20 Hz joint states give about ±8 % timing resolution. The
+  cannot be: the fast 120° sweep lasts about 0.6 s, so the joint states (at most ~18.7 Hz, see above) give about ±8 to 10 % timing resolution. The
   lower value (2.72) is used. Peaks come from two samples, so single outliers (joint2 at speed 75: 3.70) are noise.
 
 `effort` is an **approximation**. Elephant Robotics does not publish the joint servos' torque (the spec pages list

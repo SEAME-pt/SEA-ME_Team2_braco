@@ -126,6 +126,7 @@ loop is saturated by commands at every rate tested. With 20 steps p99 equals the
 | ADR-0004 | Setpoints are thinned to **~14 Hz**, not 20 Hz |
 | Watchdog | `command_timeout_ms` 300 vs 70 ms between commands under load: 4× margin |
 | `state_rate_hz` | 20 stays. Higher helps only while idle, where no client needs it |
+| Joystick `state_timeout_ms` 150 | Under commands `/joint_states` comes every ~70 ms, max ~101 ms: jogging keeps working, with 1.5× margin |
 | #93 (SCHED_FIFO) | Baseline jitter above (idle p99 / max). The loop is bound by sleeps and the firmware, not by scheduling: expect the max to improve, not the rate |
 
 ### What would change it
