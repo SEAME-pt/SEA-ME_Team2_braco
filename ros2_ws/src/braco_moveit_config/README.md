@@ -46,7 +46,8 @@ after everything ran; it does not affect planning.
 ## Rules of the config
 
 - **Joint limits** must never be wider than `JOINT_LIMITS` of `mycobot.hpp`: MoveIt would plan moves the driver
-  then clamps. Change `mycobot.hpp` first, then the URDF and `config/joint_limits.yaml`.
+  then clamps. Change `mycobot.hpp` first, then the URDF and `config/joint_limits.yaml`; `test/test_joint_limits.py`
+  fails if they disagree.
 - **Speed**: the default scaling (0.3 of the measured speed) is applied by the clients (RViz, `MoveGroupInterface`),
   which read it from `robot_description_planning`. A raw `/move_action` request with scaling 0 runs at full speed.
 - **Collisions**: the disabled pairs come from `collisions_updater` (below) plus three set by hand, each explained
@@ -69,3 +70,6 @@ ros2 run moveit_setup_assistant collisions_updater --urdf /tmp/braco_moveit.urdf
 `test/test_moveit_config.py` (`colcon test --packages-select braco_moveit_config`): the SRDF names exist in the
 model, `arm` is joint1..joint6, `home`/`park` match `mycobot.hpp` and lie inside `joint_limits.yaml`, the MoveIt
 controller matches `braco_description/config/controllers.yaml`, and the mock `<ros2_control>` matches the Gazebo one.
+
+`test/test_joint_limits.py`: the positions of `joint_limits.yaml` equal `JOINT_LIMITS` and the URDF `<limit>`, and its
+velocities are not above the measured URDF ones.

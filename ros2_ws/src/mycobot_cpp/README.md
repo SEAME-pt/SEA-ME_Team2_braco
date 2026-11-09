@@ -12,7 +12,8 @@ publishes no topics.
 | `display.hpp` | `ui::TerminalDisplay`: full-screen terminal status |
 | `teleop_logic.hpp` | Jogging logic shared by `joystick_teleop`, `joystick_all_joints` and `joystick_display`; tested in `braco_teleop/test/` |
 
-`braco_description` must keep its joint limits equal to `JOINT_LIMITS`.
+The URDF (`braco_description`) and `braco_moveit_config/config/joint_limits.yaml` must keep their joint limits equal
+to `JOINT_LIMITS`; their tests fail otherwise.
 
 **Use from another package:**
 
