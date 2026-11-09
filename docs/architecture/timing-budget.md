@@ -85,6 +85,8 @@ holds still. CPU: `arm_driver`, % of one core.
 - p99 / max idle (~40 / ~48 ms at the ceiling): the temperature and voltage reads every 2 s. This is the "before"
   jitter for #93.
 - Read failures: one `no valid angle feedback` right after each `power on`, none during the runs.
+- *Commands* is a stand-in for #87, not yet merged: re-run `js_rate.py` and `latency_step.py` with the real plugin
+  when it lands.
 
 ### 3. Command → motion latency
 
