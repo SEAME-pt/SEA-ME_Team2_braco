@@ -18,6 +18,8 @@ the arm on the Jetson through DDS.
 | `config/braco.urdf.xacro` | The demo's model: `braco_description`'s `braco.urdf.xacro` + a `mock_components/GenericSystem` `<ros2_control>` |
 | `config/moveit.rviz` | RViz with the MotionPlanning panel on `arm` |
 | `launch/demo.launch.py` | RViz + `move_group` + ros2_control with the mock hardware |
+| `launch/sim.launch.py` | Gazebo (`braco_description`'s `gazebo.launch.py`), then `move_group` and RViz once `arm_controller` is active |
+| `launch/rviz.launch.py` | RViz only, on a `move_group` already running (`make rviz-gui`) |
 | `.setup_assistant` | Lets MoveItConfigsBuilder and the Setup Assistant find the model and the SRDF |
 
 The ros2_control controllers are not copied here: the demo starts those of `braco_description/config/controllers.yaml`,
@@ -42,6 +44,33 @@ position it is commanded, so `/joint_states` follows the plan.
 
 Ctrl+C on the launch can end with `move_group ... exit code -11`: a crash of `move_group` while it shuts down,
 after everything ran; it does not affect planning.
+
+## Run on the Gazebo arm
+
+The `sim` container runs `move_group` by default (`SIM_MOVEIT=true` in `docker/.env`), through
+`braco.launch.py sim:=true moveit:=true`. From the host:
+
+```bash
+make up SIM=1     # the simulation and move_group (make restart SIM=1 after changing docker/.env)
+make sim-gui      # Gazebo and RViz, in the background (only one: make gaze-gui, make rviz-gui)
+```
+
+In RViz, panel **MotionPlanning** > tab **Planning**: *Goal State* `home` or `park`, then **Plan & Execute**. The plan
+goes to `/arm_controller/follow_joint_trajectory` and the arm moves in Gazebo; `/joint_states` follows it. Everything
+runs on simulated time (`use_sim_time`). Closing a window leaves the simulation running.
+
+Without the `sim` container, `sim.launch.py` runs the whole thing in one launch, in a dev shell:
+
+```bash
+ros2 launch braco_moveit_config sim.launch.py                         # Gazebo and RViz windows
+ros2 launch braco_moveit_config sim.launch.py gui:=false rviz:=false  # headless
+```
+
+Run it with `sim` stopped (`make down`, then `make up`) or on another domain (`export ROS_DOMAIN_ID=78`). On one domain,
+the second simulation's spawners end with `Controller already loaded` and exit code 1.
+
+`move_group` and RViz start only once the `arm_controller` spawner has succeeded, because nothing can execute without
+the controller. If it fails, the launch shuts down, so RViz never opens: look for that spawner's error in the log.
 
 ## Rules of the config
 
