@@ -35,3 +35,30 @@ arm_controller:
     state_interfaces:
       - position
       - velocity
+
+    # When a goal counts as reached (#123). Without these the controller ended every goal as
+    # successful, even with the arm stopped on the table 0.33 rad short of the target.
+    #   goal         after the trajectory, every joint within 0.07 rad (4 deg) of its last point,
+    #                or the goal fails (GOAL_TOLERANCE_VIOLATED). Gazebo ends at 0.000 rad; the
+    #                real servos stop up to ~3 deg short (dead zone, DEADBAND_DEG in
+    #                scripts/braco_arm.py), so 0.07 keeps both successful. A goal blocked by the
+    #                table ends 0.33 rad short and fails.
+    #   trajectory   while moving, every joint within 0.3 rad of where it should be now, or the
+    #                goal aborts (PATH_TOLERANCE_VIOLATED). Gazebo lags up to 0.047 rad behind at
+    #                0.8 rad/s (about 60 ms); the real arm's lag is not measured yet (#87), so the
+    #                margin is wide. A blocked arm then stops early, before the trajectory ends.
+    #   goal_time    time after the trajectory's end to get within `goal`. Must be > 0: with 0 a
+    #                blocked goal never ends. Kept at moveit_controllers.yaml's
+    #                allowed_goal_duration_margin (0.5 s), so this controller, not MoveIt's
+    #                timeout, reports the failure.
+    #   stopped_velocity_tolerance  below this (rad/s) a joint counts as stopped at the end
+    #                (the controller's default, written out).
+    constraints:
+      stopped_velocity_tolerance: 0.01
+      goal_time: 0.5
+      joint1: {trajectory: 0.3, goal: 0.07}
+      joint2: {trajectory: 0.3, goal: 0.07}
+      joint3: {trajectory: 0.3, goal: 0.07}
+      joint4: {trajectory: 0.3, goal: 0.07}
+      joint5: {trajectory: 0.3, goal: 0.07}
+      joint6: {trajectory: 0.3, goal: 0.07}

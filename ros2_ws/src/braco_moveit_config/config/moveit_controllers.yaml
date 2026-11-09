@@ -21,7 +21,11 @@ moveit_simple_controller_manager:
 
 trajectory_execution:
   # A trajectory may take this much longer than planned (x1.2 + 0.5 s) before it is aborted.
+  # The margin is arm_controller's constraints.goal_time (controllers.yaml): change them together.
   allowed_execution_duration_scaling: 1.2
   allowed_goal_duration_margin: 0.5
-  # Start state check: the arm must be within 0.01 rad of where the plan begins.
+  # Start state check: the arm must be within 0.01 rad of where the plan begins. Measured in
+  # Gazebo (#123): the arm ends 1e-11 rad from a plan's last point and two plans in a row pass.
+  # The ~0.009 rad seen earlier at the end of MoveIt goals was the goal's own ±0.01 tolerance:
+  # MoveIt may end the plan anywhere inside it, and the arm follows the plan exactly.
   allowed_start_tolerance: 0.01
