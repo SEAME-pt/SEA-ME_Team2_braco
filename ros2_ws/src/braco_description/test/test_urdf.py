@@ -133,26 +133,6 @@ def test_joint_origins_match_mycobot_cpp():
         assert urdf == pytest.approx([float(v) for v in xyz], abs=1e-6), name
 
 
-def test_park_script_matches_mycobot_hpp():
-    # scripts/park.py parks the Gazebo arm where the real arm parks.
-    with open(os.path.join(PACKAGE_DIR, 'scripts', 'park.py'), encoding='utf-8') as f:
-        match = re.search(r'PARK_DEG = \[(.*?)\]', f.read())
-    assert match, 'PARK_DEG not found in scripts/park.py'
-    script = [float(v) for v in match.group(1).split(',')]
-    hpp = re.search(r'PARK_ANGLES = \{(.*?)\};', mycobot_source('mycobot.hpp'))
-    assert hpp, 'PARK_ANGLES not found in mycobot.hpp'
-    assert script == [float(v) for v in hpp.group(1).split(',')]
-
-
-def test_move_joint_limits_match_mycobot_hpp():
-    # scripts/move_joint.py refuses an angle the real arm would clamp.
-    with open(os.path.join(PACKAGE_DIR, 'scripts', 'move_joint.py'), encoding='utf-8') as f:
-        match = re.search(r'LIMITS_DEG = \[(.*?)\]\n', f.read())
-    assert match, 'LIMITS_DEG not found in scripts/move_joint.py'
-    pairs = re.findall(r'\(\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\)', match.group(1))
-    assert [(float(lo), float(hi)) for lo, hi in pairs] == hpp_limits('JOINT_LIMITS')
-
-
 def test_every_link_with_geometry_has_positive_mass_and_inertia():
     robot = load_urdf()
     for link in robot.findall('link'):

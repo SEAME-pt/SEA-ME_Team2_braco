@@ -14,6 +14,9 @@ install(FILES scripts/braco_arm.py DESTINATION lib/${PROJECT_NAME})
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   ament_lint_auto_find_test_dependencies()
+
+  find_package(ament_cmake_pytest REQUIRED)
+  ament_add_pytest_test(test_scripts test/test_scripts.py)
 endif()
 
 ament_package()
