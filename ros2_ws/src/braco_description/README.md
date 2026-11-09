@@ -56,8 +56,13 @@ edge (a short side) of one of them, next to the gap, facing the table top.
   the spawn pose puts the arm in the scene.
 - **The pedestal** (grey) is only the look of `g_base` with `gazebo:=true`. It has the
   height of the measured mount (`g_base_height`, 30 mm), so the kinematics do not change. The plain model keeps the mesh.
-- **Collisions:** the table top stops the arm in Gazebo. `arm_controller` still ends such a goal as successful (no goal
-  tolerances set): compare `/joint_states` with the target. MoveIt does not know the table, so it can plan through it.
+- **Collisions:** the table top stops the arm in Gazebo. `arm_controller` then ends the goal as failed
+  (`PATH_TOLERANCE_VIOLATED` or `GOAL_TOLERANCE_VIOLATED`; through MoveIt, `CONTROL_FAILED`): every joint must stay
+  within 0.3 rad of the trajectory while moving and end within 0.07 rad of its last point, 0.5 s after it
+  (`constraints` in `config/controllers.yaml`). MoveIt does not know the table, so it can plan through it.
+- **One simulation per ROS domain:** `gazebo.launch.py` (and `sim.launch.py`) refuses to start when a
+  `/controller_manager` already runs, e.g. the `sim` container. Started anyway, its controllers would not start and
+  its Gazebo server would be left running. Use the running one, or `make down` first.
 - **Unmeasured:** the sizes of the table and the pedestal and the arm's position are provisional, marked `UNMEASURED` in
   `models/lab_table/model.sdf`, `worlds/lab_bench.sdf`, `braco.urdf.xacro` and `gazebo.launch.py`.
 

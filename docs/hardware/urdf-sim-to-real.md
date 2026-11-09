@@ -244,7 +244,7 @@ Gazebo can still behave differently on the arm:
 | On the real arm | In Gazebo |
 |---|---|
 | Speed is the firmware's setting 1..100, about 0.0265 rad/s per unit (see "Limits") | The trajectory's `time_from_start`, capped by the URDF `velocity` limits |
-| A servo stops up to ~3° short of a target (dead zone, `DEADBAND_DEG` in `scripts/braco_arm.py`) | Reaches the target within the controller's tolerance |
+| A servo stops up to ~3° short of a target (dead zone, `DEADBAND_DEG` in `scripts/braco_arm.py`) | Reaches the target exactly (0.000 rad). `arm_controller`'s goal tolerance (0.07 rad, 4°) is above the dead zone, so both count as reached |
 | `sendAngles` clamps to `JOINT_LIMITS` and refuses poses that hit the table (`minHeightMm`) | gz_ros2_control clamps to the URDF limits (and logs `Command of at least one joint is out of limits`); a pose under the table is not refused, the arm presses on the ground plane and stops short (J2 = 160° stops at 124°) |
 | Only the control owner moves the arm ([ADR-0002](../decisions/ADR-0002-unique-control.md)); STOP from anyone | `arm_controller` accepts any trajectory |
 | Rest on overheat, servo temperatures and voltages ([ADR-0003](../decisions/ADR-0003-rest-per-temp.md)) | No temperatures; never rests |
