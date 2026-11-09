@@ -364,3 +364,17 @@ def test_controllers_drive_the_arm_joints():
     arm = config['arm_controller']['ros__parameters']
     assert arm['joints'] == ARM_JOINTS
     assert arm['command_interfaces'] == ['position']
+
+
+def test_arm_controller_fails_a_goal_it_does_not_reach():
+    # #123: without goal tolerances a goal blocked by the table (0.33 rad short) ended as
+    # successful. Every joint needs a goal tolerance above the real servos' dead zone (~3 deg)
+    # and below that, a path tolerance above Gazebo's lag (0.047 rad), and goal_time > 0, or a
+    # blocked goal never ends.
+    yaml = pytest.importorskip('yaml')
+    with open(os.path.join(PACKAGE_DIR, 'config', 'controllers.yaml'), encoding='utf-8') as f:
+        constraints = yaml.safe_load(f)['arm_controller']['ros__parameters']['constraints']
+    assert constraints['goal_time'] > 0
+    for joint in ARM_JOINTS:
+        assert math.radians(3) < constraints[joint]['goal'] < 0.33, joint
+        assert constraints[joint]['trajectory'] > 0.047, joint
