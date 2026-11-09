@@ -11,23 +11,19 @@ Appends one Markdown row to --out (writes the header first if the file is new).
 """
 
 import argparse
-import math
 import os
 import time
 
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import JointState
+from stats import percentile
 
 HEADER = (
     '| requested Hz | load | msgs | achieved Hz | mean ms | p50 ms | p99 ms | max ms '
     '| late > 1.5 T | arm_driver CPU % |\n'
     '|---|---|---|---|---|---|---|---|---|---|\n'
 )
-
-
-def percentile(sorted_ms, p):
-    return sorted_ms[max(0, math.ceil(p * len(sorted_ms)) - 1)]
 
 
 def driver_pid():

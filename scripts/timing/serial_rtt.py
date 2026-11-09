@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Serial round trip of one joint read (getAngles, 0x20) to the myCobot 280 Atom, without ROS.
 
-Issue #90, measurement 1. The port has a single owner: run it with arm_driver STOPPED.
+Issue #90, measurement 1. The port has a single owner: run it with arm_driver STOPPED. The port is
+opened like arm_driver opens it (TIOCEXCL), so the two refuse each other instead of sharing it.
 
     python3 serial_rtt.py                       # /dev/ttyTHS1, 1 000 000 baud, 1000 reads
     python3 serial_rtt.py -n 2000 --gap-ms 0    # back to back
@@ -10,19 +11,18 @@ Prints mean, p50, p99 and max in ms, and the reads that got no valid reply.
 """
 
 import argparse
-import math
+import errno
+import fcntl
+import sys
+import termios
 import time
 
-import serial
+from stats import percentile
 
 REQUEST = bytes([0xFE, 0xFE, 0x02, 0x20, 0xFA])  # FE FE <len=2> <cmd> FA
 REPLY_HEAD = bytes([0xFE, 0xFE, 0x0E, 0x20])  # len = 12 data bytes + 2
 REPLY_LEN = 17  # FE FE 0E 20 <12 data bytes> FA
 REPLY_TIMEOUT_S = 0.5  # as mycobot.cpp (REPLY_TIMEOUT)
-
-
-def percentile(sorted_ms, p):
-    return sorted_ms[max(0, math.ceil(p * len(sorted_ms)) - 1)]
 
 
 def read_reply(port):
@@ -39,6 +39,20 @@ def read_reply(port):
     return False, bytes(buf)
 
 
+def open_exclusive(name, baud):
+    """The port in exclusive mode (TIOCEXCL, as mycobot.cpp); exit if another process holds it."""
+    import serial  # here, so the unit tests do not need pyserial
+
+    try:
+        port = serial.Serial(name, baud, timeout=0.01)
+    except serial.SerialException as e:
+        if e.errno == errno.EBUSY:
+            sys.exit(f'{name} is busy: arm_driver is running (make down, or stop it first)')
+        raise
+    fcntl.ioctl(port.fileno(), termios.TIOCEXCL)  # arm_driver started later cannot open it
+    return port
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument('--port', default='/dev/ttyTHS1')
@@ -48,7 +62,7 @@ def main():
     args = ap.parse_args()
 
     samples, failures = [], 0
-    with serial.Serial(args.port, args.baud, timeout=0.01) as port:
+    with open_exclusive(args.port, args.baud) as port:
         time.sleep(1.0)  # the Atom needs a moment after the port opens (as zero.cpp / park.cpp)
         for _ in range(args.n):
             port.reset_input_buffer()  # tcflush(TCIFLUSH), as query() does
