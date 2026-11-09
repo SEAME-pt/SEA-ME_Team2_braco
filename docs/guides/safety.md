@@ -116,6 +116,10 @@ Go/no-go checklist. If any box is not ticked, do not move the arm.
 
 - [ ] One person on STOP (section 6.2): the web page's STOP button, or
   `ROS_DOMAIN_ID=22 ros2 topic pub --once /arm/command braco_interfaces/msg/ArmCommand '{type: 0}'`.
+  - ⚠️ **A STOP does not latch today.** It halts the arm once, but the client in control keeps it and its next
+    command moves the arm again. Tested on 2026-11-09 (PR #124): the page's STOP halts a move of the page; a STOP
+    from the terminal does **not** stop a move that the page streams. Use STOP **from the client that moves the
+    arm**, or the power switch (section 6.1).
 - [ ] One person on the power switch (section 6.1).
 - [ ] First move small, in a direction with nothing in the way.
 
