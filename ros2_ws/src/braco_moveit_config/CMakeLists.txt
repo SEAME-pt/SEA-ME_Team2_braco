@@ -13,6 +13,7 @@ if(BUILD_TESTING)
 
   find_package(ament_cmake_pytest REQUIRED)
   ament_add_pytest_test(test_moveit_config test/test_moveit_config.py)
+  ament_add_pytest_test(test_joint_limits test/test_joint_limits.py)
 endif()
 
 ament_package()

@@ -198,7 +198,8 @@ xacro urdf/braco.urdf.xacro > /tmp/braco.urdf && check_urdf /tmp/braco.urdf
 - **Joint names** are `joint1..joint6`, the ones `arm_driver` publishes in `/joint_states`. If they differ,
   `robot_state_publisher` ignores the states without any error and the model stays frozen.
 - **Limits** (`<limit>`) are `JOINT_LIMITS` of `ros2_ws/src/mycobot_cpp/includes/mycobot.hpp`, converted to radians. Change them
-  there first: `test_urdf.py` fails if the two disagree. The URDF limits only inform tools (MoveIt, Gazebo);
+  there first: `test_urdf.py` fails if the two disagree (`braco_moveit_config`'s `test_joint_limits.py` checks
+  `joint_limits.yaml`). The URDF limits only inform tools (MoveIt, Gazebo);
   the arm itself is limited by `mycobot::MyCobot280::sendAngles`.
 - **Frames**: `world` is the table; `g_base` is the G-shape base plate the arm stands on; `tool0` is the flange (z out of it, REP-103); `tcp` is between the fingertips;
   `camera_optical_frame` has z forward, x right, y down (REP-103).
