@@ -30,12 +30,12 @@ from launch_ros.substitutions import FindPackageShare
 
 def generate_launch_description():
     gui_config = PathJoinSubstitution(
-        [FindPackageShare('braco_description'), 'config', 'gazebo_gui.config'])
+        [FindPackageShare('braco_simulation'), 'config', 'gazebo_gui.config'])
 
     return LaunchDescription([
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(PathJoinSubstitution(
                 [FindPackageShare('ros_gz_sim'), 'launch', 'gz_sim.launch.py'])),
             launch_arguments={'gz_args': ['-g --gui-config ', gui_config]}.items()),
-        Node(package='braco_description', executable='gz_track_arm.sh', output='screen'),
+        Node(package='braco_simulation', executable='gz_track_arm.sh', output='screen'),
     ])

@@ -30,9 +30,9 @@ along the gap, towards the table top). TF and MoveIt keep working in the model's
 braco_bringup's braco.launch.py sim:=true (the `sim` container) includes this file; it also
 runs on its own in the dev container. It refuses to start when a /controller_manager already
 runs on the ROS domain (the `sim` container is up: `make down`, or use that one):
-  ros2 launch braco_description gazebo.launch.py              # Gazebo window
-  ros2 launch braco_description gazebo.launch.py gui:=false   # server only (headless)
-  ros2 launch braco_description gazebo.launch.py robot_x:=0.2 robot_yaw:=0.5
+  ros2 launch braco_simulation gazebo.launch.py              # Gazebo window
+  ros2 launch braco_simulation gazebo.launch.py gui:=false   # server only (headless)
+  ros2 launch braco_simulation gazebo.launch.py robot_x:=0.2 robot_yaw:=0.5
 
 Close and open the gripper (radians of its master joint: -0.74 closed .. 0.15 open):
   ros2 action send_goal /gripper_action_controller/gripper_cmd \
@@ -40,7 +40,7 @@ Close and open the gripper (radians of its master joint: -0.74 closed .. 0.15 op
     "{command: {name: [gripper_controller], position: [-0.74]}}"
 
 Move one joint (degrees), or all six (radians, reached in 2 s):
-  ros2 run braco_description move_joint.py 2 30
+  ros2 run braco_simulation move_joint.py 2 30
   ros2 topic pub --once /arm_controller/joint_trajectory trajectory_msgs/msg/JointTrajectory \
     "{joint_names: [joint1, joint2, joint3, joint4, joint5, joint6],
       points: [{positions: [0.5, 0.3, -0.3, 0.0, 0.0, 0.0], time_from_start: {sec: 2}}]}"
@@ -94,22 +94,25 @@ def controller_manager_running():
 def generate_launch_description():
     gui = LaunchConfiguration('gui')
 
+    # The robot model and the controllers: braco_description
     share = FindPackageShare('braco_description')
     model = PathJoinSubstitution([share, 'urdf', 'braco.urdf.xacro'])
     controllers = PathJoinSubstitution([share, 'config', 'controllers.yaml'])
-    gui_config = PathJoinSubstitution([share, 'config', 'gazebo_gui.config'])
     robot_description = ParameterValue(
         Command([FindExecutable(name='xacro'), ' ', model,
                  ' gazebo:=true gripper_actuated:=true']),
         value_type=str)
+    # The scene and the window: this package
+    gui_config = PathJoinSubstitution(
+        [FindPackageShare('braco_simulation'), 'config', 'gazebo_gui.config'])
 
     # gz resolves package://braco_description/... by looking for a braco_description
     # folder on GZ_SIM_RESOURCE_PATH: add the share/ folder that contains it, and models/ for
     # the world's model://lab_table.
-    share_dir = get_package_share_directory('braco_description')
-    share_parent = os.path.dirname(share_dir)
-    models = os.path.join(share_dir, 'models')
-    world = os.path.join(share_dir, 'worlds', 'lab_bench.sdf')
+    share_parent = os.path.dirname(get_package_share_directory('braco_description'))
+    sim_dir = get_package_share_directory('braco_simulation')
+    models = os.path.join(sim_dir, 'models')
+    world = os.path.join(sim_dir, 'worlds', 'lab_bench.sdf')
 
     spawn = Node(package='ros_gz_sim', executable='create', output='screen',
                  arguments=['-topic', 'robot_description', '-name', 'braco',
@@ -166,7 +169,7 @@ def generate_launch_description():
              arguments=['/camera/image_raw']),
         spawn,
         # The window starts tracking the arm (gui:=true only)
-        Node(package='braco_description', executable='gz_track_arm.sh', output='screen',
+        Node(package='braco_simulation', executable='gz_track_arm.sh', output='screen',
              condition=IfCondition(gui)),
         # Controllers only once the model (and with it gz_ros2_control) exists
         RegisterEventHandler(OnProcessExit(target_action=spawn,

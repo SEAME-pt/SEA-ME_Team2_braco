@@ -18,8 +18,8 @@ the arm on the Jetson through DDS.
 | `config/braco.urdf.xacro` | The demo's model: `braco_description`'s `braco.urdf.xacro` + a `mock_components/GenericSystem` `<ros2_control>` |
 | `config/moveit.rviz` | RViz with the MotionPlanning panel on `arm` |
 | `launch/demo.launch.py` | ros2_control with the mock hardware, then `move_group` and RViz once `arm_controller` is active |
-| `launch/sim.launch.py` | Gazebo (`braco_description`'s `gazebo.launch.py`), then `move_group`, RViz and `lab_bench_scene.py` once `arm_controller` is active |
-| `scripts/lab_bench_scene.py` | Adds the lab bench's table tops to `move_group`'s planning scene, read from `braco_description`'s `lab_bench.sdf` and `lab_table/model.sdf` and placed with the arm's spawn pose |
+| `launch/sim.launch.py` | Gazebo (`braco_simulation`'s `gazebo.launch.py`), then `move_group`, RViz and `lab_bench_scene.py` once `arm_controller` is active |
+| `scripts/lab_bench_scene.py` | Adds the lab bench's table tops to `move_group`'s planning scene, read from `braco_simulation`'s `lab_bench.sdf` and `lab_table/model.sdf` and placed with the arm's spawn pose |
 | `launch/rviz.launch.py` | RViz only, on a `move_group` already running (`make rviz-gui`) |
 | `.setup_assistant` | Lets MoveItConfigsBuilder and the Setup Assistant find the model and the SRDF |
 

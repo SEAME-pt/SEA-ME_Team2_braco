@@ -15,7 +15,7 @@
 """
 MoveIt 2 on the simulated braco arm: plan in RViz, execute in Gazebo.
 
-Includes braco_description's gazebo.launch.py, then starts move_group and RViz once
+Includes braco_simulation's gazebo.launch.py, then starts move_group and RViz once
 arm_controller is active, and puts the lab bench's table tops into the planning scene
 (scripts/lab_bench_scene.py).
 
@@ -97,7 +97,7 @@ def generate_launch_description():
                               description='true: RViz with the MotionPlanning panel'),
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(PathJoinSubstitution(
-                [FindPackageShare('braco_description'), 'launch', 'gazebo.launch.py'])),
+                [FindPackageShare('braco_simulation'), 'launch', 'gazebo.launch.py'])),
             launch_arguments={'gui': LaunchConfiguration('gui')}.items()),
         RegisterEventHandler(OnProcessExit(target_action=is_arm_controller_spawner,
                                            on_exit=on_spawner_exit)),

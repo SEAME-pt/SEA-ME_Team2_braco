@@ -42,6 +42,7 @@ import yaml
 PACKAGE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC_DIR = os.path.dirname(PACKAGE_DIR)   # ros2_ws/src (/ws/src in the container)
 DESCRIPTION_DIR = os.path.join(SRC_DIR, 'braco_description')
+SIMULATION_DIR = os.path.join(SRC_DIR, 'braco_simulation')
 MYCOBOT_HPP = os.environ.get('MYCOBOT_HPP') or os.path.join(
     SRC_DIR, 'mycobot_cpp', 'includes', 'mycobot.hpp')
 ARM_JOINTS = ['joint%d' % n for n in range(1, 7)]
@@ -178,7 +179,7 @@ def load_lab_bench_scene():
 
 
 def gazebo_launch_default(name):
-    with open(os.path.join(DESCRIPTION_DIR, 'launch', 'gazebo.launch.py'), encoding='utf-8') as f:
+    with open(os.path.join(SIMULATION_DIR, 'launch', 'gazebo.launch.py'), encoding='utf-8') as f:
         match = re.search(r"'%s', default_value='([^']+)'" % name, f.read())
     assert match, name
     return float(match.group(1))
@@ -190,8 +191,8 @@ def test_lab_bench_scene_puts_the_table_tops_under_the_arm():
     # the arm's base on one of them, so MoveIt sees the table where the arm stands.
     scene = load_lab_bench_scene()
     robot = [gazebo_launch_default(n) for n in ('robot_x', 'robot_y', 'robot_z', 'robot_yaw')]
-    tops = scene.table_tops(os.path.join(DESCRIPTION_DIR, 'worlds', 'lab_bench.sdf'),
-                            os.path.join(DESCRIPTION_DIR, 'models', 'lab_table', 'model.sdf'),
+    tops = scene.table_tops(os.path.join(SIMULATION_DIR, 'worlds', 'lab_bench.sdf'),
+                            os.path.join(SIMULATION_DIR, 'models', 'lab_table', 'model.sdf'),
                             robot)
     assert sorted(name for name, _, _, _ in tops) == ['lab_table_left', 'lab_table_right']
     under_the_arm = []

@@ -16,7 +16,7 @@
 """
 Put the lab bench's table tops into move_group's planning scene, so MoveIt plans around them.
 
-The tables come from the files Gazebo loads: braco_description's worlds/lab_bench.sdf (where
+The tables come from the files Gazebo loads: braco_simulation's worlds/lab_bench.sdf (where
 each table stands) and models/lab_table/model.sdf (its top). They are moved into the model's
 `world` frame, the table surface under the arm, with the arm's spawn pose in Gazebo: the
 robot_x, robot_y, robot_z and robot_yaw parameters, the arguments of gazebo.launch.py. So a
@@ -89,7 +89,7 @@ def main():
         node.get_logger().error('robot_x, robot_y, robot_z and robot_yaw must all be set')
         return 1
 
-    share = get_package_share_directory('braco_description')
+    share = get_package_share_directory('braco_simulation')
     tops = table_tops(os.path.join(share, 'worlds', 'lab_bench.sdf'),
                       os.path.join(share, 'models', 'lab_table', 'model.sdf'), robot)
 

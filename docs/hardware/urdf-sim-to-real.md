@@ -6,14 +6,14 @@ measured on the hardware** (section "Open items"). Nothing below marked "to meas
 
 ## How to use
 
-Step by step, with the GPU, ROS domains and common problems: [Run the simulation, step by step](../../ros2_ws/src/braco_description/README.md#run-the-simulation-step-by-step).
+Step by step, with the GPU, ROS domains and common problems: [Run the simulation](../../ros2_ws/src/braco_simulation/README.md#run-it).
 In short:
 
 ```bash
 # PC: `make up SIM=1` also starts the `sim` container = braco.launch.py sim:=true (Gazebo + controllers, your PC_ROS_DOMAIN_ID)
 make up SIM=1
 # in a dev shell (make shell, already on the simulation's domain): move one joint (degrees)
-ros2 run braco_description move_joint.py 2 30
+ros2 run braco_simulation move_joint.py 2 30
 
 # Put the simulated arm at given joint angles (radians, reached in 2 s)
 ros2 topic pub --once /arm_controller/joint_trajectory trajectory_msgs/msg/JointTrajectory \
@@ -187,9 +187,9 @@ position is checked against the real arm with `get_coords()` (FK table below).
 
 ## Open items (need the hardware)
 
-Tick them here as they are measured and update the URDF and the tables above. `scripts/sim_to_real.py` runs the checks
+Tick them here as they are measured and update the URDF and the tables above. `braco_simulation/scripts/sim_to_real.py` runs the checks
 against the real arm (Gazebo on this shell's `ROS_DOMAIN_ID`, e.g. 27; the real arm on 22):
-`ros2 run braco_description sim_to_real.py directions | fk | velocity`.
+`ros2 run braco_simulation sim_to_real.py directions | fk | velocity`.
 
 - [ ] **Lab bench** (`worlds/lab_bench.sdf`): the tables' size and height, the pedestal's footprint and the arm's position
   on the table are provisional. Also confirm that the pedestal's height is the measured 30 mm (`g_base_height`).
@@ -244,7 +244,7 @@ Gazebo can still behave differently on the arm:
 | On the real arm | In Gazebo |
 |---|---|
 | Speed is the firmware's setting 1..100, about 0.0265 rad/s per unit (see "Limits") | The trajectory's `time_from_start`, capped by the URDF `velocity` limits |
-| A servo stops up to ~3° short of a target (dead zone, `DEADBAND_DEG` in `scripts/braco_arm.py`) | Reaches the target within ~0.002 rad. `arm_controller`'s goal tolerance (0.07 rad, 4°) is above the dead zone, so both count as reached |
+| A servo stops up to ~3° short of a target (dead zone, `DEADBAND_DEG` in `braco_simulation/scripts/braco_arm.py`) | Reaches the target within ~0.002 rad. `arm_controller`'s goal tolerance (0.07 rad, 4°) is above the dead zone, so both count as reached |
 | `sendAngles` clamps to `JOINT_LIMITS` and refuses poses that hit the table (`minHeightMm`) | gz_ros2_control clamps to the URDF limits (and logs `Command of at least one joint is out of limits`); a pose under the table is not refused, the arm presses on the ground plane and stops short (J2 = 160° stops at 124°) |
 | Only the control owner moves the arm ([ADR-0002](../decisions/ADR-0002-unique-control.md)); STOP from anyone | `arm_controller` accepts any trajectory |
 | Rest on overheat, servo temperatures and voltages ([ADR-0003](../decisions/ADR-0003-rest-per-temp.md)) | No temperatures; never rests |
