@@ -26,7 +26,8 @@ anything dies.
 the control free, the first stick move (or X, A, B) takes it. While the web page or zero/park has it, the
 joystick is ignored and the LED is dimmed; hold **button 8 for 1 s** (`force_button`, `force_hold_s`) to take
 it anyway. Letting go does not release it: `arm_driver` frees it 5 s after the last move. A joystick without
-the control never sends STOP, so unplugging it does not cut somebody else's move.
+the control sends no stop at all, so unplugging it does not cut somebody else's move. Its routine stops
+(stick released, homing cancelled) are `HALT`, which does not latch ([ADR-0005](../../../docs/decisions/ADR-0005-stop-latch.md)).
 
 The jogging logic (dead zone, speed modes, slow-down near the soft limits, homing steps, the held button) is in
 `ros2_ws/src/mycobot_cpp/includes/teleop_logic.hpp` (shared with the stand-alone `joystick_all_joints`), without ROS, and tested by `test/test_teleop_logic.cpp` (`make test`).

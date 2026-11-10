@@ -25,7 +25,7 @@
 | `make park` | Folds the arm, turns the motors off, enters rest | **Yes** |
 | `make temps` | Shows the temperature of the six motors | No |
 | `make zero` | Leaves rest, turns the motors on, moves the arm to zero | **Yes** |
-| `make resume` | Leaves rest, but the motors stay off: the arm is loose | No |
+| `make resume` | Releases a STOP (from 3 s after it) and leaves rest, but the motors stay off: the arm is loose | No |
 
 ## 4. Steps
 
