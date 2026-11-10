@@ -51,7 +51,9 @@ def generate_launch_description():
     moveit_config = (
         MoveItConfigsBuilder('braco', package_name='braco_moveit_config')
         # The model Gazebo runs, not config/braco.urdf.xacro (the demo's mock hardware)
-        .robot_description(file_path=model, mappings={'gazebo': 'true'})
+        # (gripper_actuated as gazebo.launch.py builds it, so /joint_states' fingers exist here)
+        .robot_description(file_path=model,
+                           mappings={'gazebo': 'true', 'gripper_actuated': 'true'})
         .robot_description_semantic(file_path='config/braco.srdf')
         .robot_description_kinematics(file_path='config/kinematics.yaml')
         .joint_limits(file_path='config/joint_limits.yaml')
