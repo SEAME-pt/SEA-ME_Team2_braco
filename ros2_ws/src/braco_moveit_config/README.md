@@ -18,7 +18,8 @@ the arm on the Jetson through DDS.
 | `config/braco.urdf.xacro` | The demo's model: `braco_description`'s `braco.urdf.xacro` + a `mock_components/GenericSystem` `<ros2_control>` |
 | `config/moveit.rviz` | RViz with the MotionPlanning panel on `arm` |
 | `launch/demo.launch.py` | RViz + `move_group` + ros2_control with the mock hardware |
-| `launch/sim.launch.py` | Gazebo (`braco_description`'s `gazebo.launch.py`), then `move_group` and RViz once `arm_controller` is active |
+| `launch/sim.launch.py` | Gazebo (`braco_description`'s `gazebo.launch.py`), then `move_group`, RViz and `lab_bench_scene.py` once `arm_controller` is active |
+| `scripts/lab_bench_scene.py` | Adds the lab bench's table tops to `move_group`'s planning scene, read from `braco_description`'s `lab_bench.sdf` and `lab_table/model.sdf` and placed with the arm's spawn pose |
 | `launch/rviz.launch.py` | RViz only, on a `move_group` already running (`make rviz-gui`) |
 | `.setup_assistant` | Lets MoveItConfigsBuilder and the Setup Assistant find the model and the SRDF |
 
@@ -59,6 +60,10 @@ In RViz, panel **MotionPlanning** > tab **Planning**: *Goal State* `home` or `pa
 goes to `/arm_controller/follow_joint_trajectory` and the arm moves in Gazebo; `/joint_states` follows it. Everything
 runs on simulated time (`use_sim_time`). Closing a window leaves the simulation running.
 
+The two table tops show in RViz as green boxes: `lab_bench_scene.py` adds them to the planning scene once
+`move_group` is up, so MoveIt refuses a goal in the table (`GOAL_STATE_INVALID`) or plans around it. The scene lives in
+`move_group`: if only `move_group` restarts, run the script again (its docstring has the command).
+
 Without the `sim` container, `sim.launch.py` runs the whole thing in one launch, in a dev shell:
 
 ```bash
@@ -67,7 +72,7 @@ ros2 launch braco_moveit_config sim.launch.py gui:=false rviz:=false  # headless
 ```
 
 Run it with `sim` stopped (`make down`, then `make up`) or on another domain (`export ROS_DOMAIN_ID=78`). On one domain,
-the second simulation's spawners end with `Controller already loaded` and exit code 1.
+`gazebo.launch.py` sees the running `/controller_manager` and stops before starting Gazebo.
 
 `move_group` and RViz start only once the `arm_controller` spawner has succeeded, because nothing can execute without
 the controller. If it fails, the launch shuts down, so RViz never opens: look for that spawner's error in the log.
