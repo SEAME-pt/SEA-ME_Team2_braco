@@ -30,6 +30,7 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <future>
 #include <memory>
 #include <optional>
@@ -309,9 +310,9 @@ private:
   std::atomic<bool> busy_{false};
 };
 
-}  // namespace
-
-int main(int argc, char ** argv)
+// The node's whole life. Its constructor and rclcpp may throw (a parameter of the wrong
+// type, a failed init): main catches that, so nothing escapes it.
+int run(int argc, char ** argv)
 {
   rclcpp::init(argc, argv);
   auto node = std::make_shared<MoveToPoseNode>();
@@ -330,4 +331,18 @@ int main(int argc, char ** argv)
   node->stop();
   rclcpp::shutdown();
   return status;
+}
+
+}  // namespace
+
+int main(int argc, char ** argv)
+{
+  try {
+    return run(argc, argv);
+  } catch (const std::exception & e) {
+    std::fprintf(stderr, "move_to_pose: %s\n", e.what());
+  } catch (...) {
+    std::fprintf(stderr, "move_to_pose: unknown exception\n");
+  }
+  return 1;
 }
