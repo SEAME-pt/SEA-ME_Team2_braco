@@ -21,7 +21,9 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -37,10 +39,12 @@
 #include "hardware_interface/component_parser.hpp"
 #include "hardware_interface/system_interface.hpp"
 #include "hardware_interface/types/hardware_component_params.hpp"
+#include "hardware_interface/types/hardware_interface_type_values.hpp"
 #include "lifecycle_msgs/msg/state.hpp"
 #include "pluginlib/class_loader.hpp"
 #include "pty_arm.hpp"
 #include "rclcpp/rclcpp.hpp"
+#include "sensor_msgs/msg/joint_state.hpp"
 
 using namespace std::chrono_literals;
 using mycobot::fake::PtyArm;
@@ -120,6 +124,49 @@ private:
   pid_t pid_{};
 };
 
+// joint1..`joints` at 0.1 rad each, as arm_driver would publish them (no velocity)
+sensor_msgs::msg::JointState jointStates(int joints)
+{
+  sensor_msgs::msg::JointState msg;
+  for (int i = 1; i <= joints; ++i) {
+    msg.name.push_back("joint" + std::to_string(i));
+    msg.position.push_back(0.1);
+  }
+  return msg;
+}
+
+// Publishes `msg` on /joint_states every 50 ms until destroyed. Repeating it, not publishing
+// once, means the plugin's subscription gets it however long discovery takes.
+class JointStatesPublisher
+{
+public:
+  explicit JointStatesPublisher(const sensor_msgs::msg::JointState & msg)
+  : node_(std::make_shared<rclcpp::Node>("test_joint_states")),
+    publisher_(node_->create_publisher<sensor_msgs::msg::JointState>("/joint_states", 10)),
+    thread_([this, msg] {
+        while (!stop_) {
+          publisher_->publish(msg);
+          std::this_thread::sleep_for(50ms);
+        }
+      })
+  {}
+
+  ~JointStatesPublisher()
+  {
+    stop_ = true;
+    thread_.join();
+  }
+
+  JointStatesPublisher(const JointStatesPublisher &) = delete;
+  JointStatesPublisher & operator=(const JointStatesPublisher &) = delete;
+
+private:
+  rclcpp::Node::SharedPtr node_;
+  rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr publisher_;
+  std::atomic<bool> stop_{false};
+  std::thread thread_;   // last: starts after the members it uses
+};
+
 class BracoSystemTest : public ::testing::Test
 {
 protected:
@@ -140,16 +187,22 @@ protected:
   {
     executor_ = std::make_shared<rclcpp::executors::SingleThreadedExecutor>();
     system_ = loader_.createUniqueInstance("braco_hardware/BracoSystem");
-
-    hardware_interface::HardwareComponentParams params;
-    params.hardware_info = bracoSystemInfo();
-    params.clock = std::make_shared<rclcpp::Clock>(RCL_STEADY_TIME);
-    params.logger = rclcpp::get_logger("test_braco_system");
-    params.executor = executor_;
-    ASSERT_EQ(system_->init(params), CallbackReturn::SUCCESS);
+    ASSERT_EQ(system_->init(params(bracoSystemInfo(), executor_)), CallbackReturn::SUCCESS);
     system_->on_export_state_interfaces();
 
     spinner_ = std::thread([this] {executor_->spin();});
+  }
+
+  // init()'s parameters; with no executor, init() creates no node for the plugin
+  static hardware_interface::HardwareComponentParams params(
+    const hardware_interface::HardwareInfo & info, const rclcpp::Executor::SharedPtr & executor)
+  {
+    hardware_interface::HardwareComponentParams params;
+    params.hardware_info = info;
+    params.clock = std::make_shared<rclcpp::Clock>(RCL_STEADY_TIME);
+    params.logger = rclcpp::get_logger("test_braco_system");
+    params.executor = executor;
+    return params;
   }
 
   void TearDown() override
@@ -221,4 +274,53 @@ TEST_F(BracoSystemTest, ReadGivesArmDriverAnglesInRadians)
       << joint;
     EXPECT_EQ(system_->get_state<double>(joint + "/velocity"), 0.0) << joint;
   }
+}
+
+// read() fills position and velocity of every joint: a URDF joint without velocity is refused.
+TEST_F(BracoSystemTest, InitFailsWithoutVelocityState)
+{
+  auto info = bracoSystemInfo();
+  auto & states = info.joints.at(2).state_interfaces;
+  states.erase(
+    std::remove_if(
+      states.begin(), states.end(),
+      [](const auto & state) {return state.name == hardware_interface::HW_IF_VELOCITY;}),
+    states.end());
+
+  auto system = loader_.createUniqueInstance("braco_hardware/BracoSystem");
+  EXPECT_EQ(system->init(params(info, nullptr)), CallbackReturn::ERROR);
+}
+
+// /joint_states without joint6: read() must refuse, not leave joint6 at its last value.
+TEST_F(BracoSystemTest, ReadFailsWhenJointMissing)
+{
+  JointStatesPublisher publisher(jointStates(5));
+  ASSERT_EQ(configure(), CallbackReturn::SUCCESS);
+  ASSERT_EQ(activate(), CallbackReturn::SUCCESS);   // returns once a message arrived
+  EXPECT_EQ(read(), return_type::ERROR);
+}
+
+// A second on_configure forgets the last /joint_states: read() fails until a new one arrives.
+TEST_F(BracoSystemTest, ReconfigureDropsStaleJointStates)
+{
+  {
+    JointStatesPublisher publisher(jointStates(6));
+    ASSERT_EQ(configure(), CallbackReturn::SUCCESS);
+    ASSERT_EQ(activate(), CallbackReturn::SUCCESS);
+    ASSERT_EQ(read(), return_type::OK);
+  }
+  std::this_thread::sleep_for(200ms);   // a message still in flight lands before the reconfigure
+  ASSERT_EQ(configure(), CallbackReturn::SUCCESS);
+  EXPECT_EQ(read(), return_type::ERROR);
+}
+
+// init() with no executor gives the plugin no node: on_configure can't subscribe, and says so.
+TEST_F(BracoSystemTest, ConfigureFailsWithoutNode)
+{
+  auto system = loader_.createUniqueInstance("braco_hardware/BracoSystem");
+  ASSERT_EQ(system->init(params(bracoSystemInfo(), nullptr)), CallbackReturn::SUCCESS);
+  EXPECT_EQ(
+    system->on_configure(
+      rclcpp_lifecycle::State(State::PRIMARY_STATE_UNCONFIGURED, "unconfigured")),
+    CallbackReturn::ERROR);
 }
