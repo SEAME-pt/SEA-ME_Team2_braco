@@ -47,7 +47,7 @@ COV_MIN_WEB   := 80
 # The totals also go to the GitHub Actions job summary (scripts/coverage_summary.py, from the JSON reports), on the
 # host: the container does not see $GITHUB_STEP_SUMMARY. Outside Actions the table is dropped. Written on failure too.
 STEP_SUMMARY  := "$${GITHUB_STEP_SUMMARY:-/dev/null}"
-COVERAGE_PKGS := mycobot_cpp braco_driver braco_teleop braco_bringup braco_camera
+COVERAGE_PKGS := mycobot_cpp braco_driver braco_hardware braco_teleop braco_bringup braco_camera
 COV_DIRS      := --build-base coverage/build --install-base coverage/install
 COV_FLAGS     := -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_FLAGS=--coverage -DCMAKE_CXX_FLAGS=--coverage \
                  -DCMAKE_EXE_LINKER_FLAGS=--coverage -DCMAKE_SHARED_LINKER_FLAGS=--coverage \
