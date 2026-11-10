@@ -18,7 +18,8 @@ The simulated braco arm: the model in Gazebo (gz sim), driven by ros2_control.
 Starts Gazebo with the lab bench (worlds/lab_bench.sdf), spawns the model on the table
 (gazebo:=true adds gz_ros2_control), bridges /clock and starts the controllers of
 config/controllers.yaml (the same set planned for the real arm): joint_state_broadcaster, then
-arm_controller, once the model is in.
+arm_controller, once the model is in, then gripper_action_controller (simulation only: the model
+is built with gripper_actuated:=true, the real arm keeps its fingers fixed).
 
 The model's `world` frame is the table surface, so its spawn pose is where the arm stands in the
 scene: robot_x and robot_y on the table, robot_z its height, robot_yaw about z (0: the arm's front
@@ -30,6 +31,11 @@ runs on the ROS domain (the `sim` container is up: `make down`, or use that one)
   ros2 launch braco_description gazebo.launch.py              # Gazebo window
   ros2 launch braco_description gazebo.launch.py gui:=false   # server only (headless)
   ros2 launch braco_description gazebo.launch.py robot_x:=0.2 robot_yaw:=0.5
+
+Close and open the gripper (radians of its master joint: -0.74 closed .. 0.15 open):
+  ros2 action send_goal /gripper_action_controller/gripper_cmd \
+    control_msgs/action/ParallelGripperCommand \
+    "{command: {name: [gripper_controller], position: [-0.74]}}"
 
 Move one joint (degrees), or all six (radians, reached in 2 s):
   ros2 run braco_description move_joint.py 2 30
@@ -91,7 +97,8 @@ def generate_launch_description():
     controllers = PathJoinSubstitution([share, 'config', 'controllers.yaml'])
     gui_config = PathJoinSubstitution([share, 'config', 'gazebo_gui.config'])
     robot_description = ParameterValue(
-        Command([FindExecutable(name='xacro'), ' ', model, ' gazebo:=true']),
+        Command([FindExecutable(name='xacro'), ' ', model,
+                 ' gazebo:=true gripper_actuated:=true']),
         value_type=str)
 
     # gz resolves package://braco_description/... by looking for a braco_description
@@ -114,6 +121,9 @@ def generate_launch_description():
     arm_controller = Node(
         package='controller_manager', executable='spawner',
         arguments=['arm_controller', '--param-file', controllers])
+    gripper_controller = Node(
+        package='controller_manager', executable='spawner',
+        arguments=['gripper_action_controller', '--param-file', controllers])
 
     arguments = [
         DeclareLaunchArgument('gui', default_value='true',
@@ -156,6 +166,8 @@ def generate_launch_description():
                                            on_exit=[joint_state_broadcaster])),
         RegisterEventHandler(OnProcessExit(target_action=joint_state_broadcaster,
                                            on_exit=[arm_controller])),
+        RegisterEventHandler(OnProcessExit(target_action=arm_controller,
+                                           on_exit=[gripper_controller])),
     ]
 
     def start(context):
