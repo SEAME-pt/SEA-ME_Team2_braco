@@ -16,24 +16,34 @@
 // (mycobot_cpp/test/pty_arm.hpp): read() must give the fake arm's angles, in radians.
 
 #include <gtest/gtest.h>
+#include <signal.h>
+#include <spawn.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
+#include <cstdlib>
+#include <filesystem>
 #include <memory>
 #include <stdexcept>
 #include <string>
 #include <thread>
 
+#include "ament_index_cpp/get_package_prefix.hpp"
 #include "ament_index_cpp/get_package_share_path.hpp"
 #include "hardware_interface/component_parser.hpp"
 #include "hardware_interface/system_interface.hpp"
 #include "hardware_interface/types/hardware_component_params.hpp"
 #include "lifecycle_msgs/msg/state.hpp"
 #include "pluginlib/class_loader.hpp"
+#include "pty_arm.hpp"
 #include "rclcpp/rclcpp.hpp"
 
 using namespace std::chrono_literals;
+using mycobot::fake::PtyArm;
 using hardware_interface::CallbackReturn;
 using hardware_interface::return_type;
 
@@ -69,10 +79,58 @@ hardware_interface::HardwareInfo bracoSystemInfo()
   throw std::runtime_error("no BracoSystem <ros2_control> block in the real-arm URDF");
 }
 
+// The installed arm_driver, on `port`, as a child process: SIGINT on destruction (its last stop()
+// still reaches the port), SIGKILL if it hangs, so a failed assertion leaves no orphan.
+class ArmDriverProcess
+{
+public:
+  explicit ArmDriverProcess(const std::string & port)
+  {
+    std::filesystem::path prefix;
+    ament_index_cpp::get_package_prefix("braco_driver", prefix);
+    const std::string exe = (prefix / "lib" / "braco_driver" / "arm_driver").string();
+    const std::string port_arg = "port:=" + port;
+    std::array<const char *, 5> argv{exe.c_str(), "--ros-args", "-p", port_arg.c_str(), nullptr};
+    if (posix_spawn(
+        &pid_, exe.c_str(), nullptr, nullptr, const_cast<char * const *>(argv.data()),
+        environ) != 0)
+    {
+      throw std::runtime_error("cannot spawn " + exe);
+    }
+  }
+
+  ~ArmDriverProcess()
+  {
+    kill(pid_, SIGINT);
+    const auto deadline = std::chrono::steady_clock::now() + 3s;
+    while (std::chrono::steady_clock::now() < deadline) {
+      if (waitpid(pid_, nullptr, WNOHANG) == pid_) {
+        return;
+      }
+      std::this_thread::sleep_for(20ms);
+    }
+    kill(pid_, SIGKILL);
+    waitpid(pid_, nullptr, 0);
+  }
+
+  ArmDriverProcess(const ArmDriverProcess &) = delete;
+  ArmDriverProcess & operator=(const ArmDriverProcess &) = delete;
+
+private:
+  pid_t pid_{};
+};
+
 class BracoSystemTest : public ::testing::Test
 {
 protected:
-  static void SetUpTestSuite() {rclcpp::init(0, nullptr);}
+  // One fixed domain instead of the runner's random one, which can be the real arm's (22), and
+  // discovery kept on this host. arm_driver inherits both through environ.
+  static void SetUpTestSuite()
+  {
+    setenv("ROS_DOMAIN_ID", "29", 1);
+    setenv("ROS_AUTOMATIC_DISCOVERY_RANGE", "LOCALHOST", 1);
+    rclcpp::init(0, nullptr);
+  }
   static void TearDownTestSuite() {rclcpp::shutdown();}
 
   // The plugin as ros2_control_node loads it: by name, init() with our executor, its state
@@ -138,4 +196,28 @@ TEST_F(BracoSystemTest, ActivateFailsWithoutJointStates)
   const auto start = std::chrono::steady_clock::now();
   EXPECT_EQ(activate(), CallbackReturn::ERROR);
   EXPECT_GE(std::chrono::steady_clock::now() - start, 1900ms);
+}
+
+// arm_driver on PtyArm publishes /joint_states: read() gives each URDF joint its own angle, in
+// radians, and velocity 0 (arm_driver publishes none). Distinct angles catch a wrong joint.
+TEST_F(BracoSystemTest, ReadGivesArmDriverAnglesInRadians)
+{
+  const mycobot::Angles angles = {10, -20, 30, -40, 50, -60};
+  PtyArm arm;
+  arm.update([&](auto & s) {s.angles = angles;});
+  arm.serve();
+  ArmDriverProcess driver(arm.path());   // after arm: stopped before the port closes
+
+  // The driver's start-up stays out of on_activate's 2 s
+  ASSERT_TRUE(arm.waitFor(mycobot::protocol::GET_ANGLES, 10s));
+  ASSERT_EQ(configure(), CallbackReturn::SUCCESS);
+  ASSERT_EQ(activate(), CallbackReturn::SUCCESS);
+  ASSERT_EQ(read(), return_type::OK);
+
+  for (size_t i = 0; i < angles.size(); ++i) {
+    const std::string joint = "joint" + std::to_string(i + 1);
+    EXPECT_NEAR(system_->get_state<double>(joint + "/position"), angles[i] * M_PI / 180.0, 1e-3)
+      << joint;
+    EXPECT_EQ(system_->get_state<double>(joint + "/velocity"), 0.0) << joint;
+  }
 }
