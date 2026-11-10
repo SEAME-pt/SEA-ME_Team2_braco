@@ -30,7 +30,7 @@ Each layer talks only to the one below it. Layers 1–2 are identical in simulat
 |---|---|---|---|
 | **1 Mission and clients** | Decide what the arm does; take the control before moving | `braco_web`, `joystick_teleop`, `temperature_monitor`, `zero` / `park`; planned: `braco_mission`, MoveIt 2 | same nodes |
 | **2 ROS 2 middleware** | The contract: names and types | DDS domain 22; `/joint_states`, `/arm/command`, `/arm/*`, `/diagnostics` | same names, each teammate's domain (20–29); `FollowJointTrajectory` on `/arm_controller` |
-| **3 Hardware abstraction** | Device access and safety | `arm_driver`, `camera`, `mycobot_cpp`; `ros2_control_node` with `braco_hardware` | `gz_ros2_control` (`controller_manager`, `arm_controller`, `joint_state_broadcaster`) |
+| **3 Hardware abstraction** | Device access and safety | `arm_driver`, `camera`, `mycobot_cpp`; `ros2_control_node` with `braco_hardware` | `gz_ros2_control` (`controller_manager`, `arm_controller`, `joint_state_broadcaster`, `gripper_action_controller`) |
 | **4 Servo controller** | Drives the servo bus | Atom (ESP32, firmware 7.3) | Gazebo physics |
 | **5 Sensors and actuators** | What moves and senses | 6 servos, gripper; camera, joystick, LCD1602 wired to the Jetson | simulated `joint1..joint6`, gripper, wrist camera |
 
