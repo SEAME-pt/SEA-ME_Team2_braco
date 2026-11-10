@@ -203,3 +203,16 @@ def test_lab_bench_scene_puts_the_table_tops_under_the_arm():
         if abs(u) < size_x / 2 and abs(v) < size_y / 2:
             under_the_arm.append(name)
     assert under_the_arm == ['lab_table_left']
+
+
+def test_rviz_loads_the_model_move_group_runs():
+    # #123: rviz.launch.py built the model without the actuated gripper while sim.launch.py's
+    # move_group had it; RViz died on the first planning scene (finger joints unknown). Both
+    # must process braco.urdf.xacro with the same mappings, those of gazebo.launch.py.
+    def mappings(launch_file):
+        with open(os.path.join(PACKAGE_DIR, 'launch', launch_file), encoding='utf-8') as f:
+            found = re.findall(r'mappings=(\{[^}]*\})', f.read())
+        assert len(found) == 1, launch_file
+        return eval(found[0])   # a literal dict of strings
+    assert mappings('rviz.launch.py') == mappings('sim.launch.py') == \
+        {'gazebo': 'true', 'gripper_actuated': 'true'}
