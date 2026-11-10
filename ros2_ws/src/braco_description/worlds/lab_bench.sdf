@@ -20,7 +20,13 @@
       <real_time_factor>1.0</real_time_factor>
     </physics>
 
-    <plugin filename="gz-sim-physics-system" name="gz::sim::systems::Physics"/>
+    <!-- Bullet Featherstone, not the default DART: the gripper's five followers are <mimic>
+         joints, and only this engine enforces them (DART: "does not support mimic constraints";
+         gz_ros2_control's own mimic left a follower stuck at its limit). The arm behaves the
+         same, ending within ~0.002 rad of a trajectory's end instead of 0.000 (#123). -->
+    <plugin filename="gz-sim-physics-system" name="gz::sim::systems::Physics">
+      <engine><filename>gz-physics-bullet-featherstone-plugin</filename></engine>
+    </plugin>
     <plugin filename="gz-sim-user-commands-system" name="gz::sim::systems::UserCommands"/>
     <plugin filename="gz-sim-scene-broadcaster-system" name="gz::sim::systems::SceneBroadcaster"/>
     <plugin filename="gz-sim-contact-system" name="gz::sim::systems::Contact"/>

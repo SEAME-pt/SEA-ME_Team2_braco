@@ -39,7 +39,7 @@ arm_controller:
     # When a goal counts as reached (#123). Without these the controller ended every goal as
     # successful, even with the arm stopped on the table 0.33 rad short of the target.
     #   goal         after the trajectory, every joint within 0.07 rad (4 deg) of its last point,
-    #                or the goal fails (GOAL_TOLERANCE_VIOLATED). Gazebo ends at 0.000 rad; the
+    #                or the goal fails (GOAL_TOLERANCE_VIOLATED). Gazebo ends within 0.002 rad; the
     #                real servos stop up to ~3 deg short (dead zone, DEADBAND_DEG in
     #                scripts/braco_arm.py), so 0.07 keeps both successful. A goal blocked by the
     #                table ends 0.33 rad short and fails.
