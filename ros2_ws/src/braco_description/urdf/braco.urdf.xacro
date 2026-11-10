@@ -13,9 +13,11 @@
 
   Arguments:
     gripper_actuated  false (default): fingers fixed open, the real driver publishes no gripper state
-                      true: vendor finger linkage (one master joint + five mimic joints)
+                      true: vendor finger linkage (one master joint + five mimic joints); Gazebo
+                      uses it (launch/gazebo.launch.py)
     gazebo            false (default): plain model (real arm)
-                      true: add the gz_ros2_control system (braco.gazebo.xacro, launch/gazebo.launch.py)
+                      true: add the gz_ros2_control system (braco.gazebo.xacro, launch/gazebo.launch.py);
+                      with gripper_actuated:=true it also drives the gripper (launch/gazebo.launch.py)
 -->
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="braco">
 
@@ -28,7 +30,8 @@
 
   <xacro:if value="$(arg gazebo)">
     <xacro:braco_gazebo
-      controllers="$(find braco_description)/config/controllers.yaml"/>
+      controllers="$(find braco_description)/config/controllers.yaml"
+      gripper="$(arg gripper_actuated)"/>
   </xacro:if>
 
   <!-- world: the table surface. The arm stands on the G-shape base (a 150 x 110 mm plate,

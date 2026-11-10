@@ -17,7 +17,7 @@ keeps running and tries again every `reopen_s`: the arm never depends on it.
 | `width` / `height` | `640` / `480` | asked of the camera, which may pick the closest it has |
 | `fps` | `15.0` | the most it publishes |
 | `jpeg_quality` | `80` | only for cameras without MJPG |
-| `frame_id` | `camera_link` | |
+| `frame_id` | `camera_optical_frame` | the image's frame (z forward, x right, y down; REP-103), as in the model |
 | `reopen_s` | `2.0` | retry period without a camera |
 
 Starts with the whole system (`make up`); by hand: `ros2 run braco_camera camera --ros-args -p device:=/dev/video0`.

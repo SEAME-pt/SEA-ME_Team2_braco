@@ -9,7 +9,7 @@ arm (zero pose, joint directions, forward kinematics) and the open measurements 
 |---|---|
 | `urdf/braco.urdf.xacro` | The whole robot: `world` -> G-base -> arm -> `tool0` -> gripper, `tcp`, camera frames |
 | `urdf/mycobot_280.urdf.xacro` | The arm (macro): `base_link`, `link1..link6`, `joint1..joint6` |
-| `urdf/adaptive_gripper.xacro` | The gripper (macro), fingers fixed open or with the vendor linkage |
+| `urdf/adaptive_gripper.xacro` | The gripper (macro), fingers fixed open (real arm) or with the vendor linkage (Gazebo) |
 | `urdf/braco.gazebo.xacro` | `gz_ros2_control` on `joint1..joint6`, added only with `gazebo:=true` |
 | `config/gazebo_gui.config` | The Gazebo window: the first view of the camera, close to the arm |
 | `config/controllers.yaml` | The ros2_control controllers: `arm_controller` (joint trajectory, sim and real arm) and `joint_state_broadcaster` (sim and MoveIt demo, not the real arm: ADR-0004) |
@@ -36,7 +36,8 @@ arm (zero pose, joint directions, forward kinematics) and the open measurements 
                ├─ joint_state_broadcaster  ──► /joint_states
                └─ arm_controller           ◄── /arm_controller/follow_joint_trajectory  (action)
                                            ◄── /arm_controller/joint_trajectory         (topic, web page)
-        robot_state_publisher ──► /tf        ros_gz_bridge ──► /clock
+        robot_state_publisher ──► /tf        ros_gz_bridge ──► /clock, /camera/camera_info
+        wrist camera (camera_link) ── ros_gz_image ──► /camera/image_raw (+ /compressed)
 ```
 
 The controllers are `config/controllers.yaml`. On the real arm only the URDF `<hardware>` plugin changes (planned: a
@@ -56,8 +57,21 @@ edge (a short side) of one of them, next to the gap, facing the table top.
   the spawn pose puts the arm in the scene.
 - **The pedestal** (grey) is only the look of `g_base` with `gazebo:=true`. It has the
   height of the measured mount (`g_base_height`, 30 mm), so the kinematics do not change. The plain model keeps the mesh.
-- **Collisions:** the table top stops the arm in Gazebo. `arm_controller` still ends such a goal as successful (no goal
-  tolerances set): compare `/joint_states` with the target. MoveIt does not know the table, so it can plan through it.
+- **Collisions:** the table top stops the arm in Gazebo. `arm_controller` then ends the goal as failed
+  (`PATH_TOLERANCE_VIOLATED` or `GOAL_TOLERANCE_VIOLATED`; through MoveIt, `CONTROL_FAILED`): every joint must stay
+  within 0.3 rad of the trajectory while moving and end within 0.07 rad of its last point, 0.5 s after it
+  (`constraints` in `config/controllers.yaml`).
+- **MoveIt knows the table:** `braco_moveit_config`'s `sim.launch.py` adds the table tops of this scene to the
+  planning scene (`scripts/lab_bench_scene.py`, read from `lab_bench.sdf` and `lab_table/model.sdf`), so MoveIt refuses
+  a goal in the table (`GOAL_STATE_INVALID`) or plans around it, before anything reaches Gazebo. Their top is the table
+  surface (`world` z = 0), not the real arm's 20 mm margin (`TABLE_MARGIN_MM`): `arm_driver` still refuses that last part.
+- **Wrist camera:** with `gazebo:=true` the model has a camera sensor at `camera_link`, 640×480 at 15 Hz like the
+  real camera, its images in `camera_optical_frame`. It publishes on the real camera's topic,
+  `/camera/image_raw/compressed` (and `/camera/image_raw`, `/camera/camera_info`), so the web page shows it as is.
+  Its field of view (60° horizontal) is `UNMEASURED`. It renders on the GPU, also with `gui:=false`.
+- **One simulation per ROS domain:** `gazebo.launch.py` (and `sim.launch.py`) refuses to start when a
+  `/controller_manager` already runs, e.g. the `sim` container. Started anyway, its controllers would not start and
+  its Gazebo server would be left running. Use the running one, or `make down` first.
 - **Unmeasured:** the sizes of the table and the pedestal and the arm's position are provisional, marked `UNMEASURED` in
   `models/lab_table/model.sdf`, `worlds/lab_bench.sdf`, `braco.urdf.xacro` and `gazebo.launch.py`.
 
@@ -165,7 +179,7 @@ python3 /ws/src/braco_description/scripts/my_test.py --real --speed 15
 | Stuck on `Requesting list of world names` | Gazebo's processes cannot find each other: `GZ_IP` must be `127.0.0.1` (set by `docker/compose.yml`; recreate the containers after pulling it) |
 | `Moved backwards in time`, `Controller already loaded`, `no controller with this name exists` | Two simulations on one `ROS_DOMAIN_ID`: `gazebo.launch.py` in `dev` while the `sim` container runs (both on your `PC_ROS_DOMAIN_ID`). For a window on `sim`: `make sim-gui`. For a second Gazebo: step 4 |
 | `arm_controller not found on ROS domain ...` | The shell is not on the simulation's domain: a `dev` shell is on your `PC_ROS_DOMAIN_ID` (the `sim` container); for your own Gazebo, `export` its domain |
-| `/joint_states` values like `1e-11` on domain 22 | That is a simulation, not the real arm: someone runs Gazebo on 22. Give it its own domain |
+| `/joint_states` with `gripper_controller` or values like `1e-4` on domain 22 | That is a simulation, not the real arm: someone runs Gazebo on 22. Give it its own domain |
 | The `sim` container stopped | Gazebo exited: `make logs`, then `make up` |
 | `Command of at least one joint is out of limits` | The joint limiter capping a move faster than the measured joint speed; the move still finishes |
 | The model looks old after a change to the URDF or meshes | Gazebo reads the model at launch: Ctrl-C and launch again |
@@ -188,7 +202,12 @@ ros2 run braco_description park.py --real       # asks before the real arm moves
 # Gazebo and the real arm must be on different ROS domains (both publish /joint_states):
 # Gazebo on this shell's ROS_DOMAIN_ID, the real arm on --real-domain (default 22)
 
-# fingers with the vendor linkage (one slider): gripper_actuated:=true
+# the gripper in Gazebo (radians of its master joint gripper_controller: -0.74 closed .. 0.15 open)
+ros2 action send_goal /gripper_action_controller/gripper_cmd control_msgs/action/ParallelGripperCommand \
+  "{command: {name: [gripper_controller], position: [-0.74]}}"
+# the model with that linkage (one master joint, five mimic joints): gripper_actuated:=true
+# the wrist camera in Gazebo (or view /camera/image_raw in RViz, rqt_image_view)
+ros2 topic hz /camera/image_raw/compressed
 # check the model by hand
 xacro urdf/braco.urdf.xacro > /tmp/braco.urdf && check_urdf /tmp/braco.urdf
 ```

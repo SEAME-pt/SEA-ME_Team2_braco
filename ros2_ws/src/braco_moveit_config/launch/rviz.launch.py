@@ -34,8 +34,10 @@ def generate_launch_description():
                          'urdf', 'braco.urdf.xacro')
     moveit_config = (
         MoveItConfigsBuilder('braco', package_name='braco_moveit_config')
-        # The model Gazebo runs, as in sim.launch.py
-        .robot_description(file_path=model, mappings={'gazebo': 'true'})
+        # The model Gazebo runs, as in sim.launch.py: with the actuated gripper, or RViz dies on
+        # move_group's first planning scene (its finger joints are unknown to the model)
+        .robot_description(file_path=model,
+                           mappings={'gazebo': 'true', 'gripper_actuated': 'true'})
         .robot_description_semantic(file_path='config/braco.srdf')
         .robot_description_kinematics(file_path='config/kinematics.yaml')
         .joint_limits(file_path='config/joint_limits.yaml')

@@ -17,10 +17,14 @@
   <!-- Gazebo quick viewer (launch/gazebo.launch.py); installed in the pc image only -->
   <exec_depend>ros_gz_sim</exec_depend>
   <exec_depend>ros_gz_bridge</exec_depend>
+  <exec_depend>ros_gz_image</exec_depend>
+  <exec_depend>compressed_image_transport</exec_depend>
   <exec_depend>gz_ros2_control</exec_depend>
   <exec_depend>controller_manager</exec_depend>
   <exec_depend>joint_state_broadcaster</exec_depend>
   <exec_depend>joint_trajectory_controller</exec_depend>
+  <!-- gripper_action_controller, Gazebo only (#123) -->
+  <exec_depend>parallel_gripper_controller</exec_depend>
   <!-- scripts/: braco_arm.py drives Gazebo and then, on request, the real arm (arm_driver) -->
   <exec_depend>rclpy</exec_depend>
   <exec_depend>braco_interfaces</exec_depend>
