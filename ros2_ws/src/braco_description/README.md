@@ -36,7 +36,8 @@ arm (zero pose, joint directions, forward kinematics) and the open measurements 
                ├─ joint_state_broadcaster  ──► /joint_states
                └─ arm_controller           ◄── /arm_controller/follow_joint_trajectory  (action)
                                            ◄── /arm_controller/joint_trajectory         (topic, web page)
-        robot_state_publisher ──► /tf        ros_gz_bridge ──► /clock
+        robot_state_publisher ──► /tf        ros_gz_bridge ──► /clock, /camera/camera_info
+        wrist camera (camera_link) ── ros_gz_image ──► /camera/image_raw (+ /compressed)
 ```
 
 The controllers are `config/controllers.yaml`. On the real arm only the URDF `<hardware>` plugin changes (planned: a
@@ -64,6 +65,10 @@ edge (a short side) of one of them, next to the gap, facing the table top.
   planning scene (`scripts/lab_bench_scene.py`, read from `lab_bench.sdf` and `lab_table/model.sdf`), so MoveIt refuses
   a goal in the table (`GOAL_STATE_INVALID`) or plans around it, before anything reaches Gazebo. Their top is the table
   surface (`world` z = 0), not the real arm's 20 mm margin (`TABLE_MARGIN_MM`): `arm_driver` still refuses that last part.
+- **Wrist camera:** with `gazebo:=true` the model has a camera sensor at `camera_link`, 640×480 at 15 Hz like the
+  real camera, its images in `camera_optical_frame`. It publishes on the real camera's topic,
+  `/camera/image_raw/compressed` (and `/camera/image_raw`, `/camera/camera_info`), so the web page shows it as is.
+  Its field of view (60° horizontal) is `UNMEASURED`. It renders on the GPU, also with `gui:=false`.
 - **One simulation per ROS domain:** `gazebo.launch.py` (and `sim.launch.py`) refuses to start when a
   `/controller_manager` already runs, e.g. the `sim` container. Started anyway, its controllers would not start and
   its Gazebo server would be left running. Use the running one, or `make down` first.
@@ -201,6 +206,8 @@ ros2 run braco_description park.py --real       # asks before the real arm moves
 ros2 action send_goal /gripper_action_controller/gripper_cmd control_msgs/action/ParallelGripperCommand \
   "{command: {name: [gripper_controller], position: [-0.74]}}"
 # the model with that linkage (one master joint, five mimic joints): gripper_actuated:=true
+# the wrist camera in Gazebo (or view /camera/image_raw in RViz, rqt_image_view)
+ros2 topic hz /camera/image_raw/compressed
 # check the model by hand
 xacro urdf/braco.urdf.xacro > /tmp/braco.urdf && check_urdf /tmp/braco.urdf
 ```

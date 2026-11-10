@@ -258,6 +258,9 @@ owner and the speed setting are only checked on the real arm (`--real` of the `b
 - Gripper not actuated on the real arm: the driver does not publish the finger state, so the real model keeps
   `gripper_actuated:=false` (fingers fixed open). Gazebo builds it with `gripper_actuated:=true` and drives it
   (`gripper_action_controller`, #123); there it closes slowly, about 0.13 rad/s (6 s for the whole stroke).
+- Wrist camera: Gazebo renders it at `camera_link` with the real camera's 640×480 and 15 Hz (#123), but the real
+  lens's field of view is not measured (60° horizontal assumed) and its image has no distortion. Measure the field of
+  view (a ruler at a known distance) and set `horizontal_fov` in `braco.gazebo.xacro`.
 - Masses are documented totals with an estimated split; efforts are a payload-based approximation; inertias are
   cylinders. The joint velocities are measured.
 - Collision = the vendor mesh itself (heavy). Worth simplifying later for MoveIt/Gazebo.

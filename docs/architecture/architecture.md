@@ -32,7 +32,7 @@ Each layer talks only to the one below it. Layers 1–2 are identical in simulat
 | **2 ROS 2 middleware** | The contract: names and types | DDS domain 22; `/joint_states`, `/arm/command`, `/arm/*`, `/diagnostics` | same names, each teammate's domain (20–29); `FollowJointTrajectory` on `/arm_controller` |
 | **3 Hardware abstraction** | Device access and safety | `arm_driver`, `camera`, `mycobot_cpp` | `gz_ros2_control` (`controller_manager`, `arm_controller`, `joint_state_broadcaster`) |
 | **4 Servo controller** | Drives the servo bus | Atom (ESP32, firmware 7.3) | Gazebo physics |
-| **5 Sensors and actuators** | What moves and senses | 6 servos, gripper; camera, joystick, LCD1602 wired to the Jetson | simulated `joint1..joint6`, gripper |
+| **5 Sensors and actuators** | What moves and senses | 6 servos, gripper; camera, joystick, LCD1602 wired to the Jetson | simulated `joint1..joint6`, gripper, wrist camera |
 
 ---
 
@@ -75,7 +75,7 @@ A motion command passes the `arm_driver` gates in order:
 | `/arm/read_only` | `std_msgs/Bool`, latched | `arm_driver` | page |
 | `/arm/control_owner` | `std_msgs/String`, latched (`""` = free) | `arm_driver` | teleop, page |
 | `/diagnostics` | `diagnostic_msgs/DiagnosticArray` | `temperature_monitor` | page |
-| `/camera/image_raw/compressed` | `sensor_msgs/CompressedImage`, ≤15 fps | `camera` | page |
+| `/camera/image_raw/compressed` | `sensor_msgs/CompressedImage`, ≤15 fps, frame `camera_optical_frame` | `camera` (sim: Gazebo's wrist camera, `ros_gz_image`) | page |
 | `/arm/take_control` | `braco_interfaces/TakeControl` | `arm_driver` | teleop, page, zero/park |
 | `/arm/power_on`, `/arm/release_servos` | `std_srvs/Trigger` | `arm_driver` | teleop, page, zero/park |
 | `/arm/set_gripper`, `/arm/set_read_only` | `std_srvs/SetBool` | `arm_driver` | clients, `temperature_monitor` |
@@ -204,6 +204,7 @@ braco_mission ┄► MoveIt 2 ──trajectory──┬──► real: braco Sys
 - `sim:=true` runs in the lab bench scene (`worlds/lab_bench.sdf`). Its `world` frame stays the table surface: only the spawn pose places the arm, so TF, MoveIt and the table-clearance check do not change. MoveIt plans around the table: `sim.launch.py` puts the table tops of the same scene into its planning scene (`braco_moveit_config/scripts/lab_bench_scene.py`), so a pose in the table is refused before the arm moves: [The lab bench](../../ros2_ws/src/braco_description/README.md#the-lab-bench).
 - A goal the arm does not reach fails: `arm_controller` aborts it when a joint falls more than 0.3 rad behind the trajectory (`PATH_TOLERANCE_VIOLATED`) or is more than 0.07 rad from its last point 0.5 s after its end (`GOAL_TOLERANCE_VIOLATED`), and MoveIt returns `CONTROL_FAILED`, so the mission sees a blocked or stalled arm (`constraints` in `controllers.yaml`).
 - In simulation the gripper moves: `gazebo.launch.py` builds the model with `gripper_actuated:=true` and adds `gripper_action_controller` (`/gripper_action_controller/gripper_cmd`, `ParallelGripperCommand`), outside MoveIt's `arm` group. The world runs Bullet Featherstone, the physics engine that enforces the gripper's five mimic joints. On the real arm the fingers stay fixed: the driver has no gripper state.
+- In simulation the wrist camera renders too: a camera sensor at `camera_link` (`braco.gazebo.xacro`), 640×480 at 15 Hz like the real one, rendered by the world's Sensors system. `gazebo.launch.py` bridges it to the real camera's topic, `/camera/image_raw/compressed` (plus `/camera/image_raw` and `/camera/camera_info`), in `camera_optical_frame`, so the page shows it unchanged. Its field of view (60°) is not measured yet.
 - `sim:=true` runs the controllers of `braco_description/config/controllers.yaml`, the set planned for the real arm. On the real arm only the URDF's hardware plugin changes (a braco `SystemInterface`, planned), and `joint_state_broadcaster` is not spawned: `arm_driver` keeps publishing `/joint_states`.
 - Real arm ([ADR-0004](../decisions/ADR-0004-trajectories-through-arm-driver.md)): the plugin sends `ALL_ANGLES` with `source: "mission"` to `arm_driver`, so trajectories pass the same gates as every client. `braco_mission` takes the control before each goal; STOP or a lost control aborts the trajectory.
 - How to run it: [Run the simulation](../../ros2_ws/src/braco_description/README.md#run-the-simulation-step-by-step).
