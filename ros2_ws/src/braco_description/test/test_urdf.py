@@ -256,6 +256,31 @@ def test_actuated_gripper_has_one_master_and_five_mimics():
     assert robot.find("joint[@name='gripper_controller']").get('type') == 'revolute'
 
 
+def test_gazebo_drives_the_gripper_through_its_master_joint():
+    # #123: in Gazebo the gripper moves. Only its master, gripper_controller, takes a command;
+    # the five mimic joints report their state, moved by the physics engine, which must be one
+    # that enforces <mimic> (Bullet Featherstone; DART does not).
+    robot = load_urdf(gripper_actuated='true', gazebo='true')
+    joints = robot.find('ros2_control').findall('joint')
+    commanded = [j.get('name') for j in joints if j.find('command_interface') is not None]
+    assert commanded == ARM_JOINTS + ['gripper_controller']
+    mimics = {j.get('name') for j in robot.findall('joint') if j.find('mimic') is not None}
+    assert {j.get('name') for j in joints} - set(commanded) == mimics
+    world = ET.parse(os.path.join(PACKAGE_DIR, 'worlds', 'lab_bench.sdf')).getroot()
+    engine = world.find(".//plugin[@name='gz::sim::systems::Physics']/engine/filename")
+    assert engine is not None and 'bullet-featherstone' in engine.text
+
+
+def test_gripper_action_controller_drives_the_master_joint():
+    yaml = pytest.importorskip('yaml')
+    with open(os.path.join(PACKAGE_DIR, 'config', 'controllers.yaml'), encoding='utf-8') as f:
+        config = yaml.safe_load(f)
+    manager = config['controller_manager']['ros__parameters']
+    assert manager['gripper_action_controller']['type'] == \
+        'parallel_gripper_action_controller/GripperActionController'
+    assert config['gripper_action_controller']['ros__parameters']['joint'] == 'gripper_controller'
+
+
 def test_fixed_gripper_has_no_movable_finger_joints():
     robot = load_urdf(gripper_actuated='false')
     assert robot.findall('.//mimic') == []
