@@ -3,13 +3,15 @@
 <package format="3">
   <name>braco_interfaces</name>
   <version>0.0.0</version>
-  <description>Messages and services of the braco arm: motion commands and control ownership for arm_driver, servo temperatures</description>
+  <description>Messages, services and actions of the braco arm: motion commands and control ownership for arm_driver, servo temperatures, the mission's pose goal</description>
   <maintainer email="danielximenes164@gmail.com">Daniel Ximenes</maintainer>
   <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
   <buildtool_depend>rosidl_default_generators</buildtool_depend>
   <depend>std_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>action_msgs</depend>
   <exec_depend>rosidl_default_runtime</exec_depend>
 
   <test_depend>ament_lint_auto</test_depend>
