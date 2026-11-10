@@ -15,14 +15,16 @@
 """
 The braco system in one ROS 2 launch, on the real arm or in simulation.
 
-    sim:=false  arm_driver, temperature_monitor, joystick_teleop and camera (the default). This is
+    sim:=false  arm_driver, temperature_monitor, joystick_teleop and camera (the default), and
+                ros2_control (robot_state_publisher + ros2_control_node) with the braco_hardware
+                plugin, which reads the joints from arm_driver. This is
                 what the `real` container runs (make up), started by arm_routine.sh, which
                 also starts the web page. The arm is not zeroed or parked on start/stop.
                 arm_driver is not respawned: when it exits the whole launch shuts down, so
                 arm_routine.sh ends and the container stops (a driver fault is always seen).
     sim:=true   the simulated arm (PC only), what the `sim` container runs: Gazebo with the
                 braco_description model and the ros2_control controllers planned for the
-                real arm (braco_description's gazebo.launch.py). When Gazebo exits the launch
+                real arm (braco_simulation's gazebo.launch.py). When Gazebo exits the launch
                 shuts down, like with arm_driver. gui:=true opens the Gazebo window.
                 moveit:=true adds move_group on it; rviz:=true also opens RViz.
 
@@ -37,8 +39,8 @@ from launch.actions import (DeclareLaunchArgument, IncludeLaunchDescription, Reg
 from launch.conditions import IfCondition, UnlessCondition
 from launch.event_handlers import OnProcessExit
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import (AndSubstitution, LaunchConfiguration, NotSubstitution,
-                                  PathJoinSubstitution)
+from launch.substitutions import (AndSubstitution, Command, FindExecutable, LaunchConfiguration,
+                                  NotSubstitution, PathJoinSubstitution)
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
@@ -54,11 +56,11 @@ def generate_launch_description():
     config = PathJoinSubstitution([FindPackageShare('braco_bringup'), 'config', 'braco.yaml'])
     real = UnlessCondition(sim)
     moveit = LaunchConfiguration('moveit')
-    # Not an exec_depend: braco_description needs Gazebo, which only the PC image has. The
+    # Not an exec_depend: braco_simulation needs Gazebo, which only the PC image has. The
     # package is looked up only when sim:=true, so the Jetson never needs it.
     gazebo = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(PathJoinSubstitution(
-            [FindPackageShare('braco_description'), 'launch', 'gazebo.launch.py'])),
+            [FindPackageShare('braco_simulation'), 'launch', 'gazebo.launch.py'])),
         launch_arguments={'gui': LaunchConfiguration('gui')}.items(),
         condition=IfCondition(AndSubstitution(sim, NotSubstitution(moveit))))
 
@@ -75,6 +77,11 @@ def generate_launch_description():
                       output='screen', condition=real,
                       parameters=[config, {'port': port,
                                            'baud': ParameterValue(baud, value_type=int)}])
+    # The real arm's URDF, with the braco_hardware plugin under ros2_control (ADR-0004)
+    model = PathJoinSubstitution(
+        [FindPackageShare('braco_description'), 'urdf', 'braco.urdf.xacro'])
+    robot_description = ParameterValue(
+        Command([FindExecutable(name='xacro'), ' ', model, ' real_arm:=true']), value_type=str)
     return LaunchDescription([
         DeclareLaunchArgument('sim', default_value='false',
                               description='true: simulated arm, false: real arm'),
@@ -99,6 +106,12 @@ def generate_launch_description():
         Node(package='braco_driver', executable='temperature_monitor',
              name='temperature_monitor', output='screen', respawn=True, condition=real,
              parameters=[config, {'lcd_bus': lcd_bus}]),
+        # The URDF on /robot_description, for ros2_control_node
+        Node(package='robot_state_publisher', executable='robot_state_publisher',
+             output='screen', condition=real,
+             parameters=[{'robot_description': robot_description}]),
+        Node(package='controller_manager', executable='ros2_control_node',
+             output='screen', condition=real),
         Node(package='braco_teleop', executable='joystick_teleop', name='joystick_teleop',
              output='screen', respawn=True, condition=real,
              parameters=[config, {'device': device}]),

@@ -13,22 +13,33 @@
 
   Arguments:
     gripper_actuated  false (default): fingers fixed open, the real driver publishes no gripper state
-                      true: vendor finger linkage (one master joint + five mimic joints)
-    gazebo            false (default): plain model (real arm)
-                      true: add the gz_ros2_control system (braco.gazebo.xacro, launch/gazebo.launch.py)
+                      true: vendor finger linkage (one master joint + five mimic joints); Gazebo
+                      uses it (braco_simulation's launch/gazebo.launch.py)
+    gazebo            false (default): plain model, no ros2_control (the MoveIt demo adds its own mock)
+                      true: add the gz_ros2_control system (braco.gazebo.xacro, braco_simulation's
+                      launch/gazebo.launch.py); with gripper_actuated:=true it also drives the gripper
+    real_arm          false (default): no real-arm hardware
+                      true: add the braco_hardware system over arm_driver (braco.real.xacro, #87)
+    Set at most one of gazebo and real_arm: each adds a <ros2_control> block on the same joints.
 -->
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="braco">
 
   <xacro:arg name="gripper_actuated" default="false"/>
   <xacro:arg name="gazebo" default="false"/>
+  <xacro:arg name="real_arm" default="false"/>
 
   <xacro:include filename="$(find braco_description)/urdf/mycobot_280.urdf.xacro"/>
   <xacro:include filename="$(find braco_description)/urdf/adaptive_gripper.xacro"/>
   <xacro:include filename="$(find braco_description)/urdf/braco.gazebo.xacro"/>
+  <xacro:include filename="$(find braco_description)/urdf/braco.real.xacro"/>
 
   <xacro:if value="$(arg gazebo)">
     <xacro:braco_gazebo
-      controllers="$(find braco_description)/config/controllers.yaml"/>
+      controllers="$(find braco_description)/config/controllers.yaml"
+      gripper="$(arg gripper_actuated)"/>
+  </xacro:if>
+  <xacro:if value="$(arg real_arm)">
+    <xacro:braco_real/>
   </xacro:if>
 
   <!-- world: the table surface. The arm stands on the G-shape base (a 150 x 110 mm plate,

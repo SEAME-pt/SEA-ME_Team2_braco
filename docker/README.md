@@ -145,7 +145,7 @@ docker compose exec dev bash            # ROS ready
 - **MoveIt:** `SIM_MOVEIT=true` (the default) also runs `move_group` in `sim`; `make rviz-gui` needs it. Before
   planning, `make domain-check TARGET=sim` checks the domain and that exactly one arm is there.
 - **Web page:** `make web` (runs in `dev`), http://localhost:8000.
-- Step by step: [Run the simulation](../ros2_ws/src/braco_description/README.md#run-the-simulation-step-by-step).
+- Step by step: [Run it](../ros2_ws/src/braco_simulation/README.md#run-it).
 ### ROS domain per teammate
  
 Each teammate's PC (`sim` and `dev`) has its own domain, so two simulations on the lab network never mix:

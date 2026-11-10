@@ -27,8 +27,9 @@ test: _image _dev_up ## colcon test, then the results (unit tests and ament lint
 # gazebo.launch.py on the same ROS domain fights it for /clock and /controller_manager. In the background: make returns
 # at once, closing a window ends its process, closing them leaves the simulation running. Each one opens only once.
 # Their output goes to ~/.ros/log in dev.
-SIM_GZ_ENV := -e GZ_PARTITION=braco-sim -e GZ_SIM_RESOURCE_PATH=/ws/install/braco_description/share
-GAZE_GUI := ros2 launch braco_description gazebo_gui.launch.py
+SIM_GZ_ENV := -e GZ_PARTITION=braco-sim \
+              -e GZ_SIM_RESOURCE_PATH=/ws/install/braco_description/share:/ws/install/braco_simulation/share/braco_simulation/models
+GAZE_GUI := ros2 launch braco_simulation gazebo_gui.launch.py
 RVIZ_GUI := ros2 launch braco_moveit_config rviz.launch.py
 define gui_checks
 	@[ "$(ROLE)" = pc ] || { echo "$@: the simulation runs on the PC" >&2; exit 1; }

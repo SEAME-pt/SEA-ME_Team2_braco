@@ -27,4 +27,4 @@ Read the [safety rules](docs/guides/safety.md) before moving the real arm. Full 
 | [decisions/](docs/decisions/README.md) | Architecture Decision Records |
 | [guides/](docs/guides/README.md) | Setup, safety, operation, ROS 2 |
 
-More: [docker/](docker/README.md), [web/](web/README.md), [ros2_ws/src/braco_description/](ros2_ws/src/braco_description/README.md).
+More: [docker/](docker/README.md), [web/](web/README.md), [ros2_ws/src/braco_description/](ros2_ws/src/braco_description/README.md), [ros2_ws/src/braco_simulation/](ros2_ws/src/braco_simulation/README.md), [ros2_ws/src/braco_hardware/](ros2_ws/src/braco_hardware/README.md).

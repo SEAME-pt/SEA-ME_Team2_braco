@@ -1,0 +1,7 @@
+<library path="braco_hardware">
+  <class name="braco_hardware/BracoSystem" type="braco_hardware::BracoSystem" base_class_type="hardware_interface::SystemInterface">
+    <description>
+      The real arm for ros2_control: joint states from arm_driver over topics (ADR-0004). Never opens the serial port.
+    </description>
+  </class>
+</library>

@@ -16,9 +16,9 @@
 """
 Park the arm: in Gazebo, then with --real on the real arm.
 
-  ros2 launch braco_description gazebo.launch.py     # Gazebo (ROS_DOMAIN_ID=PC_ROS_DOMAIN_ID)
-  ros2 run braco_description park.py                 # Gazebo only
-  ros2 run braco_description park.py --real          # Gazebo, then the real arm (asks first)
+  ros2 launch braco_simulation gazebo.launch.py     # Gazebo (ROS_DOMAIN_ID=PC_ROS_DOMAIN_ID)
+  ros2 run braco_simulation park.py                 # Gazebo only
+  ros2 run braco_simulation park.py --real          # Gazebo, then the real arm (asks first)
 
 On the real arm it does what `make park` does (braco_bringup park.cpp): fold into the park
 pose, release the joints and turn rest mode on. If the pose is not reached the joints stay
