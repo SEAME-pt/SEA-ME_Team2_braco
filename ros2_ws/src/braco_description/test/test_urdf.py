@@ -27,6 +27,7 @@ Processes braco.urdf.xacro and checks that
   * gazebo:=true controls exactly joint1..joint6, and the plain model has no ros2_control
   * real_arm:=true puts the braco_hardware plugin on exactly joint1..joint6
   * config/controllers.yaml: arm_controller drives joint1..joint6
+  * gazebo:=true has the wrist camera at camera_link, sized like the real camera
 """
 
 import math
@@ -238,6 +239,51 @@ def test_actuated_gripper_has_one_master_and_five_mimics():
     assert robot.find("joint[@name='gripper_controller']").get('type') == 'revolute'
 
 
+def test_gazebo_drives_the_gripper_through_its_master_joint():
+    # #123: in Gazebo the gripper moves. Only its master, gripper_controller, takes a command;
+    # the five mimic joints report their state, moved by the physics engine (braco_simulation's
+    # test_lab_bench.py checks the world runs one that enforces <mimic>).
+    robot = load_urdf(gripper_actuated='true', gazebo='true')
+    joints = robot.find('ros2_control').findall('joint')
+    commanded = [j.get('name') for j in joints if j.find('command_interface') is not None]
+    assert commanded == ARM_JOINTS + ['gripper_controller']
+    mimics = {j.get('name') for j in robot.findall('joint') if j.find('mimic') is not None}
+    assert {j.get('name') for j in joints} - set(commanded) == mimics
+
+
+def test_gripper_action_controller_drives_the_master_joint():
+    yaml = pytest.importorskip('yaml')
+    with open(os.path.join(PACKAGE_DIR, 'config', 'controllers.yaml'), encoding='utf-8') as f:
+        config = yaml.safe_load(f)
+    manager = config['controller_manager']['ros__parameters']
+    assert manager['gripper_action_controller']['type'] == \
+        'parallel_gripper_action_controller/GripperActionController'
+    assert config['gripper_action_controller']['ros__parameters']['joint'] == 'gripper_controller'
+
+
+def test_gazebo_wrist_camera_matches_the_real_camera():
+    # #123: Gazebo renders the wrist camera at camera_link, with the real camera's size and rate
+    # (braco_bringup/config/braco.yaml) and its images in camera_optical_frame, like the real
+    # ones. (braco_simulation's test_lab_bench.py checks the world loads the Sensors system.)
+    yaml = pytest.importorskip('yaml')
+    robot = load_urdf(gazebo='true')
+    sensors = [(g.get('reference'), s) for g in robot.findall('gazebo')
+               for s in g.findall("sensor[@type='camera']")]
+    assert len(sensors) == 1
+    reference, sensor = sensors[0]
+    assert reference == 'camera_link'
+    assert sensor.find('gz_frame_id').text == 'camera_optical_frame'
+    assert sensor.find('topic').text == '/camera/image_raw'
+    bringup = os.path.join(PACKAGE_DIR, '..', 'braco_bringup', 'config', 'braco.yaml')
+    with open(bringup, encoding='utf-8') as f:
+        real = yaml.safe_load(f)['camera']['ros__parameters']
+    image = sensor.find('camera/image')
+    assert int(image.find('width').text) == real['width']
+    assert int(image.find('height').text) == real['height']
+    assert float(sensor.find('update_rate').text) == real['fps']
+    assert load_urdf().find('.//sensor') is None   # the real arm's model has no sensor
+
+
 def test_fixed_gripper_has_no_movable_finger_joints():
     robot = load_urdf(gripper_actuated='false')
     assert robot.findall('.//mimic') == []
@@ -329,3 +375,17 @@ def test_controllers_drive_the_arm_joints():
     arm = config['arm_controller']['ros__parameters']
     assert arm['joints'] == ARM_JOINTS
     assert arm['command_interfaces'] == ['position']
+
+
+def test_arm_controller_fails_a_goal_it_does_not_reach():
+    # #123: without goal tolerances a goal blocked by the table (0.33 rad short) ended as
+    # successful. Every joint needs a goal tolerance above the real servos' dead zone (~3 deg)
+    # and below that, a path tolerance above Gazebo's lag (0.047 rad), and goal_time > 0, or a
+    # blocked goal never ends.
+    yaml = pytest.importorskip('yaml')
+    with open(os.path.join(PACKAGE_DIR, 'config', 'controllers.yaml'), encoding='utf-8') as f:
+        constraints = yaml.safe_load(f)['arm_controller']['ros__parameters']['constraints']
+    assert constraints['goal_time'] > 0
+    for joint in ARM_JOINTS:
+        assert math.radians(3) < constraints[joint]['goal'] < 0.33, joint
+        assert constraints[joint]['trajectory'] > 0.047, joint
