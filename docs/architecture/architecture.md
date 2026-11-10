@@ -148,7 +148,7 @@ braco_driver ╳   braco_teleop       braco_description ┄► braco_moveit_conf
 | Image | `braco-image/pc` | `braco-image/jetson` |
 | `dev` | stays up: shell, build, test, RViz2, PlotJuggler, web page | throw-away (`run --rm`): build, zero, park |
 | System | `sim` (optional, `SIM=1`): Gazebo + controllers + `move_group` (`SIM_MOVEIT=true`, the default) | `real`: `arm_driver`, `temperature_monitor`, `joystick_teleop`, `camera` |
-| ROS domain | per teammate, 20–29 (27 if unlisted) | 22 |
+| ROS domain | per teammate, 20–29 (27 if unlisted; 29 the MoveIt launch test) | 22 |
 | Page source | `ARM_SOURCE=gazebo` | `ARM_SOURCE=ros` |
 
 - Same image family (ROS 2 Lyrical, Ubuntu 26.04) and workspace on both machines. `dev` builds; the system container runs what was built.

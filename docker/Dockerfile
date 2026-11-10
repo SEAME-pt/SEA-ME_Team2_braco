@@ -3,7 +3,7 @@
 #   base           Ubuntu 26.04 + ROS 2 Lyrical Luth (ros-base) + ros2_control + build/test tooling + pymycobot
 #   jetson         base + serial tooling - the aarch64 robot-side image for the Jetson Nano (braco-image/jetson)
 #   pc             base + RViz2, MoveIt 2, Gazebo (ros_gz), QA tooling - the x86_64 workstation image (braco-image/pc)
-#   ci             base + clang-tidy, gcovr, pytest-cov - the CI jobs' image (make ci-image, braco-image/ci)
+#   ci             base + clang-tidy, gcovr, pytest-cov, MoveIt 2 - the CI jobs' image (make ci-image, braco-image/ci)
 #
 # Both final images are built FROM the same `base` stage, so the ROS distro, ros2_control and pymycobot
 # versions cannot drift apart between the two machines. Stages (instead of three files linked by a
@@ -267,8 +267,9 @@ CMD ["bash"]
 
 # ============================================================================================
 # ci - the `ros` and `coverage` CI jobs (make ci-image, .github/workflows/ci.yml)
-#   base plus the tools only make tidy and make coverage use, so a CI run installs nothing from apt
-#   for them and the Jetson image does not carry them. cppcheck is already in base.
+#   base plus the tools only make tidy and make coverage use (so a CI run installs nothing from apt
+#   for them and the Jetson image does not carry them), and MoveIt 2 for braco_moveit_config's
+#   launch test. cppcheck is already in base.
 # ============================================================================================
 FROM base AS ci
 
@@ -279,6 +280,18 @@ ENV SEAME_ROLE=ci
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         clang-tidy gcovr python3-pytest-cov \
+ && rm -rf /var/lib/apt/lists/*
+
+# braco_moveit_config's exec_depends (its launch test, #88), so rosdep does not install them on every run.
+# No ros-desktop or Gazebo: RViz is installed but the test never opens it.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ros-${ROS_DISTRO}-moveit-configs-utils \
+        ros-${ROS_DISTRO}-moveit-ros-move-group \
+        ros-${ROS_DISTRO}-moveit-kinematics \
+        ros-${ROS_DISTRO}-moveit-planners-ompl \
+        ros-${ROS_DISTRO}-moveit-simple-controller-manager \
+        ros-${ROS_DISTRO}-moveit-ros-visualization \
+        ros-${ROS_DISTRO}-rviz2 \
  && rm -rf /var/lib/apt/lists/*
 
 USER dev
