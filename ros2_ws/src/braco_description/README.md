@@ -31,8 +31,10 @@ are in [`docs/hardware/urdf-sim-to-real.md`](../../../docs/hardware/urdf-sim-to-
 | Real arm (`braco_bringup`, `sim:=false`) | `real_arm:=true` | `braco_hardware` ([ADR-0004](../../../docs/decisions/ADR-0004-trajectories-through-arm-driver.md)) |
 | MoveIt demo (`braco_moveit_config`) | no option (adds its own mock) | `mock_components/GenericSystem` |
 
-Turn on at most one of `gazebo` and `real_arm`: each adds a hardware block on the same joints.
-On the real arm, `joint_state_broadcaster` is not used: `arm_driver` is the only `/joint_states` publisher.
+- Turn on at most one of `gazebo` and `real_arm`: each adds a hardware block on the same joints.
+- On the real arm, `joint_state_broadcaster` is not used: `arm_driver` is the only `/joint_states` publisher.
+- With `gazebo:=true`, `g_base` also shows a grey pedestal for the lab bench scene. It is only its look: the
+  kinematics do not change.
 
 To run the simulation, see [`braco_simulation`](../braco_simulation/README.md).
 
@@ -49,7 +51,8 @@ xacro urdf/braco.urdf.xacro gripper_actuated:=true > /tmp/braco.urdf   # fingers
 - **Joint names** are `joint1..joint6`, the ones `arm_driver` publishes in `/joint_states`. If they differ,
   `robot_state_publisher` ignores the states without any error and the model stays frozen.
 - **Limits** (`<limit>`) are `JOINT_LIMITS` of `ros2_ws/src/mycobot_cpp/includes/mycobot.hpp`, converted to radians. Change them
-  there first: `test_urdf.py` fails if the two disagree. The URDF limits only inform tools (MoveIt, Gazebo);
+  there first: `test_urdf.py` fails if the two disagree (`braco_moveit_config`'s `test_joint_limits.py` checks
+  `joint_limits.yaml`). The URDF limits only inform tools (MoveIt, Gazebo);
   the arm itself is limited by `mycobot::MyCobot280::sendAngles`.
 - **Frames**: `world` is the table; `g_base` is the G-shape base plate the arm stands on; `tool0` is the flange (z out of it, REP-103); `tcp` is between the fingertips;
   `camera_optical_frame` has z forward, x right, y down (REP-103).

@@ -6,13 +6,13 @@ measured on the hardware** (section "Open items"). Nothing below marked "to meas
 
 ## How to use
 
-Step by step, with the GPU, ROS domains and common problems: [Run the simulation, step by step](../../ros2_ws/src/braco_description/README.md#run-the-simulation-step-by-step).
+Step by step, with the GPU, ROS domains and common problems: [Run the simulation](../../ros2_ws/src/braco_simulation/README.md#run-it).
 In short:
 
 ```bash
-# PC: `make up SIM=1` also starts the `sim` container = braco.launch.py sim:=true (Gazebo + controllers, ROS domain 77)
+# PC: `make up SIM=1` also starts the `sim` container = braco.launch.py sim:=true (Gazebo + controllers, your PC_ROS_DOMAIN_ID)
 make up SIM=1
-# in a dev shell (make shell, already on the simulation's domain 77): move one joint (degrees)
+# in a dev shell (make shell, already on the simulation's domain): move one joint (degrees)
 ros2 run braco_simulation move_joint.py 2 30
 
 # Put the simulated arm at given joint angles (radians, reached in 2 s)
@@ -67,7 +67,8 @@ world -> g_base -> base_link -> link1 -> link2 -> link3 -> link4 -> link5 -> lin
 - `world`: the table surface.
 - `g_base`: the G-shape base, a 150 x 110 mm plate clamped to the table with its black grip. Mesh from the vendor
   (`mycobot_280_pi/G_base.dae`), turned 90° so its long side runs along y like the Jetson casing; collision is a box
-  of the same size.
+  of the same size. With `gazebo:=true` it looks like the lab bench's grey pedestal, at the same height
+  and with the same collision box: only the look changes.
 - `base_link`: the bottom of the Jetson casing, in the plate's pocket: `g_base_height` = 0.030 m above the table.
   **Measured**: table to the top of the casing = 140 mm (`BASE_HEIGHT_MM`), minus the 109.7 mm casing
   (`CASING_HEIGHT_MM`) = 30.3 mm; the vendor mounts it at 30 mm.
@@ -108,7 +109,7 @@ All in degrees (the URDF uses radians; the test checks the conversion).
 ### Measured joint speed per firmware speed setting
 
 `sim_to_real.py velocity`: each joint swept from -A to +A (J1 and J6 ±90°, J2 ±45°, J3 to J5 ±60°) with the other
-joints at 0, timed from `/joint_states` (20 Hz) over the middle 80 % of the sweep (leaves out the acceleration and the
+joints at 0, timed from `/joint_states` (20 Hz nominal; with the target resent every 0.1 s the real rate is lower, ~14 to 19 Hz, [timing budget](../architecture/timing-budget.md)) over the middle 80 % of the sweep (leaves out the acceleration and the
 final approach). rad/s, peak in brackets:
 
 | Joint | speed 25 | speed 50 | speed 75 | speed 100 |
@@ -123,7 +124,7 @@ final approach). rad/s, peak in brackets:
 - **The speed setting is linear:** about **0.0265 rad/s (1.5°/s) per speed unit** on every joint, up to about 2.6 to
   2.8 rad/s at 100. joint2, which carries the whole arm, is the slowest at speed 100 (2.44).
 - The URDF `velocity` limit is the speed-100 value per joint. joint3's 2.79 average is above its 2.72 peak, which
-  cannot be: the fast 120° sweep lasts about 0.6 s, so the 20 Hz joint states give about ±8 % timing resolution. The
+  cannot be: the fast 120° sweep lasts about 0.6 s, so the joint states (at most ~18.7 Hz, see above) give about ±8 to 10 % timing resolution. The
   lower value (2.72) is used. Peaks come from two samples, so single outliers (joint2 at speed 75: 3.70) are noise.
 
 `effort` is an **approximation**. Elephant Robotics does not publish the joint servos' torque (the spec pages list
@@ -187,9 +188,11 @@ position is checked against the real arm with `get_coords()` (FK table below).
 ## Open items (need the hardware)
 
 Tick them here as they are measured and update the URDF and the tables above. `braco_simulation/scripts/sim_to_real.py` runs the checks
-against the real arm (Gazebo on this shell's `ROS_DOMAIN_ID`, e.g. 77; the real arm on 42):
+against the real arm (Gazebo on this shell's `ROS_DOMAIN_ID`, e.g. 27; the real arm on 22):
 `ros2 run braco_simulation sim_to_real.py directions | fk | velocity`.
 
+- [ ] **Lab bench** (`worlds/lab_bench.sdf`): the tables' size and height, the pedestal's footprint and the arm's position
+  on the table are provisional. Also confirm that the pedestal's height is the measured 30 mm (`g_base_height`).
 - [x] **Velocity** of each joint (`sim_to_real.py velocity`): each joint across a known range at speeds 25/50/75/100,
   timed from `/joint_states`. Results in "Limits" above; `joint_velocity` per joint in `mycobot_280.urdf.xacro`.
 - [x] **Effort**: no datasheet published; approximation from the rated payload (see "Limits"), marked as such.

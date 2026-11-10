@@ -277,6 +277,19 @@ def test_zero_pose_tool0_position_is_unchanged():
         assert got == pytest.approx(want, abs=1e-3)
 
 
+def test_pedestal_look_does_not_change_the_mount():
+    # The bench's pedestal is only the simulated look of g_base: the height of the arm (the
+    # table-clearance check depends on it) and the collision box are the same in both models.
+    plain, gazebo = load_urdf(), load_urdf(gazebo='true')
+    assert plain.find("link[@name='g_base']/visual/geometry/mesh") is not None
+    names = [v.get('name') for v in gazebo.findall("link[@name='g_base']/visual")]
+    assert names == ['pedestal']
+    assert ET.tostring(plain.find("link[@name='g_base']/collision")) == \
+        ET.tostring(gazebo.find("link[@name='g_base']/collision"))
+    joint = "joint[@name='g_base_to_base_link']/origin"
+    assert plain.find(joint).get('xyz') == gazebo.find(joint).get('xyz')
+
+
 def test_plain_model_has_no_ros2_control():
     assert load_urdf().find('ros2_control') is None
 

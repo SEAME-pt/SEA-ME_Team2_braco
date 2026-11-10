@@ -16,7 +16,7 @@
 """
 Park the arm: in Gazebo, then with --real on the real arm.
 
-  ros2 launch braco_simulation gazebo.launch.py     # Gazebo (ROS_DOMAIN_ID=77)
+  ros2 launch braco_simulation gazebo.launch.py     # Gazebo (ROS_DOMAIN_ID=PC_ROS_DOMAIN_ID)
   ros2 run braco_simulation park.py                 # Gazebo only
   ros2 run braco_simulation park.py --real          # Gazebo, then the real arm (asks first)
 
