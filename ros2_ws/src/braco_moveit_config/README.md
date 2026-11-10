@@ -17,7 +17,7 @@ the arm on the Jetson through DDS.
 | `config/moveit_controllers.yaml` | `arm_controller`, `FollowJointTrajectory` on `/arm_controller/follow_joint_trajectory` |
 | `config/braco.urdf.xacro` | The demo's model: `braco_description`'s `braco.urdf.xacro` + a `mock_components/GenericSystem` `<ros2_control>` |
 | `config/moveit.rviz` | RViz with the MotionPlanning panel on `arm` |
-| `launch/demo.launch.py` | RViz + `move_group` + ros2_control with the mock hardware |
+| `launch/demo.launch.py` | ros2_control with the mock hardware, then `move_group` and RViz once `arm_controller` is active |
 | `launch/sim.launch.py` | Gazebo (`braco_description`'s `gazebo.launch.py`), then `move_group`, RViz and `lab_bench_scene.py` once `arm_controller` is active |
 | `scripts/lab_bench_scene.py` | Adds the lab bench's table tops to `move_group`'s planning scene, read from `braco_description`'s `lab_bench.sdf` and `lab_table/model.sdf` and placed with the arm's spawn pose |
 | `launch/rviz.launch.py` | RViz only, on a `move_group` already running (`make rviz-gui`) |
@@ -80,7 +80,8 @@ the controller. If it fails, the launch shuts down, so RViz never opens: look fo
 ## Rules of the config
 
 - **Joint limits** must never be wider than `JOINT_LIMITS` of `mycobot.hpp`: MoveIt would plan moves the driver
-  then clamps. Change `mycobot.hpp` first, then the URDF and `config/joint_limits.yaml`.
+  then clamps. Change `mycobot.hpp` first, then the URDF and `config/joint_limits.yaml`; `test/test_joint_limits.py`
+  fails if they disagree.
 - **Speed**: the default scaling (0.3 of the measured speed) is applied by the clients (RViz, `MoveGroupInterface`),
   which read it from `robot_description_planning`. A raw `/move_action` request with scaling 0 runs at full speed.
 - **Collisions**: the disabled pairs come from `collisions_updater` (below) plus three set by hand, each explained
@@ -103,3 +104,9 @@ ros2 run moveit_setup_assistant collisions_updater --urdf /tmp/braco_moveit.urdf
 `test/test_moveit_config.py` (`colcon test --packages-select braco_moveit_config`): the SRDF names exist in the
 model, `arm` is joint1..joint6, `home`/`park` match `mycobot.hpp` and lie inside `joint_limits.yaml`, the MoveIt
 controller matches `braco_description/config/controllers.yaml`, and the mock `<ros2_control>` matches the Gazebo one.
+
+`test/test_plan_execute.launch.py` runs `demo.launch.py` headless, plans and executes to `park`, and checks the result
+and the final `/joint_states` (120 s timeout). It fails on a config MoveIt cannot plan or execute with, which the
+static test misses (e.g. a joint with `max_velocity: 0`, or the SRDF's disabled collision pairs removed).
+`test/test_joint_limits.py`: the positions of `joint_limits.yaml` equal `JOINT_LIMITS` and the URDF `<limit>`, and its
+velocities are not above the measured URDF ones.

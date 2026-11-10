@@ -26,7 +26,7 @@ Checks that
   * the mock <ros2_control> of the demo has the joints and interfaces of the Gazebo one
   * scripts/lab_bench_scene.py puts Gazebo's table tops under the arm, in `world`
 
-That joint_limits.yaml matches JOINT_LIMITS and the URDF is a test of its own.
+joint_limits.yaml against JOINT_LIMITS and the URDF: test/test_joint_limits.py.
 """
 
 import importlib.util

@@ -2,7 +2,7 @@
 # team-domain.sh - the PC's ROS domain from the GitHub login, using docker/config/team-domains.tsv.
 #
 #   team-domain.sh set ENV_FILE   write PC_ROS_DOMAIN_ID for this user (make setup, PC only)
-#   team-domain.sh check          check the table: 20-29, not 22/27, each login and domain once (make lint)
+#   team-domain.sh check          check the table: 20-29, not 22/27/29, each login and domain once (make lint)
 #
 # The login comes from `gh api user`; TEAM_LOGIN=<login> skips gh. Not found (no gh, not logged in, not in the
 # table): PC_ROS_DOMAIN_ID is left as it is (27 by default) with a warning, and setup goes on.
@@ -11,6 +11,7 @@ set -euo pipefail
 TABLE="${TEAM_DOMAINS_TABLE:-$(cd "$(dirname "$0")/.." && pwd)/config/team-domains.tsv}"   # override: tests
 ARM_DOMAIN=22       # ROS_DOMAIN_ID: the real arm
 DEFAULT_DOMAIN=27   # PC_ROS_DOMAIN_ID when the login is not listed
+TEST_DOMAIN=29      # braco_moveit_config's launch test
 MIN=20
 MAX=29
 
@@ -31,6 +32,8 @@ check() {
             echo "team-domains.tsv: $login: $ARM_DOMAIN is the real arm's domain (ROS_DOMAIN_ID)" >&2; fail=1
         elif [ "$domain" -eq "$DEFAULT_DOMAIN" ]; then
             echo "team-domains.tsv: $login: $DEFAULT_DOMAIN is the default for unlisted users" >&2; fail=1
+        elif [ "$domain" -eq "$TEST_DOMAIN" ]; then
+            echo "team-domains.tsv: $login: $TEST_DOMAIN is the MoveIt launch test's domain" >&2; fail=1
         fi
         local key="${login,,}"
         [ -z "${seen_login[$key]:-}" ] || { echo "team-domains.tsv: login $login is listed twice" >&2; fail=1; }

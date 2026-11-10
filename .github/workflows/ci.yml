@@ -85,6 +85,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: make web-test PYTHON=${{ steps.py.outputs.python-path }}
 
+      - name: make timing-test
+        if: ${{ !cancelled() }}
+        run: make timing-test PYTHON=${{ steps.py.outputs.python-path }}
+
   ros:
     needs: changes
     if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}

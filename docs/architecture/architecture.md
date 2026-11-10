@@ -1,8 +1,8 @@
 # braco architecture
 
-How the braco software is built today: layers, nodes, topics, packages and deployment. If the code and this document disagree, the code wins. CPU and memory: [resources.md](resources.md).
+How the braco software is built today: layers, nodes, topics, packages and deployment. If the code and this document disagree, the code wins. CPU and memory: [resources.md](resources.md). Timing: [timing-budget.md](timing-budget.md).
 
-Last checked against the code: **2026-11-07**.
+Last checked against the code: **2026-11-09**.
 
 **Contents:** [Principles](#1-principles) · [Layers](#2-layers) · [Nodes and devices](#3-nodes-and-devices) · [Topics and services](#4-topics-and-services) · [Control of the arm](#5-control-of-the-arm) · [Packages](#6-packages) · [Deployment](#7-deployment) · [Launch and parameters](#8-launch-and-parameters) · [Simulation and planned layers](#9-simulation-and-planned-layers) · [Status](#10-status) · [Changing the architecture](#11-changing-the-architecture)
 
@@ -67,7 +67,7 @@ A motion command passes the `arm_driver` gates in order:
 
 | Name | Type | From | Used by |
 |---|---|---|---|
-| `/joint_states` | `sensor_msgs/JointState`, 20 Hz | `arm_driver` | teleop, page, zero/park |
+| `/joint_states` | `sensor_msgs/JointState`, 20 Hz nominal (18.7 measured; ~14 under continuous commands, [timing](timing-budget.md)) | `arm_driver` | teleop, page, zero/park |
 | `/arm/command` | `braco_interfaces/ArmCommand` (`STOP`, `JOINTS`, `ALL_ANGLES`, `source`) | clients | `arm_driver` |
 | `/arm/led` | `std_msgs/ColorRGBA` | teleop, page | `arm_driver` |
 | `/arm/servo_temperatures` | `braco_interfaces/ServoTemperatures`, 2 s | `arm_driver` | `temperature_monitor`, page |
@@ -148,7 +148,7 @@ braco_driver ╳   braco_teleop       braco_description ┄► braco_moveit_conf
 | Image | `braco-image/pc` | `braco-image/jetson` |
 | `dev` | stays up: shell, build, test, RViz2, PlotJuggler, web page | throw-away (`run --rm`): build, zero, park |
 | System | `sim` (optional, `SIM=1`): Gazebo + controllers + `move_group` (`SIM_MOVEIT=true`, the default) | `real`: `arm_driver`, `temperature_monitor`, `joystick_teleop`, `camera` |
-| ROS domain | per teammate, 20–29 (27 if unlisted) | 22 |
+| ROS domain | per teammate, 20–29 (27 if unlisted; 29 the MoveIt launch test) | 22 |
 | Page source | `ARM_SOURCE=gazebo` | `ARM_SOURCE=ros` |
 
 - Same image family (ROS 2 Lyrical, Ubuntu 26.04) and workspace on both machines. `dev` builds; the system container runs what was built.
@@ -206,7 +206,7 @@ braco_mission ┄► MoveIt 2 ──trajectory──┬──► real: braco Sys
 - In simulation the gripper moves: `gazebo.launch.py` builds the model with `gripper_actuated:=true` and adds `gripper_action_controller` (`/gripper_action_controller/gripper_cmd`, `ParallelGripperCommand`), outside MoveIt's `arm` group. The world runs Bullet Featherstone, the physics engine that enforces the gripper's five mimic joints. On the real arm the fingers stay fixed: the driver has no gripper state.
 - In simulation the wrist camera renders too: a camera sensor at `camera_link` (`braco.gazebo.xacro`), 640×480 at 15 Hz like the real one, rendered by the world's Sensors system. `gazebo.launch.py` bridges it to the real camera's topic, `/camera/image_raw/compressed` (plus `/camera/image_raw` and `/camera/camera_info`), in `camera_optical_frame`, so the page shows it unchanged. Its field of view (60°) is not measured yet.
 - `sim:=true` runs the controllers of `braco_description/config/controllers.yaml`, the set planned for the real arm. On the real arm only the URDF's hardware plugin changes (a braco `SystemInterface`, planned), and `joint_state_broadcaster` is not spawned: `arm_driver` keeps publishing `/joint_states`.
-- Real arm ([ADR-0004](../decisions/ADR-0004-trajectories-through-arm-driver.md)): the plugin sends `ALL_ANGLES` with `source: "mission"` to `arm_driver`, so trajectories pass the same gates as every client. `braco_mission` takes the control before each goal; STOP or a lost control aborts the trajectory.
+- Real arm ([ADR-0004](../decisions/ADR-0004-trajectories-through-arm-driver.md)): the plugin sends `ALL_ANGLES` with `source: "mission"` to `arm_driver`, so trajectories pass the same gates as every client. `braco_mission` takes the control before each goal; STOP or a lost control aborts the trajectory. Measured: setpoints reach the arm at ~14 Hz and motion starts ~200 ms after a command ([timing-budget.md](timing-budget.md)).
 - How to run it: [Run the simulation](../../ros2_ws/src/braco_description/README.md#run-the-simulation-step-by-step).
 
 ---

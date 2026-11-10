@@ -20,6 +20,8 @@
 # so MoveIt, the mission and the page use the same arm_controller on both.
 controller_manager:
   ros__parameters:
+    # Real arm: arm_driver takes ~14 setpoints/s and gives ~14 positions/s under commands, whatever
+    # this rate is (COMMAND_GAP bounds its serial loop): docs/architecture/timing-budget.md, #90
     update_rate: 100  # Hz
 
     joint_state_broadcaster:

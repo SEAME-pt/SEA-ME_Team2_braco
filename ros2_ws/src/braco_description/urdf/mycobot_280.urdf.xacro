@@ -22,7 +22,7 @@
 
   <!-- Position limits, degrees. Same numbers as JOINT_LIMITS in ros2_ws/src/mycobot_cpp/includes/mycobot.hpp
        (the arm's firmware limits minus 1-2 deg): change them there first, test_urdf.py fails
-       otherwise. -->
+       otherwise. braco_moveit_config/config/joint_limits.yaml too (test_joint_limits.py). -->
   <xacro:property name="limit_min" value="${[-166.0, -138.0, -149.0, -149.0, -153.0, -178.0]}"/>
   <xacro:property name="limit_max" value="${[166.0, 138.0, 149.0, 149.0, 158.0, 178.0]}"/>
 

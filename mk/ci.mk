@@ -10,9 +10,9 @@
 # No robot and no display needed.
 
 # The `ros` job builds the workspace in a throw-away container from the Dockerfile's `ci` stage: `base` (everything
-# the packages depend on, without the GUI/Gazebo/MoveIt layers of the PC image) plus clang-tidy, gcovr and
-# pytest-cov. The image's user gets your UID/GID so the bind-mounted ros2_ws stays writable (GitHub runners are
-# UID 1001).
+# the packages depend on, without the GUI/Gazebo layers of the PC image) plus clang-tidy, gcovr, pytest-cov and
+# MoveIt 2 (braco_moveit_config's launch test). The image's user gets your UID/GID so the bind-mounted ros2_ws stays
+# writable (GitHub runners are UID 1001).
 # ci.yml builds the same image with docker/build-push-action (layer cache): keep its target and build-args in step.
 # CI caches ros2_ws/build, where test results live: delete the old ones first, or a removed test would still count.
 # colcon test exits 0 even when tests fail; colcon test-result is what fails the job.
@@ -126,11 +126,11 @@ PY_FILES  = $(shell git ls-files '*.py')
 # Use the venv's pinned ruff and clang-format (make setup) even when the venv is not activated.
 format format-check: export PATH := $(CURDIR)/$(VENV)/bin:$(PATH)
 
-.PHONY: ci web-test ci-image ci-ros coverage cppcheck tidy lint format format-check
+.PHONY: ci web-test timing-test ci-image ci-ros coverage cppcheck tidy lint format format-check
 
 ##@ CI (.github/workflows/ci.yml)
 
-ci: format-check lint web-test ## The `host` CI job: format check, lint, web page tests (with coverage)
+ci: format-check lint web-test timing-test ## The `host` CI job: format check, lint, web page and timing script tests
 
 # The web tests measure the coverage of web/server (lines and branches); the table lists the lines no test runs,
 # and the job fails below COV_MIN_WEB.
@@ -141,6 +141,10 @@ web-test: $(VENV)/.web-test-installed ## Web page tests (pytest web/tests) with 
 	$(VENV)/bin/python -m coverage json -q -o coverage.json || true; \
 	$(VENV)/bin/python scripts/coverage_summary.py --coverage-py "Web (web/server)" coverage.json $(COV_MIN_WEB) \
 		>> $(STEP_SUMMARY); exit $$st
+
+# The pure parts of the bench scripts (scripts/timing, #90): reply framing and statistics. No serial port, no ROS.
+timing-test: $(VENV)/.web-test-installed ## Unit tests of the timing scripts (pytest scripts/timing)
+	cd scripts/timing && $(abspath $(VENV))/bin/python -m pytest -q -p no:cacheprovider test_timing.py
 
 ci-image: ## Build the `ros` CI job's image (Dockerfile stage CI_TARGET=ci) as CI_IMAGE, for your UID/GID
 	@docker buildx version >/dev/null 2>&1 || { echo "$(BUILDX_MISSING)" >&2; exit 1; }
