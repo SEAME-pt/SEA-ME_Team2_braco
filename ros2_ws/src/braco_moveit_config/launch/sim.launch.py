@@ -16,7 +16,8 @@
 MoveIt 2 on the simulated braco arm: plan in RViz, execute in Gazebo.
 
 Includes braco_description's gazebo.launch.py, then starts move_group and RViz once
-arm_controller is active.
+arm_controller is active, and puts the lab bench's table tops into the planning scene
+(scripts/lab_bench_scene.py).
 
 In the dev container (pc image):
   ros2 launch braco_moveit_config sim.launch.py                         # both windows
@@ -34,6 +35,7 @@ from launch.event_handlers import OnProcessExit
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
 from moveit_configs_utils import MoveItConfigsBuilder
 
@@ -73,11 +75,18 @@ def generate_launch_description():
                             sim_time],
                 condition=IfCondition(LaunchConfiguration('rviz')))
 
+    # The table tops into move_group's planning scene (it waits for move_group), at the spawn
+    # pose gazebo.launch.py placed the arm with: MoveIt then refuses or avoids a pose in the table
+    lab_bench_scene = Node(
+        package='braco_moveit_config', executable='lab_bench_scene.py', output='screen',
+        parameters=[{name: ParameterValue(LaunchConfiguration(name), value_type=float)
+                     for name in ('robot_x', 'robot_y', 'robot_z', 'robot_yaw')}])
+
     def on_spawner_exit(event, context):
         # OnProcessExit also fires on failure: without the controller nothing can execute
         if event.returncode != 0:
             return [Shutdown(reason='arm_controller did not start')]
-        return [move_group, rviz]
+        return [move_group, rviz, lab_bench_scene]
 
     return LaunchDescription([
         DeclareLaunchArgument('gui', default_value='true',
