@@ -11,7 +11,7 @@ the same commands, from the repo folder.
 | Job | What it runs | Reproduce locally |
 |---|---|---|
 | `host` | `make ci`: `make format-check` (C++ and Python formatting, see [Code formatting](#code-formatting)), `make lint` (compose files for both machines, ruff check of the Python outside `ros2_ws/src`, shellcheck, hadolint) and `make web-test` (pytest `web/tests`, in a venv from `web/requirements*.txt`, with the coverage of `web/server`, failing below `COV_MIN_WEB`) and `make timing-test` (pytest `scripts/timing/test_timing.py`: the reply framing and statistics of the bench scripts, no serial port, no ROS), one step each, all run even when one fails; creates `docker/.env` if missing | `make ci`, or one of its four targets |
-| `ros` | Builds the Dockerfile's `ci` stage (`base`: Ubuntu 26.04 + ROS 2 Lyrical, plus clang-tidy, gcovr and pytest-cov), then `rosdep install`, `colcon build` and `colcon test` of `ros2_ws/src` (with `mycobot_cpp`) in a throw-away container, the test results uploaded as the `test-results` artifact; then cppcheck on every C++ package, and clang-tidy (`ros2_ws/.clang-tidy`, warnings as errors) from that build's `compile_commands.json`. Both also run when a test failed | `make ci-ros` (builds the image the first time), then `make cppcheck` and `make tidy` |
+| `ros` | Builds the Dockerfile's `ci` stage (`base`: Ubuntu 26.04 + ROS 2 Lyrical, plus clang-tidy, gcovr, pytest-cov and MoveIt 2), then `rosdep install`, `colcon build` and `colcon test` of `ros2_ws/src` (with `mycobot_cpp` and the [MoveIt test](#moveit-test)) in a throw-away container, the test results uploaded as the `test-results` artifact; then cppcheck on every C++ package, and clang-tidy (`ros2_ws/.clang-tidy`, warnings as errors) from that build's `compile_commands.json`. Both also run when a test failed | `make ci-ros` (builds the image the first time), then `make cppcheck` and `make tidy` |
 | `coverage` | Same image as `ros`, in parallel: the GoogleTests built with `--coverage` in `ros2_ws/coverage/` (gcovr) and the pytests (pytest-cov), uploaded as the `coverage` artifact (HTML per line; Python in `python/`); fails below `COV_MIN_CXX`, or below `COV_MIN_PY` once there is ROS Python to measure (none yet, see [Coverage](#coverage)) | `make coverage` (report in `ros2_ws/coverage/html`) |
 
 - `make ci` creates `.venv` from `web/requirements*.txt` by itself; `make setup` (on the PC) adds
@@ -29,6 +29,18 @@ the same commands, from the repo folder.
   can't share its own with other PRs, so saving them would only fill the 10 GB repo cache.
 - The arm64 Jetson image is not built in CI (QEMU is too slow); build it by hand with `make jetson-image`.
 - `ci-ros` writes to `ros2_ws/build`, `install` and `log`, like `make build`, plus its ccache in `ros2_ws/.ccache`.
+
+## MoveIt test
+
+`braco_moveit_config/test/test_plan_execute.launch.py` (#88) runs `demo.launch.py` headless (mock hardware, no RViz
+or Gazebo), plans and executes to `park`, and checks the result and the final `/joint_states`.
+
+- A hang fails after 120 s (`add_launch_test ... TIMEOUT 120`); a run takes about 6 s.
+- It runs on `ROS_DOMAIN_ID` 29, kept free for it (`make lint` refuses it in `team-domains.tsv`), and discovers only
+  on localhost, so it never meets a teammate's `sim`, `dev` or the real arm.
+- `move_group`'s exit code is not checked: it segfaults on Ctrl+C/SIGINT (MoveIt 2.15), after the test.
+- Alone, in `make shell`: `colcon test --packages-select braco_moveit_config --ctest-args -R plan_execute`, then
+  `colcon test-result --verbose`.
 
 ## Coverage
 
