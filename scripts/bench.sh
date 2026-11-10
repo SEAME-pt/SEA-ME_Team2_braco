@@ -15,6 +15,7 @@ EXEC=${BENCH_EXEC:?run it with: make bench}
 REPORT=${BENCH_REPORT:-bench-report.log}
 IDLE_S=${BENCH_IDLE_S:-5}
 HOT_C=${BENCH_HOT_C:-66}
+STOP_HOLD_S=${BENCH_STOP_HOLD_S:-3.5}   # arm_driver stop_hold_s (3 s) plus a margin
 
 pass=0
 fail=0
@@ -59,7 +60,8 @@ expect_owner() {  # expect_owner WANTED "what"
 }
 
 cleanup() {
-  ros topic pub --once /arm/command braco_interfaces/msg/ArmCommand "{type: 0, source: 'script'}" >/dev/null 2>&1
+  # HALT, not STOP: the bench ending is no emergency and must not leave the arm latched
+  ros topic pub --once /arm/command braco_interfaces/msg/ArmCommand "{type: 3, source: 'script'}" >/dev/null 2>&1
   take script release >/dev/null 2>&1
   ros service call /arm/set_read_only std_srvs/srv/SetBool "{data: false}" >/dev/null 2>&1
   [[ -n ${FAKE_PID:-} ]] && kill "$FAKE_PID" 2>/dev/null
@@ -99,6 +101,29 @@ if ask "Is the arm powered and the area clear? A slow move will be started by th
   else
     record FAIL "STOP from a non-owner did not stop the arm"
   fi
+  # The STOP latched (ADR-0005): not even force takes the control, until the release after the hold
+  out=$(take joystick force)
+  if grep -q "success=False" <<<"$out"; then
+    record PASS "STOP latched: force take refused"
+  else
+    record FAIL "STOP latched: force take was accepted: $out"
+  fi
+  # The questions above took longer than the hold: a fresh STOP restarts it. The CLI is slow on the
+  # Nano, so a release that came after the hold is a SKIP, not a FAIL.
+  t0=$(date +%s.%N)
+  ros topic pub --once /arm/command braco_interfaces/msg/ArmCommand "{type: 0, source: 'web'}" >/dev/null
+  out=$(ros service call /arm/release_stop std_srvs/srv/Trigger 2>&1 | tr -d '\r')
+  dt=$(awk -v a="$t0" -v b="$(date +%s.%N)" 'BEGIN {printf "%.1f", b - a}')
+  if grep -q "success=False" <<<"$out"; then
+    record PASS "release refused inside the hold"
+  elif awk -v d="$dt" -v h="$STOP_HOLD_S" 'BEGIN {exit !(d >= h - 0.5)}'; then
+    record SKIP "release inside the hold: the CLI took ${dt} s, longer than the hold"
+  else
+    record FAIL "release inside the hold was accepted after ${dt} s: $out"
+  fi
+  sleep "$STOP_HOLD_S"
+  out=$(ros service call /arm/release_stop std_srvs/srv/Trigger 2>&1 | tr -d '\r')
+  if grep -q "success=True" <<<"$out"; then record PASS "release after the hold"; else record FAIL "release after the hold: $out"; fi
 else
   record SKIP "STOP from a non-owner (operator did not confirm the area)"
 fi

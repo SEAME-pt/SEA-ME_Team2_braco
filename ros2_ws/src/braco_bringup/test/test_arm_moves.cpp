@@ -144,7 +144,7 @@ private:
   {
     std::lock_guard<std::mutex> lock(mutex_);
     commands_.push_back(msg);
-    if (msg.type == ArmCommand::STOP) {
+    if (msg.type == ArmCommand::HALT) {
       events_.push_back("stop");
     } else if (msg.type == ArmCommand::ALL_ANGLES && options_.follow) {
       std::copy(msg.angles_deg.begin(), msg.angles_deg.end(), angles_.begin());

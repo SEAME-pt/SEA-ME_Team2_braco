@@ -208,7 +208,7 @@ bool ArmMoves::moveTo(
 void ArmMoves::stop()
 {
   ArmCommand command;
-  command.type = ArmCommand::STOP;
+  command.type = ArmCommand::HALT;   // a missed target is not an emergency: no latch (ADR-0005)
   command.source = SOURCE;
   command_pub_->publish(command);
 }

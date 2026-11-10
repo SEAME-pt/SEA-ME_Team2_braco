@@ -30,11 +30,13 @@
 //   pub  /arm/read_only              std_msgs/Bool (latched)
 //   srv  /arm/take_control           braco_interfaces/TakeControl
 //   pub  /arm/control_owner          std_msgs/String (latched, "" = free)
+//   srv  /arm/release_stop           std_srvs/Trigger (make resume)
+//   pub  /arm/stopped                std_msgs/Bool (latched)
 //
 // Control owner (docs/decisions/ADR-0002-unique-control.md): the web page, the joystick,
 // zero/park and the mission never move the arm at the same time. Motion is obeyed
-// only from the ArmCommand.source that holds the control (ControlLease); STOP always
-// passes, whoever sends it. The owner takes it with /arm/take_control (force takes
+// only from the ArmCommand.source that holds the control (ControlLease); STOP and HALT
+// always pass, whoever sends them. The owner takes it with /arm/take_control (force takes
 // it from another owner and drops that owner's pending motion) and loses it after
 // control_idle_s without motion. power_on, set_gripper and release_servos carry no
 // source: clients call them only while they own the control.
@@ -42,6 +44,15 @@
 // Rest mode (read_only): motion, gripper and power_on are refused, but the
 // serial loop keeps publishing angles and temperatures, so the arm can cool
 // down under watch. park enters it; set_read_only false (or make resume) leaves it.
+//
+// STOP latch (docs/decisions/ADR-0005-stop-latch.md): there is no hardwired e-stop, so a
+// STOP from anyone stops the arm, drops pending motion, frees the control and latches.
+// While latched, motion, take_control (even force), power_on, set_gripper,
+// release_servos (the arm would drop) and set_read_only false are refused, whoever asks.
+// Only /arm/release_stop clears it, and only stop_hold_s after the last STOP; another
+// STOP restarts that hold. The release moves nothing: the control stays free and a
+// client must take it and send a new command. Routine stops (stick released, a move
+// that timed out) send HALT instead: the arm stops, nothing latches.
 //
 // One serial thread does all the work, in this order on every pass:
 //   1. a requested stop (drops everything pending)
@@ -114,8 +125,14 @@ private:
 
   // Rest mode: only monitoring. Entering it drops whatever motion was pending.
   void setReadOnly(bool on);
-  // True (and the response filled in) when rest mode refuses `what`.
+  // True (and the response filled in) when the STOP latch or rest mode refuses `what`.
   bool refuseInRest(bool & success, std::string & message, const char * what);
+  // True (and the response filled in) when the STOP latch refuses `what`.
+  bool refuseWhileStopped(bool & success, std::string & message, const char * what);
+  // A STOP from anyone: stop, drop pending motion, free the control, latch.
+  void latchStop(const std::string & source);
+  void releaseStop(bool & success, std::string & message);
+  void publishStopped(bool on);
   void publishOwner(const std::string & owner);
   void onTakeControl(const TakeControl::Request & req, TakeControl::Response & res);
   // The serial thread: free the control after control_idle_s without motion.
@@ -143,6 +160,7 @@ private:
   std::thread serial_thread_;
   std::atomic<bool> running_{true};
   std::atomic<bool> read_only_{false};
+  std::atomic<bool> stopped_{false};   // STOP latch; the executor thread writes it
 
   bool stop_requested_ = false;
   std::map<int, Target> pending_joints_;
@@ -156,6 +174,8 @@ private:
   std::chrono::duration<double> temp_period_{};
   std::chrono::milliseconds command_timeout_{};
   std::chrono::steady_clock::duration control_idle_{};
+  std::chrono::steady_clock::duration stop_hold_{};   // release refused this long after a STOP
+  std::chrono::steady_clock::time_point last_stop_{};  // the last STOP while latched
   int gripper_speed_ = 50;
 
   ControlLease control_;      // under state_mutex_
@@ -173,6 +193,8 @@ private:
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr read_only_pub_;
   rclcpp::Service<TakeControl>::SharedPtr take_control_srv_;
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr owner_pub_;
+  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr release_stop_srv_;
+  rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr stopped_pub_;
 };
 
 }  // namespace braco_driver

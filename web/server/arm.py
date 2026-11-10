@@ -603,9 +603,11 @@ class RosArm(_Base):
             )
         )
 
-    def _publish_stop(self):
+    def _publish_stop(self, emergency=True):
+        """STOP latches the arm until make resume (ADR-0005); HALT is a routine stop."""
         ArmCommand = self._types['ArmCommand']
-        self._cmd_pub.publish(ArmCommand(type=ArmCommand.STOP, source=ROS_SOURCE))
+        kind = ArmCommand.STOP if emergency else ArmCommand.HALT
+        self._cmd_pub.publish(ArmCommand(type=kind, source=ROS_SOURCE))
 
     def _has_control(self):
         return self.snapshot()['control_owner'] == ROS_SOURCE
@@ -658,7 +660,7 @@ class RosArm(_Base):
                 break
             self._closed.wait(ROS_RESEND_S)
         if token == self._motion and not self._closed.is_set() and self._has_control():
-            self._publish_stop()
+            self._publish_stop(emergency=False)
             self._notice(
                 'target not reached in {:.0f} s (or no feedback): arm stopped'.format(
                     ROS_MOVE_TIMEOUT

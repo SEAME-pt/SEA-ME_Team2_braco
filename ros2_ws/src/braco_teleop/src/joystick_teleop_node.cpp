@@ -160,7 +160,10 @@ void JoystickTeleop::requestControl(bool force)
     req, [this](rclcpp::Client<TakeControl>::SharedFuture future) {
       take_pending_ = false;
       const auto res = future.get();
-      if (!res->success) {
+      if (!res->success && res->owner.empty()) {
+        // Free but refused: a STOP latch (ADR-0005), asked again on every input until make resume
+        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 3000, ">>> %s", res->message.c_str());
+      } else if (!res->success) {
         RCLCPP_WARN(
           get_logger(), ">>> %s: hold button %d for %.1f s to take it",
           res->message.c_str(), force_button_, force_hold_s_);
@@ -175,7 +178,7 @@ void JoystickTeleop::sendStop()
 {
   if (!isOwner()) {return;}
   ArmCommand cmd;
-  cmd.type = ArmCommand::STOP;
+  cmd.type = ArmCommand::HALT;   // a routine stop: STOP would latch the arm (ADR-0005)
   cmd.source = SOURCE;
   command_pub_->publish(cmd);
 }

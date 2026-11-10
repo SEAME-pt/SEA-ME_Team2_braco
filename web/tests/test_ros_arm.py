@@ -24,6 +24,10 @@ class FakeArmCommand(FakeMsg):
     STOP = 0
     JOINTS = 1
     ALL_ANGLES = 2
+    HALT = 3
+
+
+STOPS = (FakeArmCommand.STOP, FakeArmCommand.HALT)  # emergency and routine
 
 
 class FakeSrv:
@@ -288,7 +292,7 @@ def test_move_timeout_stops_and_notifies(ros_arm, monkeypatch):
     ros_arm.feed([0] * 6)
     ros_arm.move_joint(0, 90)
     assert wait_for(lambda: ros_arm.snapshot()['notice'] is not None)
-    assert ros_arm._cmd_pub.sent[-1].type == FakeArmCommand.STOP
+    assert ros_arm._cmd_pub.sent[-1].type == FakeArmCommand.HALT  # routine: no latch
     assert 'not reached' in ros_arm.snapshot()['notice']['text']
 
 
@@ -325,7 +329,7 @@ def test_losing_the_control_ends_the_move_without_stop(ros_arm):
     time.sleep(0.3)
     assert len(ros_arm._cmd_pub.sent) == count  # the stream stopped
     # and the page did not STOP the joystick's motion
-    assert all(m.type != FakeArmCommand.STOP for m in ros_arm._cmd_pub.sent)
+    assert all(m.type not in STOPS for m in ros_arm._cmd_pub.sent)
 
 
 def test_idle_release_by_the_driver_is_not_a_loss(ros_arm):
@@ -340,9 +344,9 @@ def test_no_timeout_stop_without_the_control(ros_arm, monkeypatch):
     ros_arm.feed([0] * 6)
     ros_arm.move_joint(0, 90)
     assert wait_for(lambda: moves(ros_arm))
-    ros_arm._update(control_owner='script')  # without the callback: only the final STOP is checked
+    ros_arm._update(control_owner='script')  # without the callback: only the final stop is checked
     time.sleep(0.6)
-    assert all(m.type != FakeArmCommand.STOP for m in ros_arm._cmd_pub.sent)
+    assert all(m.type not in STOPS for m in ros_arm._cmd_pub.sent)
 
 
 # ---- poses, rest, wake ------------------------------------------------------------------

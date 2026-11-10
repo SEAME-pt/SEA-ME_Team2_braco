@@ -16,6 +16,7 @@ EXPECTED_NODES = [
 EXPECTED_SERVICES = [
     '/arm/power_on',
     '/arm/release_servos',
+    '/arm/release_stop',
     '/arm/set_gripper',
     '/arm/set_read_only',
     '/arm/take_control',

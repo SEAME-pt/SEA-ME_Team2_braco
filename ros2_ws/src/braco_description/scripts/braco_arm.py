@@ -296,7 +296,8 @@ class RealArm(_Arm):
 
     def stop(self):
         command = ArmCommand()
-        command.type = ArmCommand.STOP
+        command.type = ArmCommand.HALT  # a failed move, not an emergency: no latch (ADR-0005)
+        command.source = SOURCE
         self.command_pub.publish(command)
 
 
