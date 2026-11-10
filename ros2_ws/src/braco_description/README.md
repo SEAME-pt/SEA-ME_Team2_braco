@@ -9,7 +9,7 @@ arm (zero pose, joint directions, forward kinematics) and the open measurements 
 |---|---|
 | `urdf/braco.urdf.xacro` | The whole robot: `world` -> G-base -> arm -> `tool0` -> gripper, `tcp`, camera frames |
 | `urdf/mycobot_280.urdf.xacro` | The arm (macro): `base_link`, `link1..link6`, `joint1..joint6` |
-| `urdf/adaptive_gripper.xacro` | The gripper (macro), fingers fixed open or with the vendor linkage |
+| `urdf/adaptive_gripper.xacro` | The gripper (macro), fingers fixed open (real arm) or with the vendor linkage (Gazebo) |
 | `urdf/braco.gazebo.xacro` | `gz_ros2_control` on `joint1..joint6`, added only with `gazebo:=true` |
 | `config/gazebo_gui.config` | The Gazebo window: the first view of the camera, close to the arm |
 | `config/controllers.yaml` | The ros2_control controllers: `arm_controller` (joint trajectory, sim and real arm) and `joint_state_broadcaster` (sim and MoveIt demo, not the real arm: ADR-0004) |
@@ -174,7 +174,7 @@ python3 /ws/src/braco_description/scripts/my_test.py --real --speed 15
 | Stuck on `Requesting list of world names` | Gazebo's processes cannot find each other: `GZ_IP` must be `127.0.0.1` (set by `docker/compose.yml`; recreate the containers after pulling it) |
 | `Moved backwards in time`, `Controller already loaded`, `no controller with this name exists` | Two simulations on one `ROS_DOMAIN_ID`: `gazebo.launch.py` in `dev` while the `sim` container runs (both on your `PC_ROS_DOMAIN_ID`). For a window on `sim`: `make sim-gui`. For a second Gazebo: step 4 |
 | `arm_controller not found on ROS domain ...` | The shell is not on the simulation's domain: a `dev` shell is on your `PC_ROS_DOMAIN_ID` (the `sim` container); for your own Gazebo, `export` its domain |
-| `/joint_states` values like `1e-11` on domain 22 | That is a simulation, not the real arm: someone runs Gazebo on 22. Give it its own domain |
+| `/joint_states` with `gripper_controller` or values like `1e-4` on domain 22 | That is a simulation, not the real arm: someone runs Gazebo on 22. Give it its own domain |
 | The `sim` container stopped | Gazebo exited: `make logs`, then `make up` |
 | `Command of at least one joint is out of limits` | The joint limiter capping a move faster than the measured joint speed; the move still finishes |
 | The model looks old after a change to the URDF or meshes | Gazebo reads the model at launch: Ctrl-C and launch again |
@@ -197,7 +197,10 @@ ros2 run braco_description park.py --real       # asks before the real arm moves
 # Gazebo and the real arm must be on different ROS domains (both publish /joint_states):
 # Gazebo on this shell's ROS_DOMAIN_ID, the real arm on --real-domain (default 22)
 
-# fingers with the vendor linkage (one slider): gripper_actuated:=true
+# the gripper in Gazebo (radians of its master joint gripper_controller: -0.74 closed .. 0.15 open)
+ros2 action send_goal /gripper_action_controller/gripper_cmd control_msgs/action/ParallelGripperCommand \
+  "{command: {name: [gripper_controller], position: [-0.74]}}"
+# the model with that linkage (one master joint, five mimic joints): gripper_actuated:=true
 # check the model by hand
 xacro urdf/braco.urdf.xacro > /tmp/braco.urdf && check_urdf /tmp/braco.urdf
 ```

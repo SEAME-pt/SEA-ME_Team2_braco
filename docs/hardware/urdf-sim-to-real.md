@@ -244,7 +244,7 @@ Gazebo can still behave differently on the arm:
 | On the real arm | In Gazebo |
 |---|---|
 | Speed is the firmware's setting 1..100, about 0.0265 rad/s per unit (see "Limits") | The trajectory's `time_from_start`, capped by the URDF `velocity` limits |
-| A servo stops up to ~3° short of a target (dead zone, `DEADBAND_DEG` in `scripts/braco_arm.py`) | Reaches the target exactly (0.000 rad). `arm_controller`'s goal tolerance (0.07 rad, 4°) is above the dead zone, so both count as reached |
+| A servo stops up to ~3° short of a target (dead zone, `DEADBAND_DEG` in `scripts/braco_arm.py`) | Reaches the target within ~0.002 rad. `arm_controller`'s goal tolerance (0.07 rad, 4°) is above the dead zone, so both count as reached |
 | `sendAngles` clamps to `JOINT_LIMITS` and refuses poses that hit the table (`minHeightMm`) | gz_ros2_control clamps to the URDF limits (and logs `Command of at least one joint is out of limits`); a pose under the table is not refused, the arm presses on the ground plane and stops short (J2 = 160° stops at 124°) |
 | Only the control owner moves the arm ([ADR-0002](../decisions/ADR-0002-unique-control.md)); STOP from anyone | `arm_controller` accepts any trajectory |
 | Rest on overheat, servo temperatures and voltages ([ADR-0003](../decisions/ADR-0003-rest-per-temp.md)) | No temperatures; never rests |
@@ -255,7 +255,9 @@ owner and the speed setting are only checked on the real arm (`--real` of the `b
 
 ## Known gaps
 
-- Gripper not actuated: the driver does not publish the finger state. With `gripper_actuated:=false` they stay fixed open.
+- Gripper not actuated on the real arm: the driver does not publish the finger state, so the real model keeps
+  `gripper_actuated:=false` (fingers fixed open). Gazebo builds it with `gripper_actuated:=true` and drives it
+  (`gripper_action_controller`, #123); there it closes slowly, about 0.13 rad/s (6 s for the whole stroke).
 - Masses are documented totals with an estimated split; efforts are a payload-based approximation; inertias are
   cylinders. The joint velocities are measured.
 - Collision = the vendor mesh itself (heavy). Worth simplifying later for MoveIt/Gazebo.
