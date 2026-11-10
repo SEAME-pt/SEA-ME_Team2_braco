@@ -16,10 +16,10 @@ are in [`docs/hardware/urdf-sim-to-real.md`](../../../docs/hardware/urdf-sim-to-
 |---|---|
 | `urdf/braco.urdf.xacro` | The whole robot: `world` -> G-base -> arm -> `tool0` -> gripper, `tcp`, camera frames |
 | `urdf/mycobot_280.urdf.xacro` | The arm (macro): `base_link`, `link1..link6`, `joint1..joint6` |
-| `urdf/adaptive_gripper.xacro` | The gripper (macro), fingers fixed open or with the vendor linkage |
-| `urdf/braco.gazebo.xacro` | The simulation's hardware (`GazeboSimSystem`) on `joint1..joint6`, only with `gazebo:=true` |
+| `urdf/adaptive_gripper.xacro` | The gripper (macro), fingers fixed open (real arm) or with the vendor linkage (Gazebo) |
+| `urdf/braco.gazebo.xacro` | The simulation's hardware (`GazeboSimSystem`) on `joint1..joint6` and the wrist camera sensor, only with `gazebo:=true` |
 | `urdf/braco.real.xacro` | The real arm's hardware (`braco_hardware`) on `joint1..joint6`, only with `real_arm:=true` |
-| `config/controllers.yaml` | The controllers: `arm_controller` (sim and real arm), `joint_state_broadcaster` (sim and MoveIt demo only) |
+| `config/controllers.yaml` | The controllers: `arm_controller` (sim and real arm), `joint_state_broadcaster` (sim and MoveIt demo only), `gripper_action_controller` (sim only) |
 | `meshes/` | Visual and collision meshes of Elephant Robotics (`LICENSE.elephantrobotics`) |
 | `test/test_urdf.py` | Keeps the URDF and the code in sync |
 
@@ -27,7 +27,7 @@ are in [`docs/hardware/urdf-sim-to-real.md`](../../../docs/hardware/urdf-sim-to-
 
 | Who | Builds the model with | Hardware under the controllers |
 |---|---|---|
-| Simulation ([`braco_simulation`](../braco_simulation/README.md)) | `gazebo:=true` | `GazeboSimSystem` |
+| Simulation ([`braco_simulation`](../braco_simulation/README.md)) | `gazebo:=true gripper_actuated:=true` | `GazeboSimSystem` |
 | Real arm (`braco_bringup`, `sim:=false`) | `real_arm:=true` | `braco_hardware` ([ADR-0004](../../../docs/decisions/ADR-0004-trajectories-through-arm-driver.md)) |
 | MoveIt demo (`braco_moveit_config`) | no option (adds its own mock) | `mock_components/GenericSystem` |
 

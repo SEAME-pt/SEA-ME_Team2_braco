@@ -15,8 +15,9 @@
     <chain base_link="base_link" tip_link="tcp"/>
   </group>
 
-  <!-- The adaptive gripper. Its fingers are fixed for now (gripper_actuated:=false), so the group
-       has links only: it marks what the end effector is, it is not planned. -->
+  <!-- The adaptive gripper. The group has links only: it marks what the end effector is, it is
+       not planned. Its fingers are fixed on the real arm (gripper_actuated:=false) and move in
+       Gazebo (gripper_actuated:=true, gripper_action_controller), outside MoveIt. -->
   <group name="gripper">
     <link name="gripper_base"/>
     <link name="gripper_left1"/>
@@ -122,7 +123,7 @@
   <!-- Turned off by hand (measured with move_group's /check_state_validity; kept by the
        updater's keep option):
          gripper_left1/left2, gripper_right1/right2: bars of the same finger linkage, touching
-           (0 to 0.01 mm) by construction; the gripper is fixed (gripper_actuated:=false).
+           (0 to 0.01 mm) by construction, at every opening (the linkage keeps them pinned).
          base_link/link2: 1.3 mm overlap of the vendor meshes in park, the folded pose the real
            arm reaches (make park). link2 can only come near the base at J2's end of travel. -->
   <disable_collisions link1="gripper_left1" link2="gripper_left2" reason="User"/>

@@ -75,3 +75,12 @@ def test_arm_spawns_on_the_lab_bench_table():
     assert default('robot_x') - pedestal_depth / 2 == pytest.approx(centre[0] - long_side / 2)
     assert default('robot_y') - pedestal_width / 2 >= centre[1] - short_side / 2
     assert default('robot_y') + pedestal_width / 2 <= centre[1] + short_side / 2
+
+
+def test_world_runs_the_systems_the_model_needs():
+    # #123: the gripper's five mimic joints need a physics engine that enforces <mimic> (Bullet
+    # Featherstone; DART does not), and the wrist camera renders only with the Sensors system.
+    world = ET.parse(os.path.join(PACKAGE_DIR, 'worlds', 'lab_bench.sdf')).getroot()
+    engine = world.find(".//plugin[@name='gz::sim::systems::Physics']/engine/filename")
+    assert engine is not None and 'bullet-featherstone' in engine.text
+    assert world.find(".//plugin[@name='gz::sim::systems::Sensors']") is not None

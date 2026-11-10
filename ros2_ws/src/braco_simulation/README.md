@@ -15,7 +15,7 @@ The braco arm in Gazebo, on the PC, standing on a copy of the lab bench. It uses
 | `launch/gazebo.launch.py` | Starts Gazebo with the lab bench, puts the arm on the table and starts the controllers |
 | `launch/gazebo_gui.launch.py` | Only the Gazebo window, on a simulation already running (`make gaze-gui`) |
 | `config/gazebo_gui.config` | The Gazebo window's first view, close to the arm |
-| `worlds/lab_bench.sdf` | The scene: floor, light and the two tables of the real bench |
+| `worlds/lab_bench.sdf` | The scene: floor, light, the two tables of the real bench; Bullet physics and the camera's Sensors system |
 | `models/lab_table/` | One table of the bench (static, the top collides) |
 | `scripts/move_joint.py` | Moves one joint (`move_joint.py 2 30`: joint2 to 30°) |
 | `scripts/move_arm_example.py` | A few poses, written once: copy it to make your own |
@@ -29,9 +29,10 @@ The braco arm in Gazebo, on the PC, standing on a copy of the lab bench. It uses
 | Piece | Where it comes from |
 |---|---|
 | The robot model (URDF) | `braco_description`, with `gazebo:=true` |
-| The controllers (`arm_controller`, `joint_state_broadcaster`) | `braco_description/config/controllers.yaml` |
+| The controllers (`arm_controller`, `joint_state_broadcaster`, `gripper_action_controller`) | `braco_description/config/controllers.yaml` (the gripper one is simulation only) |
 | The hardware plugin | `GazeboSimSystem` (on the real arm: `braco_hardware`) |
 | `/joint_states` | `joint_state_broadcaster` (on the real arm: `arm_driver`) |
+| `/camera/image_raw/compressed` | The wrist camera sensor, through `ros_gz_image` (on the real arm: `camera`) |
 
 It runs on **your ROS domain** (`PC_ROS_DOMAIN_ID` in `docker/.env`, one per teammate, 20–29:
 [table](../../../docker/README.md#ros-domain-per-teammate)), never the real arm's 22: both publish `/joint_states`.
@@ -46,7 +47,7 @@ On the PC, from the repo root:
 | 2. Watch | `make web` → http://localhost:8000 | The 3D arm in the web page; the Control tab moves it |
 | | `make gaze-gui`, `make rviz-gui`, `make sim-gui` | The Gazebo window, RViz with MoveIt, or both. Closing one leaves the simulation running |
 | 3. Move | in `make shell`: `ros2 run braco_simulation move_joint.py 2 30` | joint2 goes to 30° |
-| 4. Check | `ros2 control list_controllers` | `arm_controller` and `joint_state_broadcaster` active |
+| 4. Check | `ros2 control list_controllers` | `arm_controller`, `joint_state_broadcaster` and `gripper_action_controller` active |
 | 5. Stop | `make down` | |
 
 Use the GPU: without one (`GPU=none`) Gazebo draws on the CPU and is slow or freezes. Pass `SIM=1` on every
@@ -63,6 +64,13 @@ ros2 run braco_simulation park.py --real           # then the same on the real a
 ros2 topic pub --once /arm_controller/joint_trajectory trajectory_msgs/msg/JointTrajectory \
   "{joint_names: [joint1, joint2, joint3, joint4, joint5, joint6],
     points: [{positions: [0.5, 0.3, -0.3, 0.0, 0.0, 0.0], time_from_start: {sec: 2}}]}"
+
+# the gripper (radians of its master joint gripper_controller: -0.74 closed .. 0.15 open)
+ros2 action send_goal /gripper_action_controller/gripper_cmd control_msgs/action/ParallelGripperCommand \
+  "{command: {name: [gripper_controller], position: [-0.74]}}"
+
+# the wrist camera (or view /camera/image_raw in RViz, rqt_image_view)
+ros2 topic hz /camera/image_raw/compressed
 ```
 
 Your own moves: copy `scripts/move_arm_example.py` to `scripts/my_test.py`, edit its `MOVES` list and run
@@ -88,7 +96,11 @@ them, next to the gap, facing the table top.
 | Gazebo's origin | On the floor, under the gap, at the rear edge. x along the gap, y across it, z up. The top is at 0.75 m |
 | The model's `world` frame | Stays the table surface: TF, MoveIt and the table-clearance check do not change. Only the spawn pose places the arm |
 | The pedestal | Grey, only the look of `g_base` with `gazebo:=true`, as tall as the real mount (30 mm) |
-| Collisions | The table stops the arm in Gazebo, but `arm_controller` still reports the goal as done: compare `/joint_states` with the target. MoveIt does not know the table yet |
+| Collisions | The table stops the arm in Gazebo and `arm_controller` ends the goal as failed (`PATH_TOLERANCE_VIOLATED` or `GOAL_TOLERANCE_VIOLATED`; through MoveIt, `CONTROL_FAILED`): within 0.3 rad of the trajectory while moving, within 0.07 rad of the last point 0.5 s after it (`constraints` in `controllers.yaml`) |
+| MoveIt knows the table | `braco_moveit_config`'s `sim.launch.py` adds the table tops to the planning scene (`lab_bench_scene.py`, read from `lab_bench.sdf` and `lab_table/model.sdf`): MoveIt refuses a goal in the table (`GOAL_STATE_INVALID`) or plans around it. Their top is the table surface, not the real arm's 20 mm margin (`TABLE_MARGIN_MM`): `arm_driver` still refuses that part |
+| The gripper | Moves only here (`gripper_actuated:=true`, `gripper_action_controller`); Bullet Featherstone enforces its five mimic joints. On the real arm the fingers stay fixed |
+| Wrist camera | A sensor at `camera_link`, 640×480 at 15 Hz like the real one, on the real camera's topics, so the web page shows it as is. Field of view (60°) `UNMEASURED`. Renders on the GPU, also with `gui:=false` |
+| One simulation per domain | `gazebo.launch.py` (and `sim.launch.py`) refuses to start when a `/controller_manager` already runs (e.g. the `sim` container): use that one, or `make down` first |
 | Unmeasured | The table and pedestal sizes and the arm's position are provisional (`UNMEASURED` in the files) |
 
 Move the arm without editing a file (`braco.launch.py sim:=true` passes the same arguments on):
@@ -107,7 +119,7 @@ ros2 launch braco_simulation gazebo.launch.py world:=empty.sdf robot_z:=0       
 | Stuck on `Requesting list of world names` | `GZ_IP` must be `127.0.0.1` (set by `docker/compose.yml`): recreate the containers |
 | `Controller already loaded`, `Moved backwards in time` | Two simulations on one domain. Give your own Gazebo another `ROS_DOMAIN_ID` |
 | `arm_controller not found on ROS domain ...` | The shell is on another domain than the simulation |
-| `/joint_states` values like `1e-11` on domain 22 | That is a simulation, not the real arm: someone runs Gazebo on 22 |
+| `/joint_states` with `gripper_controller` or values like `1e-11` on domain 22 | That is a simulation, not the real arm: someone runs Gazebo on 22 |
 | `Command of at least one joint is out of limits` | The joint limiter slowing a too-fast move; the move still finishes |
 | The `sim` container stopped | Gazebo exited: `make logs`, then `make up SIM=1` |
 | The model looks old after a URDF change | Gazebo reads the model at start: launch it again |

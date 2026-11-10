@@ -30,9 +30,9 @@ Each layer talks only to the one below it. Layers 1–2 are identical in simulat
 |---|---|---|---|
 | **1 Mission and clients** | Decide what the arm does; take the control before moving | `braco_web`, `joystick_teleop`, `temperature_monitor`, `zero` / `park`; planned: `braco_mission`, MoveIt 2 | same nodes |
 | **2 ROS 2 middleware** | The contract: names and types | DDS domain 22; `/joint_states`, `/arm/command`, `/arm/*`, `/diagnostics` | same names, each teammate's domain (20–29); `FollowJointTrajectory` on `/arm_controller` |
-| **3 Hardware abstraction** | Device access and safety | `arm_driver`, `camera`, `mycobot_cpp`; `ros2_control_node` with `braco_hardware` | `gz_ros2_control` (`controller_manager`, `arm_controller`, `joint_state_broadcaster`) |
+| **3 Hardware abstraction** | Device access and safety | `arm_driver`, `camera`, `mycobot_cpp`; `ros2_control_node` with `braco_hardware` | `gz_ros2_control` (`controller_manager`, `arm_controller`, `joint_state_broadcaster`, `gripper_action_controller`) |
 | **4 Servo controller** | Drives the servo bus | Atom (ESP32, firmware 7.3) | Gazebo physics |
-| **5 Sensors and actuators** | What moves and senses | 6 servos, gripper; camera, joystick, LCD1602 wired to the Jetson | simulated `joint1..joint6`, gripper |
+| **5 Sensors and actuators** | What moves and senses | 6 servos, gripper; camera, joystick, LCD1602 wired to the Jetson | simulated `joint1..joint6`, gripper, wrist camera |
 
 ---
 
@@ -54,6 +54,8 @@ Each layer talks only to the one below it. Layers 1–2 are identical in simulat
    HTTP/WS :8000          /dev/input/js0               I2C LCD1602
 ```
 
+Also on the real arm (`sim:=false`), with no device of their own: `robot_state_publisher` (the URDF on `/robot_description`, `/tf` from `/joint_states`) and `ros2_control_node` with the `braco_hardware` plugin, which reads `/joint_states` from `arm_driver` (ADR-0004).
+
 A motion command passes the `arm_driver` gates in order:
 
 1. **STOP** is always obeyed.
@@ -67,7 +69,9 @@ A motion command passes the `arm_driver` gates in order:
 
 | Name | Type | From | Used by |
 |---|---|---|---|
-| `/joint_states` | `sensor_msgs/JointState`, 20 Hz nominal (18.7 measured; ~14 under continuous commands, [timing](timing-budget.md)) | `arm_driver` | teleop, page, zero/park |
+| `/joint_states` | `sensor_msgs/JointState`, 20 Hz nominal (18.7 measured; ~14 under continuous commands, [timing](timing-budget.md)) | `arm_driver` | teleop, page, zero/park, `braco_hardware` (in `ros2_control_node`), `robot_state_publisher` |
+| `/robot_description` | `std_msgs/String`, latched (the URDF, `real_arm:=true`) | `robot_state_publisher` | `ros2_control_node` |
+| `/tf`, `/tf_static` | `tf2_msgs/TFMessage` | `robot_state_publisher` | MoveIt, RViz, Foxglove |
 | `/arm/command` | `braco_interfaces/ArmCommand` (`STOP`, `JOINTS`, `ALL_ANGLES`, `source`) | clients | `arm_driver` |
 | `/arm/led` | `std_msgs/ColorRGBA` | teleop, page | `arm_driver` |
 | `/arm/servo_temperatures` | `braco_interfaces/ServoTemperatures`, 2 s | `arm_driver` | `temperature_monitor`, page |
@@ -75,7 +79,7 @@ A motion command passes the `arm_driver` gates in order:
 | `/arm/read_only` | `std_msgs/Bool`, latched | `arm_driver` | page |
 | `/arm/control_owner` | `std_msgs/String`, latched (`""` = free) | `arm_driver` | teleop, page |
 | `/diagnostics` | `diagnostic_msgs/DiagnosticArray` | `temperature_monitor` | page |
-| `/camera/image_raw/compressed` | `sensor_msgs/CompressedImage`, ≤15 fps | `camera` | page |
+| `/camera/image_raw/compressed` | `sensor_msgs/CompressedImage`, ≤15 fps, frame `camera_optical_frame` | `camera` (sim: Gazebo's wrist camera, `ros_gz_image`) | page |
 | `/arm/take_control` | `braco_interfaces/TakeControl` | `arm_driver` | teleop, page, zero/park |
 | `/arm/power_on`, `/arm/release_servos` | `std_srvs/Trigger` | `arm_driver` | teleop, page, zero/park |
 | `/arm/set_gripper`, `/arm/set_read_only` | `std_srvs/SetBool` | `arm_driver` | clients, `temperature_monitor` |
@@ -205,9 +209,12 @@ braco_mission ┄► MoveIt 2 ──trajectory──┬──► real: braco_har
 - Every mesh declares the COLLADA unit 1 and the URDF scales the millimetre ones: MoveIt ignores the unit and would
   otherwise check collisions on meshes 1000x too big.
 - The URDF (`braco_description`) uses the joint names of `/joint_states` and the limits of `JOINT_LIMITS`.
-- `sim:=true` runs in the lab bench scene (`worlds/lab_bench.sdf`). Its `world` frame stays the table surface: only the spawn pose places the arm, so TF, MoveIt and the table-clearance check do not change. MoveIt does not know the table yet: [The lab bench](../../ros2_ws/src/braco_simulation/README.md#the-lab-bench).
+- `sim:=true` runs in the lab bench scene (`braco_simulation/worlds/lab_bench.sdf`). Its `world` frame stays the table surface: only the spawn pose places the arm, so TF, MoveIt and the table-clearance check do not change. MoveIt plans around the table: `sim.launch.py` puts the table tops of the same scene into its planning scene (`braco_moveit_config/scripts/lab_bench_scene.py`), so a pose in the table is refused before the arm moves: [The lab bench](../../ros2_ws/src/braco_simulation/README.md#the-lab-bench).
+- A goal the arm does not reach fails: `arm_controller` aborts it when a joint falls more than 0.3 rad behind the trajectory (`PATH_TOLERANCE_VIOLATED`) or is more than 0.07 rad from its last point 0.5 s after its end (`GOAL_TOLERANCE_VIOLATED`), and MoveIt returns `CONTROL_FAILED`, so the mission sees a blocked or stalled arm (`constraints` in `controllers.yaml`).
+- In simulation the gripper moves: `gazebo.launch.py` builds the model with `gripper_actuated:=true` and adds `gripper_action_controller` (`/gripper_action_controller/gripper_cmd`, `ParallelGripperCommand`), outside MoveIt's `arm` group. The world runs Bullet Featherstone, the physics engine that enforces the gripper's five mimic joints. On the real arm the fingers stay fixed: the driver has no gripper state.
+- In simulation the wrist camera renders too: a camera sensor at `camera_link` (`braco.gazebo.xacro`), 640×480 at 15 Hz like the real one, rendered by the world's Sensors system. `gazebo.launch.py` bridges it to the real camera's topic, `/camera/image_raw/compressed` (plus `/camera/image_raw` and `/camera/camera_info`), in `camera_optical_frame`, so the page shows it unchanged. Its field of view (60°) is not measured yet.
 - Sim and real arm share one controller file (`braco_description/config/controllers.yaml`):
-  `arm_controller` on both, `joint_state_broadcaster` only in simulation.
+  `arm_controller` on both, `joint_state_broadcaster` and `gripper_action_controller` only in simulation.
 - Only the hardware plugin in the URDF differs: `GazeboSimSystem` in simulation,
   `braco_hardware/BracoSystem` on the real arm (`real_arm:=true`). Today it only reads the joints;
   sending commands is #101.
