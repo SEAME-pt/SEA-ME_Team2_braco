@@ -126,11 +126,11 @@ PY_FILES  = $(shell git ls-files '*.py')
 # Use the venv's pinned ruff and clang-format (make setup) even when the venv is not activated.
 format format-check: export PATH := $(CURDIR)/$(VENV)/bin:$(PATH)
 
-.PHONY: ci web-test ci-image ci-ros coverage cppcheck tidy lint format format-check
+.PHONY: ci web-test timing-test ci-image ci-ros coverage cppcheck tidy lint format format-check
 
 ##@ CI (.github/workflows/ci.yml)
 
-ci: format-check lint web-test ## The `host` CI job: format check, lint, web page tests (with coverage)
+ci: format-check lint web-test timing-test ## The `host` CI job: format check, lint, web page and timing script tests
 
 # The web tests measure the coverage of web/server (lines and branches); the table lists the lines no test runs,
 # and the job fails below COV_MIN_WEB.
@@ -141,6 +141,10 @@ web-test: $(VENV)/.web-test-installed ## Web page tests (pytest web/tests) with 
 	$(VENV)/bin/python -m coverage json -q -o coverage.json || true; \
 	$(VENV)/bin/python scripts/coverage_summary.py --coverage-py "Web (web/server)" coverage.json $(COV_MIN_WEB) \
 		>> $(STEP_SUMMARY); exit $$st
+
+# The pure parts of the bench scripts (scripts/timing, #90): reply framing and statistics. No serial port, no ROS.
+timing-test: $(VENV)/.web-test-installed ## Unit tests of the timing scripts (pytest scripts/timing)
+	cd scripts/timing && $(abspath $(VENV))/bin/python -m pytest -q -p no:cacheprovider test_timing.py
 
 ci-image: ## Build the `ros` CI job's image (Dockerfile stage CI_TARGET=ci) as CI_IMAGE, for your UID/GID
 	@docker buildx version >/dev/null 2>&1 || { echo "$(BUILDX_MISSING)" >&2; exit 1; }
@@ -164,11 +168,14 @@ tidy: ## clang-tidy on the C++ packages of ros2_ws/src (ros2_ws/.clang-tidy), fr
 	@docker image inspect $(CI_IMAGE) >/dev/null 2>&1 || $(MAKE) --no-print-directory ci-image
 	$(CI_RUN) bash -c '$(CI_TIDY_SH)'
 
-lint: $(ENV_FILE) $(VENV)/.installed ## Compose files, ruff check, shellcheck and hadolint (binaries or their docker images)
+lint: $(ENV_FILE) $(VENV)/.installed ## Compose files, the team's ROS domains, ruff check, shellcheck and hadolint (binaries or their docker images)
 	@echo "== compose =="
 	@for r in pc jetson; do COMPOSE_PROFILES=$$r $(DC) config -q && echo "  $(COMPOSE_BASE) ($$r): ok"; done
 	@COMPOSE_PROFILES=jetson I2C_GID= INPUT_GID= $(DC) config -q && echo "  $(COMPOSE_BASE) (jetson): ok without i2c/input groups"
 	@for g in nvidia dri; do COMPOSE_PROFILES=pc docker compose --project-directory $(DOCKER_DIR) -f $(COMPOSE_BASE) -f $(COMPOSE_DIR)/$$g.yml config -q && echo "  $(COMPOSE_DIR)/$$g.yml: ok"; done
+	@echo "== ROS domains =="
+	@bash $(TEAM_DOMAIN) check
+	@bash $(TESTS_DIR)/team-domain-test.sh
 	@echo "== Python =="
 	@$(VENV)/bin/ruff check -q $(PY_FILES) && echo "  ruff check: clean"
 	@echo "== shell scripts =="

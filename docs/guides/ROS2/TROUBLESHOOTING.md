@@ -7,7 +7,7 @@ that causes them:
 |---|---|
 | Building the Docker image | [docker/README.md → If the build fails](../../../docker/README.md#10-if-the-build-fails) |
 | Setting up your machine (Docker, NVIDIA, `make doctor`) | [dev-setup.md → Problems](../dev-setup.md#problems) |
-| The simulation / Gazebo | [braco_description → When something goes wrong](../../../ros2_ws/src/braco_description/README.md#when-something-goes-wrong) |
+| The simulation / Gazebo | [braco_simulation → When something goes wrong](../../../ros2_ws/src/braco_simulation/README.md#when-something-goes-wrong) |
 | A hot arm, or the arm does nothing | [overheating guide](../overheating.md) |
 | ROS 2: build, tests, topics, two machines, GUI tools | Below, in this file |
 
@@ -81,10 +81,10 @@ Go through this list in order.
 |---|---|---|
 | Nodes on the other machine do not appear at all | Different `ROS_DOMAIN_ID` or `RMW_IMPLEMENTATION` | Compare `printenv | grep -E 'ROS_DOMAIN_ID|RMW'` on both. They come from `docker/.env`; make them identical and `make down && make up` |
 | Still nothing, IDs match | Multicast blocked (typical on Wi-Fi / campus networks) | Test with `ros2 multicast receive` (A) and `ros2 multicast send` (B). If it fails, set `ROS_STATIC_PEERS` to the other machine's IP in `docker/compose.yml` (`x-ros-env`), or use a wired connection / own router |
-| Still nothing | Firewall | `sudo ufw status`. Allow UDP from the other machine: `sudo ufw allow from <other-ip>` |
+| Still nothing (`make domain-check`: 0 `/joint_states`), though ping and the web page work | Firewall: ufw drops incoming DDS UDP (default `DROP`) | `sudo ufw status`. Allow DDS for domains 20–29 from your subnet (`ip route`; e.g. `10.20.0.0/16`): `sudo ufw allow proto udp from <subnet> to any port 12400:14899 comment 'ROS 2 DDS, domains 20-29'` (each PC) |
 | Still nothing | Discovery range | `ROS_AUTOMATIC_DISCOVERY_RANGE` must be `SUBNET` (our default), not `LOCALHOST`, and both machines in the same subnet |
 | Nodes appear but no data, or only small messages arrive | Network MTU / fragmentation, or very large messages over Wi-Fi | Test with small messages first; for images use `SensorDataQoS`, lower resolution or compressed images |
-| Two teams see each other's nodes | Same domain ID on a shared network | Agree on a different `ROS_DOMAIN_ID` per team (0 to 101) |
+| Two teams see each other's nodes | Same domain ID on a shared network | Agree on a different `ROS_DOMAIN_ID` per team (0 to 101, [why](https://github.com/ros2/ros2_documentation/blob/rolling/source/ROS-Framework/nodes/About-Domain-ID.rst)) |
 | Timestamps / tf look wrong across machines | Clocks out of sync | Enable NTP on both hosts (`timedatectl status`; install `chrony`) |
 | `ros2 node list` shows nodes that were stopped, or misses new ones | CLI daemon cache | `ros2 daemon stop; ros2 daemon start` |
 | Duplicate node names warning | Two nodes with the same name (e.g. same program on both machines) | Rename one: `--ros-args -r __node:=talker_jetson` |
@@ -117,7 +117,7 @@ Go through this list in order.
 | `rqt_graph: command not found` on the PC | Lyrical no longer installs a `rqt_graph` shortcut in `/opt/ros/lyrical/bin` (only `rqt` and `rqt_bag`) | `ros2 run rqt_graph rqt_graph` or `rqt --standalone rqt_graph`, inside the container (`make shell`), not on the host |
 | `rqt_graph: command not found` on the Jetson | The Jetson image is headless on purpose | Run `ros2 run rqt_graph rqt_graph` on the PC; it shows the Jetson's nodes over the network |
 | rqt_graph is empty or outdated | Not refreshed, or filters | Press refresh; select "Nodes/Topics (all)"; uncheck the "Hide" options |
-| RViz2/Gazebo very slow | Software rendering (no GPU) | See [Gazebo slow](../../../ros2_ws/src/braco_description/README.md#when-something-goes-wrong) |
+| RViz2/Gazebo very slow | Software rendering (no GPU) | See [Gazebo slow](../../../ros2_ws/src/braco_simulation/README.md#when-something-goes-wrong) |
 
 ## Jetson / hardware
 
