@@ -16,10 +16,12 @@
 The simulated braco arm: the model in Gazebo (gz sim), driven by ros2_control.
 
 Starts Gazebo with the lab bench (worlds/lab_bench.sdf), spawns the model on the table
-(gazebo:=true adds gz_ros2_control), bridges /clock and starts the controllers of
-config/controllers.yaml (the same set planned for the real arm): joint_state_broadcaster, then
-arm_controller, once the model is in, then gripper_action_controller (simulation only: the model
-is built with gripper_actuated:=true, the real arm keeps its fingers fixed).
+(gazebo:=true adds gz_ros2_control and the wrist camera), bridges /clock and the camera
+(/camera/image_raw, /camera/image_raw/compressed, /camera/camera_info) and starts the
+controllers of config/controllers.yaml (the same set planned for the real arm):
+joint_state_broadcaster, then arm_controller, once the model is in, then
+gripper_action_controller (simulation only: the model is built with gripper_actuated:=true, the
+real arm keeps its fingers fixed).
 
 The model's `world` frame is the table surface, so its spawn pose is where the arm stands in the
 scene: robot_x and robot_y on the table, robot_z its height, robot_yaw about z (0: the arm's front
@@ -156,7 +158,12 @@ def generate_launch_description():
         Node(package='robot_state_publisher', executable='robot_state_publisher', output='screen',
              parameters=[{'robot_description': robot_description, 'use_sim_time': True}]),
         Node(package='ros_gz_bridge', executable='parameter_bridge', output='screen',
-             arguments=['/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock']),
+             arguments=['/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock',
+                        '/camera/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo']),
+        # The wrist camera's images, through image_transport: /camera/image_raw and its
+        # /compressed variant, the topic the real camera publishes (and the web page reads)
+        Node(package='ros_gz_image', executable='image_bridge', output='screen',
+             arguments=['/camera/image_raw']),
         spawn,
         # The window starts tracking the arm (gui:=true only)
         Node(package='braco_description', executable='gz_track_arm.sh', output='screen',
