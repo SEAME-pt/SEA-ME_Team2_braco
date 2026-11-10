@@ -31,6 +31,8 @@ echo 'OTHER=1' > "$TMP/env"
 TEAM_LOGIN=magusk89 run;   expect "no PC_ROS_DOMAIN_ID line: added"      0 24 $?
 printf 'x\tX\t22\n' >> "$TMP/table.tsv"
 TEAM_LOGIN=magusk89 run;   expect "table with 22: refused, kept"         1 24 $?
+printf 'magusk89\tMagusk\t24\nx\tX\t29\n' > "$TMP/table.tsv"
+TEAM_LOGIN=magusk89 run;   expect "table with 29: refused, kept"         1 24 $?
 printf '# comments only\n' > "$TMP/table.tsv"
 TEAM_LOGIN=magusk89 run;   expect "empty table: refused, kept"           1 24 $?
 
