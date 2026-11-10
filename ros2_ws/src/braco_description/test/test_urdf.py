@@ -26,6 +26,7 @@ Processes braco.urdf.xacro and checks that
   * the model's zero pose has not moved by accident (see ZERO_TOOL0)
   * gazebo:=true controls exactly joint1..joint6, and the plain model has no ros2_control
   * config/controllers.yaml: arm_controller drives joint1..joint6
+  * gazebo:=true has the wrist camera at camera_link, sized like the real camera
 """
 
 import math
@@ -279,6 +280,31 @@ def test_gripper_action_controller_drives_the_master_joint():
     assert manager['gripper_action_controller']['type'] == \
         'parallel_gripper_action_controller/GripperActionController'
     assert config['gripper_action_controller']['ros__parameters']['joint'] == 'gripper_controller'
+
+
+def test_gazebo_wrist_camera_matches_the_real_camera():
+    # #123: Gazebo renders the wrist camera at camera_link, with the real camera's size and rate
+    # (braco_bringup/config/braco.yaml) and its images in camera_optical_frame, like the real
+    # ones. The world must load the Sensors system, or no camera renders.
+    yaml = pytest.importorskip('yaml')
+    robot = load_urdf(gazebo='true')
+    sensors = [(g.get('reference'), s) for g in robot.findall('gazebo')
+               for s in g.findall("sensor[@type='camera']")]
+    assert len(sensors) == 1
+    reference, sensor = sensors[0]
+    assert reference == 'camera_link'
+    assert sensor.find('gz_frame_id').text == 'camera_optical_frame'
+    assert sensor.find('topic').text == '/camera/image_raw'
+    bringup = os.path.join(PACKAGE_DIR, '..', 'braco_bringup', 'config', 'braco.yaml')
+    with open(bringup, encoding='utf-8') as f:
+        real = yaml.safe_load(f)['camera']['ros__parameters']
+    image = sensor.find('camera/image')
+    assert int(image.find('width').text) == real['width']
+    assert int(image.find('height').text) == real['height']
+    assert float(sensor.find('update_rate').text) == real['fps']
+    assert load_urdf().find('.//sensor') is None   # the real arm's model has no sensor
+    world = ET.parse(os.path.join(PACKAGE_DIR, 'worlds', 'lab_bench.sdf')).getroot()
+    assert world.find(".//plugin[@name='gz::sim::systems::Sensors']") is not None
 
 
 def test_fixed_gripper_has_no_movable_finger_joints():
