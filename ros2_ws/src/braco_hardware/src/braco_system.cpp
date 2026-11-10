@@ -58,6 +58,14 @@ hardware_interface::CallbackReturn BracoSystem::on_init(
 hardware_interface::CallbackReturn BracoSystem::on_configure(
   const rclcpp_lifecycle::State & /*previous_state*/)
 {
+  if (!get_node()) {
+    RCLCPP_ERROR(get_logger(), "no node from the controller manager");
+    return hardware_interface::CallbackReturn::ERROR;
+  }
+  {
+    std::lock_guard<std::mutex> lock(joint_states_mutex_);
+    latest_joint_states_.reset();
+  }
   // arm_driver publishes /joint_states (ADR-0004): keep only the latest message for read()
   joint_states_sub_ = get_node()->create_subscription<sensor_msgs::msg::JointState>(
     "/joint_states", 10,
