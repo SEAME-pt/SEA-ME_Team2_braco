@@ -123,11 +123,12 @@ private:
 class BracoSystemTest : public ::testing::Test
 {
 protected:
-  // One fixed domain instead of the runner's random one, which can be the real arm's (22), and
-  // discovery kept on this host. arm_driver inherits both through environ.
+  // Domain 28, reserved for this test (docker/config/team-domains.tsv), instead of the runner's
+  // random one, which can be the real arm's (22); discovery kept on this host. arm_driver
+  // inherits both through environ.
   static void SetUpTestSuite()
   {
-    setenv("ROS_DOMAIN_ID", "29", 1);
+    setenv("ROS_DOMAIN_ID", "28", 1);
     setenv("ROS_AUTOMATIC_DISCOVERY_RANGE", "LOCALHOST", 1);
     rclcpp::init(0, nullptr);
   }
