@@ -8,7 +8,8 @@ The page never opens the serial port: arm_driver owns it (docs/architecture/arch
 
 All of them expose start(), snapshot(), stop_motion(), go_to_pose(), move_joint()
 and wake_up() (leave rest, servos on, no movement); RosArm and MockArm also
-set_rest(), set_gripper() and set_led().
+set_rest(), set_gripper(), set_led() and release_stop(): their STOP latches like arm_driver's
+(docs/decisions/ADR-0005-stop-latch.md) and snapshot()["stopped"] shows it.
 take_control() / release_control() follow the page's control lease: RosArm asks arm_driver
 for the control (docs/decisions/ADR-0002-unique-control.md), the others have nobody to ask.
 snapshot()["capabilities"] tells the page which of these a source supports.
@@ -80,6 +81,7 @@ DIAG_TEMP_LEVELS = {'ok': 'normal', 'warn': 'warm', 'error': 'hot'}
 ANGLE_PERIOD = 0.2  # 5 Hz
 STATE_PERIOD = 1.0  # power / moving
 TEMP_PERIOD = 2.0  # same as temps_lcd.cpp: temperatures change slowly
+MOCK_STOP_HOLD_S = 3.0  # like arm_driver's stop_hold_s: the mock's STOP latches the same way
 
 
 class RestingError(RuntimeError):
@@ -89,6 +91,15 @@ class RestingError(RuntimeError):
 def check_awake(resting):
     if resting:
         raise RestingError('arm is resting, wake it up first')
+
+
+class StoppedError(RuntimeError):
+    """A STOP is latched (ADR-0005): release_stop() first, stop_hold_s after the last STOP."""
+
+
+def check_not_stopped(stopped):
+    if stopped:
+        raise StoppedError('STOP latched: release the STOP first')
 
 
 def temp_level(celsius):
@@ -142,6 +153,7 @@ class _Base:
             'volts': None,  # servo supply voltage per joint, V
             'power_on': None,
             'resting': False,  # rest mode (motion refused): set_rest() sets it, wake_up() clears
+            'stopped': False,  # STOP latched (ADR-0005): stop_motion() sets, release_stop() clears
             'moving': None,
             'gripper': None,  # "open" | "closed" | None (unknown), last commanded
             'led': None,  # [r, g, b] 0-255, last commanded
@@ -178,10 +190,11 @@ class _Base:
 class MockArm(_Base):
     """Synthetic arm: slow sine waves inside the joint limits, warming servos."""
 
-    CAPABILITIES = ('stop', 'poses', 'joints', 'wake', 'rest', 'gripper', 'led')
+    CAPABILITIES = ('stop', 'poses', 'joints', 'wake', 'rest', 'gripper', 'led', 'release_stop')
 
     def __init__(self):
         super().__init__()
+        self._last_stop = 0.0
         self._t0 = time.time()
         self._temps = [32.0, 35.0, 36.0, 38.0, 34.0, 31.0]
         self._volts = [12.0] * 6
@@ -197,9 +210,10 @@ class MockArm(_Base):
         last_temp = 0.0
         while not self._closed.is_set():
             now = time.time()
-            if self.snapshot()['resting']:
+            snap = self.snapshot()
+            if snap['resting']:
                 angles, moving = self._frozen, False  # resting: servos released
-            elif now < self._stopped_until:
+            elif snap['stopped'] or now < self._stopped_until:
                 angles, moving = self._frozen, False
             elif self._pose and now < self._pose[1] + 3 + POSE_HOLD:
                 target, started, origin = self._pose
@@ -242,28 +256,50 @@ class MockArm(_Base):
     def stop_motion(self):
         self._pose = None
         self._stopped_until = time.time() + 5
+        self._last_stop = time.time()  # a second STOP restarts the hold
+        self._update(stopped=True)
+
+    def release_stop(self):
+        if not self.snapshot()['stopped']:
+            return
+        left = self._last_stop + MOCK_STOP_HOLD_S - time.time()
+        if left > 0:
+            raise StoppedError(
+                'release refused: {:.1f} s left of the hold after the last STOP'.format(left)
+            )
+        self._stopped_until = math.inf  # like the real arm: still until a new command
+        self._update(stopped=False)
+
+    def _check_can_move(self):
+        s = self.snapshot()
+        check_not_stopped(s['stopped'])
+        check_awake(s['resting'])
 
     def go_to_pose(self, name, speed=POSE_SPEED):
         if name not in POSES:
             raise ValueError('unknown pose: ' + name)
-        check_awake(self.snapshot()['resting'])
+        self._check_can_move()
         self._start_move(POSES[name])
 
     def move_joint(self, index, angle, speed=POSE_SPEED):
-        check_awake(self.snapshot()['resting'])
+        self._check_can_move()
         target = list(self._frozen or [0.0] * 6)
         target[index] = angle
         self._start_move(target)
 
     def wake_up(self):
+        check_not_stopped(self.snapshot()['stopped'])
         self._update(power_on=True, resting=False)  # stays where it is
 
     def set_rest(self, on):
-        self.stop_motion()
+        if not on:
+            check_not_stopped(self.snapshot()['stopped'])
+        self._pose = None
+        self._stopped_until = time.time() + 5
         self._update(resting=bool(on))
 
     def set_gripper(self, closed):
-        check_awake(self.snapshot()['resting'])
+        self._check_can_move()
         self._update(gripper='closed' if closed else 'open')
 
     def set_led(self, r, g, b):
@@ -413,9 +449,11 @@ class RosArm(_Base):
         sub  /joint_states            angles (radians, joint1..joint6)
         sub  /arm/servo_temperatures  temperatures (valid = false: no answer)
         sub  /arm/read_only           rest mode (latched)
-        pub  /arm/command             STOP / ALL_ANGLES, streamed (see ROS_STEP_DEG)
+        sub  /arm/stopped             STOP latch (latched, ADR-0005): a running move is cancelled
+        pub  /arm/command             STOP / HALT / ALL_ANGLES, streamed (see ROS_STEP_DEG)
         pub  /arm/led                 Atom LED colour
         srv  /arm/power_on, /arm/release_servos, /arm/set_gripper, /arm/set_read_only
+        srv  /arm/release_stop        clears the STOP latch (refused for 3 s after the STOP)
 
         sub  /arm/control_owner       who may move the arm (latched)
         sub  /diagnostics             temperature levels, from temperature_monitor
@@ -428,7 +466,7 @@ class RosArm(_Base):
     on_control_lost(owner) is called (from a ROS thread) when another client takes it.
     """
 
-    CAPABILITIES = ('stop', 'poses', 'joints', 'wake', 'rest', 'gripper', 'led')
+    CAPABILITIES = ('stop', 'poses', 'joints', 'wake', 'rest', 'gripper', 'led', 'release_stop')
 
     def __init__(self, bridge=None):
         super().__init__()
@@ -490,6 +528,7 @@ class RosArm(_Base):
         node.create_subscription(DiagnosticArray, '/diagnostics', self._on_diagnostics, 10)
         latched = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
         node.create_subscription(Bool, '/arm/read_only', self._on_read_only, latched)
+        node.create_subscription(Bool, '/arm/stopped', self._on_stopped, latched)
         node.create_subscription(String, '/arm/control_owner', self._on_control_owner, latched)
         self._cmd_pub = node.create_publisher(ArmCommand, '/arm/command', 10)
         self._led_pub = node.create_publisher(ColorRGBA, '/arm/led', 10)
@@ -499,6 +538,7 @@ class RosArm(_Base):
             'set_gripper': node.create_client(SetBool, '/arm/set_gripper'),
             'set_read_only': node.create_client(SetBool, '/arm/set_read_only'),
             'take_control': node.create_client(TakeControl, '/arm/take_control'),
+            'release_stop': node.create_client(Trigger, '/arm/release_stop'),
         }
 
     # ---- telemetry --------------------------------------------------------------
@@ -549,6 +589,13 @@ class RosArm(_Base):
 
     def _on_read_only(self, msg):
         self._update(resting=bool(msg.data))
+
+    def _on_stopped(self, msg):
+        stopped = bool(msg.data)
+        if stopped:
+            # Whoever sent the STOP: a move of ours must not go on after the release
+            self._cancel()
+        self._update(stopped=stopped)
 
     def _on_control_owner(self, msg):
         owner = str(msg.data)
@@ -700,12 +747,24 @@ class RosArm(_Base):
         self._ready()
         if self._fresh_angles() is None:
             raise RuntimeError('no fresh /joint_states from arm_driver')
-        check_awake(self.snapshot()['resting'])
+        s = self.snapshot()
+        check_not_stopped(s['stopped'])
+        check_awake(s['resting'])
 
     def stop_motion(self):
+        """The emergency STOP: arm_driver latches it until release_stop()."""
         self._ready()
         self._cancel()
         self._publish_stop()
+
+    def release_stop(self):
+        """Clear the STOP latch. Nothing moves: a client takes the control and commands again."""
+        self._ready()
+        request = self._types['Trigger'].Request()
+        result = self._bridge.call(self._clients['release_stop'], request)
+        if not result.success:  # inside the hold: the driver says how long is left
+            raise StoppedError(result.message or 'release refused')
+        self._update(stopped=False)  # /arm/stopped confirms it
 
     def go_to_pose(self, name, speed=POSE_SPEED):
         if name not in POSES:
@@ -722,6 +781,7 @@ class RosArm(_Base):
     def wake_up(self):
         """Leave rest mode and power the servos on. The arm stays where it is."""
         self._ready()
+        check_not_stopped(self.snapshot()['stopped'])
         self._cancel()
         self._service('set_read_only', False)
         self._service('power_on')
@@ -732,12 +792,16 @@ class RosArm(_Base):
         self._ready()
         if on:
             self._cancel()
+        else:
+            check_not_stopped(self.snapshot()['stopped'])
         self._service('set_read_only', bool(on))
         self._update(resting=bool(on))
 
     def set_gripper(self, closed):
         self._ready()
-        check_awake(self.snapshot()['resting'])
+        s = self.snapshot()
+        check_not_stopped(s['stopped'])
+        check_awake(s['resting'])
         self._service('set_gripper', bool(closed))
         self._update(gripper='closed' if closed else 'open')
 
