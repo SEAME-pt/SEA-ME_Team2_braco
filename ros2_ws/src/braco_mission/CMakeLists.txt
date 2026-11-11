@@ -17,8 +17,8 @@ find_package(tf2_geometry_msgs REQUIRED)
 find_package(moveit_ros_planning_interface REQUIRED)
 find_package(braco_interfaces REQUIRED)
 
-# The steps of a goal, no ROS (mission.cpp): the node and the tests link the same code
-add_library(braco_mission_core STATIC src/mission.cpp)
+# The steps of a goal, no ROS (mission.cpp, cartesian.cpp): the node and the tests link it
+add_library(braco_mission_core STATIC src/mission.cpp src/cartesian.cpp)
 target_include_directories(braco_mission_core PUBLIC include)
 
 add_executable(move_to_pose src/move_to_pose_node.cpp)
