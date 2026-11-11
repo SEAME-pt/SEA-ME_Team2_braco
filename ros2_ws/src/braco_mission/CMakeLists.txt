@@ -43,6 +43,8 @@ if(BUILD_TESTING)
   target_include_directories(test_pose_math PRIVATE include)
   ament_add_gtest(test_mission test/test_mission.cpp)
   target_link_libraries(test_mission braco_mission_core)
+  ament_add_gtest(test_cartesian test/test_cartesian.cpp)
+  target_link_libraries(test_cartesian braco_mission_core)
 endif()
 
 ament_package()
