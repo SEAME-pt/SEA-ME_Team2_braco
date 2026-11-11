@@ -297,6 +297,11 @@ void ArmDriver::onTakeControl(const TakeControl::Request & req, TakeControl::Res
     RCLCPP_INFO(
       get_logger(), "control: %s (%s)",
       owner.empty() ? "free" : owner.c_str(), res.message.c_str());
+  } else if (!res.success && stopped_) {
+    // A held stick asks again after every answer while latched
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *get_clock(), 2000, "take_control from '%s': %s", req.source.c_str(),
+      res.message.c_str());
   } else if (!res.success) {
     RCLCPP_WARN(get_logger(), "take_control from '%s': %s", req.source.c_str(),
       res.message.c_str());
