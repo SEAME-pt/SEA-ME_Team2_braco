@@ -56,7 +56,7 @@ There is no hardwired e-stop, so STOP on `/arm/command` is the emergency stop. `
 
 - `braco_driver/test/test_arm_driver.cpp`: latch, refusals (even `force`), second STOP, hold, release moves nothing, `HALT` does not latch; `test_control.cpp`: `ControlLease::clear()`
 - `web/tests/`: the page cancels its move on a latch, refuses motion, release inside/after the hold
-- Bench (`make bench`, step 3): STOP from a non-owner, `force` refused, release refused inside the hold and accepted after it
+- Bench (`make bench`, step 3): STOP from the terminal while `web` streams, `force` refused, release refused inside the hold and accepted after it, the arm still after the release
 
 ## Links
 

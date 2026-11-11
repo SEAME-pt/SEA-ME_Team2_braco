@@ -65,6 +65,13 @@ cleanup() {
   take script release >/dev/null 2>&1
   ros service call /arm/set_read_only std_srvs/srv/SetBool "{data: false}" >/dev/null 2>&1
   [[ -n ${FAKE_PID:-} ]] && kill "$FAKE_PID" 2>/dev/null
+  stop_stream
+}
+
+stop_stream() {  # killing docker exec leaves the publisher running in the container
+  $EXEC pkill -f 'topic pub -r 10 /arm/command' 2>/dev/null
+  [[ -n ${STREAM_PID:-} ]] && kill "$STREAM_PID" 2>/dev/null
+  unset STREAM_PID
 }
 trap cleanup EXIT
 
@@ -90,16 +97,19 @@ take web force >/dev/null
 sleep $((IDLE_S + 2))
 expect_owner "" "arm_driver frees an idle owner"
 
-say "3. STOP from anyone (the joystick owns the control)"
-take joystick force >/dev/null
-if ask "Is the arm powered and the area clear? A slow move will be started by the joystick owner"; then
-  ros topic pub --once /arm/command braco_interfaces/msg/ArmCommand \
-    "{type: 1, targets: [{joint: 1, angle_deg: 10.0, speed: 10}], source: 'joystick'}" >/dev/null
-  ros topic pub --once /arm/command braco_interfaces/msg/ArmCommand "{type: 0, source: 'web'}" >/dev/null
-  if ask "Did the arm stop (the STOP came from 'web', not the owner)?"; then
-    record PASS "STOP from a non-owner is obeyed"
+say "3. STOP from the terminal while the page streams (#126)"
+take web force >/dev/null
+if ask "Is the arm powered and the area clear? Joint 1 will move slowly toward 30 deg"; then
+  # Like the page: the same target resent every 0.1 s by the owner
+  $EXEC timeout 60 ros2 topic pub -r 10 /arm/command braco_interfaces/msg/ArmCommand \
+    "{type: 1, targets: [{joint: 1, angle_deg: 30.0, speed: 10}], source: 'web'}" >/dev/null 2>&1 &
+  STREAM_PID=$!
+  sleep 1
+  ros topic pub --once /arm/command braco_interfaces/msg/ArmCommand "{type: 0}" >/dev/null
+  if ask "Did the arm stop and stay stopped while 'web' keeps streaming (STOP had no source)?"; then
+    record PASS "STOP from the terminal holds against a streaming owner"
   else
-    record FAIL "STOP from a non-owner did not stop the arm"
+    record FAIL "STOP from the terminal did not hold against a streaming owner"
   fi
   # The STOP latched (ADR-0005): not even force takes the control, until the release after the hold
   out=$(take joystick force)
@@ -124,10 +134,16 @@ if ask "Is the arm powered and the area clear? A slow move will be started by th
   sleep "$STOP_HOLD_S"
   out=$(ros service call /arm/release_stop std_srvs/srv/Trigger 2>&1 | tr -d '\r')
   if grep -q "success=True" <<<"$out"; then record PASS "release after the hold"; else record FAIL "release after the hold: $out"; fi
+  if ask "After the release, with 'web' still streaming, does the arm stay still?"; then
+    record PASS "the release moves nothing"
+  else
+    record FAIL "the arm moved after the release"
+  fi
+  stop_stream
 else
-  record SKIP "STOP from a non-owner (operator did not confirm the area)"
+  record SKIP "STOP while the page streams (operator did not confirm the area)"
 fi
-take joystick release >/dev/null
+take web release >/dev/null
 
 say "4. Hand tests"
 if ask "Page moving a joint: does the stick do nothing meanwhile?"; then
