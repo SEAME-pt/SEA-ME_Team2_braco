@@ -32,8 +32,8 @@
 namespace braco_hardware
 {
 
-// The real arm for ros2_control (ADR-0004): reads the joints from arm_driver's /joint_states.
-// Never opens the serial port: arm_driver is its only owner.
+// The real arm for ros2_control (ADR-0004): reads the joints from arm_driver's /joint_states and
+// sends arm_controller's targets on /arm/command. Never opens the serial port: arm_driver owns it.
 class BracoSystem : public hardware_interface::SystemInterface
 {
 public:
@@ -62,6 +62,8 @@ private:
   bool load_parameters();
   // write(): ALL_ANGLES from the position commands; false while any is still NaN
   bool make_command(braco_interfaces::msg::ArmCommand & msg);
+  // write(): true once the target has not changed for HOLD_S (the arm is holding it)
+  bool target_is_idle(const braco_interfaces::msg::ArmCommand & msg, int64_t now_ns);
   // on_configure(): /joint_states, /arm/control_owner and /arm/command from arm_driver
   void subscribe();
   void on_owner(const std_msgs::msg::String & msg);
@@ -74,6 +76,8 @@ private:
   // write(): ALL_ANGLES to arm_driver's /arm/command as "mission" (ADR-0004)
   rclcpp::Publisher<braco_interfaces::msg::ArmCommand>::SharedPtr command_pub_;
   int64_t last_publish_ns_{0};    // last publish, on the controller manager's clock (ns)
+  decltype(braco_interfaces::msg::ArmCommand::angles_deg) last_target_deg_{};
+  int64_t target_changed_ns_{0};  // when last_target_deg_ last changed (0: none yet)
   double publish_rate_hz_{20.0};  // <param> publish_rate_hz of the URDF
   uint8_t speed_{50};             // <param> speed of the URDF, 1..100
   std::atomic<bool> commanding_{false};  // a controller holds our position commands

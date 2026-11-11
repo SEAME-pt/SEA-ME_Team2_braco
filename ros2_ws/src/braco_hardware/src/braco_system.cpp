@@ -36,6 +36,9 @@ namespace
 
 constexpr double RAD_TO_DEG = 180.0 / M_PI;
 constexpr const char * SOURCE = "mission";   // ArmCommand.source and the control owner name
+// An unchanged target is still sent this long (the arm reaches it before arm_driver's 300 ms
+// watchdog), then nothing: arm_driver frees a control left unreleased after 5 s without motion
+constexpr double HOLD_S = 2.0;
 
 }  // namespace
 
@@ -170,6 +173,7 @@ hardware_interface::CallbackReturn BracoSystem::on_activate(
   commanding_ = false;   // until arm_controller claims the position commands
   stop_seen_ = false;
   lost_control_ = false;
+  target_changed_ns_ = 0;   // the first target after this counts as new
 
   // read() runs right after this, too soon for the first /joint_states to have arrived, and a
   // read() without one stops the hardware. So wait here (up to 2 s) until it arrives: the
@@ -265,14 +269,23 @@ hardware_interface::return_type BracoSystem::write(
     return hardware_interface::return_type::OK;
   }
   ArmCommand msg;
-  if (!make_command(msg)) {
-    return hardware_interface::return_type::OK;   // arm_controller has not written yet
+  if (!make_command(msg) || target_is_idle(msg, time.nanoseconds())) {
+    return hardware_interface::return_type::OK;
   }
-  // Also when the target has not changed: arm_driver stops the arm after command_timeout_ms
-  // (300 ms) without a motion command. Not clamped here: arm_driver clamps to JOINT_LIMITS.
+  // Also when the target has not changed (for HOLD_S): arm_driver stops the arm after
+  // command_timeout_ms (300 ms) without a motion command. Not clamped: arm_driver clamps.
   command_pub_->publish(msg);
   last_publish_ns_ = time.nanoseconds();
   return hardware_interface::return_type::OK;
+}
+
+bool BracoSystem::target_is_idle(const ArmCommand & msg, int64_t now_ns)
+{
+  if (target_changed_ns_ == 0 || msg.angles_deg != last_target_deg_) {
+    last_target_deg_ = msg.angles_deg;
+    target_changed_ns_ = now_ns;
+  }
+  return now_ns - target_changed_ns_ > static_cast<int64_t>(HOLD_S * 1e9);
 }
 
 bool BracoSystem::make_command(ArmCommand & msg)
