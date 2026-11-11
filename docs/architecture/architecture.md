@@ -74,7 +74,7 @@ A motion command passes the `arm_driver` gates in order:
 | `/arm/servo_voltages` | `braco_interfaces/ServoVoltages`, 2 s | `arm_driver` | page |
 | `/arm/read_only` | `std_msgs/Bool`, latched | `arm_driver` | page |
 | `/arm/control_owner` | `std_msgs/String`, latched (`""` = free) | `arm_driver` | teleop, page |
-| `/arm/stopped` | `std_msgs/Bool`, latched: STOP latch | `arm_driver` | page |
+| `/arm/stopped` | `std_msgs/Bool`, latched: STOP latch | `arm_driver` | teleop, page |
 | `/diagnostics` | `diagnostic_msgs/DiagnosticArray` | `temperature_monitor` | page |
 | `/camera/image_raw/compressed` | `sensor_msgs/CompressedImage`, ≤15 fps | `camera` | page |
 | `/arm/take_control` | `braco_interfaces/TakeControl` | `arm_driver` | teleop, page, zero/park |

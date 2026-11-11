@@ -156,6 +156,8 @@ public:
   {
     owner_pub_ = create_publisher<std_msgs::msg::String>(
       "arm/control_owner", rclcpp::QoS(1).transient_local());
+    stopped_pub_ = create_publisher<std_msgs::msg::Bool>(
+      "arm/stopped", rclcpp::QoS(1).transient_local());
     joint_pub_ = create_publisher<sensor_msgs::msg::JointState>("joint_states", 10);
     command_sub_ = create_subscription<ArmCommand>(
       "arm/command", 10, [this](const ArmCommand & msg) {onCommand(msg);});
@@ -206,6 +208,14 @@ public:
     std::lock_guard<std::mutex> lock(mutex);
     owner = name;
     publishOwnerLocked();
+  }
+
+  // The STOP latch, published on /arm/stopped (latched) like arm_driver does.
+  void setStopped(bool on)
+  {
+    std_msgs::msg::Bool msg;
+    msg.data = on;
+    stopped_pub_->publish(msg);
   }
 
   void setAngle(int joint, double deg)
@@ -259,6 +269,7 @@ private:
 
   Options options_;
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr owner_pub_;
+  rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr stopped_pub_;
   rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr joint_pub_;
   rclcpp::Subscription<ArmCommand>::SharedPtr command_sub_;
   rclcpp::Subscription<std_msgs::msg::ColorRGBA>::SharedPtr led_sub_;
@@ -467,6 +478,19 @@ TEST_F(JoystickTeleopTest, HeldByAnotherClientUntilTheForceButtonIsHeld)
   std::this_thread::sleep_for(500ms);
   EXPECT_EQ(takeCount(), 1u);   // fires once per press
   js_.button(tl::BUTTON_FORCE_CONTROL, 0);
+}
+
+TEST_F(JoystickTeleopTest, StopLatchTurnsTheLedYellow)
+{
+  start();
+  ASSERT_TRUE(waitUntil([this] {return lastLed().has_value();}, 2500ms));
+  driver_->setStopped(true);
+  ASSERT_TRUE(waitUntil([this] {return lastLed() && lastLed()->r == 1.0f;}));
+  EXPECT_FLOAT_EQ(lastLed()->g, 1.0f);
+  EXPECT_FLOAT_EQ(lastLed()->b, 0.0f);
+  driver_->setStopped(false);   // released: back to the speed mode (green)
+  EXPECT_TRUE(waitUntil([this] {return lastLed() && lastLed()->r == 0.0f;}));
+  EXPECT_FLOAT_EQ(lastLed()->g, 1.0f);
 }
 
 TEST_F(JoystickTeleopTest, RefusedTakeLearnsTheOwner)
