@@ -9,6 +9,7 @@ Messages and services of the braco arm. Every node that commands or watches the 
 | `msg/ServoTemperatures` | `/arm/servo_temperatures` | The six servo temperatures in °C; `valid = false` when the arm did not answer. |
 | `msg/ServoVoltages` | `/arm/servo_voltages` | The six servo supply voltages in V; `valid = false` (and all zero) when the arm did not answer. |
 | `srv/TakeControl` | `/arm/take_control` | Become the control owner (`source`, `force`) or give it back (`release`). Answers `success`, the `owner` after the call (`""` = free) and a `message`. |
+| `action/MoveToPose` | `/move_to_pose` (`braco_mission`) | Move the `tcp` to a `PoseStamped` through MoveIt 2. An orientation of all zeros asks for the position only; `position_only_fallback` retries with the position when the full pose has no plan. Result: `success`, the position and orientation error measured from TF after the move, `position_only`, `message`. Feedback: the `stage`. |
 
 ```bash
 ros2 interface show braco_interfaces/msg/ArmCommand
