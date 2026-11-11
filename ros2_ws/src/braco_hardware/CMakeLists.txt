@@ -8,6 +8,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(ament_cmake REQUIRED)
+find_package(braco_interfaces REQUIRED)
 find_package(hardware_interface REQUIRED)
 find_package(pluginlib REQUIRED)
 find_package(rclcpp REQUIRED)
@@ -19,7 +20,8 @@ add_library(braco_hardware SHARED src/braco_system.cpp)
 target_include_directories(braco_hardware PRIVATE include)
 target_link_libraries(braco_hardware PUBLIC
   hardware_interface::hardware_interface pluginlib::pluginlib
-  rclcpp::rclcpp rclcpp_lifecycle::rclcpp_lifecycle ${sensor_msgs_TARGETS})
+  rclcpp::rclcpp rclcpp_lifecycle::rclcpp_lifecycle ${sensor_msgs_TARGETS}
+  ${braco_interfaces_TARGETS})
 
 # Registers braco_hardware.xml with pluginlib: how ros2_control_node finds the class by name
 pluginlib_export_plugin_description_file(hardware_interface braco_hardware.xml)
