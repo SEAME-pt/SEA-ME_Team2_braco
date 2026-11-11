@@ -1,0 +1,15 @@
+# Move the arm's end effector (tcp) to a pose through MoveIt 2 (braco_mission, issue #84).
+
+# Goal
+geometry_msgs/PoseStamped target   # empty frame_id: the planning frame (world). Orientation all 0: position only
+bool position_only_fallback        # the full pose has no plan (e.g. no IK): try its position only
+---
+# Result
+bool success                       # reached within the node's tolerances
+float64 position_error_m           # goal vs. the tcp measured from TF after the move
+float64 orientation_error_rad      # NaN when only the position was planned
+bool position_only                 # true: the orientation was not planned
+string message
+---
+# Feedback
+string stage                       # control, planning, executing, measuring

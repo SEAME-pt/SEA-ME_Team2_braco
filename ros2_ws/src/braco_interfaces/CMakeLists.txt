@@ -4,6 +4,7 @@ project(braco_interfaces)
 find_package(ament_cmake REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(geometry_msgs REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/JointTarget.msg"
@@ -11,7 +12,8 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/ServoTemperatures.msg"
   "msg/ServoVoltages.msg"
   "srv/TakeControl.srv"
-  DEPENDENCIES std_msgs
+  "action/MoveToPose.action"
+  DEPENDENCIES std_msgs geometry_msgs
 )
 
 if(BUILD_TESTING)
