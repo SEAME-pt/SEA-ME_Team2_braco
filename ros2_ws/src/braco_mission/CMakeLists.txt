@@ -51,6 +51,10 @@ if(BUILD_TESTING)
   target_link_libraries(test_mission braco_mission_core)
   ament_add_gtest(test_cartesian test/test_cartesian.cpp)
   target_link_libraries(test_cartesian braco_mission_core)
+
+  # draw_line.py's path geometry and outputs, no ROS graph
+  find_package(ament_cmake_pytest REQUIRED)
+  ament_add_pytest_test(test_draw_line test/test_draw_line.py)
 endif()
 
 ament_package()
