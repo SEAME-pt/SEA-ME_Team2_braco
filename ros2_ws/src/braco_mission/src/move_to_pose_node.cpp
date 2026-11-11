@@ -255,14 +255,14 @@ public:
       return out;
     }
 
-    const moveit::core::RobotStatePtr start = move_group_->getCurrentState(tf_timeout_s_);
-    if (!start) {
+    const moveit::core::RobotStatePtr start_state = move_group_->getCurrentState(tf_timeout_s_);
+    if (!start_state) {
       out.fraction = -1.0;
       message = "the current robot state is not available";
       return out;
     }
     robot_trajectory::RobotTrajectory trajectory(move_group_->getRobotModel(), group_);
-    trajectory.setRobotTrajectoryMsg(*start, path);
+    trajectory.setRobotTrajectoryMsg(*start_state, path);
     trajectory_processing::TimeOptimalTrajectoryGeneration totg;
     if (!totg.computeTimeStamps(trajectory, velocity_scaling_, acceleration_scaling_)) {
       out.fraction = -1.0;
