@@ -14,7 +14,9 @@ find_package(geometry_msgs REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
+find_package(moveit_core REQUIRED)
 find_package(moveit_ros_planning_interface REQUIRED)
+find_package(moveit_msgs REQUIRED)
 find_package(braco_interfaces REQUIRED)
 
 # The steps of a goal, no ROS (mission.cpp, cartesian.cpp): the node and the tests link it
@@ -26,6 +28,8 @@ target_link_libraries(move_to_pose braco_mission_core
   rclcpp::rclcpp rclcpp_action::rclcpp_action ${geometry_msgs_TARGETS}
   tf2::tf2 tf2_ros::tf2_ros tf2_geometry_msgs::tf2_geometry_msgs
   moveit_ros_planning_interface::moveit_move_group_interface
+  moveit_core::moveit_robot_state moveit_core::moveit_robot_trajectory
+  moveit_core::moveit_trajectory_processing ${moveit_msgs_TARGETS}
   ${braco_interfaces_TARGETS})
 
 install(TARGETS move_to_pose DESTINATION lib/${PROJECT_NAME})
