@@ -40,7 +40,7 @@ MoveIt 2 sends `FollowJointTrajectory` goals to `arm_controller` (`JointTrajecto
 | `read()` | Positions from the latest `/joint_states` (radians), velocities from it or 0. No message yet → `ERROR` |
 | `write()` | Publishes `ALL_ANGLES` on `/arm/command` with `source: "mission"` at `state_rate_hz` (20 Hz; `arm_driver` sends at most ~14 of them per second, the rest are overwritten, [measured](../architecture/timing-budget.md)) while the controller is active, **even when the target has not changed**: the watchdog stops the arm after `command_timeout_ms` (300 ms) without a motion command, which would leave it short of the last point. Angles are clamped by `arm_driver` (`JOINT_LIMITS`) |
 | Control | `braco_mission` calls `take_control("mission")` **without `force`** before each goal and releases it after the result, also on failure (like zero / park). Refused → the goal is not sent; nothing is queued. The plugin never calls `/arm/take_control` |
-| Lost control or STOP | The plugin reads `/arm/control_owner` and `/arm/command`. While `mission` holds the control, a STOP or another client taking the control makes `write()` return `ERROR`, so ros2_control stops `arm_controller` and the goal is aborted. Covers a STOP from any client, a forced take by the page or joystick, and `park` on overheat. While the owner is free or another client, `write()` sends nothing and returns `OK`: nothing went wrong |
+| Lost control or STOP | The plugin reads `/arm/control_owner` and `/arm/command`. While `mission` holds the control, a STOP or another client taking the control makes `write()` return `DEACTIVATE`, so ros2_control stops `arm_controller` and the goal is aborted. The plugin goes to inactive, not unconfigured: it is not broken, keeps its subscriptions and only needs to be activated again. Covers a STOP from any client, a forced take by the page or joystick, and `park` on overheat. While the owner is free or another client, `write()` sends nothing and returns `OK`: nothing went wrong |
 | Safety commands | STOP and entering rest need no control: `mission` may send them at any time. To end its own trajectory it cancels the goal. `mission` never leaves rest mode (ADR-0003) |
 | Other services | `power_on`, `set_gripper`, `release_servos`: only while `mission` holds the control (ADR-0002) |
 | `/joint_states` | `arm_driver` stays the only publisher. `joint_state_broadcaster` is not spawned with `sim:=false` (#97) |
@@ -53,13 +53,13 @@ MoveIt 2 sends `FollowJointTrajectory` goals to `arm_controller` (`JointTrajecto
 - ✅ `/joint_states` keeps its rate, its consumers and its stale-state signal
 - ✅ Sim and real share `arm_controller`; MoveIt and the mission do not know which arm they drive
 - ❌ One extra hop (plugin → topic → `arm_driver` → serial); 100 Hz controller setpoints are thinned to ~14 Hz measured (20 Hz nominal: `COMMAND_GAP` bounds the serial loop), and motion starts ~200 ms after a command ([timing budget](../architecture/timing-budget.md), #90)
-- ❌ After an `ERROR`, the hardware component and `arm_controller` must be activated again before the next goal (#101)
+- ❌ After a STOP or a lost control, the hardware component and `arm_controller` must be activated again before the next goal (#101). From inactive, no new configure; after an `ERROR` (no `/joint_states`), the component is configured again too
 - ❌ A goal sent straight to `/arm_controller/follow_joint_trajectory` (e.g. from RViz) needs `take_control("mission")` first, as a bare `ros2 topic pub` does today
 - ⚠️ `joint_state_broadcaster` runs in sim but not on the real arm, so the controller sets differ by one
 
 ## Confirmation
 
-- gtest of the plugin against the fake arm (`PtyArm`): `read()` maps `/joint_states`; `write()` publishes `ALL_ANGLES` with `source: mission`; `ERROR` on STOP and on owner ≠ `mission` (#87, #101)
+- gtest of the plugin against the fake arm (`PtyArm`): `read()` maps `/joint_states`; `write()` publishes `ALL_ANGLES` with `source: mission`; `DEACTIVATE` on STOP and when another client takes the control from `mission` (#87, #101)
 - `ros2 topic info /joint_states` with `sim:=false`: publisher count 1 (#97)
 - Bench (`make bench`), velocity scaling ≤ 0.1: a trajectory moves the arm; STOP from the page halts it; forcing from the joystick halts it; `take_control("mission")` is refused while the page owns the arm
 
