@@ -14,6 +14,7 @@ find_package(pluginlib REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
 find_package(sensor_msgs REQUIRED)
+find_package(std_msgs REQUIRED)
 
 # The plugin: a shared library with no main, loaded by ros2_control_node at run time
 add_library(braco_hardware SHARED src/braco_system.cpp)
@@ -21,7 +22,7 @@ target_include_directories(braco_hardware PRIVATE include)
 target_link_libraries(braco_hardware PUBLIC
   hardware_interface::hardware_interface pluginlib::pluginlib
   rclcpp::rclcpp rclcpp_lifecycle::rclcpp_lifecycle ${sensor_msgs_TARGETS}
-  ${braco_interfaces_TARGETS})
+  ${braco_interfaces_TARGETS} ${std_msgs_TARGETS})
 
 # Registers braco_hardware.xml with pluginlib: how ros2_control_node finds the class by name
 pluginlib_export_plugin_description_file(hardware_interface braco_hardware.xml)

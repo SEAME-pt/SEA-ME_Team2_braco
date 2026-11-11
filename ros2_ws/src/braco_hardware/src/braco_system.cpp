@@ -119,8 +119,16 @@ hardware_interface::CallbackReturn BracoSystem::on_configure(
   {
     std::lock_guard<std::mutex> lock(joint_states_mutex_);
     latest_joint_states_.reset();
-    
   }
+  subscribe();
+  // write() sends the controller's targets to arm_driver on its command topic (ADR-0004)
+  command_pub_ = get_node()->create_publisher<ArmCommand>("/arm/command", 10);
+  last_publish_ns_ = 0;
+  return hardware_interface::CallbackReturn::SUCCESS;
+}
+
+void BracoSystem::subscribe()
+{
   // arm_driver publishes /joint_states (ADR-0004): keep only the latest message for read()
   joint_states_sub_ = get_node()->create_subscription<sensor_msgs::msg::JointState>(
     "/joint_states", 10,
@@ -128,16 +136,40 @@ hardware_interface::CallbackReturn BracoSystem::on_configure(
       std::lock_guard<std::mutex> lock(joint_states_mutex_);
       latest_joint_states_ = msg;
     });
-  // write() sends the controller's targets to arm_driver on its command topic (ADR-0004)
-  command_pub_ = get_node()->create_publisher<ArmCommand>("/arm/command", 10);
-  last_publish_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
-  return hardware_interface::CallbackReturn::SUCCESS;
+  // Latched by arm_driver: the current owner arrives even if it was set before we started
+  owner_sub_ = get_node()->create_subscription<std_msgs::msg::String>(
+    "/arm/control_owner", rclcpp::QoS(1).transient_local(),
+    [this](const std_msgs::msg::String & msg) {on_owner(msg);});
+  command_sub_ = get_node()->create_subscription<ArmCommand>(
+    "/arm/command", 10, [this](const ArmCommand & msg) {on_command(msg);});
+}
+
+void BracoSystem::on_owner(const std_msgs::msg::String & msg)
+{
+  const bool mission = msg.data == SOURCE;
+  // Free ("") is mission releasing it after a goal; another client took it in the middle of one
+  // (forced by the page or joystick, park on overheat): arm_driver stopped the arm without a STOP
+  if (owner_is_mission_ && !mission && !msg.data.empty()) {
+    lost_control_ = true;
+  }
+  owner_is_mission_ = mission;
+}
+
+void BracoSystem::on_command(const ArmCommand & msg)
+{
+  // A STOP is not latched by arm_driver: without ending the goal, write() would move the arm
+  // again ~50 ms later. Only ours to handle while mission holds the control.
+  if (msg.type == ArmCommand::STOP && owner_is_mission_) {
+    stop_seen_ = true;
+  }
 }
 
 hardware_interface::CallbackReturn BracoSystem::on_activate(
   const rclcpp_lifecycle::State & /*previous_state*/)
 {
   commanding_ = false;   // until arm_controller claims the position commands
+  stop_seen_ = false;
+  lost_control_ = false;
 
   // read() runs right after this, too soon for the first /joint_states to have arrived, and a
   // read() without one stops the hardware. So wait here (up to 2 s) until it arrives: the
@@ -176,6 +208,8 @@ hardware_interface::return_type BracoSystem::perform_command_mode_switch(
   }
   if (has_ours(start_interfaces)) {
     commanding_ = true;
+    stop_seen_ = false;   // arm_controller back: what aborted the last goal is over
+    lost_control_ = false;
   }
   return hardware_interface::return_type::OK;
 }
@@ -217,12 +251,19 @@ hardware_interface::return_type BracoSystem::write(
   if (!commanding_) {
     return hardware_interface::return_type::OK;   // no controller: nothing to send
   }
+  if (stop_seen_ || lost_control_) {
+    RCLCPP_WARN(get_logger(), "%s: goal aborted", stop_seen_ ? "STOP" : "control taken");
+    return hardware_interface::return_type::DEACTIVATE;
+  }
+  if (!owner_is_mission_) {
+    return hardware_interface::return_type::OK;   // not our turn: arm_driver would ignore us
+  }
   // arm_driver sends ~14 commands/s and keeps only the latest: no point publishing at the
   // loop's 100 Hz. Skip, never sleep: a sleep here would stall read() and the controllers too.
-  if ((time - last_publish_).seconds() < 1.0 / publish_rate_hz_) {
+  // Nanoseconds, not rclcpp::Time: the manager's clock type (steady here) would have to match.
+  if (time.nanoseconds() - last_publish_ns_ < static_cast<int64_t>(1e9 / publish_rate_hz_)) {
     return hardware_interface::return_type::OK;
   }
-
   ArmCommand msg;
   if (!make_command(msg)) {
     return hardware_interface::return_type::OK;   // arm_controller has not written yet
@@ -230,7 +271,7 @@ hardware_interface::return_type BracoSystem::write(
   // Also when the target has not changed: arm_driver stops the arm after command_timeout_ms
   // (300 ms) without a motion command. Not clamped here: arm_driver clamps to JOINT_LIMITS.
   command_pub_->publish(msg);
-  last_publish_ = time;
+  last_publish_ns_ = time.nanoseconds();
   return hardware_interface::return_type::OK;
 }
 
