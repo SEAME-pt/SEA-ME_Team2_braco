@@ -34,6 +34,8 @@ target_link_libraries(move_to_pose braco_mission_core
 
 install(TARGETS move_to_pose DESTINATION lib/${PROJECT_NAME})
 install(DIRECTORY launch DESTINATION share/${PROJECT_NAME})
+# draw_line.py: the straight-line demo, the executed tcp path from TF in a CSV and a plot (#85)
+install(PROGRAMS scripts/draw_line.py DESTINATION lib/${PROJECT_NAME})
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
