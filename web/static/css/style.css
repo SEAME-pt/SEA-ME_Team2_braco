@@ -354,7 +354,8 @@ tr:last-child td { border-bottom: none; }
 .stop-banner b { color: var(--hot); }
 .stop-banner button { background: var(--hot); color: #fff; border-color: var(--hot); font-weight: 700; padding: 10px 22px; }
 .stop-banner button[hidden] { display: none; }
-.ctl.is-stopped > :not(h2):not(.stop-banner):not(#a-stop-msg):not(#a-error) { display: none; }
+.ctl.is-stopped > :not(h2):not(.stop-banner):not(.ctl-top):not(#a-stop-msg):not(#a-error) { display: none; }
+.ctl.is-stopped .ctl-top > :not(#a-stop) { display: none; }   /* a second STOP restarts the hold */
 .ctl.is-stopped .arm-switch { display: none; }
 
 /* ---- Sprint detail page ---- */

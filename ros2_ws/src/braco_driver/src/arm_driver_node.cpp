@@ -226,6 +226,7 @@ void ArmDriver::latchStop(const std::string & source)
   }
 }
 
+// Check-then-clear is safe only because rclcpp::spin is single-threaded: no STOP in between.
 void ArmDriver::releaseStop(bool & success, std::string & message)
 {
   success = true;

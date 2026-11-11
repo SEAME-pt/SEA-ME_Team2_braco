@@ -11,6 +11,7 @@ find_package(ament_cmake REQUIRED)
 find_package(mycobot_cpp REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
+find_package(std_msgs REQUIRED)
 find_package(std_srvs REQUIRED)
 find_package(braco_interfaces REQUIRED)
 
@@ -23,7 +24,7 @@ add_library(arm_moves STATIC src/arm_moves.cpp src/routines.cpp)
 target_include_directories(arm_moves PUBLIC include)
 target_link_libraries(arm_moves PUBLIC
   mycobot_cpp::mycobot_cpp rclcpp::rclcpp
-  ${sensor_msgs_TARGETS} ${std_srvs_TARGETS} ${braco_interfaces_TARGETS})
+  ${sensor_msgs_TARGETS} ${std_msgs_TARGETS} ${std_srvs_TARGETS} ${braco_interfaces_TARGETS})
 
 foreach(program zero park)
   add_executable(${program} src/${program}.cpp)

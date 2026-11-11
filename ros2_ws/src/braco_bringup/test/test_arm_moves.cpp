@@ -62,6 +62,8 @@ public:
     using std_srvs::srv::SetBool;
     using std_srvs::srv::Trigger;
     joints_pub_ = create_publisher<sensor_msgs::msg::JointState>("joint_states", 10);
+    stopped_pub_ = create_publisher<std_msgs::msg::Bool>(
+      "arm/stopped", rclcpp::QoS(1).transient_local());
     command_sub_ = create_subscription<ArmCommand>(
       "arm/command", 10, [this](const ArmCommand & msg) {onCommand(msg);});
     power_srv_ = serve<Trigger>(
@@ -98,6 +100,14 @@ public:
     if (options_.publish_joints) {
       timer_ = create_wall_timer(20ms, [this] {publishJoints();});
     }
+  }
+
+  // A STOP latch, published on /arm/stopped (latched) like arm_driver does.
+  void latchStop()
+  {
+    std_msgs::msg::Bool msg;
+    msg.data = true;
+    stopped_pub_->publish(msg);
   }
 
   std::vector<std::string> events()
@@ -169,6 +179,7 @@ private:
   std::vector<ArmCommand> commands_;
   std::vector<TakeControl::Request> control_requests_;
   rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr joints_pub_;
+  rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr stopped_pub_;
   rclcpp::Subscription<ArmCommand>::SharedPtr command_sub_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr power_srv_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr release_srv_;
@@ -385,6 +396,18 @@ TEST_F(ArmMovesTest, MoveToWithoutFeedbackStopsTheArm)
   EXPECT_FALSE(arm_->moveTo(mycobot::PARK_ANGLES, 30, 2.0, 1s));
   arm_->wait(200ms);
   EXPECT_NE(indexOf("stop"), -1);
+}
+
+TEST_F(ArmMovesTest, MoveToGivesUpAtOnceOnAStopLatch)
+{
+  start({60, 0, 0, 0, 0, 0}, without(&Options::follow));
+  ASSERT_TRUE(arm_->waitForDriver(5s));
+  driver_->latchStop();
+  const auto t0 = std::chrono::steady_clock::now();
+  EXPECT_FALSE(arm_->moveTo(mycobot::ZERO_ANGLES, 30, 2.0, 10s));
+  EXPECT_LT(std::chrono::steady_clock::now() - t0, 3s);   // not the 10 s timeout
+  arm_->wait(200ms);
+  EXPECT_EQ(indexOf("stop"), -1);   // the driver already stopped the arm
 }
 
 // ---- Routines -------------------------------------------------------------------
