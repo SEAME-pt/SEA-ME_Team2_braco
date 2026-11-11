@@ -42,8 +42,10 @@ import rclpy
 from rclpy.action import ActionClient
 from rclpy.executors import SingleThreadedExecutor
 from rclpy.node import Node
+from rclpy.qos import DurabilityPolicy, QoSProfile
 from rclpy.utilities import remove_ros_args
 from sensor_msgs.msg import JointState
+from std_msgs.msg import Bool
 from std_srvs.srv import SetBool, Trigger
 from trajectory_msgs.msg import JointTrajectoryPoint
 
@@ -185,6 +187,10 @@ class RealArm(_Arm):
         self.release_client = self.node.create_client(Trigger, 'arm/release_servos')
         self.control_client = self.node.create_client(TakeControl, 'arm/take_control')
         self.has_control = False
+        self.stopped = False  # arm/stopped: STOP latched in arm_driver (ADR-0005)
+        latched = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
+        self.node.create_subscription(
+            Bool, 'arm/stopped', lambda m: setattr(self, 'stopped', m.data), latched)
 
     def _call(self, client, request, what):
         if not client.wait_for_service(timeout_sec=CALL_TIMEOUT_S):
@@ -257,6 +263,9 @@ class RealArm(_Arm):
         reason = 'took longer than %.0f s' % MOVE_TIMEOUT_S
         while time.monotonic() < end and rclpy.ok(context=self.context):
             self.spin(LOOP_S)
+            if self.stopped:  # arm_driver already stopped the arm: no HALT
+                self.log.error('real arm stopped: STOP latched (make resume)')
+                return False
             now = time.monotonic()
             current = self.fresh_angles()
             if current is None:
