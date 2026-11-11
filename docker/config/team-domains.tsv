@@ -1,9 +1,9 @@
 # Each teammate's ROS domain: their PC's `sim` and `dev` (PC_ROS_DOMAIN_ID in docker/.env).
 # make setup reads the GitHub login (gh api user) and writes the matching domain; not listed: 27.
-# Rules (make lint checks them): 20-29, never 22 (the real arm), 27 (the default) or 29 (the MoveIt launch
-# test), each domain once.
+# Rules (make lint checks them): 20-29, never 22 (the real arm), 27 (the default), 28 (braco_hardware's
+# test) or 29 (the MoveIt launch test), each domain once.
 # Why this range: https://github.com/ros2/ros2_documentation/blob/rolling/source/ROS-Framework/nodes/About-Domain-ID.rst
-# Free: 26 28. Columns separated by tabs. Keep docker/README.md (section 6) in step.
+# Free: 26. Columns separated by tabs. Keep docker/README.md (section 6) in step.
 # login	name	domain
 Denionline	Daniel	20
 larocqueg	Gabriel	21
