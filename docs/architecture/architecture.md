@@ -2,7 +2,7 @@
 
 How the braco software is built today: layers, nodes, topics, packages and deployment. If the code and this document disagree, the code wins. CPU and memory: [resources.md](resources.md). Timing: [timing-budget.md](timing-budget.md).
 
-Last checked against the code: **2026-11-10**.
+Last checked against the code: **2026-11-11**.
 
 **Contents:** [Principles](#1-principles) · [Layers](#2-layers) · [Nodes and devices](#3-nodes-and-devices) · [Topics and services](#4-topics-and-services) · [Control of the arm](#5-control-of-the-arm) · [Packages](#6-packages) · [Deployment](#7-deployment) · [Launch and parameters](#8-launch-and-parameters) · [Simulation and planned layers](#9-simulation-and-planned-layers) · [Status](#10-status) · [Changing the architecture](#11-changing-the-architecture)
 
@@ -72,12 +72,12 @@ A motion command passes the `arm_driver` gates in order:
 | `/joint_states` | `sensor_msgs/JointState`, 20 Hz nominal (18.7 measured; ~14 under continuous commands, [timing](timing-budget.md)) | `arm_driver` | teleop, page, zero/park, `braco_hardware` (in `ros2_control_node`), `robot_state_publisher` |
 | `/robot_description` | `std_msgs/String`, latched (the URDF, `real_arm:=true`) | `robot_state_publisher` | `ros2_control_node` |
 | `/tf`, `/tf_static` | `tf2_msgs/TFMessage` | `robot_state_publisher` | MoveIt, RViz, Foxglove |
-| `/arm/command` | `braco_interfaces/ArmCommand` (`STOP`, `JOINTS`, `ALL_ANGLES`, `source`) | clients | `arm_driver` |
+| `/arm/command` | `braco_interfaces/ArmCommand` (`STOP`, `JOINTS`, `ALL_ANGLES`, `source`) | clients, `braco_hardware` | `arm_driver`, `braco_hardware` (STOP only) |
 | `/arm/led` | `std_msgs/ColorRGBA` | teleop, page | `arm_driver` |
 | `/arm/servo_temperatures` | `braco_interfaces/ServoTemperatures`, 2 s | `arm_driver` | `temperature_monitor`, page |
 | `/arm/servo_voltages` | `braco_interfaces/ServoVoltages`, 2 s | `arm_driver` | page |
 | `/arm/read_only` | `std_msgs/Bool`, latched | `arm_driver` | page |
-| `/arm/control_owner` | `std_msgs/String`, latched (`""` = free) | `arm_driver` | teleop, page |
+| `/arm/control_owner` | `std_msgs/String`, latched (`""` = free) | `arm_driver` | teleop, page, `braco_hardware` |
 | `/diagnostics` | `diagnostic_msgs/DiagnosticArray` | `temperature_monitor` | page |
 | `/camera/image_raw/compressed` | `sensor_msgs/CompressedImage`, ≤15 fps, frame `camera_optical_frame` | `camera` (sim: Gazebo's wrist camera, `ros_gz_image`) | page |
 | `/arm/take_control` | `braco_interfaces/TakeControl` | `arm_driver` | teleop, page, zero/park |
@@ -217,8 +217,8 @@ braco_mission ──► MoveIt 2 ──trajectory──┬──► real: braco_
 - Sim and real arm share one controller file (`braco_description/config/controllers.yaml`):
   `arm_controller` on both, `joint_state_broadcaster` and `gripper_action_controller` only in simulation.
 - Only the hardware plugin in the URDF differs: `GazeboSimSystem` in simulation,
-  `braco_hardware/BracoSystem` on the real arm (`real_arm:=true`). Today it only reads the joints;
-  sending commands is #101.
+  `braco_hardware/BracoSystem` on the real arm (`real_arm:=true`). It reads the joints and sends
+  `arm_controller`'s targets to `arm_driver` while `mission` holds the control (#101).
 - On the real arm, `joint_state_broadcaster` is not spawned: `arm_driver` keeps publishing `/joint_states`.
 - Real arm ([ADR-0004](../decisions/ADR-0004-trajectories-through-arm-driver.md)): the plugin sends `ALL_ANGLES` with `source: "mission"` to `arm_driver`, so trajectories pass the same gates as every client. `braco_mission` takes the control before each goal; STOP or a lost control aborts the trajectory. Measured: setpoints reach the arm at ~14 Hz and motion starts ~200 ms after a command ([timing-budget.md](timing-budget.md)).
 - How to run it: [Run the simulation](../../ros2_ws/src/braco_simulation/README.md#run-it).
@@ -243,7 +243,7 @@ braco_mission ──► MoveIt 2 ──trajectory──┬──► real: braco_
 **Pending:**
 - `arm_driver` as a lifecycle node
 - E-stop node
-- `braco_hardware` ([ADR-0004](../decisions/ADR-0004-trajectories-through-arm-driver.md)): sending commands (#101)
+- Real arm with MoveIt ([ADR-0004](../decisions/ADR-0004-trajectories-through-arm-driver.md), #101): `arm_controller` spawner for `sim:=false`; `braco_mission` turning `braco_hardware` and `arm_controller` back on after a STOP
 - `braco_moveit_config`
 - `braco_mission` beyond `move_to_pose`: Cartesian path (#85), demo (#102), on the real arm with `use_control` (#101)
 - Measured CPU/RAM ([resources.md](resources.md))

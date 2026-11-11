@@ -26,17 +26,19 @@ directly. It goes through `arm_driver`, over topics.
 ## The flow
 
 ```
-real arm ──serial──► arm_driver ──/joint_states──► BracoSystem ──read()──► ros2_control ──► arm_controller
-                     (20 per second)               (keeps the latest)      (100 per second)
+Reading:  arm_driver ──/joint_states──► BracoSystem ──read()──►  arm_controller
+Sending:  arm_driver ◄──/arm/command─── BracoSystem ◄──write()── arm_controller
 ```
 
 ## What it reads and gives
 
-| | Name | Details |
+| | Name | Why |
 |---|---|---|
-| Listens to | `/joint_states` | `sensor_msgs/JointState`, from `arm_driver` |
-| Publishes | nothing | |
-| Parameters | none | |
+| Listens to | `/joint_states` | where the arm is, for `read()` |
+| Listens to | `/arm/control_owner` | who controls the arm: `write()` sends only when it is `mission` |
+| Listens to | `/arm/command` | to see a STOP |
+| Publishes | `/arm/command` | where the arm must go (`ALL_ANGLES`, `source: mission`) |
+| Parameters | `publish_rate_hz`, `speed` | optional, in the URDF: 20 per second, servo speed 50 |
 
 For each joint, `joint1` to `joint6`:
 
@@ -44,7 +46,26 @@ For each joint, `joint1` to `joint6`:
 |---|---|---|
 | `position` | state | the joint angle from `/joint_states`, in radians |
 | `velocity` | state | from `/joint_states`, or 0 when missing. `arm_driver` sends none, so it is always 0 |
-| `position` | command | there for `arm_controller`, not sent to the arm yet (#101) |
+| `position` | command | where `arm_controller` wants the joint; `write()` sends it to `arm_driver` in degrees |
+
+## When it sends
+
+1. The plugin sends only while `mission` controls the arm and `arm_controller` is on. Otherwise it sends nothing.
+2. While the target moves, the plugin sends it 20 times per second.
+3. When the target stops, it sends the same target for 2 more seconds, so the arm gets there.
+4. Then it stops sending. 300 ms later `arm_driver` stops the arm (its watchdog): the arm is already there.
+5. If `mission` forgot to give the control back, `arm_driver` takes it back after 5 s.
+
+If someone presses STOP, or another client takes the control from `mission`, the plugin stops `arm_controller`
+and the goal is aborted (`arm_driver` has already stopped the arm). The plan is that `braco_mission` turns both
+back on before its next goal (#101, not done yet). Until then, by hand:
+
+```bash
+ros2 control set_hardware_component_state BracoSystem active
+ros2 control switch_controllers --activate arm_controller
+```
+
+The plugin does not check the joint limits: `arm_driver` does.
 
 ## How it works
 
@@ -64,10 +85,10 @@ The plugin's steps:
 | Step | When | What it does | Fails if |
 |---|---|---|---|
 | `on_init` | once | checks the URDF joints | a joint has no `position` or `velocity` state |
-| `on_configure` | once | starts listening to `/joint_states`, keeps the latest message | |
-| `on_activate` | once | waits up to 2 s for the first message | none arrives: `is arm_driver running?` |
+| `on_configure` | once | starts listening to the three topics, keeps the latest `/joint_states` | |
+| `on_activate` | each time it is turned on | forgets a past STOP, waits up to 2 s for the first message | none arrives: `is arm_driver running?` |
 | `read()` | 100 per second | copies the latest message into the joint states | there is no message yet |
-| `write()` | 100 per second | nothing yet (#101) | |
+| `write()` | 100 per second | sends the target to `arm_driver`, see [When it sends](#when-it-sends) | |
 
 Why `on_activate` waits: `read()` starts less than a millisecond after `on_configure`, before any message can arrive.
 A failing `read()` switches the plugin off, so without the wait it would switch off at every start.
