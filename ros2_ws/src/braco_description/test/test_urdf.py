@@ -25,7 +25,9 @@ Processes braco.urdf.xacro and checks that
   * every mesh declares the COLLADA unit 1 (MoveIt ignores the unit; the URDF scales instead)
   * the model's zero pose has not moved by accident (see ZERO_TOOL0)
   * gazebo:=true controls exactly joint1..joint6, and the plain model has no ros2_control
+  * real_arm:=true puts the braco_hardware plugin on exactly joint1..joint6
   * config/controllers.yaml: arm_controller drives joint1..joint6
+  * gazebo:=true has the wrist camera at camera_link, sized like the real camera
 """
 
 import math
@@ -50,13 +52,14 @@ ARM_JOINTS = ['joint%d' % n for n in range(1, 7)]
 ZERO_TOOL0 = (0.0456, -0.06462, 0.030 + 0.43614)   # G-base + arm
 
 
-def load_urdf(gripper_actuated='false', gazebo='false'):
+def load_urdf(gripper_actuated='false', gazebo='false', real_arm='false'):
     """Process braco.urdf.xacro without needing the workspace to be sourced."""
     path = os.path.join(PACKAGE_DIR, 'urdf', 'braco.urdf.xacro')
     with open(path, encoding='utf-8') as f:
         text = f.read().replace('$(find braco_description)', PACKAGE_DIR)
     doc = xacro.parse(text)
-    xacro.process_doc(doc, mappings={'gripper_actuated': gripper_actuated, 'gazebo': gazebo})
+    xacro.process_doc(doc, mappings={'gripper_actuated': gripper_actuated, 'gazebo': gazebo,
+                                     'real_arm': real_arm})
     return ET.fromstring(doc.toxml())
 
 
@@ -129,26 +132,6 @@ def test_joint_origins_match_mycobot_cpp():
     for name, xyz in zip(ARM_JOINTS, cpp):
         urdf = floats(robot.find("joint[@name='%s']/origin" % name).get('xyz'))
         assert urdf == pytest.approx([float(v) for v in xyz], abs=1e-6), name
-
-
-def test_park_script_matches_mycobot_hpp():
-    # scripts/park.py parks the Gazebo arm where the real arm parks.
-    with open(os.path.join(PACKAGE_DIR, 'scripts', 'park.py'), encoding='utf-8') as f:
-        match = re.search(r'PARK_DEG = \[(.*?)\]', f.read())
-    assert match, 'PARK_DEG not found in scripts/park.py'
-    script = [float(v) for v in match.group(1).split(',')]
-    hpp = re.search(r'PARK_ANGLES = \{(.*?)\};', mycobot_source('mycobot.hpp'))
-    assert hpp, 'PARK_ANGLES not found in mycobot.hpp'
-    assert script == [float(v) for v in hpp.group(1).split(',')]
-
-
-def test_move_joint_limits_match_mycobot_hpp():
-    # scripts/move_joint.py refuses an angle the real arm would clamp.
-    with open(os.path.join(PACKAGE_DIR, 'scripts', 'move_joint.py'), encoding='utf-8') as f:
-        match = re.search(r'LIMITS_DEG = \[(.*?)\]\n', f.read())
-    assert match, 'LIMITS_DEG not found in scripts/move_joint.py'
-    pairs = re.findall(r'\(\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\)', match.group(1))
-    assert [(float(lo), float(hi)) for lo, hi in pairs] == hpp_limits('JOINT_LIMITS')
 
 
 def test_every_link_with_geometry_has_positive_mass_and_inertia():
@@ -256,6 +239,51 @@ def test_actuated_gripper_has_one_master_and_five_mimics():
     assert robot.find("joint[@name='gripper_controller']").get('type') == 'revolute'
 
 
+def test_gazebo_drives_the_gripper_through_its_master_joint():
+    # #123: in Gazebo the gripper moves. Only its master, gripper_controller, takes a command;
+    # the five mimic joints report their state, moved by the physics engine (braco_simulation's
+    # test_lab_bench.py checks the world runs one that enforces <mimic>).
+    robot = load_urdf(gripper_actuated='true', gazebo='true')
+    joints = robot.find('ros2_control').findall('joint')
+    commanded = [j.get('name') for j in joints if j.find('command_interface') is not None]
+    assert commanded == ARM_JOINTS + ['gripper_controller']
+    mimics = {j.get('name') for j in robot.findall('joint') if j.find('mimic') is not None}
+    assert {j.get('name') for j in joints} - set(commanded) == mimics
+
+
+def test_gripper_action_controller_drives_the_master_joint():
+    yaml = pytest.importorskip('yaml')
+    with open(os.path.join(PACKAGE_DIR, 'config', 'controllers.yaml'), encoding='utf-8') as f:
+        config = yaml.safe_load(f)
+    manager = config['controller_manager']['ros__parameters']
+    assert manager['gripper_action_controller']['type'] == \
+        'parallel_gripper_action_controller/GripperActionController'
+    assert config['gripper_action_controller']['ros__parameters']['joint'] == 'gripper_controller'
+
+
+def test_gazebo_wrist_camera_matches_the_real_camera():
+    # #123: Gazebo renders the wrist camera at camera_link, with the real camera's size and rate
+    # (braco_bringup/config/braco.yaml) and its images in camera_optical_frame, like the real
+    # ones. (braco_simulation's test_lab_bench.py checks the world loads the Sensors system.)
+    yaml = pytest.importorskip('yaml')
+    robot = load_urdf(gazebo='true')
+    sensors = [(g.get('reference'), s) for g in robot.findall('gazebo')
+               for s in g.findall("sensor[@type='camera']")]
+    assert len(sensors) == 1
+    reference, sensor = sensors[0]
+    assert reference == 'camera_link'
+    assert sensor.find('gz_frame_id').text == 'camera_optical_frame'
+    assert sensor.find('topic').text == '/camera/image_raw'
+    bringup = os.path.join(PACKAGE_DIR, '..', 'braco_bringup', 'config', 'braco.yaml')
+    with open(bringup, encoding='utf-8') as f:
+        real = yaml.safe_load(f)['camera']['ros__parameters']
+    image = sensor.find('camera/image')
+    assert int(image.find('width').text) == real['width']
+    assert int(image.find('height').text) == real['height']
+    assert float(sensor.find('update_rate').text) == real['fps']
+    assert load_urdf().find('.//sensor') is None   # the real arm's model has no sensor
+
+
 def test_fixed_gripper_has_no_movable_finger_joints():
     robot = load_urdf(gripper_actuated='false')
     assert robot.findall('.//mimic') == []
@@ -308,36 +336,6 @@ def test_pedestal_look_does_not_change_the_mount():
     assert plain.find(joint).get('xyz') == gazebo.find(joint).get('xyz')
 
 
-def test_arm_spawns_on_the_lab_bench_table():
-    # The model's world frame is the table surface: robot_z must be the height of the table top,
-    # and the default robot_x, robot_y must put the mount on one table, flush with its rear edge.
-    # The tables are turned 90 deg in the world: their long side runs along x, along the gap.
-    with open(os.path.join(PACKAGE_DIR, 'launch', 'gazebo.launch.py'), encoding='utf-8') as f:
-        launch = f.read()
-
-    def default(name):
-        match = re.search(r"'%s', default_value='([^']+)'" % name, launch)
-        assert match, name
-        return float(match.group(1))
-
-    table = ET.parse(os.path.join(PACKAGE_DIR, 'models', 'lab_table', 'model.sdf')).getroot()
-    top = table.find(".//collision[@name='top_collision']")
-    short_side, long_side, thickness = floats(top.find('geometry/box/size').text)
-    assert floats(top.find('pose').text)[2] + thickness / 2 == pytest.approx(default('robot_z'))
-
-    world = ET.parse(os.path.join(PACKAGE_DIR, 'worlds', 'lab_bench.sdf')).getroot()
-    poses = {i.find('name').text: floats(i.find('pose').text) for i in world.iter('include')}
-    centre = poses['lab_table_left']
-    assert centre[5] == pytest.approx(math.pi / 2, abs=1e-3)
-    assert poses['lab_table_right'][5] == pytest.approx(math.pi / 2, abs=1e-3)
-    pedestal = load_urdf(gazebo='true').find(
-        "link[@name='g_base']/visual[@name='pedestal']/geometry/box")
-    pedestal_depth, pedestal_width, _ = floats(pedestal.get('size'))
-    assert default('robot_x') - pedestal_depth / 2 == pytest.approx(centre[0] - long_side / 2)
-    assert default('robot_y') - pedestal_width / 2 >= centre[1] - short_side / 2
-    assert default('robot_y') + pedestal_width / 2 <= centre[1] + short_side / 2
-
-
 def test_plain_model_has_no_ros2_control():
     assert load_urdf().find('ros2_control') is None
 
@@ -349,6 +347,19 @@ def test_gazebo_model_controls_the_arm_joints():
     assert [j.get('name') for j in control.findall('joint')] == ARM_JOINTS
     params = robot.find('gazebo/plugin/parameters').text
     assert os.path.isfile(params), params
+
+
+def test_real_arm_model_reads_the_arm_joints_through_braco_hardware():
+    robot = load_urdf(real_arm='true')
+    controls = robot.findall('ros2_control')
+    assert len(controls) == 1
+    assert controls[0].find('hardware/plugin').text == 'braco_hardware/BracoSystem'
+    joints = controls[0].findall('joint')
+    assert [j.get('name') for j in joints] == ARM_JOINTS
+    for joint in joints:
+        states = [s.get('name') for s in joint.findall('state_interface')]
+        assert states == ['position', 'velocity'], joint.get('name')
+    assert robot.find('gazebo') is None
 
 
 def test_controllers_drive_the_arm_joints():
@@ -364,3 +375,17 @@ def test_controllers_drive_the_arm_joints():
     arm = config['arm_controller']['ros__parameters']
     assert arm['joints'] == ARM_JOINTS
     assert arm['command_interfaces'] == ['position']
+
+
+def test_arm_controller_fails_a_goal_it_does_not_reach():
+    # #123: without goal tolerances a goal blocked by the table (0.33 rad short) ended as
+    # successful. Every joint needs a goal tolerance above the real servos' dead zone (~3 deg)
+    # and below that, a path tolerance above Gazebo's lag (0.047 rad), and goal_time > 0, or a
+    # blocked goal never ends.
+    yaml = pytest.importorskip('yaml')
+    with open(os.path.join(PACKAGE_DIR, 'config', 'controllers.yaml'), encoding='utf-8') as f:
+        constraints = yaml.safe_load(f)['arm_controller']['ros__parameters']['constraints']
+    assert constraints['goal_time'] > 0
+    for joint in ARM_JOINTS:
+        assert math.radians(3) < constraints[joint]['goal'] < 0.33, joint
+        assert constraints[joint]['trajectory'] > 0.047, joint

@@ -42,6 +42,18 @@ or Gazebo), plans and executes to `park`, and checks the result and the final `/
 - Alone, in `make shell`: `colcon test --packages-select braco_moveit_config --ctest-args -R plan_execute`, then
   `colcon test-result --verbose`.
 
+## braco_hardware test
+
+`braco_hardware/test/test_braco_system.cpp` (#125) loads the `BracoSystem` plugin from the real-arm URDF and reads a
+spawned `arm_driver` that talks to a fake arm on a pseudo-terminal (`PtyArm`), never a real serial port.
+
+- It runs on `ROS_DOMAIN_ID` 28, kept free for it (`make lint` refuses it in `team-domains.tsv`), and discovers only
+  on localhost; the spawned `arm_driver` inherits both. It never shares a domain with the real arm (22), a teammate's
+  `sim` or `dev`, or the MoveIt test (29).
+- A hang fails after 120 s (`ament_add_ros_isolated_gtest ... TIMEOUT 120`). If CTest kills the test at that point,
+  an `arm_driver` can be left running: check with `ps aux | grep arm_driver`.
+- Alone, in `make shell`: `colcon test --packages-select braco_hardware`, then `colcon test-result --verbose`.
+
 ## Coverage
 
 - Floors: `COV_MIN_CXX`, `COV_MIN_PY` and `COV_MIN_WEB` in [`mk/ci.mk`](../../mk/ci.mk), 80% for every component. A PR

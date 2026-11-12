@@ -64,7 +64,7 @@ class Camera(Node):
         self.height = self.declare_parameter('height', 480).value
         self.fps = self.declare_parameter('fps', 15.0).value
         self.quality = self.declare_parameter('jpeg_quality', 80).value
-        self.frame_id = self.declare_parameter('frame_id', 'camera_link').value
+        self.frame_id = self.declare_parameter('frame_id', 'camera_optical_frame').value
         self.reopen_s = self.declare_parameter('reopen_s', 2.0).value
         self.pub = self.create_publisher(CompressedImage, TOPIC, qos_profile_sensor_data)
         self._stop = threading.Event()

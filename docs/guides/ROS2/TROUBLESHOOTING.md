@@ -7,7 +7,7 @@ that causes them:
 |---|---|
 | Building the Docker image | [docker/README.md → If the build fails](../../../docker/README.md#10-if-the-build-fails) |
 | Setting up your machine (Docker, NVIDIA, `make doctor`) | [dev-setup.md → Problems](../dev-setup.md#problems) |
-| The simulation / Gazebo | [braco_description → When something goes wrong](../../../ros2_ws/src/braco_description/README.md#when-something-goes-wrong) |
+| The simulation / Gazebo | [braco_simulation → When something goes wrong](../../../ros2_ws/src/braco_simulation/README.md#when-something-goes-wrong) |
 | A hot arm, or the arm does nothing | [overheating guide](../overheating.md) |
 | ROS 2: build, tests, topics, two machines, GUI tools | Below, in this file |
 
@@ -117,7 +117,7 @@ Go through this list in order.
 | `rqt_graph: command not found` on the PC | Lyrical no longer installs a `rqt_graph` shortcut in `/opt/ros/lyrical/bin` (only `rqt` and `rqt_bag`) | `ros2 run rqt_graph rqt_graph` or `rqt --standalone rqt_graph`, inside the container (`make shell`), not on the host |
 | `rqt_graph: command not found` on the Jetson | The Jetson image is headless on purpose | Run `ros2 run rqt_graph rqt_graph` on the PC; it shows the Jetson's nodes over the network |
 | rqt_graph is empty or outdated | Not refreshed, or filters | Press refresh; select "Nodes/Topics (all)"; uncheck the "Hide" options |
-| RViz2/Gazebo very slow | Software rendering (no GPU) | See [Gazebo slow](../../../ros2_ws/src/braco_description/README.md#when-something-goes-wrong) |
+| RViz2/Gazebo very slow | Software rendering (no GPU) | See [Gazebo slow](../../../ros2_ws/src/braco_simulation/README.md#when-something-goes-wrong) |
 
 ## Jetson / hardware
 

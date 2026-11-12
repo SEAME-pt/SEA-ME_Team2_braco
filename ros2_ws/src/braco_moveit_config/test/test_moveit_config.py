@@ -24,10 +24,12 @@ Checks that
   * config/moveit_controllers.yaml sends to arm_controller, with the joints of
     braco_description/config/controllers.yaml
   * the mock <ros2_control> of the demo has the joints and interfaces of the Gazebo one
+  * scripts/lab_bench_scene.py puts Gazebo's table tops under the arm, in `world`
 
 joint_limits.yaml against JOINT_LIMITS and the URDF: test/test_joint_limits.py.
 """
 
+import importlib.util
 import math
 import os
 import re
@@ -40,6 +42,7 @@ import yaml
 PACKAGE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC_DIR = os.path.dirname(PACKAGE_DIR)   # ros2_ws/src (/ws/src in the container)
 DESCRIPTION_DIR = os.path.join(SRC_DIR, 'braco_description')
+SIMULATION_DIR = os.path.join(SRC_DIR, 'braco_simulation')
 MYCOBOT_HPP = os.environ.get('MYCOBOT_HPP') or os.path.join(
     SRC_DIR, 'mycobot_cpp', 'includes', 'mycobot.hpp')
 ARM_JOINTS = ['joint%d' % n for n in range(1, 7)]
@@ -165,3 +168,52 @@ def test_mock_system_matches_the_gazebo_one(model):
                            {'gazebo': 'true'}).find('ros2_control')
     assert list(interfaces(systems[0])) == ARM_JOINTS
     assert interfaces(systems[0]) == interfaces(gazebo)
+
+
+def load_lab_bench_scene():
+    path = os.path.join(PACKAGE_DIR, 'scripts', 'lab_bench_scene.py')
+    spec = importlib.util.spec_from_file_location('lab_bench_scene', path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def gazebo_launch_default(name):
+    with open(os.path.join(SIMULATION_DIR, 'launch', 'gazebo.launch.py'), encoding='utf-8') as f:
+        match = re.search(r"'%s', default_value='([^']+)'" % name, f.read())
+    assert match, name
+    return float(match.group(1))
+
+
+def test_lab_bench_scene_puts_the_table_tops_under_the_arm():
+    # The planning scene's tables are Gazebo's (worlds/lab_bench.sdf, models/lab_table), moved
+    # into `world` with the default spawn pose: both tops at z = 0 (the surface `world` is), and
+    # the arm's base on one of them, so MoveIt sees the table where the arm stands.
+    scene = load_lab_bench_scene()
+    robot = [gazebo_launch_default(n) for n in ('robot_x', 'robot_y', 'robot_z', 'robot_yaw')]
+    tops = scene.table_tops(os.path.join(SIMULATION_DIR, 'worlds', 'lab_bench.sdf'),
+                            os.path.join(SIMULATION_DIR, 'models', 'lab_table', 'model.sdf'),
+                            robot)
+    assert sorted(name for name, _, _, _ in tops) == ['lab_table_left', 'lab_table_right']
+    under_the_arm = []
+    for name, (x, y, z), yaw, (size_x, size_y, size_z) in tops:
+        assert z + size_z / 2 == pytest.approx(0.0, abs=1e-6), name
+        # The arm's origin (0, 0) in the box's own frame
+        u = -x * math.cos(yaw) - y * math.sin(yaw)
+        v = x * math.sin(yaw) - y * math.cos(yaw)
+        if abs(u) < size_x / 2 and abs(v) < size_y / 2:
+            under_the_arm.append(name)
+    assert under_the_arm == ['lab_table_left']
+
+
+def test_rviz_loads_the_model_move_group_runs():
+    # #123: rviz.launch.py built the model without the actuated gripper while sim.launch.py's
+    # move_group had it; RViz died on the first planning scene (finger joints unknown). Both
+    # must process braco.urdf.xacro with the same mappings, those of gazebo.launch.py.
+    def mappings(launch_file):
+        with open(os.path.join(PACKAGE_DIR, 'launch', launch_file), encoding='utf-8') as f:
+            found = re.findall(r'mappings=(\{[^}]*\})', f.read())
+        assert len(found) == 1, launch_file
+        return eval(found[0])   # a literal dict of strings
+    assert mappings('rviz.launch.py') == mappings('sim.launch.py') == \
+        {'gazebo': 'true', 'gripper_actuated': 'true'}

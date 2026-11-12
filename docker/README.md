@@ -145,7 +145,7 @@ docker compose exec dev bash            # ROS ready
 - **MoveIt:** `SIM_MOVEIT=true` (the default) also runs `move_group` in `sim`; `make rviz-gui` needs it. Before
   planning, `make domain-check TARGET=sim` checks the domain and that exactly one arm is there.
 - **Web page:** `make web` (runs in `dev`), http://localhost:8000.
-- Step by step: [Run the simulation](../ros2_ws/src/braco_description/README.md#run-the-simulation-step-by-step).
+- Step by step: [Run it](../ros2_ws/src/braco_simulation/README.md#run-it).
 ### ROS domain per teammate
  
 Each teammate's PC (`sim` and `dev`) has its own domain, so two simulations on the lab network never mix:
@@ -159,13 +159,14 @@ Each teammate's PC (`sim` and `dev`) has its own domain, so two simulations on t
 | Magusk | `magusk89` | 24 |
 | Dinis | `d-branco` | 25 |
 | *(not in the table)* | | *27* |
+| *(braco_hardware test, [CI guide](../docs/guides/ci.md#braco_hardware-test))* | | *28* |
 | *(MoveIt launch test, [CI guide](../docs/guides/ci.md#moveit-test))* | | *29* |
  
 - **Set by `make setup`** (on the PC): it reads your GitHub login with `gh api user` and writes your domain to
   `docker/.env`. Then `make restart` (`SIM=1` if `sim` runs). Without `gh`: `TEAM_LOGIN=<login> make setup`.
 - **Not found** (`gh` missing or not logged in, login not listed): a warning, and `PC_ROS_DOMAIN_ID` stays as it was.
 - **Source of truth:** [config/team-domains.tsv](config/team-domains.tsv). Change it there and here together.
-  `make lint` (and CI) checks it: 20–29, never 22, 27 or 29, each domain once. Free: 26, 28.
+  `make lint` (and CI) checks it: 20–29, never 22, 27, 28 or 29, each domain once. Free: 26.
 - **Why 20–29:** inside 0–101, the range that is safe on Linux
   ([ROS 2 docs, *The ROS_DOMAIN_ID*](https://github.com/ros2/ros2_documentation/blob/rolling/source/ROS-Framework/nodes/About-Domain-ID.rst)).
 ## 7. Tools
