@@ -237,10 +237,10 @@ export function render(root) {
   speedEl.addEventListener("pointerup", () => { speedDragging = false; });
   stepEl.addEventListener("change", () => share());
 
+  // No confirmation: STOP is the emergency stop and must act on the first click. Releasing it
+  // is the deliberate step, so that one still asks.
   $("#a-stop").addEventListener("click", () => {
-    if (confirm("Send STOP to the arm?\n\nThe arm stays stopped until someone releases the STOP (from 3 s after it).")) {
-      send("/api/stop", null, "STOP sent");
-    }
+    send("/api/stop", null, "STOP sent");
   });
   $("#c-release").addEventListener("click", () => {
     if (!confirm("Release the STOP?\n\nThe arm does not move. Whoever moves it next must take control again.")) return;
