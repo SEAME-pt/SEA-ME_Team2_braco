@@ -17,7 +17,8 @@ The braco system in one ROS 2 launch, on the real arm or in simulation.
 
     sim:=false  arm_driver, temperature_monitor, joystick_teleop and camera (the default), and
                 ros2_control (robot_state_publisher + ros2_control_node) with the braco_hardware
-                plugin, which reads the joints from arm_driver. This is
+                plugin, which talks to arm_driver, and arm_controller on it (no
+                joint_state_broadcaster: arm_driver publishes /joint_states, #97). This is
                 what the `real` container runs (make up), started by arm_routine.sh, which
                 also starts the web page. The arm is not zeroed or parked on start/stop.
                 arm_driver is not respawned: when it exits the whole launch shuts down, so
@@ -82,6 +83,10 @@ def generate_launch_description():
         [FindPackageShare('braco_description'), 'urdf', 'braco.urdf.xacro'])
     robot_description = ParameterValue(
         Command([FindExecutable(name='xacro'), ' ', model, ' real_arm:=true']), value_type=str)
+    # Controller types and update_rate for ros2_control_node; arm_controller's joints for the
+    # spawner
+    controllers = PathJoinSubstitution(
+        [FindPackageShare('braco_description'), 'config', 'controllers.yaml'])
     return LaunchDescription([
         DeclareLaunchArgument('sim', default_value='false',
                               description='true: simulated arm, false: real arm'),
@@ -111,7 +116,9 @@ def generate_launch_description():
              output='screen', condition=real,
              parameters=[{'robot_description': robot_description}]),
         Node(package='controller_manager', executable='ros2_control_node',
-             output='screen', condition=real),
+             output='screen', condition=real, parameters=[controllers]),
+        Node(package='controller_manager', executable='spawner', output='screen',
+             condition=real, arguments=['arm_controller', '--param-file', controllers]),
         Node(package='braco_teleop', executable='joystick_teleop', name='joystick_teleop',
              output='screen', respawn=True, condition=real,
              parameters=[config, {'device': device}]),
