@@ -54,7 +54,7 @@ Each layer talks only to the one below it. Layers 1–2 are identical in simulat
    HTTP/WS :8000          /dev/input/js0               I2C LCD1602
 ```
 
-Also on the real arm (`sim:=false`), with no device of their own: `robot_state_publisher` (the URDF on `/robot_description`, `/tf` from `/joint_states`) and `ros2_control_node` with the `braco_hardware` plugin, which reads `/joint_states` from `arm_driver` (ADR-0004).
+Also on the real arm (`sim:=false`), with no device of their own: `robot_state_publisher` (the URDF on `/robot_description`, `/tf` from `/joint_states`) and `ros2_control_node` with the `braco_hardware` plugin, which reads `/joint_states` from `arm_driver` (ADR-0004), and `arm_controller` on it (no `joint_state_broadcaster`, #97).
 
 A motion command passes the `arm_driver` gates in order:
 
@@ -243,7 +243,7 @@ braco_mission ──► MoveIt 2 ──trajectory──┬──► real: braco_
 **Pending:**
 - `arm_driver` as a lifecycle node
 - E-stop node
-- Real arm with MoveIt ([ADR-0004](../decisions/ADR-0004-trajectories-through-arm-driver.md), #101): `arm_controller` spawner for `sim:=false`
+- Real arm with MoveIt ([ADR-0004](../decisions/ADR-0004-trajectories-through-arm-driver.md), #101): MoveIt scaling ≤ 0.1 in `joint_limits.yaml`, the domain check before MoveIt (#103), bench
 - `braco_moveit_config`
 - `braco_mission` beyond `move_to_pose`: Cartesian path (#85), demo (#102), on the real arm with `use_control` (#101)
 - Measured CPU/RAM ([resources.md](resources.md))
