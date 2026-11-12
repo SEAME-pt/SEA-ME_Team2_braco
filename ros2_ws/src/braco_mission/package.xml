@@ -17,6 +17,8 @@
   <depend>tf2_geometry_msgs</depend>
   <depend>moveit_ros_planning_interface</depend>
   <depend>braco_interfaces</depend>
+  <depend>controller_manager_msgs</depend>
+  <depend>lifecycle_msgs</depend>
 
   <!-- move_to_pose.launch.py: the MoveIt config of the Gazebo arm -->
   <exec_depend>launch</exec_depend>

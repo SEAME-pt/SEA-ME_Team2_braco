@@ -16,7 +16,8 @@
 //
 //   1. a goal that is not a pose (not finite, not a rotation) is refused before anything else
 //   2. with `use_control` (the real arm): take the control as "mission", without force;
-//      refused -> the goal is not sent, nothing is queued
+//      refused -> the goal is not sent, nothing is queued; then braco_hardware and
+//      arm_controller active again, if a STOP or a lost control turned them off (#101)
 //   3. plan the full pose; no plan and `position_only_fallback` -> plan the position only
 //   4. execute (arm_controller), then measure the tcp from TF and compare it with the goal
 //   5. the control taken in 2 is released on every path, also on failure
@@ -45,6 +46,9 @@ public:
   // /arm/take_control as "mission", no force (ADR-0004). False: `message` says why.
   virtual bool take_control(std::string & message) = 0;
   virtual void release_control() = 0;
+  // braco_hardware and arm_controller active again after a STOP or a lost control (#101).
+  // False: `message` says why.
+  virtual bool ensure_active(std::string & message) = 0;
   // Plan to `goal` (planning frame), its position only when `position_only`.
   virtual bool plan(const Pose & goal, bool position_only, std::string & message) = 0;
   // Execute the last plan.

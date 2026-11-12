@@ -16,6 +16,8 @@
 //
 //   action  /move_to_pose   braco_interfaces/action/MoveToPose
 //   client  /arm/take_control (only with `use_control`, the real arm: ADR-0004)
+//   clients /controller_manager/{list_hardware_components, set_hardware_component_state,
+//           list_controllers, switch_controller} (only with `use_control`, #101)
 //
 // A goal pose is planned with MoveIt 2 (group `arm`, link `tcp`) and executed on
 // arm_controller; then the tcp is read from TF and the error reported. The steps and their
@@ -40,7 +42,12 @@
 #include "braco_interfaces/action/move_to_pose.hpp"
 #include "braco_interfaces/srv/take_control.hpp"
 #include "braco_mission/mission.hpp"
+#include "controller_manager_msgs/srv/list_controllers.hpp"
+#include "controller_manager_msgs/srv/list_hardware_components.hpp"
+#include "controller_manager_msgs/srv/set_hardware_component_state.hpp"
+#include "controller_manager_msgs/srv/switch_controller.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
+#include "lifecycle_msgs/msg/state.hpp"
 #include "moveit/move_group_interface/move_group_interface.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"
@@ -54,10 +61,17 @@ namespace
 using MoveToPose = braco_interfaces::action::MoveToPose;
 using GoalHandle = rclcpp_action::ServerGoalHandle<MoveToPose>;
 using TakeControl = braco_interfaces::srv::TakeControl;
+using ListHardware = controller_manager_msgs::srv::ListHardwareComponents;
+using SetHardwareState = controller_manager_msgs::srv::SetHardwareComponentState;
+using ListControllers = controller_manager_msgs::srv::ListControllers;
+using SwitchController = controller_manager_msgs::srv::SwitchController;
+using LifecycleState = lifecycle_msgs::msg::State;
 using moveit::planning_interface::MoveGroupInterface;
 using namespace std::chrono_literals;
 
 constexpr const char * SOURCE = "mission";   // control owner name (ADR-0002, ADR-0004)
+constexpr const char * HARDWARE = "BracoSystem";       // <ros2_control name> of braco.real.xacro
+constexpr const char * CONTROLLER = "arm_controller";  // controllers.yaml
 
 braco_mission::Pose from_msg(const geometry_msgs::msg::Pose & p)
 {
@@ -104,6 +118,13 @@ public:
     tf_buffer_ = std::make_unique<tf2_ros::Buffer>(get_clock());
     tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
     control_client_ = create_client<TakeControl>("/arm/take_control");
+    list_hardware_client_ =
+      create_client<ListHardware>("/controller_manager/list_hardware_components");
+    set_hardware_client_ =
+      create_client<SetHardwareState>("/controller_manager/set_hardware_component_state");
+    list_controllers_client_ =
+      create_client<ListControllers>("/controller_manager/list_controllers");
+    switch_client_ = create_client<SwitchController>("/controller_manager/switch_controller");
   }
 
   // MoveGroupInterface needs the node spinning (it waits for the robot state): call it from
@@ -164,6 +185,11 @@ public:
     if (!call_take_control(true)) {
       RCLCPP_WARN(get_logger(), "could not release the control: it frees itself after 5 s");
     }
+  }
+
+  bool ensure_active(std::string & message) override
+  {
+    return hardware_active(message) && controller_active(message);
   }
 
   bool plan(const braco_mission::Pose & goal, bool position_only, std::string & message) override
@@ -291,6 +317,66 @@ private:
     return future.get();
   }
 
+  // One call to a controller manager service; nothing if it did not answer
+  template<typename Srv>
+  typename Srv::Response::SharedPtr call(
+    rclcpp::Client<Srv> & client, const typename Srv::Request::SharedPtr & request)
+  {
+    if (!client.wait_for_service(2s)) {return nullptr;}
+    auto future = client.async_send_request(request);
+    if (future.wait_for(5s) != std::future_status::ready) {return nullptr;}
+    return future.get();
+  }
+
+  // HARDWARE active; from inactive this runs only its on_activate (no new configure)
+  bool hardware_active(std::string & message)
+  {
+    const auto list = call(*list_hardware_client_, std::make_shared<ListHardware::Request>());
+    if (!list) {
+      message = "list_hardware_components did not answer";
+      return false;
+    }
+    for (const auto & component : list->component) {
+      if (component.name != HARDWARE) {continue;}
+      if (component.state.id == LifecycleState::PRIMARY_STATE_ACTIVE) {return true;}
+      auto request = std::make_shared<SetHardwareState::Request>();
+      request->name = HARDWARE;
+      request->target_state.id = LifecycleState::PRIMARY_STATE_ACTIVE;
+      request->target_state.label = "active";
+      const auto set = call(*set_hardware_client_, request);
+      if (set && set->ok) {return true;}
+      message = std::string(HARDWARE) + " not activated, it is " + component.state.label;
+      return false;
+    }
+    message = std::string(HARDWARE) + " is not loaded";
+    return false;
+  }
+
+  // CONTROLLER active (STRICT: fails instead of skipping it)
+  bool controller_active(std::string & message)
+  {
+    const auto list =
+      call(*list_controllers_client_, std::make_shared<ListControllers::Request>());
+    if (!list) {
+      message = "list_controllers did not answer";
+      return false;
+    }
+    for (const auto & controller : list->controller) {
+      if (controller.name != CONTROLLER) {continue;}
+      if (controller.state == "active") {return true;}
+      auto request = std::make_shared<SwitchController::Request>();
+      request->activate_controllers = {CONTROLLER};
+      request->strictness = SwitchController::Request::STRICT;
+      request->timeout = rclcpp::Duration(5s);
+      const auto done = call(*switch_client_, request);
+      if (done && done->ok) {return true;}
+      message = std::string(CONTROLLER) + " not activated" + (done ? ": " + done->message : "");
+      return false;
+    }
+    message = std::string(CONTROLLER) + " is not loaded";
+    return false;
+  }
+
   std::string group_;
   std::string end_effector_;
   braco_mission::Settings settings_;
@@ -303,6 +389,10 @@ private:
   std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
   std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
   rclcpp::Client<TakeControl>::SharedPtr control_client_;
+  rclcpp::Client<ListHardware>::SharedPtr list_hardware_client_;
+  rclcpp::Client<SetHardwareState>::SharedPtr set_hardware_client_;
+  rclcpp::Client<ListControllers>::SharedPtr list_controllers_client_;
+  rclcpp::Client<SwitchController>::SharedPtr switch_client_;
   std::unique_ptr<MoveGroupInterface> move_group_;
   MoveGroupInterface::Plan plan_;
   rclcpp_action::Server<MoveToPose>::SharedPtr server_;

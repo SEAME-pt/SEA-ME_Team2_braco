@@ -81,6 +81,8 @@ Outcome move_to_pose(
     std::string why;
     if (!arm.take_control(why)) {return failed("control refused: " + why, position_only);}
     guard.hold();
+    arm.report("activating");
+    if (!arm.ensure_active(why)) {return failed("not active: " + why, position_only);}
   }
 
   arm.report("planning");
