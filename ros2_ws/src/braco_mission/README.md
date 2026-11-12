@@ -14,17 +14,20 @@ other nodes that move the arm.
 |---|---|---|
 | action | `/move_to_pose` | `braco_interfaces/action/MoveToPose` |
 | client | `/arm/take_control` | `braco_interfaces/srv/TakeControl` (only with `use_control`) |
+| clients | `/controller_manager/list_hardware_components`, `set_hardware_component_state`, `list_controllers`, `switch_controller` | `controller_manager_msgs/srv/*` (only with `use_control`) |
 
 A goal is a `geometry_msgs/PoseStamped` of the `tcp`:
 1. A pose that is not finite, or whose orientation is not a rotation, is refused.
 2. With `use_control` (real arm): `take_control("mission")` without `force`. Refused → nothing is sent.
+   Then `BracoSystem` and `arm_controller` are turned back on if they are off (a STOP or a lost control turns
+   them off, ADR-0004). Not possible → nothing is sent.
 3. MoveIt 2 plans the full pose (group `arm`). An orientation of all zeros asks for the position only. With
    `position_only_fallback`, a full pose without a plan (no IK) is retried as its position only.
 4. `arm_controller` executes the plan. Then the `tcp` is read from TF and compared with the goal.
 5. The control is released on every path, also on failure.
 
 The result has `success` (within both tolerances), the position and orientation error, `position_only` and a
-`message`. The feedback names the stage: `control`, `planning`, `executing`, `measuring`. One goal at a time;
+`message`. The feedback names the stage: `control`, `activating`, `planning`, `executing`, `measuring`. One goal at a time;
 cancelling stops the arm.
 
 | Parameter | Default | |
@@ -72,7 +75,7 @@ Position only: send the orientation as all zeros. Checked in Gazebo (2026-11-10)
 |---|---|
 | `include/braco_mission/pose_math.hpp` | Goal check and pose error, no ROS |
 | `include/braco_mission/mission.hpp`, `src/mission.cpp` | The steps of a goal against `ArmBackend`, no ROS |
-| `src/move_to_pose_node.cpp` | `ArmBackend` with MoveIt 2 (`MoveGroupInterface`), TF and `/arm/take_control`; the action server |
+| `src/move_to_pose_node.cpp` | `ArmBackend` with MoveIt 2 (`MoveGroupInterface`), TF, `/arm/take_control` and the controller manager services; the action server |
 | `launch/move_to_pose.launch.py` | The node with the MoveIt config of the Gazebo arm |
 
 Tests (`colcon test --packages-select braco_mission`): `test/test_pose_math.cpp` and `test/test_mission.cpp`

@@ -57,8 +57,8 @@ For each joint, `joint1` to `joint6`:
 5. If `mission` forgot to give the control back, `arm_driver` takes it back after 5 s.
 
 If someone presses STOP, or another client takes the control from `mission`, the plugin stops `arm_controller`
-and the goal is aborted (`arm_driver` has already stopped the arm). The plan is that `braco_mission` turns both
-back on before its next goal (#101, not done yet). Until then, by hand:
+and the goal is aborted (`arm_driver` has already stopped the arm). `braco_mission` turns both back on at the
+start of its next goal, right after taking the control. Without `braco_mission` (a goal sent by hand):
 
 ```bash
 ros2 control set_hardware_component_state BracoSystem active

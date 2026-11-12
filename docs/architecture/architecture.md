@@ -2,7 +2,7 @@
 
 How the braco software is built today: layers, nodes, topics, packages and deployment. If the code and this document disagree, the code wins. CPU and memory: [resources.md](resources.md). Timing: [timing-budget.md](timing-budget.md).
 
-Last checked against the code: **2026-11-11**.
+Last checked against the code: **2026-11-12**.
 
 **Contents:** [Principles](#1-principles) · [Layers](#2-layers) · [Nodes and devices](#3-nodes-and-devices) · [Topics and services](#4-topics-and-services) · [Control of the arm](#5-control-of-the-arm) · [Packages](#6-packages) · [Deployment](#7-deployment) · [Launch and parameters](#8-launch-and-parameters) · [Simulation and planned layers](#9-simulation-and-planned-layers) · [Status](#10-status) · [Changing the architecture](#11-changing-the-architecture)
 
@@ -220,7 +220,7 @@ braco_mission ──► MoveIt 2 ──trajectory──┬──► real: braco_
   `braco_hardware/BracoSystem` on the real arm (`real_arm:=true`). It reads the joints and sends
   `arm_controller`'s targets to `arm_driver` while `mission` holds the control (#101).
 - On the real arm, `joint_state_broadcaster` is not spawned: `arm_driver` keeps publishing `/joint_states`.
-- Real arm ([ADR-0004](../decisions/ADR-0004-trajectories-through-arm-driver.md)): the plugin sends `ALL_ANGLES` with `source: "mission"` to `arm_driver`, so trajectories pass the same gates as every client. `braco_mission` takes the control before each goal; STOP or a lost control aborts the trajectory. Measured: setpoints reach the arm at ~14 Hz and motion starts ~200 ms after a command ([timing-budget.md](timing-budget.md)).
+- Real arm ([ADR-0004](../decisions/ADR-0004-trajectories-through-arm-driver.md)): the plugin sends `ALL_ANGLES` with `source: "mission"` to `arm_driver`, so trajectories pass the same gates as every client. `braco_mission` takes the control before each goal; STOP or a lost control aborts the trajectory, and `braco_mission` turns `braco_hardware` and `arm_controller` back on at its next goal. Measured: setpoints reach the arm at ~14 Hz and motion starts ~200 ms after a command ([timing-budget.md](timing-budget.md)).
 - How to run it: [Run the simulation](../../ros2_ws/src/braco_simulation/README.md#run-it).
 
 ---
@@ -243,7 +243,7 @@ braco_mission ──► MoveIt 2 ──trajectory──┬──► real: braco_
 **Pending:**
 - `arm_driver` as a lifecycle node
 - E-stop node
-- Real arm with MoveIt ([ADR-0004](../decisions/ADR-0004-trajectories-through-arm-driver.md), #101): `arm_controller` spawner for `sim:=false`; `braco_mission` turning `braco_hardware` and `arm_controller` back on after a STOP
+- Real arm with MoveIt ([ADR-0004](../decisions/ADR-0004-trajectories-through-arm-driver.md), #101): `arm_controller` spawner for `sim:=false`
 - `braco_moveit_config`
 - `braco_mission` beyond `move_to_pose`: Cartesian path (#85), demo (#102), on the real arm with `use_control` (#101)
 - Measured CPU/RAM ([resources.md](resources.md))
