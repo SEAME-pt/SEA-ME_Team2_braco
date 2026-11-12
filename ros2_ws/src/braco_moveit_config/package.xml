@@ -48,6 +48,12 @@
   <test_depend>moveit_msgs</test_depend>
   <test_depend>rclpy</test_depend>
   <test_depend>sensor_msgs</test_depend>
+  <!-- test/test_launch.py: builds the launch descriptions (braco_simulation for sim's include) -->
+  <test_depend>braco_description</test_depend>
+  <test_depend>braco_simulation</test_depend>
+  <test_depend>launch</test_depend>
+  <test_depend>launch_ros</test_depend>
+  <test_depend>moveit_configs_utils</test_depend>
 
   <export>
     <build_type>ament_cmake</build_type>
