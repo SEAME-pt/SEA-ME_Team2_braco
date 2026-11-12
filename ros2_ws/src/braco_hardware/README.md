@@ -111,3 +111,24 @@ ros2 control list_hardware_components -v
 |---|---|
 | running | `BracoSystem` is `active` |
 | stopped | after 2 s, `BracoSystem` is `unconfigured`, and terminal 3 shows `is arm_driver running?` |
+
+## Tests
+
+`test/test_braco_system.cpp`, run alone with `colcon test --packages-select braco_hardware`. It loads `BracoSystem`
+through pluginlib from the real-arm URDF (`real_arm:=true`), as `ros2_control_node` does. It never opens a real serial
+port: the `arm_driver` it starts talks to `PtyArm`, a fake arm on a pseudo-terminal.
+
+| Test | Checks |
+|---|---|
+| `ReadGivesArmDriverAnglesInRadians` | `read()` gives `arm_driver`'s angles in radians, each to its own joint |
+| `ReadFailsBeforeFirstJointStates` | `read()` fails before any `/joint_states` arrives |
+| `ActivateFailsWithoutJointStates` | `on_activate` fails after 2 s without a message |
+| `InitFailsWithoutVelocityState` | `on_init` refuses a joint with no `velocity` state |
+| `ReadFailsWhenJointMissing` | `read()` fails when `/joint_states` lacks a URDF joint |
+| `ReconfigureDropsStaleJointStates` | `on_configure` drops the message kept before it |
+| `ConfigureFailsWithoutNode` | `on_configure` fails without a node from the controller manager |
+
+`write()` is not tested: it does nothing yet (#101).
+
+The domain, the timeout and a stuck `arm_driver`: see
+[braco_hardware test](../../../docs/guides/ci.md#braco_hardware-test).
