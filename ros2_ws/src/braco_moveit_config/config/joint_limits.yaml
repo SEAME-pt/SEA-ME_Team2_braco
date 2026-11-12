@@ -13,9 +13,10 @@
 # test/test_joint_limits.py fails if position or velocity drift from mycobot.hpp or the URDF.
 
 # Fraction of the limits below used when a request gives none (RViz, MoveGroupInterface).
-# 1.0 = full measured speed; requests can ask for up to 1.0.
-default_velocity_scaling_factor: 0.3
-default_acceleration_scaling_factor: 0.3
+# 1.0 = full measured speed; requests can ask for up to 1.0. 0.1 (about 15 deg/s) for the real
+# arm (ADR-0004): slow enough to press STOP. Simulation uses the same file, so it is slow too.
+default_velocity_scaling_factor: 0.1
+default_acceleration_scaling_factor: 0.1
 
 joint_limits:
   joint1:   # J1 -166 .. 166 deg

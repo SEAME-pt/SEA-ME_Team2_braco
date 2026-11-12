@@ -13,7 +13,7 @@ the arm on the Jetson through DDS.
 |---|---|
 | `config/braco.srdf` | Planning group `arm` (chain `base_link` -> `tcp`), group `gripper` and its end effector, named states `home` and `park`, disabled collision pairs |
 | `config/kinematics.yaml` | IK of `arm`: KDL, timeout and resolution |
-| `config/joint_limits.yaml` | Position limits = `JOINT_LIMITS` of `mycobot.hpp`; velocity measured on the real arm (from the URDF); acceleration UNMEASURED (5 rad/s²); default scaling 0.3 |
+| `config/joint_limits.yaml` | Position limits = `JOINT_LIMITS` of `mycobot.hpp`; velocity measured on the real arm (from the URDF); acceleration UNMEASURED (5 rad/s²); default scaling 0.1 (ADR-0004: the real arm) |
 | `config/moveit_controllers.yaml` | `arm_controller`, `FollowJointTrajectory` on `/arm_controller/follow_joint_trajectory` |
 | `config/braco.urdf.xacro` | The demo's model: `braco_description`'s `braco.urdf.xacro` + a `mock_components/GenericSystem` `<ros2_control>` |
 | `config/moveit.rviz` | RViz with the MotionPlanning panel on `arm` |
@@ -82,7 +82,7 @@ the controller. If it fails, the launch shuts down, so RViz never opens: look fo
 - **Joint limits** must never be wider than `JOINT_LIMITS` of `mycobot.hpp`: MoveIt would plan moves the driver
   then clamps. Change `mycobot.hpp` first, then the URDF and `config/joint_limits.yaml`; `test/test_joint_limits.py`
   fails if they disagree.
-- **Speed**: the default scaling (0.3 of the measured speed) is applied by the clients (RViz, `MoveGroupInterface`),
+- **Speed**: the default scaling (0.1 of the measured speed, ADR-0004) is applied by the clients (RViz, `MoveGroupInterface`),
   which read it from `robot_description_planning`. A raw `/move_action` request with scaling 0 runs at full speed.
 - **Collisions**: the disabled pairs come from `collisions_updater` (below) plus three set by hand, each explained
   in the SRDF. Pairs in contact in the zero pose are never disabled automatically: a collision there is a model bug

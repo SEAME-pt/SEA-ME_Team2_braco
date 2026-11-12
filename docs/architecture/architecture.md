@@ -243,7 +243,7 @@ braco_mission ──► MoveIt 2 ──trajectory──┬──► real: braco_
 **Pending:**
 - `arm_driver` as a lifecycle node
 - E-stop node
-- Real arm with MoveIt ([ADR-0004](../decisions/ADR-0004-trajectories-through-arm-driver.md), #101): MoveIt scaling ≤ 0.1 in `joint_limits.yaml`, the domain check before MoveIt (#103), bench
+- Real arm with MoveIt ([ADR-0004](../decisions/ADR-0004-trajectories-through-arm-driver.md), #101): the domain check before MoveIt (#103), bench
 - `braco_moveit_config`
 - `braco_mission` beyond `move_to_pose`: Cartesian path (#85), demo (#102), on the real arm with `use_control` (#101)
 - Measured CPU/RAM ([resources.md](resources.md))
