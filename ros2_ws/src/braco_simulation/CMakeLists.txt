@@ -18,6 +18,7 @@ if(BUILD_TESTING)
   find_package(ament_cmake_pytest REQUIRED)
   ament_add_pytest_test(test_scripts test/test_scripts.py)
   ament_add_pytest_test(test_lab_bench test/test_lab_bench.py)
+  ament_add_pytest_test(test_braco_arm test/test_braco_arm.py)
 endif()
 
 ament_package()
