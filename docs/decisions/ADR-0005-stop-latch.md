@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-11-10
 deciders: all
 ---
@@ -42,6 +42,7 @@ There is no hardwired e-stop, so STOP on `/arm/command` is the emergency stop. `
 | HALT (`3`) | Routine stop: stops the arm, no latch, the owner keeps the control. Used by the joystick, zero/park, `braco_arm.py`, the page's move timeout |
 
 - The page's release is open to anyone, like STOP: nobody can hold the control during a latch.
+- `make zero` never releases a STOP: its `take_control` is refused, so it fails. Run `make resume` first.
 
 ## Consequences
 
