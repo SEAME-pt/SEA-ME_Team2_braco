@@ -43,6 +43,10 @@ if(BUILD_TESTING)
   target_include_directories(test_pose_math PRIVATE include)
   ament_add_gtest(test_mission test/test_mission.cpp)
   target_link_libraries(test_mission braco_mission_core)
+
+  # move_to_pose.launch.py's description and node parameters, without starting anything
+  find_package(ament_cmake_pytest REQUIRED)
+  ament_add_pytest_test(test_launch test/test_launch.py)
 endif()
 
 ament_package()
