@@ -61,7 +61,8 @@ spawned `arm_driver` that talks to a fake arm on a pseudo-terminal (`PtyArm`), n
 - The ROS Python in scope is every `.py` of `ros2_ws/src` that git tracks outside `script/`, `scripts/` and `test/`,
   launch files included (today the 7 launch files, all at 100%). A file no test loads still counts, at 0%
   (`scripts/coverage_touch.py`), so a new launch file without a test lowers the total. A new file counts once git
-  tracks it.
+  tracks it. The helper's own test (`scripts/test_coverage_touch.py`) runs in the same job, on the coverage.py of
+  the `ci` image; if it fails, the job fails.
 - A launch file is tested by loading it from `src/` (not the installed copy, which is not measured) and calling
   `generate_launch_description()`: nothing starts. See `braco_bringup/test/test_launch.py`, or
   `braco_moveit_config/test/test_launch.py` for exit handlers driven with a `ProcessExited` event.
