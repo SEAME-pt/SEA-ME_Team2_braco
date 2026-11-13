@@ -1,0 +1,19 @@
+# Move the arm's end effector (tcp) in straight lines through waypoints with MoveIt 2
+# computeCartesianPath (braco_mission, issue #85). The path starts where the tcp is.
+
+# Goal
+std_msgs/Header header             # frame of every waypoint; empty frame_id: the planning frame (world)
+geometry_msgs/Pose[] waypoints     # orientation all 0: keep the tcp orientation at the start
+float64 eef_step_m                 # metres between two tcp points of the path; 0: the node's default (0.005)
+float64 min_fraction               # below this share of the path planned nothing moves; 0: 1.0 (the whole path)
+---
+# Result
+bool success                       # the whole move ran and the tcp is within the node's tolerances
+float64 fraction                   # share of the path planned, 0..1; -1: planning error
+float64 max_deviation_m            # largest distance of the planned tcp path from the straight lines
+float64 position_error_m           # last waypoint vs. the tcp measured from TF after the move
+float64 orientation_error_rad
+string message
+---
+# Feedback
+string stage                       # control, measuring start, planning, executing, measuring

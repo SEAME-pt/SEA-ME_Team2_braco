@@ -13,6 +13,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/ServoVoltages.msg"
   "srv/TakeControl.srv"
   "action/MoveToPose.action"
+  "action/MoveCartesian.action"
   DEPENDENCIES std_msgs geometry_msgs
 )
 

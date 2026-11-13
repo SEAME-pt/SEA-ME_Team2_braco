@@ -12,7 +12,7 @@ the same commands, from the repo folder.
 |---|---|---|
 | `host` | `make ci`: `make format-check` (C++ and Python formatting, see [Code formatting](#code-formatting)), `make lint` (compose files for both machines, ruff check of the Python outside `ros2_ws/src`, shellcheck, hadolint) and `make web-test` (pytest `web/tests`, in a venv from `web/requirements*.txt`, with the coverage of `web/server`, failing below `COV_MIN_WEB`) and `make timing-test` (pytest `scripts/timing/test_timing.py`: the reply framing and statistics of the bench scripts, no serial port, no ROS), one step each, all run even when one fails; creates `docker/.env` if missing | `make ci`, or one of its four targets |
 | `ros` | Builds the Dockerfile's `ci` stage (`base`: Ubuntu 26.04 + ROS 2 Lyrical, plus clang-tidy, gcovr, pytest-cov and MoveIt 2), then `rosdep install`, `colcon build` and `colcon test` of `ros2_ws/src` (with `mycobot_cpp` and the [MoveIt test](#moveit-test)) in a throw-away container, the test results uploaded as the `test-results` artifact; then cppcheck on every C++ package, and clang-tidy (`ros2_ws/.clang-tidy`, warnings as errors) from that build's `compile_commands.json`. Both also run when a test failed | `make ci-ros` (builds the image the first time), then `make cppcheck` and `make tidy` |
-| `coverage` | Same image as `ros`, in parallel: the GoogleTests built with `--coverage` in `ros2_ws/coverage/` (gcovr) and the pytests (pytest-cov), uploaded as the `coverage` artifact (HTML per line; Python in `python/`); fails below `COV_MIN_CXX`, or below `COV_MIN_PY` once there is ROS Python to measure (none yet, see [Coverage](#coverage)) | `make coverage` (report in `ros2_ws/coverage/html`) |
+| `coverage` | Same image as `ros`, in parallel: the GoogleTests built with `--coverage` in `ros2_ws/coverage/` (gcovr) and the pytests (pytest-cov), uploaded as the `coverage` artifact (HTML per line; Python in `python/`); fails below `COV_MIN_CXX` or `COV_MIN_PY` (the ROS Python includes the launch files, see [Coverage](#coverage)) | `make coverage` (report in `ros2_ws/coverage/html`) |
 
 - `make ci` creates `.venv` from `web/requirements*.txt` by itself; `make setup` (on the PC) adds
   `requirements-dev.txt` to the same venv.
@@ -58,9 +58,16 @@ spawned `arm_driver` that talks to a fake arm on a pseudo-terminal (`PtyArm`), n
 
 - Floors: `COV_MIN_CXX`, `COV_MIN_PY` and `COV_MIN_WEB` in [`mk/ci.mk`](../../mk/ci.mk), 80% for every component. A PR
   below a floor adds tests; the floors are not lowered to make it pass.
-- `scripts/` directories are not measured, so the ROS Python (today only `braco_camera/scripts/camera.py`) has
-  nothing to report yet, and `COV_MIN_PY` gates nothing until a ROS Python module outside `scripts/` has tests.
-  Only coverage.py's "No data to report." skips it; any other coverage.py error fails the job.
+- The ROS Python in scope is every `.py` of `ros2_ws/src` that git tracks outside `script/`, `scripts/` and `test/`,
+  launch files included (today the 7 launch files, all at 100%). A file no test loads still counts, at 0%
+  (`scripts/coverage_touch.py`), so a new launch file without a test lowers the total. A new file counts once git
+  tracks it. The helper's own test (`scripts/test_coverage_touch.py`) runs in the same job, on the coverage.py of
+  the `ci` image; if it fails, the job fails.
+- A launch file is tested by loading it from `src/` (not the installed copy, which is not measured) and calling
+  `generate_launch_description()`: nothing starts. See `braco_bringup/test/test_launch.py`, or
+  `braco_moveit_config/test/test_launch.py` for exit handlers driven with a `ProcessExited` event.
+- With files in scope, missing or unreadable coverage data fails the job. Only an empty list skips `COV_MIN_PY`
+  (`make coverage COV_PY_FILES=`).
 - Each run's summary page shows the coverage totals against their floors, with the C++ per package
   (`scripts/coverage_summary.py`, from the JSON reports; written on failure too). Locally the table is dropped; to see
   it, run e.g. `GITHUB_STEP_SUMMARY=/dev/stdout make ci`.

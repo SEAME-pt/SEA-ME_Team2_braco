@@ -15,6 +15,8 @@ if(BUILD_TESTING)
 
   find_package(ament_cmake_pytest REQUIRED)
   ament_add_pytest_test(test_moveit_config test/test_moveit_config.py)
+  # The launch descriptions, built without starting anything
+  ament_add_pytest_test(test_launch test/test_launch.py)
 
   # Plan + execute on the mock arm; TIMEOUT fails a hang
   find_package(launch_testing_ament_cmake REQUIRED)

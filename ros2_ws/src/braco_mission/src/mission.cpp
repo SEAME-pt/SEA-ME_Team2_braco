@@ -19,27 +19,13 @@
 #include <string>
 #include <utility>
 
+#include "braco_mission/control_guard.hpp"
+
 namespace braco_mission
 {
 
 namespace
 {
-
-// Gives the control back when it goes out of scope: every return below releases it.
-class ControlGuard
-{
-public:
-  explicit ControlGuard(ArmBackend & arm)
-  : arm_(arm) {}
-  ~ControlGuard() {if (held_) {arm_.release_control();}}
-  ControlGuard(const ControlGuard &) = delete;
-  ControlGuard & operator=(const ControlGuard &) = delete;
-  void hold() {held_ = true;}
-
-private:
-  ArmBackend & arm_;
-  bool held_ = false;
-};
 
 Outcome failed(std::string message, bool position_only = false)
 {

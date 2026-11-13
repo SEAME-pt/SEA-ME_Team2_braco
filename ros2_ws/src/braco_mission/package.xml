@@ -3,7 +3,7 @@
 <package format="3">
   <name>braco_mission</name>
   <version>0.0.0</version>
-  <description>Mission layer of the braco arm, as MoveIt 2 clients: move_to_pose (a Cartesian pose goal); later pick-and-place and pen drawing</description>
+  <description>Mission layer of the braco arm, as MoveIt 2 clients: move_to_pose (a Cartesian pose goal) and move_cartesian (straight lines); later pick-and-place and pen drawing</description>
   <maintainer email="danielximenes164@gmail.com">Daniel Ximenes</maintainer>
   <license>Apache-2.0</license>
 
@@ -15,17 +15,25 @@
   <depend>tf2</depend>
   <depend>tf2_ros</depend>
   <depend>tf2_geometry_msgs</depend>
+  <depend>moveit_core</depend>
   <depend>moveit_ros_planning_interface</depend>
+  <depend>moveit_msgs</depend>
   <depend>braco_interfaces</depend>
 
   <!-- move_to_pose.launch.py: the MoveIt config of the Gazebo arm -->
+  <exec_depend>ament_index_python</exec_depend>
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
   <exec_depend>moveit_configs_utils</exec_depend>
   <exec_depend>braco_moveit_config</exec_depend>
   <exec_depend>braco_description</exec_depend>
+  <!-- scripts/draw_line.py -->
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>tf2_ros_py</exec_depend>
+  <exec_depend>python3-matplotlib</exec_depend>
 
   <test_depend>ament_cmake_gtest</test_depend>
+  <test_depend>ament_cmake_pytest</test_depend>
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
 

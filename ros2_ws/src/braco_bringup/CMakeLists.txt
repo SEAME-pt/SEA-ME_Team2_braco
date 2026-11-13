@@ -43,6 +43,10 @@ if(BUILD_TESTING)
   find_package(ament_cmake_ros REQUIRED)
   ament_add_ros_isolated_gtest(test_arm_moves test/test_arm_moves.cpp TIMEOUT 120)
   target_link_libraries(test_arm_moves arm_moves)
+
+  # braco.launch.py's description and conditions, without starting anything
+  find_package(ament_cmake_pytest REQUIRED)
+  ament_add_pytest_test(test_launch test/test_launch.py)
 endif()
 
 ament_package()
