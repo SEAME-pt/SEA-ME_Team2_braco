@@ -104,6 +104,19 @@ The executed deviation is about three times the planned one: `arm_controller` la
 moves (it rises while accelerating, holds ~0.1 mm at cruise speed, and falls back as the arm stops). The real arm's
 servos will add far more.
 
+## Run it on the real arm
+
+Follow [safety.md §9](../../../docs/guides/safety.md#9-first-moveit-2-motion-on-the-real-arm). The Jetson runs the arm
+(`make up`), the PC runs `move_group` (`make moveit`, after the domain check) and this node, on the arm's domain.
+`real:=true` gives it the real arm's model, the system clock and `use_control`: it takes the control as `mission`
+before each goal and turns `braco_hardware` and `arm_controller` back on if they are off.
+
+```bash
+make run CMD='ROS_DOMAIN_ID=22 ros2 launch braco_mission move_to_pose.launch.py real:=true'
+```
+
+Goals as below, with `ROS_DOMAIN_ID=22`. Start with a small move near `park`.
+
 ## Run it on the Gazebo arm
 
 ```bash
@@ -140,7 +153,7 @@ Position only: send the orientation as all zeros. Checked in Gazebo (2026-11-10)
 | `include/braco_mission/cartesian.hpp`, `src/cartesian.cpp` | The steps of a straight-line goal against `CartesianBackend`, the request check and the line deviation, no ROS |
 | `include/braco_mission/control_guard.hpp` | Releases the control on every path of a goal (both actions) |
 | `src/move_to_pose_node.cpp` | `CartesianBackend` with MoveIt 2 (`MoveGroupInterface`, `computeCartesianPath`, TOTG), TF, `/arm/take_control` and the controller manager services; both action servers |
-| `launch/move_to_pose.launch.py` | The node with the MoveIt config of the Gazebo arm |
+| `launch/move_to_pose.launch.py` | The node with the MoveIt config of the Gazebo arm, or of the real arm with `real:=true` |
 | `scripts/draw_line.py` | Draw one straight line and plot the executed `tcp` path |
 
 Tests (`colcon test --packages-select braco_mission`): `test/test_pose_math.cpp`, `test/test_mission.cpp` and

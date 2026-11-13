@@ -15,6 +15,8 @@
 """
 The launch description of launch/move_to_pose.launch.py, built without starting anything.
 
+It builds one move_to_pose node for the simulation and one for the real arm (real:=true).
+
 The file is loaded from the source tree (the installed copy is not measured by coverage) and
 its generate_launch_description() called: MoveItConfigsBuilder runs xacro and reads the share
 dirs of braco_description and braco_moveit_config. The Node keeps its parameters only in a
@@ -49,29 +51,42 @@ def launch():
     return module.generate_launch_description(), calls
 
 
+def own_parameters(kwargs):
+    """Return the node's own parameters: the last dict, after the MoveIt config."""
+    return kwargs['parameters'][-1]
+
+
+def all_parameters(kwargs):
+    """Return every parameter given to the node, in one dict."""
+    return {k: v for p in kwargs['parameters'] for k, v in p.items()}
+
+
 def test_arguments(launch):
-    """Declare the velocity scaling (ADR-0004: <= 0.1) and the success tolerances."""
+    """Declare real (simulation by default), the velocity scaling and the tolerances."""
     ld, _ = launch
     args = {a.name: perform_substitutions(LaunchContext(), a.default_value)
             for a in ld.entities if isinstance(a, DeclareLaunchArgument)}
-    assert args == {'velocity_scaling': '0.1', 'position_tolerance_m': '0.005',
+    assert args == {'real': 'false', 'velocity_scaling': '0.1', 'position_tolerance_m': '0.005',
                     'orientation_tolerance_deg': '2.0'}
 
 
-def test_one_move_to_pose_node(launch):
-    """Start move_to_pose of braco_mission, after the arguments."""
+def test_two_move_to_pose_nodes(launch):
+    """Build move_to_pose twice, after the arguments: real:=true starts one, false the other."""
     ld, calls = launch
-    (node,) = [e for e in ld.entities if isinstance(e, Node)]
-    assert ld.entities[-1] is node
-    assert node.node_package == 'braco_mission'
-    assert node.node_executable == 'move_to_pose'
-    assert len(calls) == 1
+    nodes = [e for e in ld.entities if isinstance(e, Node)]
+    assert ld.entities[-2:] == nodes and len(calls) == 2
+    assert all(n.node_package == 'braco_mission' for n in nodes)
+    assert all(n.node_executable == 'move_to_pose' for n in nodes)
+    for real, started in (('false', [True, False]), ('true', [False, True])):
+        context = LaunchContext()
+        context.launch_configurations['real'] = real
+        assert [n.condition.evaluate(context) for n in nodes] == started
 
 
-def test_moveit_model(launch):
-    """Give the node the Gazebo arm's model (actuated gripper) and its MoveIt config."""
-    _, (kwargs,) = launch
-    params = {k: v for p in kwargs['parameters'] for k, v in p.items()}
+def test_simulation_model(launch):
+    """Give the simulation node the Gazebo arm's model (actuated gripper) and its MoveIt config."""
+    _, (sim, _) = launch
+    params = all_parameters(sim)
     # gazebo:=true adds the Gazebo ros2_control system, gripper_actuated:=true a moving gripper
     assert 'gz_ros2_control/GazeboSimSystem' in params['robot_description']
     assert '<joint name="gripper_controller" type="revolute">' in params['robot_description']
@@ -80,10 +95,20 @@ def test_moveit_model(launch):
     assert 'robot_description_planning' in params
 
 
+def test_real_arm_model(launch):
+    """Give the real-arm node the Jetson's model: braco_hardware, fingers fixed."""
+    _, (_, real) = launch
+    params = all_parameters(real)
+    assert 'braco_hardware/BracoSystem' in params['robot_description']
+    assert 'GazeboSimSystem' not in params['robot_description']
+    assert '<joint name="gripper_controller" type="revolute">' not in params['robot_description']
+    assert '<group name="arm">' in params['robot_description_semantic']
+
+
 def test_simulation_parameters(launch):
     """Run on simulated time without arm_driver; the tolerances come from the arguments."""
-    _, (kwargs,) = launch
-    own = kwargs['parameters'][-1]
+    _, (sim, _) = launch
+    own = own_parameters(sim)
     assert own['use_sim_time'] is True
     assert own['use_control'] is False
     context = LaunchContext()
@@ -92,3 +117,11 @@ def test_simulation_parameters(launch):
     assert {k: own[k].evaluate(context) for k in
             ('velocity_scaling', 'position_tolerance_m', 'orientation_tolerance_deg')} == {
         'velocity_scaling': 0.05, 'position_tolerance_m': 0.01, 'orientation_tolerance_deg': 5.0}
+
+
+def test_real_arm_parameters(launch):
+    """Take the control as mission (ADR-0004) on the system clock."""
+    _, (_, real) = launch
+    own = own_parameters(real)
+    assert own['use_sim_time'] is False
+    assert own['use_control'] is True
