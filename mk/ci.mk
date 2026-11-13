@@ -41,6 +41,8 @@ CI_RUN = docker run $(CI_RUN_OPTS) $(CI_IMAGE)
 # loads the file from src/, not the installed copy, which is outside --cov. combine runs with -W error: a corrupt
 # data file is only a warning, which would drop that test's lines and pass. With files in scope, no data fails the
 # target; only an empty COV_PY_FILES skips the Python floor. braco_camera stays listed, so its pytest still runs.
+# The helper's own pytest (scripts/test_coverage_touch.py) runs here too, on the coverage.py it uses; a failure fails
+# the target but the report is still written. /scripts is read-only: -B and no pytest cache.
 # Coverage floors: 80% for every component, the project's minimum. Do not lower them to make a PR pass: add tests.
 # C++ is gated on the line total of every package (gcovr); branches are only reported (gcc counts exception paths).
 # pytest-cov and coverage.py compare the total of statements and branches together, not the line percentage.
@@ -74,6 +76,7 @@ CI_COV_SH := set -eo pipefail; sudo apt-get update -qq; \
                  --txt --print-summary \
                  --html-details coverage/html/index.html --json-summary coverage/cxx.json \
                  --fail-under-line $(COV_MIN_CXX) | cut -c1-64 || st=1; \
+             python3 -B -m pytest -q -p no:cacheprovider /scripts/test_coverage_touch.py || st=1; \
              if [ -z "$$COV_PY_FILES" ]; then \
                  echo "ROS Python: nothing to measure outside script/, scripts/ and test/"; \
              elif python3 -W error -m coverage combine --keep --data-file=coverage/.coverage \
