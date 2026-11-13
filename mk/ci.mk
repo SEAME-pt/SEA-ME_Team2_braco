@@ -38,8 +38,10 @@ CI_RUN = docker run $(CI_RUN_OPTS) $(CI_IMAGE)
 # In scope: every .py of ros2_ws/src that git tracks outside them (COV_PY_FILES, listed on the host, where git is),
 # launch files included. pytest-cov only records the files a test imported, so scripts/coverage_touch.py (mounted on
 # /scripts for this run only) adds the others at 0%: a launch file without a test lowers the total. A launch test
-# loads the file from src/, not the installed copy, which is outside --cov. combine runs with -W error: a corrupt
-# data file is only a warning, which would drop that test's lines and pass. With files in scope, no data fails the
+# loads the file from src/, not the installed copy, which is outside --cov. A corrupt data file is only a warning to
+# combine, which would drop that test's lines and pass: -W error::Warning:coverage.data makes the warnings of
+# coverage's data module errors, and only those (a plain -W error also fails on an unrelated DeprecationWarning;
+# -W cannot name CoverageWarning, nor match its message here: it has a ' in it). With files in scope, no data fails the
 # target; only an empty COV_PY_FILES skips the Python floor. braco_camera stays listed, so its pytest still runs.
 # The helper's own pytest (scripts/test_coverage_touch.py) runs here too, on the coverage.py it uses; a failure fails
 # the target but the report is still written. /scripts is read-only: -B and no pytest cache.
@@ -79,7 +81,7 @@ CI_COV_SH := set -eo pipefail; sudo apt-get update -qq; \
              python3 -B -m pytest -q -p no:cacheprovider /scripts/test_coverage_touch.py || st=1; \
              if [ -z "$$COV_PY_FILES" ]; then \
                  echo "ROS Python: nothing to measure outside script/, scripts/ and test/"; \
-             elif python3 -W error -m coverage combine --keep --data-file=coverage/.coverage \
+             elif python3 -W error::Warning:coverage.data -m coverage combine --keep --data-file=coverage/.coverage \
                      coverage/build/*/pytest_cov/*/.coverage >/dev/null && \
                  python3 /scripts/coverage_touch.py --data-file coverage/.coverage --root /ws/src $$COV_PY_FILES; then \
                  python3 -m coverage report $(COV_PY) --fail-under=$(COV_MIN_PY) || st=1; \
