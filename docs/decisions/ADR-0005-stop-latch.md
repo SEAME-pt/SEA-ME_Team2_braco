@@ -36,7 +36,7 @@ There is no hardwired e-stop, so STOP on `/arm/command` is the emergency stop. `
 | | Rule |
 |---|---|
 | STOP (`0`) | Stops the arm, drops pending motion, frees the control, latches. Published on `/arm/stopped` (latched) |
-| While latched | Refused: motion, `take_control` (even `force`), `power_on`, `set_gripper`, `release_servos`, `set_read_only false` |
+| While latched | Refused: motion, `take_control` (even `force`), `power_on`, `set_gripper`, `release_servos`, `set_read_only false`. Still allowed: `HALT`, `set_read_only true` (overheat rest, [ADR-0003](ADR-0003-rest-per-temp.md)) |
 | Release | `/arm/release_stop` (`make resume`, the page's Release STOP), refused for `stop_hold_s` (3 s) after the last STOP. Moves nothing; the control stays free |
 | Second STOP | Keeps the latch and restarts the hold |
 | HALT (`3`) | Routine stop: stops the arm, no latch, the owner keeps the control. Used by the joystick, zero/park, `braco_arm.py`, the page's move timeout |
@@ -50,6 +50,7 @@ There is no hardwired e-stop, so STOP on `/arm/command` is the emergency stop. `
 - ✅ zero, park and the auto-park cannot undo it: their `take_control` is refused
 - ✅ Releasing never moves the arm
 - ❌ After any STOP someone must release it (`make resume` or the page) before the arm moves again
+- ❌ A hot servo during a latch only enters rest mode: no park, joints stay powered and do not cool until `make resume`, then `make park` ([ADR-0003](ADR-0003-rest-per-temp.md))
 - ❌ A new `ArmCommand` type: every client must use `HALT` for routine stops
 - ⚠️ Anyone on the page can release a STOP
 
@@ -63,5 +64,5 @@ There is no hardwired e-stop, so STOP on `/arm/command` is the emergency stop. `
 ## Links
 
 - Issue [#126](https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/126), found in PR #124
-- [ADR-0002](ADR-0002-unique-control.md), [ADR-0004](ADR-0004-trajectories-through-arm-driver.md), [safety guide](../guides/safety.md)
+- [ADR-0002](ADR-0002-unique-control.md), [ADR-0003](ADR-0003-rest-per-temp.md), [ADR-0004](ADR-0004-trajectories-through-arm-driver.md), [safety guide](../guides/safety.md)
 - Revisit if: a hardwired e-stop is added, or the 3 s hold gets in the way on the bench
