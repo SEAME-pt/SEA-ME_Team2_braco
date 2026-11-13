@@ -34,7 +34,9 @@ CI_RUN = docker run $(CI_RUN_OPTS) $(CI_IMAGE)
 # table is cut before gcovr's Missing column (every uncovered line number): the HTML report has them.
 # Python: AMENT_CMAKE_PYTEST_WITH_COVERAGE makes ament_add_pytest_test run pytest-cov over the package's source dir,
 # one .coverage file per test under build/<pkg>/pytest_cov/; they are combined into one report (tests left out),
-# HTML in coverage/html/python. script/, scripts/ and test/ directories are not measured (C++ or Python).
+# HTML in coverage/html/python. They are deleted first, with the .gcda: a test removed or renamed since the last
+# local run would leave its file behind, and combine would count it (CI starts clean). script/, scripts/ and test/
+# directories are not measured (C++ or Python).
 # In scope: every .py of ros2_ws/src that git tracks outside them (COV_PY_FILES, listed on the host, where git is),
 # launch files included. pytest-cov only records the files a test imported, so scripts/coverage_touch.py (mounted on
 # /scripts for this run only) adds the others at 0%: a launch file without a test lowers the total. A launch test
@@ -68,7 +70,7 @@ CI_COV_SH := set -eo pipefail; sudo apt-get update -qq; \
              rosdep install --from-paths $(WS_BASE_PATHS) --ignore-src -y >/dev/null; \
              colcon --log-base coverage/log build --base-paths $(WS_BASE_PATHS) --packages-up-to $(COVERAGE_PKGS) \
                  $(COV_DIRS) --cmake-args $(COV_FLAGS); \
-             find coverage/build -name "*.gcda" -delete; \
+             find coverage/build -type f \( -name "*.gcda" -o -path "*/pytest_cov/*/.coverage" \) -delete; \
              colcon test-result --test-result-base coverage/build --delete-yes >/dev/null 2>&1 || true; \
              colcon --log-base coverage/log test --base-paths $(WS_BASE_PATHS) --packages-select $(COVERAGE_PKGS) \
                  $(COV_DIRS) --ctest-args -L "gtest|pytest"; \
