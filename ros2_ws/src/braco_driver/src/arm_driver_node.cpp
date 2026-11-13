@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <string>
 #include <utility>
 
@@ -47,6 +48,9 @@ ArmDriver::ArmDriver(const rclcpp::NodeOptions & options)
   gripper_speed_ = static_cast<int>(declare_parameter<int>("gripper_speed", 50));
   control_idle_ = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
     std::chrono::duration<double>(declare_parameter<double>("control_idle_s", 5.0)));
+  stop_hold_ = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+    std::chrono::duration<double>(
+      std::max(0.0, declare_parameter<double>("stop_hold_s", 3.0))));
 
   // Throws if the port cannot be opened: main() reports it and exits non-zero.
   mc_ = std::make_unique<mycobot::MyCobot280>(port, static_cast<int>(baud));
@@ -56,6 +60,16 @@ ArmDriver::ArmDriver(const rclcpp::NodeOptions & options)
   temp_pub_ = create_publisher<ServoTemperatures>("arm/servo_temperatures", 10);
   volt_pub_ = create_publisher<ServoVoltages>("arm/servo_voltages", 10);
 
+  stopped_pub_ = create_publisher<std_msgs::msg::Bool>(
+    "arm/stopped", rclcpp::QoS(1).transient_local());
+  publishStopped(false);
+  release_stop_srv_ = create_service<std_srvs::srv::Trigger>(
+    "arm/release_stop",
+    [this](std_srvs::srv::Trigger::Request::ConstSharedPtr,
+    std_srvs::srv::Trigger::Response::SharedPtr res) {
+      releaseStop(res->success, res->message);
+    });
+
   read_only_pub_ = create_publisher<std_msgs::msg::Bool>(
     "arm/read_only", rclcpp::QoS(1).transient_local());
   setReadOnly(declare_parameter<bool>("read_only", false));
@@ -64,6 +78,10 @@ ArmDriver::ArmDriver(const rclcpp::NodeOptions & options)
     "arm/set_read_only",
     [this](std_srvs::srv::SetBool::Request::ConstSharedPtr req,
     std_srvs::srv::SetBool::Response::SharedPtr res) {
+      // Leaving rest would not move the arm, but zero/park/scripts do it right before moving
+      if (!req->data && refuseWhileStopped(res->success, res->message, "rest mode off")) {
+        return;
+      }
       setReadOnly(req->data);
       res->success = true;
       res->message = req->data ? "rest mode on" : "rest mode off";
@@ -94,6 +112,8 @@ ArmDriver::ArmDriver(const rclcpp::NodeOptions & options)
     "arm/release_servos",
     [this](std_srvs::srv::Trigger::Request::ConstSharedPtr,
     std_srvs::srv::Trigger::Response::SharedPtr res) {
+      // Free joints drop under gravity: that is motion too
+      if (refuseWhileStopped(res->success, res->message, "release servos")) {return;}
       clearPending();
       runSerial(
         res->success, res->message, "release servos",
@@ -143,8 +163,18 @@ void ArmDriver::setReadOnly(bool on)
   }
 }
 
+bool ArmDriver::refuseWhileStopped(bool & success, std::string & message, const char * what)
+{
+  if (!stopped_) {return false;}
+  success = false;
+  message = std::string(what) + " refused: STOP latched (make resume, or call arm/release_stop)";
+  RCLCPP_WARN(get_logger(), "%s", message.c_str());
+  return true;
+}
+
 bool ArmDriver::refuseInRest(bool & success, std::string & message, const char * what)
 {
+  if (refuseWhileStopped(success, message, what)) {return true;}
   if (!read_only_) {return false;}
   success = false;
   message = std::string(what) + " refused: rest mode (call arm/set_read_only false)";
@@ -159,13 +189,84 @@ void ArmDriver::publishOwner(const std::string & owner)
   owner_pub_->publish(msg);
 }
 
+void ArmDriver::publishStopped(bool on)
+{
+  std_msgs::msg::Bool msg;
+  msg.data = on;
+  stopped_pub_->publish(msg);
+}
+
+void ArmDriver::latchStop(const std::string & source)
+{
+  const bool was_stopped = stopped_.exchange(true);
+  std::string dropped;
+  {
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    stop_requested_ = true;
+    pending_joints_.clear();
+    pending_all_.reset();
+    last_stop_ = std::chrono::steady_clock::now();   // a second STOP restarts the hold
+    dropped = control_.clear();
+    if (!dropped.empty() || !last_owner_.empty()) {
+      last_owner_.clear();
+      publishOwner("");   // under the lock, like the other owner changes
+    }
+  }
+  const char * who = source.empty() ? "?" : source.c_str();
+  if (!was_stopped) {
+    publishStopped(true);
+    RCLCPP_WARN(
+      get_logger(), "STOP from '%s': latched, motion refused (make resume, after %.1f s)", who,
+      std::chrono::duration<double>(stop_hold_).count());
+  } else {
+    RCLCPP_INFO(get_logger(), "STOP from '%s': already latched, hold restarted", who);
+  }
+  if (!dropped.empty()) {
+    RCLCPP_INFO(get_logger(), "control: free (STOP, was %s)", dropped.c_str());
+  }
+}
+
+// Check-then-clear is safe only because rclcpp::spin is single-threaded: no STOP in between.
+void ArmDriver::releaseStop(bool & success, std::string & message)
+{
+  success = true;
+  if (!stopped_) {
+    message = "not stopped";
+    return;
+  }
+  std::chrono::steady_clock::duration left{};
+  {
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    left = last_stop_ + stop_hold_ - std::chrono::steady_clock::now();
+  }
+  if (left > std::chrono::steady_clock::duration::zero()) {
+    success = false;
+    char buf[96];
+    std::snprintf(
+      buf, sizeof(buf), "release refused: %.1f s left of the hold after the last STOP",
+      std::chrono::duration<double>(left).count());
+    message = buf;
+    RCLCPP_WARN(get_logger(), "%s", message.c_str());
+    return;
+  }
+  stopped_ = false;
+  publishStopped(false);
+  message = "stop released (the arm stays still: take the control and send a new command)";
+  RCLCPP_WARN(get_logger(), "%s", message.c_str());
+}
+
 void ArmDriver::onTakeControl(const TakeControl::Request & req, TakeControl::Response & res)
 {
   std::string owner;
   bool changed = false;
   {
     std::lock_guard<std::mutex> lock(state_mutex_);
-    if (req.release) {
+    if (!req.release && stopped_) {
+      // Even force: a STOP holds until a person releases it (ADR-0005)
+      res.success = false;
+      res.owner = control_.owner();
+      res.message = "take control refused: STOP latched (make resume, or call arm/release_stop)";
+    } else if (req.release) {
       res.success = control_.release(req.source) || control_.owner().empty();
       res.owner = control_.owner();
       res.message = res.success ? "control released" :
@@ -197,6 +298,11 @@ void ArmDriver::onTakeControl(const TakeControl::Request & req, TakeControl::Res
     RCLCPP_INFO(
       get_logger(), "control: %s (%s)",
       owner.empty() ? "free" : owner.c_str(), res.message.c_str());
+  } else if (!res.success && stopped_) {
+    // A held stick asks again after every answer while latched
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *get_clock(), 2000, "take_control from '%s': %s", req.source.c_str(),
+      res.message.c_str());
   } else if (!res.success) {
     RCLCPP_WARN(get_logger(), "take_control from '%s': %s", req.source.c_str(),
       res.message.c_str());
@@ -222,28 +328,40 @@ void ArmDriver::expireControl()
 
 void ArmDriver::onCommand(const ArmCommand & msg)
 {
-  if (read_only_ && msg.type != ArmCommand::STOP) {
+  if (msg.type == ArmCommand::STOP) {
+    latchStop(msg.source);   // whoever sends it, owner or not
+    return;
+  }
+  if (msg.type == ArmCommand::HALT) {
+    // A routine stop: obeyed from anyone, in any state, and it latches nothing
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    stop_requested_ = true;
+    pending_joints_.clear();
+    pending_all_.reset();
+    return;
+  }
+  if (stopped_) {
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *get_clock(), 2000,
+      "STOP latched: motion from '%s' ignored (make resume, or call arm/release_stop)",
+      msg.source.c_str());
+    return;
+  }
+  if (read_only_) {
     RCLCPP_WARN_THROTTLE(
       get_logger(), *get_clock(), 5000,
       "rest mode: motion ignored (make resume or call arm/set_read_only false)");
     return;
   }
   std::lock_guard<std::mutex> lock(state_mutex_);
-  if (msg.type != ArmCommand::STOP) {
-    if (!control_.accepts(msg.source)) {
-      RCLCPP_WARN_THROTTLE(
-        get_logger(), *get_clock(), 2000, "motion from '%s' ignored: control owned by '%s'",
-        msg.source.c_str(), control_.owner().c_str());
-      return;
-    }
-    control_.touch(std::chrono::steady_clock::now());
+  if (!control_.accepts(msg.source)) {
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *get_clock(), 2000, "motion from '%s' ignored: control owned by '%s'",
+      msg.source.c_str(), control_.owner().c_str());
+    return;
   }
+  control_.touch(std::chrono::steady_clock::now());
   switch (msg.type) {
-    case ArmCommand::STOP:
-      stop_requested_ = true;
-      pending_joints_.clear();
-      pending_all_.reset();
-      return;
     case ArmCommand::JOINTS:
       for (const auto & t : msg.targets) {
         if (t.joint < 1 || t.joint > 6) {

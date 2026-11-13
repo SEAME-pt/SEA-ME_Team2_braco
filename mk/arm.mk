@@ -16,7 +16,9 @@ park: _jetson _system_up ## Fold the arm, release the joints and enter rest mode
 rest: _jetson _system_up ## Rest mode on: motion refused, temperatures keep being published
 	$(SYS_EXEC) ros2 service call /arm/set_read_only std_srvs/srv/SetBool "{data: true}"
 
-resume: _jetson _system_up ## Rest mode off: motion accepted again (joints stay free until zero or power_on)
+resume: _jetson _system_up ## Release a STOP (3 s after it) and leave rest mode; nothing moves (joints stay free until zero or power_on)
+	@out=$$($(SYS_EXEC) ros2 service call /arm/release_stop std_srvs/srv/Trigger); echo "$$out"; \
+	  case "$$out" in *success=True*) ;; *) echo "resume: STOP still latched, rest mode left on" >&2; exit 1 ;; esac
 	$(SYS_EXEC) ros2 service call /arm/set_read_only std_srvs/srv/SetBool "{data: false}"
 
 temps: _jetson _system_up ## Print the servo temperatures once (works in rest mode)

@@ -34,6 +34,7 @@ deciders: all
 
 - **Trigger:** the first reading ≥ 65 °C (`TEMP_HOT_C`) starts an episode and acts **once**. The episode ends when every joint is < 60 °C (`AutoRest::REARM_BELOW_C`). The 5 °C hysteresis stops jitter around the limit from re-parking the arm.
 - **Action:** runs `park` (fold, release the joints, rest mode on). The joints must be released, because a servo that keeps holding its pose does not cool down. Falls back to `/arm/set_read_only true` if `park` fails. Retries on the next hot reading if the request fails.
+- **During a STOP latch** ([ADR-0005](ADR-0005-stop-latch.md)): `arm_driver` refuses the park and `release_servos`, so only rest mode is entered and the joints stay powered. A person runs `make resume`, then `make park`.
 - **Shown:** log (joint and temperature), LCD `REST: SERVO HOT`, the page shows "resting".
 - **Resume:** never automatic. `make resume` or *Wake up* on the page. Allowed during the episode (to park a hot arm on purpose).
 - **Parameters** (`braco_bringup/config/braco.yaml`): `auto_rest_on_hot`, `park_on_hot`, `park_command`.
@@ -48,6 +49,7 @@ Implemented in `AutoRest` ([auto_rest.hpp](../../ros2_ws/src/braco_driver/includ
 - ✅ The released servos actually cool
 - ✅ The person decides when to resume
 - ❌ A move in progress is replaced by the park move (the hot servo moves once more)
+- ❌ During a STOP latch a hot servo keeps holding its pose and does not cool until a person releases the STOP and parks
 - ❌ Depends on `temperature_monitor` running (respawned by the launch). The servos' own protection stays the last line
 
 ## Confirmation
@@ -57,5 +59,5 @@ Implemented in `AutoRest` ([auto_rest.hpp](../../ros2_ws/src/braco_driver/includ
 
 ## Links
 
-- Issue [#55](https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/55); hysteresis added after PR #64 review (2026-10-23)
+- Issue [#55](https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/55); hysteresis added after PR #64 review (2026-10-23); STOP-latch exception added in PR #135 (2026-11-13)
 - [ADR-0002](ADR-0002-unique-control.md), [overheating guide](../guides/overheating.md), [safety.md](../guides/safety.md)

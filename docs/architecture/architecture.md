@@ -2,7 +2,7 @@
 
 How the braco software is built today: layers, nodes, topics, packages and deployment. If the code and this document disagree, the code wins. CPU and memory: [resources.md](resources.md). Timing: [timing-budget.md](timing-budget.md).
 
-Last checked against the code: **2026-11-10**.
+Last checked against the code: **2026-11-12**.
 
 **Contents:** [Principles](#1-principles) · [Layers](#2-layers) · [Nodes and devices](#3-nodes-and-devices) · [Topics and services](#4-topics-and-services) · [Control of the arm](#5-control-of-the-arm) · [Packages](#6-packages) · [Deployment](#7-deployment) · [Launch and parameters](#8-launch-and-parameters) · [Simulation and planned layers](#9-simulation-and-planned-layers) · [Status](#10-status) · [Changing the architecture](#11-changing-the-architecture)
 
@@ -72,16 +72,18 @@ A motion command passes the `arm_driver` gates in order:
 | `/joint_states` | `sensor_msgs/JointState`, 20 Hz nominal (18.7 measured; ~14 under continuous commands, [timing](timing-budget.md)) | `arm_driver` | teleop, page, zero/park, `braco_hardware` (in `ros2_control_node`), `robot_state_publisher` |
 | `/robot_description` | `std_msgs/String`, latched (the URDF, `real_arm:=true`) | `robot_state_publisher` | `ros2_control_node` |
 | `/tf`, `/tf_static` | `tf2_msgs/TFMessage` | `robot_state_publisher` | MoveIt, RViz, Foxglove |
-| `/arm/command` | `braco_interfaces/ArmCommand` (`STOP`, `JOINTS`, `ALL_ANGLES`, `source`) | clients | `arm_driver` |
+| `/arm/command` | `braco_interfaces/ArmCommand` (`STOP`, `JOINTS`, `ALL_ANGLES`, `HALT`, `source`) | clients | `arm_driver` |
 | `/arm/led` | `std_msgs/ColorRGBA` | teleop, page | `arm_driver` |
 | `/arm/servo_temperatures` | `braco_interfaces/ServoTemperatures`, 2 s | `arm_driver` | `temperature_monitor`, page |
 | `/arm/servo_voltages` | `braco_interfaces/ServoVoltages`, 2 s | `arm_driver` | page |
 | `/arm/read_only` | `std_msgs/Bool`, latched | `arm_driver` | page |
 | `/arm/control_owner` | `std_msgs/String`, latched (`""` = free) | `arm_driver` | teleop, page |
+| `/arm/stopped` | `std_msgs/Bool`, latched: STOP latch | `arm_driver` | teleop, page |
 | `/diagnostics` | `diagnostic_msgs/DiagnosticArray` | `temperature_monitor` | page |
 | `/camera/image_raw/compressed` | `sensor_msgs/CompressedImage`, ≤15 fps, frame `camera_optical_frame` | `camera` (sim: Gazebo's wrist camera, `ros_gz_image`) | page |
 | `/arm/take_control` | `braco_interfaces/TakeControl` | `arm_driver` | teleop, page, zero/park |
 | `/arm/power_on`, `/arm/release_servos` | `std_srvs/Trigger` | `arm_driver` | teleop, page, zero/park |
+| `/arm/release_stop` | `std_srvs/Trigger` | `arm_driver` | page, `make resume` |
 | `/arm/set_gripper`, `/arm/set_read_only` | `std_srvs/SetBool` | `arm_driver` | clients, `temperature_monitor` |
 | `/move_to_pose` (action) | `braco_interfaces/MoveToPose` (`PoseStamped` goal; result: pose error from TF) | `move_to_pose` (`braco_mission`) | command line; later #102 |
 | `/move_cartesian` (action) | `braco_interfaces/MoveCartesian` (waypoints; result: planned `fraction`, line deviation, error at the last waypoint) | `move_to_pose` (`braco_mission`) | command line, `draw_line.py`; later pen drawing |
@@ -93,15 +95,16 @@ A motion command passes the `arm_driver` gates in order:
 
 ## 5. Control of the arm
 
-Details: [ADR-0002](../decisions/ADR-0002-unique-control.md) (owner), [ADR-0003](../decisions/ADR-0003-rest-per-temp.md) (overheat).
+Details: [ADR-0002](../decisions/ADR-0002-unique-control.md) (owner), [ADR-0003](../decisions/ADR-0003-rest-per-temp.md) (overheat), [ADR-0005](../decisions/ADR-0005-stop-latch.md) (STOP latch).
 
 | Rule | |
 |---|---|
 | Owner | `web`, `joystick`, `script` (zero/park) or `mission`; `""` = free |
 | Take | `/arm/take_control`: if free, already owned, or `force` (stops the arm) |
 | Motion | only from the owner |
-| STOP | always, from anyone |
-| Lose | `release`, forced away, or 5 s without motion |
+| STOP | always, from anyone; latches and frees the control until `/arm/release_stop` (from 3 s after it) |
+| HALT | routine stop, from anyone; no latch, the owner keeps the control |
+| Lose | `release`, forced away, 5 s without motion, or a STOP |
 
 | Client | Takes | Releases |
 |---|---|---|
@@ -228,7 +231,7 @@ braco_mission ──► MoveIt 2 ──trajectory──┬──► real: braco_
 
 ## 10. Status
 
-**Done:** single serial owner · one control owner · one thermal authority · rest on overheat · `braco_*` layout with READMEs · one Makefile (`mk/`) · simulation (#34) · validated URDF ([report](../hardware/urdf-sim-to-real.md), #25).
+**Done:** single serial owner · one control owner · STOP latch ([ADR-0005](../decisions/ADR-0005-stop-latch.md)) · one thermal authority · rest on overheat · `braco_*` layout with READMEs · one Makefile (`mk/`) · simulation (#34) · validated URDF ([report](../hardware/urdf-sim-to-real.md), #25).
 
 **Differs from the target (accepted):**
 
@@ -239,7 +242,7 @@ braco_mission ──► MoveIt 2 ──trajectory──┬──► real: braco_
 | `braco_moveit` | `braco_moveit_config` (MoveIt convention) |
 | Executables named like their nodes | `zero` / `park` run as `arm_zero` / `arm_park` |
 | Lifecycle motion nodes | plain nodes |
-| Dedicated e-stop node | STOP on `/arm/command` (gate 1) |
+| Dedicated e-stop node | STOP on `/arm/command`, latched in `arm_driver` (gate 1) |
 
 **Pending:**
 - `arm_driver` as a lifecycle node

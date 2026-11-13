@@ -156,6 +156,8 @@ public:
   {
     owner_pub_ = create_publisher<std_msgs::msg::String>(
       "arm/control_owner", rclcpp::QoS(1).transient_local());
+    stopped_pub_ = create_publisher<std_msgs::msg::Bool>(
+      "arm/stopped", rclcpp::QoS(1).transient_local());
     joint_pub_ = create_publisher<sensor_msgs::msg::JointState>("joint_states", 10);
     command_sub_ = create_subscription<ArmCommand>(
       "arm/command", 10, [this](const ArmCommand & msg) {onCommand(msg);});
@@ -206,6 +208,14 @@ public:
     std::lock_guard<std::mutex> lock(mutex);
     owner = name;
     publishOwnerLocked();
+  }
+
+  // The STOP latch, published on /arm/stopped (latched) like arm_driver does.
+  void setStopped(bool on)
+  {
+    std_msgs::msg::Bool msg;
+    msg.data = on;
+    stopped_pub_->publish(msg);
   }
 
   void setAngle(int joint, double deg)
@@ -259,6 +269,7 @@ private:
 
   Options options_;
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr owner_pub_;
+  rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr stopped_pub_;
   rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr joint_pub_;
   rclcpp::Subscription<ArmCommand>::SharedPtr command_sub_;
   rclcpp::Subscription<std_msgs::msg::ColorRGBA>::SharedPtr led_sub_;
@@ -438,9 +449,9 @@ TEST_F(JoystickTeleopTest, FirstStickMoveTakesTheControlAndJogs)
       }));
 
   js_.axis(AXIS_J2, 0);
-  ASSERT_TRUE(waitUntil([this] {return count(ArmCommand::STOP) == 1;}));
+  ASSERT_TRUE(waitUntil([this] {return count(ArmCommand::HALT) == 1;}));
   settle();
-  EXPECT_EQ(count(ArmCommand::STOP), 1u);   // stop once, then idle
+  EXPECT_EQ(count(ArmCommand::HALT), 1u);   // stop once, then idle
 }
 
 TEST_F(JoystickTeleopTest, HeldByAnotherClientUntilTheForceButtonIsHeld)
@@ -469,6 +480,19 @@ TEST_F(JoystickTeleopTest, HeldByAnotherClientUntilTheForceButtonIsHeld)
   js_.button(tl::BUTTON_FORCE_CONTROL, 0);
 }
 
+TEST_F(JoystickTeleopTest, StopLatchTurnsTheLedYellow)
+{
+  start();
+  ASSERT_TRUE(waitUntil([this] {return lastLed().has_value();}, 2500ms));
+  driver_->setStopped(true);
+  ASSERT_TRUE(waitUntil([this] {return lastLed() && lastLed()->r == 1.0f;}));
+  EXPECT_FLOAT_EQ(lastLed()->g, 1.0f);
+  EXPECT_FLOAT_EQ(lastLed()->b, 0.0f);
+  driver_->setStopped(false);   // released: back to the speed mode (green)
+  EXPECT_TRUE(waitUntil([this] {return lastLed() && lastLed()->r == 0.0f;}));
+  EXPECT_FLOAT_EQ(lastLed()->g, 1.0f);
+}
+
 TEST_F(JoystickTeleopTest, RefusedTakeLearnsTheOwner)
 {
   start();
@@ -491,10 +515,10 @@ TEST_F(JoystickTeleopTest, LosingTheControlForgetsTheJogWithoutStop)
 
   // Freed while jogging (arm_driver's idle timeout): forgotten, no STOP
   driver_->setOwner("");
-  size_t stops = count(ArmCommand::STOP);
+  size_t stops = count(ArmCommand::HALT);
   js_.axis(AXIS_J1, 0);
   std::this_thread::sleep_for(300ms);
-  EXPECT_EQ(count(ArmCommand::STOP), stops);
+  EXPECT_EQ(count(ArmCommand::HALT), stops);
 
   // The next touch takes it again; then the web page takes it while the stick is held
   size_t from = commandCount();
@@ -503,11 +527,11 @@ TEST_F(JoystickTeleopTest, LosingTheControlForgetsTheJogWithoutStop)
   ASSERT_TRUE(waitTarget(1, from));
   driver_->setOwner("web");
   settle();
-  stops = count(ArmCommand::STOP);
+  stops = count(ArmCommand::HALT);
   from = commandCount();
   js_.axis(AXIS_J1, 0);   // the web page's move is not cut
   std::this_thread::sleep_for(300ms);
-  EXPECT_EQ(count(ArmCommand::STOP), stops);
+  EXPECT_EQ(count(ArmCommand::HALT), stops);
   EXPECT_EQ(commandCount(), from);
 }
 
@@ -627,7 +651,7 @@ TEST_F(JoystickTeleopTest, NoFreshAnglesStopsInsteadOfJogging)
   start({true, false, false});
   own();
   js_.axis(AXIS_J2, FULL);
-  EXPECT_TRUE(waitUntil([this] {return count(ArmCommand::STOP) > 0;}));
+  EXPECT_TRUE(waitUntil([this] {return count(ArmCommand::HALT) > 0;}));
   EXPECT_EQ(count(ArmCommand::JOINTS), 0u);
 }
 
@@ -684,7 +708,7 @@ TEST_F(JoystickTeleopTest, HomingStepsToZeroAndStops)
         return std::abs(driver_->angles[0]) < 1.0 && std::abs(driver_->angles[2]) < 1.0;
       }));
   const size_t n = settle();
-  EXPECT_EQ(count(ArmCommand::STOP), 0u);
+  EXPECT_EQ(count(ArmCommand::HALT), 0u);
   std::this_thread::sleep_for(200ms);
   EXPECT_EQ(commandCount(), n);   // home reached: nothing more
 }
@@ -697,7 +721,7 @@ TEST_F(JoystickTeleopTest, HomingIsCancelledBySecondClick)
   js_.click(tl::BUTTON_HOME);
   ASSERT_TRUE(waitUntil([this] {return count(ArmCommand::ALL_ANGLES) > 0;}));
   js_.click(tl::BUTTON_HOME);
-  ASSERT_TRUE(waitUntil([this] {return count(ArmCommand::STOP) == 1;}));
+  ASSERT_TRUE(waitUntil([this] {return count(ArmCommand::HALT) == 1;}));
   const size_t n = settle();
   std::this_thread::sleep_for(200ms);
   EXPECT_EQ(commandCount(), n);
@@ -711,7 +735,7 @@ TEST_F(JoystickTeleopTest, HomingIsAbortedByAStick)
   js_.click(tl::BUTTON_HOME);
   ASSERT_TRUE(waitUntil([this] {return count(ArmCommand::ALL_ANGLES) > 0;}));
   js_.axis(AXIS_J2, FULL);
-  ASSERT_TRUE(waitUntil([this] {return count(ArmCommand::STOP) == 1;}));
+  ASSERT_TRUE(waitUntil([this] {return count(ArmCommand::HALT) == 1;}));
   EXPECT_TRUE(waitTarget(2));   // then it jogs
 }
 
@@ -724,9 +748,9 @@ TEST_F(JoystickTeleopTest, HomingWithoutFeedbackGivesUp)
   ASSERT_TRUE(
     waitUntil(
       [this] {
-        return count(ArmCommand::STOP) == static_cast<size_t>(tl::HOME_MAX_BAD_READS);
+        return count(ArmCommand::HALT) == static_cast<size_t>(tl::HOME_MAX_BAD_READS);
       }));
   settle();
-  EXPECT_EQ(count(ArmCommand::STOP), static_cast<size_t>(tl::HOME_MAX_BAD_READS));
+  EXPECT_EQ(count(ArmCommand::HALT), static_cast<size_t>(tl::HOME_MAX_BAD_READS));
   EXPECT_EQ(count(ArmCommand::ALL_ANGLES), 0u);
 }

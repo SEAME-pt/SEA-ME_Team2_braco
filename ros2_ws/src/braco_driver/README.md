@@ -19,17 +19,24 @@ crash independently while the port keeps a single owner. It never powers the arm
 | pub | `/arm/servo_voltages` | `braco_interfaces/ServoVoltages` (every 2 s, also in rest mode) |
 | pub | `/arm/read_only` | `std_msgs/Bool`, latched: rest mode on/off |
 | pub | `/arm/control_owner` | `std_msgs/String`, latched: who may move the arm (`""` = free) |
+| pub | `/arm/stopped` | `std_msgs/Bool`, latched: STOP latch on/off |
 | sub | `/arm/command` | `braco_interfaces/ArmCommand` |
 | sub | `/arm/led` | `std_msgs/ColorRGBA` |
 | srv | `/arm/take_control` | `braco_interfaces/TakeControl` |
-| srv | `/arm/power_on`, `/arm/release_servos` | `std_srvs/Trigger` |
+| srv | `/arm/power_on`, `/arm/release_servos`, `/arm/release_stop` | `std_srvs/Trigger` |
 | srv | `/arm/set_gripper`, `/arm/set_read_only` | `std_srvs/SetBool` |
 
 **Control owner** ([ADR-0002](../../../docs/decisions/ADR-0002-unique-control.md)): one client moves the arm at a time.
 `/arm/take_control` gives the control to a `source` (`web`, `joystick`, `script`, `mission`) when it is free,
 already that source's, or with `force` (which drops the previous owner's pending motion and stops the arm).
-Motion (`JOINTS`, `ALL_ANGLES`) is obeyed only from the owner; **STOP always**, from anyone. The owner loses
-the control with `release`, when another client forces it, or after `control_idle_s` (5 s) without motion.
+Motion (`JOINTS`, `ALL_ANGLES`) is obeyed only from the owner; **STOP and HALT always**, from anyone. The owner loses
+the control with `release`, when another client forces it, after `control_idle_s` (5 s) without motion, or on a STOP.
+
+**STOP latch** (ADR-0005): `STOP` is the emergency stop. It stops the arm, drops pending motion, frees the control
+and latches: motion, `take_control` (even `force`), `power_on`, `set_gripper`, `release_servos` and
+`set_read_only false` are refused until `/arm/release_stop` (`make resume`), which is refused for `stop_hold_s` (3 s)
+after the last STOP. The release moves nothing. Routine stops (stick released, a move that timed out) send `HALT`:
+the arm stops, nothing latches, the owner keeps the control.
 `power_on`, `set_gripper` and `release_servos` carry no source: clients call them only while they own the
 control. The rule is `ControlLease` (`include/braco_driver/control.hpp`), tested by `test/test_control.cpp`.
 

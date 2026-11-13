@@ -68,7 +68,7 @@ export function render(root) {
 
   offs.push(on("telemetry", (s) => {
     $("#h-conn").textContent = !s.connected ? "off" : s.source === "gazebo" ? "gazebo" : s.mock ? "mock" : s.source === "ros" ? "ros" : "on";
-    $("#h-power").textContent = s.resting ? "resting" : s.power_on == null ? "—" : s.power_on ? "on" : "released";
+    $("#h-power").textContent = s.stopped ? "stopped" : s.resting ? "resting" : s.power_on == null ? "—" : s.power_on ? "on" : "released";
     $("#h-moving").textContent = s.moving == null ? "—" : s.moving ? "yes" : "still";
     if (s.temps) {
       const max = Math.max(...s.temps);

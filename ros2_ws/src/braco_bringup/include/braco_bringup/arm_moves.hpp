@@ -38,6 +38,7 @@
 #include "braco_interfaces/srv/take_control.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/joint_state.hpp"
+#include "std_msgs/msg/bool.hpp"
 #include "std_srvs/srv/set_bool.hpp"
 #include "std_srvs/srv/trigger.hpp"
 
@@ -77,6 +78,7 @@ public:
 
   // Move all joints to `pose`. True once every joint is within tolerance_deg.
   // On timeout or lost feedback the arm is stopped and false returned.
+  // On a STOP latch, false at once (arm_driver already stopped it).
   bool moveTo(
     const Angles & pose, int speed, double tolerance_deg,
     std::chrono::duration<double> timeout);
@@ -95,6 +97,8 @@ private:
   std::optional<Angles> angles_;
   std::chrono::steady_clock::time_point angles_time_;
   rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr joint_sub_;
+  bool stopped_ = false;   // arm/stopped: STOP latched in arm_driver (ADR-0005)
+  rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr stopped_sub_;
   rclcpp::Publisher<braco_interfaces::msg::ArmCommand>::SharedPtr command_pub_;
   rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr power_client_;
   rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr release_client_;

@@ -47,6 +47,9 @@ ArmMoves::ArmMoves(const std::string & name, Timeouts timeouts)
 {
   joint_sub_ = create_subscription<sensor_msgs::msg::JointState>(
     "joint_states", 10, [this](const sensor_msgs::msg::JointState & msg) {onJoints(msg);});
+  stopped_sub_ = create_subscription<std_msgs::msg::Bool>(
+    "arm/stopped", rclcpp::QoS(1).transient_local(),
+    [this](const std_msgs::msg::Bool & msg) {stopped_ = msg.data;});
   command_pub_ = create_publisher<ArmCommand>("arm/command", 10);
   power_client_ = create_client<std_srvs::srv::Trigger>("arm/power_on");
   release_client_ = create_client<std_srvs::srv::Trigger>("arm/release_servos");
@@ -183,6 +186,10 @@ bool ArmMoves::moveTo(
   auto next_send = Clock::now();
   while (Clock::now() < end && rclcpp::ok()) {
     executor_.spin_some();
+    if (stopped_) {
+      RCLCPP_ERROR(get_logger(), "STOP latched: move abandoned (make resume)");
+      return false;   // arm_driver already stopped the arm
+    }
     std::this_thread::sleep_for(LOOP_PERIOD);
     const auto current = angles();
     if (!current) {continue;}
@@ -208,7 +215,7 @@ bool ArmMoves::moveTo(
 void ArmMoves::stop()
 {
   ArmCommand command;
-  command.type = ArmCommand::STOP;
+  command.type = ArmCommand::HALT;   // a missed target is not an emergency: no latch (ADR-0005)
   command.source = SOURCE;
   command_pub_->publish(command);
 }

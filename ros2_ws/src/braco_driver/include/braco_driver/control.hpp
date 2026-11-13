@@ -18,6 +18,7 @@
 // obeys motion only from the owner; STOP is not its business, it always passes.
 //   take     free, already ours, or force -> ours; otherwise refused with the owner's name
 //   release  only by the owner
+//   clear    a STOP (ADR-0005): free, whoever held it
 //   touch    the owner sent motion: the lease lasts
 //   expire   no motion for `idle`: free again
 // No ROS and no clock of its own (the caller passes `now`), so it is unit tested.
@@ -58,6 +59,14 @@ public:
     if (source.empty() || owner_ != source) {return false;}
     owner_.clear();
     return true;
+  }
+
+  // A STOP: free the control whoever holds it; returns the owner it dropped ("" = none).
+  std::string clear()
+  {
+    std::string dropped;
+    dropped.swap(owner_);
+    return dropped;
   }
 
   // True when motion from `source` may move the arm.

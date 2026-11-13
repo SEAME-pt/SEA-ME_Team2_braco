@@ -63,7 +63,12 @@ Safety rules for the arm, its gripper and its camera.
 ### 6.2 Stopping from software
 
 - **Stopping a program does not free the arm.** After Ctrl+C or a crash the motors stay on and hold the arm in place.
-- **STOP works from anywhere** (web page, joystick, scripts), no matter who is in control.
+- **STOP works from anywhere** (web page, terminal, scripts), no matter who is in control.
+- **A STOP latches** ([ADR-0005](../decisions/ADR-0005-stop-latch.md)): the arm stays stopped, whatever any client
+  sends, and nobody can take control.
+  - Release it, once the area is safe, with `make resume` or the page's **Release STOP**. Both are refused for 3 s
+    after the last STOP.
+  - The release does not move the arm. Take control and send a new command to move it.
 - **Only one client moves the arm at a time** ([ADR-0002](../decisions/ADR-0002-unique-control.md)).
   - Who is in control: see the web page, or `ros2 topic echo /arm/control_owner`.
   - The joystick takes control from the page only if you hold **button 8 for about 1 s**.
@@ -116,10 +121,7 @@ Go/no-go checklist. If any box is not ticked, do not move the arm.
 
 - [ ] One person on STOP (section 6.2): the web page's STOP button, or
   `ROS_DOMAIN_ID=22 ros2 topic pub --once /arm/command braco_interfaces/msg/ArmCommand '{type: 0}'`.
-  - ⚠️ **A STOP does not latch today.** It halts the arm once, but the client in control keeps it and its next
-    command moves the arm again. Tested on 2026-11-09 (PR #124): the page's STOP halts a move of the page; a STOP
-    from the terminal does **not** stop a move that the page streams. Use STOP **from the client that moves the
-    arm**, or the power switch (section 6.1).
+  The STOP latches (section 6.2): the MoveIt client cannot move the arm again until someone releases it.
 - [ ] One person on the power switch (section 6.1).
 - [ ] First move small, in a direction with nothing in the way.
 

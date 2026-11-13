@@ -25,7 +25,7 @@
 | `make park` | Folds the arm, turns the motors off, enters rest | **Yes** |
 | `make temps` | Shows the temperature of the six motors | No |
 | `make zero` | Leaves rest, turns the motors on, moves the arm to zero | **Yes** |
-| `make resume` | Leaves rest, but the motors stay off: the arm is loose | No |
+| `make resume` | Releases a STOP (from 3 s after it) and leaves rest, but the motors stay off: the arm is loose | No |
 
 ## 4. Steps
 
@@ -45,5 +45,6 @@
 | A joint is still at 55 °C or more | Keep waiting, do not run `make zero` yet |
 | The arm is loose after `make resume` | `make resume` does not turn the motors on: use `make zero` |
 | It parks again soon after `make zero` | It was not cool enough: back to step 2, and wait longer |
+| Hot during a STOP: it does not park, the motors stay on | A STOP blocks the park ([ADR-0005](../decisions/ADR-0005-stop-latch.md)): `make resume`, then `make park` |
 
 Why it works this way: [ADR-0003](../decisions/ADR-0003-rest-per-temp.md).

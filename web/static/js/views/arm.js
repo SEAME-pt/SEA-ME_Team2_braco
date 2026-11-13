@@ -153,6 +153,7 @@ export function render(root) {
       !s.connected ? '<span class="pill hot">disconnected</span>'
         : s.source === "gazebo" ? '<span class="pill info">Gazebo simulation</span>'
         : s.mock ? '<span class="pill info">mock arm</span>' : '<span class="pill ok">connected</span>',
+      s.stopped ? '<span class="pill hot">STOP latched</span>' : "",
       s.resting ? '<span class="pill warn">resting</span>'
         : s.power_on == null ? "" : s.power_on ? '<span class="pill">servos on</span>' : '<span class="pill warn">servos released</span>',
       s.moving == null ? "" : s.moving ? '<span class="pill accent">moving</span>' : '<span class="pill">still</span>',

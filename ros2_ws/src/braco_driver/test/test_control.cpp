@@ -115,6 +115,16 @@ TEST(ControlLease, OnlyTheOwnerReleases)
   EXPECT_FALSE(lease.release("web"));
 }
 
+TEST(ControlLease, ClearFreesWhoeverHoldsIt)
+{
+  ControlLease lease;
+  EXPECT_EQ(lease.clear(), "");   // already free
+  lease.take("web", false, T0);
+  EXPECT_EQ(lease.clear(), "web");
+  EXPECT_EQ(lease.owner(), "");
+  EXPECT_FALSE(lease.accepts("web"));
+}
+
 TEST(AutoRest, RestsOncePerHotEpisode)
 {
   AutoRest rest;

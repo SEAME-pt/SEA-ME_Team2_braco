@@ -35,6 +35,7 @@ constexpr auto REOPEN_PERIOD = 1s;
 constexpr double RAD_TO_DEG = 180.0 / M_PI;
 constexpr const char * SOURCE = "joystick";   // ArmCommand.source and the control owner name
 constexpr float NOT_OWNER_LED = 0.15f;        // LED brightness while another client has the control
+constexpr tl::SpeedMode STOPPED_LED{"stop", 0, 0.0, 0, 255, 255, 0};  // yellow: unused by speeds
 
 std::string fmtJoints(const std::set<int> & joints)
 {
@@ -72,6 +73,13 @@ JoystickTeleop::JoystickTeleop(const rclcpp::NodeOptions & options)
   owner_sub_ = create_subscription<std_msgs::msg::String>(
     "arm/control_owner", rclcpp::QoS(1).transient_local(),
     [this](std_msgs::msg::String::ConstSharedPtr msg) {onOwner(msg->data);});
+  stopped_sub_ = create_subscription<std_msgs::msg::Bool>(
+    "arm/stopped", rclcpp::QoS(1).transient_local(),
+    [this](std_msgs::msg::Bool::ConstSharedPtr msg) {
+      if (msg->data == stopped_) {return;}
+      stopped_ = msg->data;
+      if (js_) {setLed(mode());}
+    });
   joint_sub_ = create_subscription<sensor_msgs::msg::JointState>(
     "joint_states", 10,
     [this](sensor_msgs::msg::JointState::ConstSharedPtr msg) {onJointState(*msg);});
@@ -160,7 +168,10 @@ void JoystickTeleop::requestControl(bool force)
     req, [this](rclcpp::Client<TakeControl>::SharedFuture future) {
       take_pending_ = false;
       const auto res = future.get();
-      if (!res->success) {
+      if (!res->success && res->owner.empty()) {
+        // Free but refused: a STOP latch (ADR-0005), asked again on every input until make resume
+        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 3000, ">>> %s", res->message.c_str());
+      } else if (!res->success) {
         RCLCPP_WARN(
           get_logger(), ">>> %s: hold button %d for %.1f s to take it",
           res->message.c_str(), force_button_, force_hold_s_);
@@ -175,7 +186,7 @@ void JoystickTeleop::sendStop()
 {
   if (!isOwner()) {return;}
   ArmCommand cmd;
-  cmd.type = ArmCommand::STOP;
+  cmd.type = ArmCommand::HALT;   // a routine stop: STOP would latch the arm (ADR-0005)
   cmd.source = SOURCE;
   command_pub_->publish(cmd);
 }
@@ -187,13 +198,14 @@ void JoystickTeleop::stopArm()
   hold_.clear();
 }
 
-void JoystickTeleop::setLed(const tl::SpeedMode & mode)
+void JoystickTeleop::setLed(const tl::SpeedMode & speed_mode)
 {
-  const float k = (owner_.empty() || isOwner()) ? 1.0f : NOT_OWNER_LED;
+  const tl::SpeedMode & m = stopped_ ? STOPPED_LED : speed_mode;
+  const float k = (stopped_ || owner_.empty() || isOwner()) ? 1.0f : NOT_OWNER_LED;
   std_msgs::msg::ColorRGBA c;
-  c.r = k * static_cast<float>(mode.r) / 255.0f;
-  c.g = k * static_cast<float>(mode.g) / 255.0f;
-  c.b = k * static_cast<float>(mode.b) / 255.0f;
+  c.r = k * static_cast<float>(m.r) / 255.0f;
+  c.g = k * static_cast<float>(m.g) / 255.0f;
+  c.b = k * static_cast<float>(m.b) / 255.0f;
   c.a = 1.0f;
   led_pub_->publish(c);
 }
