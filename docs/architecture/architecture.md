@@ -83,7 +83,8 @@ A motion command passes the `arm_driver` gates in order:
 | `/arm/take_control` | `braco_interfaces/TakeControl` | `arm_driver` | teleop, page, zero/park |
 | `/arm/power_on`, `/arm/release_servos` | `std_srvs/Trigger` | `arm_driver` | teleop, page, zero/park |
 | `/arm/set_gripper`, `/arm/set_read_only` | `std_srvs/SetBool` | `arm_driver` | clients, `temperature_monitor` |
-| `/move_to_pose` (action) | `braco_interfaces/MoveToPose` (`PoseStamped` goal; result: pose error from TF) | `move_to_pose` (`braco_mission`) | command line; later #85, #102 |
+| `/move_to_pose` (action) | `braco_interfaces/MoveToPose` (`PoseStamped` goal; result: pose error from TF) | `move_to_pose` (`braco_mission`) | command line; later #102 |
+| `/move_cartesian` (action) | `braco_interfaces/MoveCartesian` (waypoints; result: planned `fraction`, line deviation, error at the last waypoint) | `move_to_pose` (`braco_mission`) | command line, `draw_line.py`; later pen drawing |
 
 - **Latest wins:** a new command replaces the pending one, so commands never queue up. Clients stream short moves only while `/joint_states` is fresh.
 - **Limits:** angles are clamped to `JOINT_LIMITS` (`mycobot.hpp`). Poses below the table margin are refused.
@@ -119,7 +120,7 @@ One colcon workspace, `ros2_ws/src`, mounted at `/ws`. Each package has a README
 | Package | Role | Status |
 |---|---|---|
 | [`mycobot_cpp`](../../ros2_ws/src/mycobot_cpp/README.md) | Serial protocol, joint limits, joystick, LCD, teleop logic (no ROS) | done |
-| [`braco_interfaces`](../../ros2_ws/src/braco_interfaces/README.md) | `ArmCommand`, `JointTarget`, `ServoTemperatures`, `ServoVoltages`, `TakeControl`, `MoveToPose` (action) | done |
+| [`braco_interfaces`](../../ros2_ws/src/braco_interfaces/README.md) | `ArmCommand`, `JointTarget`, `ServoTemperatures`, `ServoVoltages`, `TakeControl`, `MoveToPose` and `MoveCartesian` (actions) | done |
 | [`braco_driver`](../../ros2_ws/src/braco_driver/README.md) | `arm_driver`, `temperature_monitor` | done |
 | [`braco_hardware`](../../ros2_ws/src/braco_hardware/README.md) | ros2_control plugin of the real arm: joints from `arm_driver`'s `/joint_states` (ADR-0004) | reads; does not write yet |
 | [`braco_teleop`](../../ros2_ws/src/braco_teleop/README.md) | `joystick_teleop` | done |
@@ -128,7 +129,7 @@ One colcon workspace, `ros2_ws/src`, mounted at `/ws`. Each package has a README
 | [`braco_description`](../../ros2_ws/src/braco_description/README.md) | Robot model: URDF/xacro, meshes, `controllers.yaml` (no Gazebo, so also on the Jetson) | done |
 | [`braco_simulation`](../../ros2_ws/src/braco_simulation/README.md) | Gazebo launch and the scripts that move the simulated arm (PC only) | done |
 | [`braco_moveit_config`](../../ros2_ws/src/braco_moveit_config/README.md) | MoveIt 2 config (SRDF, kinematics, joint limits, controllers), demo with mock hardware, launch on the Gazebo arm | done |
-| [`braco_mission`](../../ros2_ws/src/braco_mission/README.md) | `move_to_pose`: a Cartesian pose goal through MoveIt 2 (C++); later the mission state machine | first node (#84) |
+| [`braco_mission`](../../ros2_ws/src/braco_mission/README.md) | `move_to_pose`: a Cartesian pose goal and straight lines through MoveIt 2 (C++); later the mission state machine | first node (#84, #85) |
 
 ```
 mycobot_cpp   braco_interfaces
@@ -201,7 +202,7 @@ braco_mission ──► MoveIt 2 ──trajectory──┬──► real: braco_
  move_to_pose                            └──► sim: Gazebo + gz_ros2_control
 ```
 
-- The mission talks only to MoveIt 2, so the same code runs on real and simulated arms. `move_to_pose` (`braco_mission`) takes a `PoseStamped` on the `/move_to_pose` action, plans the `tcp` with `MoveGroupInterface` (position only as a fallback), executes on `arm_controller` and reports the pose error read from TF. Its steps are plain C++ behind an `ArmBackend` interface, unit tested without ROS: [braco_mission](../../ros2_ws/src/braco_mission/README.md).
+- The mission talks only to MoveIt 2, so the same code runs on real and simulated arms. `move_to_pose` (`braco_mission`) takes a `PoseStamped` on the `/move_to_pose` action, plans the `tcp` with `MoveGroupInterface` (position only as a fallback), executes on `arm_controller` and reports the pose error read from TF. Its steps are plain C++ behind an `ArmBackend` interface, unit tested without ROS: [braco_mission](../../ros2_ws/src/braco_mission/README.md). The same node serves `/move_cartesian`: straight lines of the `tcp` through waypoints with `computeCartesianPath`, re-timed (TOTG) at the 0.1 velocity scaling of ADR-0004; nothing moves unless the whole path is planned (`fraction` 1.0 by default).
 - `braco_moveit_config` plans for the group `arm` (joint1..joint6, for `tcp`) and sends to `arm_controller`
   (`FollowJointTrajectory`), the controller name of `braco_description/config/controllers.yaml`. Its joint limits are
   `JOINT_LIMITS`; its named states `home`/`park` are `ZERO_ANGLES`/`PARK_ANGLES` of `mycobot.hpp`. Its demo runs the
@@ -245,7 +246,7 @@ braco_mission ──► MoveIt 2 ──trajectory──┬──► real: braco_
 - E-stop node
 - `braco_hardware` ([ADR-0004](../decisions/ADR-0004-trajectories-through-arm-driver.md)): sending commands (#101)
 - `braco_moveit_config`
-- `braco_mission` beyond `move_to_pose`: Cartesian path (#85), demo (#102), on the real arm with `use_control` (#101)
+- `braco_mission` beyond `move_to_pose` and `move_cartesian`: demo (#102), on the real arm with `use_control` (#101)
 - Measured CPU/RAM ([resources.md](resources.md))
 
 ---

@@ -12,36 +12,53 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// move_to_pose - the first mission node (issue #84).
+// move_to_pose - the mission node (issues #84, #85).
 //
-//   action  /move_to_pose   braco_interfaces/action/MoveToPose
+//   action  /move_to_pose     braco_interfaces/action/MoveToPose     point to point
+//   action  /move_cartesian   braco_interfaces/action/MoveCartesian  straight lines
 //   client  /arm/take_control (only with `use_control`, the real arm: ADR-0004)
 //
-// A goal pose is planned with MoveIt 2 (group `arm`, link `tcp`) and executed on
-// arm_controller; then the tcp is read from TF and the error reported. The steps and their
-// order are in mission.cpp (no ROS, unit tested); this file only connects them to MoveIt 2,
-// TF and arm_driver. One goal at a time: a second one is rejected while the first runs.
+// A goal is planned with MoveIt 2 (group `arm`, link `tcp`) and executed on arm_controller;
+// then the tcp is read from TF and the error reported. The steps and their order are in
+// mission.cpp and cartesian.cpp (no ROS, unit tested); this file only connects them to
+// MoveIt 2, TF and arm_driver. One goal at a time, on either action: another one is rejected
+// while the first runs.
+//
+// A straight-line path comes from computeCartesianPath, then is time-parameterised (TOTG)
+// with velocity_scaling / acceleration_scaling, so it never runs faster than ADR-0004 allows.
 //
 // Parameters: group (arm), end_effector (tcp), use_control (false: simulation),
 // velocity_scaling / acceleration_scaling (0.1, ADR-0004), planning_time_s (5.0),
 // position_tolerance_m (0.005), orientation_tolerance_deg (2.0), settle_s (0.5),
-// tf_timeout_s (1.0).
+// tf_timeout_s (1.0), eef_step_m (0.005: the default of a MoveCartesian goal).
 
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <cstddef>
 #include <cstdio>
+#include <functional>
 #include <future>
 #include <memory>
 #include <optional>
 #include <string>
 #include <thread>
+#include <utility>
+#include <vector>
 
+#include "braco_interfaces/action/move_cartesian.hpp"
 #include "braco_interfaces/action/move_to_pose.hpp"
 #include "braco_interfaces/srv/take_control.hpp"
+#include "braco_mission/cartesian.hpp"
 #include "braco_mission/mission.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "moveit/move_group_interface/move_group_interface.hpp"
+#include "moveit/robot_state/robot_state.hpp"
+#include "moveit/robot_trajectory/robot_trajectory.hpp"
+#include "moveit/trajectory_processing/time_optimal_trajectory_generation.hpp"
+#include "moveit_msgs/msg/move_it_error_codes.hpp"
+#include "moveit_msgs/msg/robot_state.hpp"
+#include "moveit_msgs/msg/robot_trajectory.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
@@ -53,6 +70,8 @@ namespace
 
 using MoveToPose = braco_interfaces::action::MoveToPose;
 using GoalHandle = rclcpp_action::ServerGoalHandle<MoveToPose>;
+using MoveCartesian = braco_interfaces::action::MoveCartesian;
+using CartesianGoalHandle = rclcpp_action::ServerGoalHandle<MoveCartesian>;
 using TakeControl = braco_interfaces::srv::TakeControl;
 using moveit::planning_interface::MoveGroupInterface;
 using namespace std::chrono_literals;
@@ -83,7 +102,7 @@ std::chrono::duration<double> seconds(double s)
   return std::chrono::duration<double>(s);
 }
 
-class MoveToPoseNode : public rclcpp::Node, public braco_mission::ArmBackend
+class MoveToPoseNode : public rclcpp::Node, public braco_mission::CartesianBackend
 {
 public:
   MoveToPoseNode()
@@ -100,6 +119,7 @@ public:
       declare_parameter<double>("orientation_tolerance_deg", 2.0) * M_PI / 180.0;
     settle_s_ = declare_parameter<double>("settle_s", 0.5);
     tf_timeout_s_ = declare_parameter<double>("tf_timeout_s", 1.0);
+    eef_step_m_ = declare_parameter<double>("eef_step_m", 0.005);
 
     tf_buffer_ = std::make_unique<tf2_ros::Buffer>(get_clock());
     tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
@@ -118,21 +138,24 @@ public:
     server_ = rclcpp_action::create_server<MoveToPose>(
       this, "move_to_pose",
       [this](const rclcpp_action::GoalUUID &, std::shared_ptr<const MoveToPose::Goal>) {
-        if (busy_.exchange(true)) {
-          RCLCPP_WARN(get_logger(), "goal rejected: another goal is running");
-          return rclcpp_action::GoalResponse::REJECT;
-        }
-        return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
+        return accept();
       },
-      [this](std::shared_ptr<GoalHandle>) {
-        move_group_->stop();
-        return rclcpp_action::CancelResponse::ACCEPT;
-      },
+      [this](std::shared_ptr<GoalHandle>) {return cancel();},
       [this](std::shared_ptr<GoalHandle> goal) {
         std::thread([this, goal]() {run(goal);}).detach();
       });
+    cartesian_server_ = rclcpp_action::create_server<MoveCartesian>(
+      this, "move_cartesian",
+      [this](const rclcpp_action::GoalUUID &, std::shared_ptr<const MoveCartesian::Goal>) {
+        return accept();
+      },
+      [this](std::shared_ptr<CartesianGoalHandle>) {return cancel();},
+      [this](std::shared_ptr<CartesianGoalHandle> goal) {
+        std::thread([this, goal]() {run_cartesian(goal);}).detach();
+      });
     RCLCPP_INFO(
-      get_logger(), "ready: /move_to_pose, group %s, link %s, planning frame %s, control %s",
+      get_logger(),
+      "ready: /move_to_pose and /move_cartesian, group %s, link %s, planning frame %s, control %s",
       group_.c_str(), end_effector_.c_str(), move_group_->getPlanningFrame().c_str(),
       settings_.use_control ? "on (real arm)" : "off (simulation)");
   }
@@ -143,6 +166,7 @@ public:
   void stop()
   {
     server_.reset();
+    cartesian_server_.reset();
     move_group_.reset();
   }
 
@@ -206,17 +230,147 @@ public:
 
   void report(const std::string & stage) override
   {
-    if (!current_) {return;}
-    auto feedback = std::make_shared<MoveToPose::Feedback>();
-    feedback->stage = stage;
-    current_->publish_feedback(feedback);
+    if (feedback_) {feedback_(stage);}
     RCLCPP_INFO(get_logger(), "%s", stage.c_str());
   }
 
+  // computeCartesianPath from the current state, then TOTG with the node's scaling: the
+  // trajectory it returns is timed for full speed. The tcp of every point comes from forward
+  // kinematics in the model frame, `world`, the planning frame of the waypoints.
+  braco_mission::CartesianPlan plan_cartesian(
+    const std::vector<braco_mission::Pose> & waypoints, double eef_step,
+    std::string & message) override
+  {
+    braco_mission::CartesianPlan out;
+    move_group_->setStartStateToCurrentState();
+    std::vector<geometry_msgs::msg::Pose> poses;
+    poses.reserve(waypoints.size());
+    for (const auto & w : waypoints) {poses.push_back(to_msg(w));}
+
+    moveit_msgs::msg::RobotTrajectory path;
+    moveit_msgs::msg::MoveItErrorCodes error;
+    out.fraction = move_group_->computeCartesianPath(poses, eef_step, path, true, &error);
+    if (out.fraction < 0.0) {
+      message = "computeCartesianPath failed, MoveIt error code " + std::to_string(error.val);
+      return out;
+    }
+
+    const moveit::core::RobotStatePtr start_state = move_group_->getCurrentState(tf_timeout_s_);
+    if (!start_state) {
+      out.fraction = -1.0;
+      message = "the current robot state is not available";
+      return out;
+    }
+    robot_trajectory::RobotTrajectory trajectory(move_group_->getRobotModel(), group_);
+    trajectory.setRobotTrajectoryMsg(*start_state, path);
+    trajectory_processing::TimeOptimalTrajectoryGeneration totg;
+    if (!totg.computeTimeStamps(trajectory, velocity_scaling_, acceleration_scaling_)) {
+      out.fraction = -1.0;
+      message = "time parameterisation (TOTG) failed";
+      return out;
+    }
+
+    for (std::size_t i = 0; i < trajectory.getWayPointCount(); ++i) {
+      moveit::core::RobotState state(trajectory.getWayPoint(i));
+      state.updateLinkTransforms();
+      const auto & tcp = state.getGlobalLinkTransform(end_effector_).translation();
+      out.tcp_path.push_back({tcp.x(), tcp.y(), tcp.z()});
+    }
+    plan_.start_state = moveit_msgs::msg::RobotState();   // execute() sends the trajectory only
+    trajectory.getRobotTrajectoryMsg(plan_.trajectory);
+    RCLCPP_INFO(
+      get_logger(), "Cartesian path: %.1f%% planned, %zu points, %.1f s",
+      out.fraction * 100.0, trajectory.getWayPointCount(), trajectory.getDuration());
+    return out;
+  }
+
 private:
+  rclcpp_action::GoalResponse accept()
+  {
+    if (busy_.exchange(true)) {
+      RCLCPP_WARN(get_logger(), "goal rejected: another goal is running");
+      return rclcpp_action::GoalResponse::REJECT;
+    }
+    return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
+  }
+
+  rclcpp_action::CancelResponse cancel()
+  {
+    move_group_->stop();
+    return rclcpp_action::CancelResponse::ACCEPT;
+  }
+
+  // Ends a goal of either action: a cancel stops the arm, so the steps report a failed
+  // execution; say why it stopped.
+  template<typename Handle, typename Result>
+  void finish(const std::shared_ptr<Handle> & goal, const std::shared_ptr<Result> & result)
+  {
+    if (goal->is_canceling()) {
+      result->success = false;
+      result->message = "cancelled: " + result->message;
+    }
+    RCLCPP_INFO(get_logger(), "%s", result->message.c_str());
+    if (goal->is_canceling()) {
+      goal->canceled(result);
+    } else if (result->success) {
+      goal->succeed(result);
+    } else {
+      goal->abort(result);
+    }
+    feedback_ = nullptr;
+    busy_ = false;
+  }
+
+  void run_cartesian(const std::shared_ptr<CartesianGoalHandle> & goal)
+  {
+    feedback_ = [goal](const std::string & stage) {
+        auto feedback = std::make_shared<MoveCartesian::Feedback>();
+        feedback->stage = stage;
+        goal->publish_feedback(feedback);
+      };
+    auto result = std::make_shared<MoveCartesian::Result>();
+    result->fraction = std::nan("");
+    result->max_deviation_m = std::nan("");
+    result->position_error_m = std::nan("");
+    result->orientation_error_rad = std::nan("");
+    const auto & request = *goal->get_goal();
+
+    braco_mission::CartesianRequest cartesian;
+    cartesian.eef_step_m = request.eef_step_m == 0.0 ? eef_step_m_ : request.eef_step_m;
+    cartesian.min_fraction = request.min_fraction == 0.0 ? 1.0 : request.min_fraction;
+    bool in_frame = true;
+    for (const auto & w : request.waypoints) {
+      geometry_msgs::msg::PoseStamped stamped;
+      stamped.header = request.header;
+      stamped.pose = w;
+      std::optional<braco_mission::Pose> pose = in_planning_frame(stamped, result->message);
+      if (!pose) {
+        in_frame = false;
+        break;
+      }
+      cartesian.waypoints.push_back(*pose);
+    }
+
+    if (in_frame) {
+      const braco_mission::CartesianOutcome o =
+        braco_mission::move_cartesian(*this, cartesian, settings_);
+      result->success = o.success;
+      result->fraction = o.fraction;
+      result->max_deviation_m = o.max_deviation_m;
+      result->position_error_m = o.error.position_m;
+      result->orientation_error_rad = o.error.orientation_rad;
+      result->message = o.message;
+    }
+    finish(goal, result);
+  }
+
   void run(const std::shared_ptr<GoalHandle> & goal)
   {
-    current_ = goal;
+    feedback_ = [goal](const std::string & stage) {
+        auto feedback = std::make_shared<MoveToPose::Feedback>();
+        feedback->stage = stage;
+        goal->publish_feedback(feedback);
+      };
     auto result = std::make_shared<MoveToPose::Result>();
     const auto & request = *goal->get_goal();
 
@@ -233,22 +387,7 @@ private:
       result->position_error_m = std::nan("");
       result->orientation_error_rad = std::nan("");
     }
-    // A cancel stops the arm, so the steps report a failed execution: say why it stopped
-    if (goal->is_canceling()) {
-      result->success = false;
-      result->message = "cancelled: " + result->message;
-    }
-    RCLCPP_INFO(get_logger(), "%s", result->message.c_str());
-
-    if (goal->is_canceling()) {
-      goal->canceled(result);
-    } else if (result->success) {
-      goal->succeed(result);
-    } else {
-      goal->abort(result);
-    }
-    current_.reset();
-    busy_ = false;
+    finish(goal, result);
   }
 
   // The goal in the planning frame. An empty frame_id means the planning frame already.
@@ -299,6 +438,7 @@ private:
   double planning_time_s_ = 5.0;
   double settle_s_ = 0.5;
   double tf_timeout_s_ = 1.0;
+  double eef_step_m_ = 0.005;
 
   std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
   std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
@@ -306,7 +446,9 @@ private:
   std::unique_ptr<MoveGroupInterface> move_group_;
   MoveGroupInterface::Plan plan_;
   rclcpp_action::Server<MoveToPose>::SharedPtr server_;
-  std::shared_ptr<GoalHandle> current_;
+  rclcpp_action::Server<MoveCartesian>::SharedPtr cartesian_server_;
+  // Feedback of the goal that runs (one at a time: busy_); set and used on its thread
+  std::function<void(const std::string &)> feedback_;
   std::atomic<bool> busy_{false};
 };
 
