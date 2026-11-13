@@ -145,5 +145,6 @@ Position only: send the orientation as all zeros. Checked in Gazebo (2026-11-10)
 
 Tests (`colcon test --packages-select braco_mission`): `test/test_pose_math.cpp`, `test/test_mission.cpp` and
 `test/test_cartesian.cpp` (every step against a fake arm: control, fallback, fraction, failures, tolerances), and
-`test/test_draw_line.py` (the script's path geometry, CSV and plot). No ROS graph, no MoveIt. The node itself is
-checked in Gazebo.
+`test/test_draw_line.py` (the script's path geometry, CSV and plot). No ROS graph, no MoveIt.
+`test/test_move_to_pose_node.cpp` runs the node in-process with a fake `MotionGroup`: both actions, cancel, one goal
+at a time, TF frames and `/arm/take_control`. `MoveItMotionGroup` is checked in Gazebo.

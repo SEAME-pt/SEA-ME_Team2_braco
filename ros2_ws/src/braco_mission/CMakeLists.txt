@@ -56,6 +56,15 @@ if(BUILD_TESTING)
   ament_add_gtest(test_cartesian test/test_cartesian.cpp)
   target_link_libraries(test_cartesian braco_mission_core)
 
+  # The node with a fake MotionGroup, TF and /arm/take_control in-process; its own ROS graph
+  find_package(ament_cmake_ros REQUIRED)
+  ament_add_ros_isolated_gtest(test_move_to_pose_node test/test_move_to_pose_node.cpp TIMEOUT 120)
+  target_link_libraries(test_move_to_pose_node braco_mission_node)
+  # The program itself, for its exit on a bad parameter
+  target_compile_definitions(test_move_to_pose_node PRIVATE
+    MOVE_TO_POSE_EXE="$<TARGET_FILE:move_to_pose>")
+  add_dependencies(test_move_to_pose_node move_to_pose)
+
   find_package(ament_cmake_pytest REQUIRED)
   # move_to_pose.launch.py's description and node parameters, without starting anything
   ament_add_pytest_test(test_launch test/test_launch.py)
