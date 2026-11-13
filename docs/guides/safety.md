@@ -105,11 +105,14 @@ Go/no-go checklist. If any box is not ticked, do not move the arm.
   ([#103](https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/103)): real arm on domain 22, nothing else on it.
   On FAIL `move_group` does not start.
 - [ ] Limits test green ([#99](https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/99)).
-- [ ] MoveIt `max_velocity_scaling_factor` and `max_acceleration_scaling_factor` **≤ 0.1**.
+- [ ] MoveIt velocity and acceleration scaling **≤ 0.1**: `default_velocity_scaling_factor` and
+  `default_acceleration_scaling_factor` in `braco_moveit_config/config/joint_limits.yaml`, and `move_to_pose`'s
+  `velocity_scaling` / `acceleration_scaling` (ADR-0004).
 - [ ] Everyone present has signed the induction (section 1).
 - [ ] Work area clear (section 3).
-- [ ] Arm at park. The MoveIt client takes control (`/arm/take_control`, source `script`), and
-  `/arm/control_owner` shows `script` ([ADR-0002](../decisions/ADR-0002-unique-control.md)).
+- [ ] Arm at park. Goals go through `move_to_pose` with `use_control: true`: it takes the control as `mission`
+  (without force) before each goal and gives it back after ([ADR-0004](../decisions/ADR-0004-trajectories-through-arm-driver.md)).
+  `braco_hardware` sends only while `/arm/control_owner` is `mission`, so a goal from RViz alone does not move the arm.
 - [ ] Rest mode left (`make resume`), then motors on (`/arm/power_on`).
 - [ ] Motor temperatures OK (section 7, [overheating.md](overheating.md)).
 
@@ -121,6 +124,9 @@ Go/no-go checklist. If any box is not ticked, do not move the arm.
     command moves the arm again. Tested on 2026-11-09 (PR #124): the page's STOP halts a move of the page; a STOP
     from the terminal does **not** stop a move that the page streams. Use STOP **from the client that moves the
     arm**, or the power switch (section 6.1).
+  - A MoveIt trajectory should be different (#101, not yet tried on the arm): while `mission` holds the control,
+    `braco_hardware` sees a STOP from any client, stops `arm_controller` and the goal is aborted, so nothing moves
+    the arm again until a new goal. Check it on the first motion.
 - [ ] One person on the power switch (section 6.1).
 - [ ] First move small, in a direction with nothing in the way.
 
