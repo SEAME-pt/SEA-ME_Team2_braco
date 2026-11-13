@@ -30,7 +30,9 @@ CI_RUN = docker run $(CI_RUN_OPTS) $(CI_IMAGE)
 # coverage: a Debug build with --coverage in its own tree, ros2_ws/coverage/ - not in build/, where it would replace
 # ci-ros's cached build and colcon test-result would count its tests twice. --cmake-args replaces the cmake-args of
 # colcon-defaults.yaml, so the ccache launchers are repeated. gcov adds to the .gcda counters of the last run: they
-# are deleted first. Only the gtest and pytest labels run (no linters); a failing test stops before the report. The
+# are deleted first. A .gcno whose object the build no longer compiles (a source moved or removed since the last
+# local run) would count as uncovered lines: it is deleted when compile_commands.json does not list that object.
+# Only the gtest and pytest labels run (no linters); a failing test stops before the report. The
 # table is cut before gcovr's Missing column (every uncovered line number): the HTML report has them.
 # Python: AMENT_CMAKE_PYTEST_WITH_COVERAGE makes ament_add_pytest_test run pytest-cov over the package's source dir,
 # one .coverage file per test under build/<pkg>/pytest_cov/; they are combined into one report (tests left out),
@@ -63,7 +65,7 @@ COV_DIRS      := --build-base coverage/build --install-base coverage/install
 COV_FLAGS     := -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_FLAGS=--coverage -DCMAKE_CXX_FLAGS=--coverage \
                  -DCMAKE_EXE_LINKER_FLAGS=--coverage -DCMAKE_SHARED_LINKER_FLAGS=--coverage \
                  -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-                 -DAMENT_CMAKE_PYTEST_WITH_COVERAGE=ON
+                 -DAMENT_CMAKE_PYTEST_WITH_COVERAGE=ON -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 COV_PY    := --data-file=coverage/.coverage --omit="*/test/*,*/script/*,*/scripts/*"
 COV_PY_FILES = $(shell git -C $(WS_SRC) ls-files '*.py' ':!:*/test/*' ':!:*/script/*' ':!:*/scripts/*')
 CI_COV_SH := set -eo pipefail; sudo apt-get update -qq; \
@@ -71,6 +73,10 @@ CI_COV_SH := set -eo pipefail; sudo apt-get update -qq; \
              colcon --log-base coverage/log build --base-paths $(WS_BASE_PATHS) --packages-up-to $(COVERAGE_PKGS) \
                  $(COV_DIRS) --cmake-args $(COV_FLAGS); \
              find coverage/build -type f \( -name "*.gcda" -o -path "*/pytest_cov/*/.coverage" \) -delete; \
+             find coverage/build -type f -name "*.gcno" | while read -r g; do \
+                 p=$$(echo "$$g" | cut -d/ -f1-3); o=$$(echo "$$g" | cut -d/ -f4-); o="$${o%.gcno}.o"; \
+                 if [ -f "$$p/compile_commands.json" ] && ! grep -qF "$$o\"" "$$p/compile_commands.json"; then rm -f "$$g"; fi; \
+             done; \
              colcon test-result --test-result-base coverage/build --delete-yes >/dev/null 2>&1 || true; \
              colcon --log-base coverage/log test --base-paths $(WS_BASE_PATHS) --packages-select $(COVERAGE_PKGS) \
                  $(COV_DIRS) --ctest-args -L "gtest|pytest"; \
