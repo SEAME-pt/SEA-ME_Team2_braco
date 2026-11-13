@@ -5,7 +5,8 @@
 #   ros job    make ci-ros   rosdep, colcon build and colcon test of ros2_ws/src (make ci-image builds its image)
 #              make cppcheck cppcheck on the C++ packages (same image)
 #              make tidy     clang-tidy on the C++ packages, from the ci-ros build (same image)
-#   coverage   make coverage the GoogleTests (built with --coverage, gcovr) and pytests (pytest-cov) only (same image)
+#   coverage   make coverage the GoogleTests (built with --coverage, gcovr) and pytests (pytest-cov) only, with an
+#                            80% floor on the C++ and on the ROS Python, launch files included (same image)
 #
 # No robot and no display needed.
 
@@ -23,7 +24,8 @@ CI_ROS_SH := set -e; rosdep update --rosdistro "$$ROS_DISTRO" >/dev/null 2>&1 ||
              $(COLCON); \
              colcon test-result --delete-yes >/dev/null 2>&1 || true; \
              colcon test --base-paths $(WS_BASE_PATHS); colcon test-result --verbose
-CI_RUN = docker run --rm -e CCACHE_DIR=/ws/.ccache -e CCACHE_MAXSIZE=500M -v $(CURDIR)/$(WS_DIR):/ws $(CI_IMAGE)
+CI_RUN_OPTS := --rm -e CCACHE_DIR=/ws/.ccache -e CCACHE_MAXSIZE=500M -v $(CURDIR)/$(WS_DIR):/ws
+CI_RUN = docker run $(CI_RUN_OPTS) $(CI_IMAGE)
 
 # coverage: a Debug build with --coverage in its own tree, ros2_ws/coverage/ - not in build/, where it would replace
 # ci-ros's cached build and colcon test-result would count its tests twice. --cmake-args replaces the cmake-args of
@@ -32,11 +34,19 @@ CI_RUN = docker run --rm -e CCACHE_DIR=/ws/.ccache -e CCACHE_MAXSIZE=500M -v $(C
 # table is cut before gcovr's Missing column (every uncovered line number): the HTML report has them.
 # Python: AMENT_CMAKE_PYTEST_WITH_COVERAGE makes ament_add_pytest_test run pytest-cov over the package's source dir,
 # one .coverage file per test under build/<pkg>/pytest_cov/; they are combined into one report (tests left out),
-# HTML in coverage/html/python. scripts/ directories are not measured (C++ or Python): with them out, braco_camera's
-# camera.py is left out too and there is no ROS Python to report yet - coverage.py exits 1 with "No data to report.",
-# which is skipped; 2 is a total below the floor. Exit 1 is also every other error (a corrupt data file...), so only
-# that exact message skips the floor; any other failure fails the target. braco_camera stays listed, so its pytest
-# still runs.
+# HTML in coverage/html/python. They are deleted first, with the .gcda: a test removed or renamed since the last
+# local run would leave its file behind, and combine would count it (CI starts clean). script/, scripts/ and test/
+# directories are not measured (C++ or Python).
+# In scope: every .py of ros2_ws/src that git tracks outside them (COV_PY_FILES, listed on the host, where git is),
+# launch files included. pytest-cov only records the files a test imported, so scripts/coverage_touch.py (mounted on
+# /scripts for this run only) adds the others at 0%: a launch file without a test lowers the total. A launch test
+# loads the file from src/, not the installed copy, which is outside --cov. A corrupt data file is only a warning to
+# combine, which would drop that test's lines and pass: -W error::Warning:coverage.data makes the warnings of
+# coverage's data module errors, and only those (a plain -W error also fails on an unrelated DeprecationWarning;
+# -W cannot name CoverageWarning, nor match its message here: it has a ' in it). With files in scope, no data fails the
+# target; only an empty COV_PY_FILES skips the Python floor. braco_camera stays listed, so its pytest still runs.
+# The helper's own pytest (scripts/test_coverage_touch.py) runs here too, on the coverage.py it uses; a failure fails
+# the target but the report is still written. /scripts is read-only: -B and no pytest cache.
 # Coverage floors: 80% for every component, the project's minimum. Do not lower them to make a PR pass: add tests.
 # C++ is gated on the line total of every package (gcovr); branches are only reported (gcc counts exception paths).
 # pytest-cov and coverage.py compare the total of statements and branches together, not the line percentage.
@@ -47,35 +57,39 @@ COV_MIN_WEB   := 80
 # The totals also go to the GitHub Actions job summary (scripts/coverage_summary.py, from the JSON reports), on the
 # host: the container does not see $GITHUB_STEP_SUMMARY. Outside Actions the table is dropped. Written on failure too.
 STEP_SUMMARY  := "$${GITHUB_STEP_SUMMARY:-/dev/null}"
-COVERAGE_PKGS := mycobot_cpp braco_driver braco_hardware braco_teleop braco_bringup braco_camera
+COVERAGE_PKGS := mycobot_cpp braco_driver braco_hardware braco_teleop braco_bringup braco_camera braco_simulation \
+                 braco_moveit_config braco_mission
 COV_DIRS      := --build-base coverage/build --install-base coverage/install
 COV_FLAGS     := -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_FLAGS=--coverage -DCMAKE_CXX_FLAGS=--coverage \
                  -DCMAKE_EXE_LINKER_FLAGS=--coverage -DCMAKE_SHARED_LINKER_FLAGS=--coverage \
                  -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
                  -DAMENT_CMAKE_PYTEST_WITH_COVERAGE=ON
-COV_PY    := --data-file=coverage/.coverage --omit="*/test/*,*/scripts/*"
+COV_PY    := --data-file=coverage/.coverage --omit="*/test/*,*/script/*,*/scripts/*"
+COV_PY_FILES = $(shell git -C $(WS_SRC) ls-files '*.py' ':!:*/test/*' ':!:*/script/*' ':!:*/scripts/*')
 CI_COV_SH := set -eo pipefail; sudo apt-get update -qq; \
              rosdep install --from-paths $(WS_BASE_PATHS) --ignore-src -y >/dev/null; \
              colcon --log-base coverage/log build --base-paths $(WS_BASE_PATHS) --packages-up-to $(COVERAGE_PKGS) \
                  $(COV_DIRS) --cmake-args $(COV_FLAGS); \
-             find coverage/build -name "*.gcda" -delete; \
+             find coverage/build -type f \( -name "*.gcda" -o -path "*/pytest_cov/*/.coverage" \) -delete; \
              colcon test-result --test-result-base coverage/build --delete-yes >/dev/null 2>&1 || true; \
              colcon --log-base coverage/log test --base-paths $(WS_BASE_PATHS) --packages-select $(COVERAGE_PKGS) \
                  $(COV_DIRS) --ctest-args -L "gtest|pytest"; \
              colcon test-result --test-result-base coverage/build --verbose; \
              mkdir -p coverage/html; rm -f coverage/cxx.json coverage/python.json; st=0; \
-             gcovr -r /ws/src coverage/build --exclude ".*/test/.*" --exclude ".*/scripts/.*" --txt --print-summary \
+             gcovr -r /ws/src coverage/build --exclude ".*/test/.*" --exclude ".*/script/.*" --exclude ".*/scripts/.*" \
+                 --txt --print-summary \
                  --html-details coverage/html/index.html --json-summary coverage/cxx.json \
                  --fail-under-line $(COV_MIN_CXX) | cut -c1-64 || st=1; \
-             python3 -m coverage combine --keep --data-file=coverage/.coverage \
-                 coverage/build/*/pytest_cov/*/.coverage >/dev/null; \
-             r=0; out=$$(python3 -m coverage report $(COV_PY) --fail-under=$(COV_MIN_PY) 2>&1) || r=$$?; \
-             printf "%s\n" "$$out"; \
-             if [ $$r -eq 0 ] || [ $$r -eq 2 ]; then python3 -m coverage html $(COV_PY) -q -d coverage/html/python; \
-                 python3 -m coverage json $(COV_PY) -q -o coverage/python.json; [ $$r -eq 0 ] || st=1; \
-             elif printf "%s\n" "$$out" | grep -qxF "No data to report."; then \
-                 echo "ROS Python: nothing to measure outside scripts/ and test/"; \
-             else echo "ROS Python: coverage report failed (exit $$r)" >&2; st=1; fi; \
+             python3 -B -m pytest -q -p no:cacheprovider /scripts/test_coverage_touch.py || st=1; \
+             if [ -z "$$COV_PY_FILES" ]; then \
+                 echo "ROS Python: nothing to measure outside script/, scripts/ and test/"; \
+             elif python3 -W error::Warning:coverage.data -m coverage combine --keep --data-file=coverage/.coverage \
+                     coverage/build/*/pytest_cov/*/.coverage >/dev/null && \
+                 python3 /scripts/coverage_touch.py --data-file coverage/.coverage --root /ws/src $$COV_PY_FILES; then \
+                 python3 -m coverage report $(COV_PY) --fail-under=$(COV_MIN_PY) || st=1; \
+                 python3 -m coverage html $(COV_PY) -q -d coverage/html/python || st=1; \
+                 python3 -m coverage json $(COV_PY) -q -o coverage/python.json || st=1; \
+             else echo "ROS Python: no usable coverage data (combine or coverage_touch.py failed)" >&2; st=1; fi; \
              exit $$st
 
 # cppcheck: run directly, because ament_cppcheck skips every file ("performance issues" with cppcheck >= 2.0, it
@@ -156,7 +170,8 @@ ci-ros: ## The `ros` CI job: rosdep + colcon build + colcon test in a throw-away
 
 coverage: ## GoogleTests and pytests of ros2_ws with coverage (gcovr, pytest-cov); report in ros2_ws/coverage/html
 	@docker image inspect $(CI_IMAGE) >/dev/null 2>&1 || $(MAKE) --no-print-directory ci-image
-	$(CI_RUN) bash -c '$(CI_COV_SH)'; st=$$?; \
+	docker run $(CI_RUN_OPTS) -e COV_PY_FILES="$(COV_PY_FILES)" -v $(CURDIR)/scripts:/scripts:ro $(CI_IMAGE) \
+		bash -c '$(CI_COV_SH)'; st=$$?; \
 	python3 scripts/coverage_summary.py --gcovr "C++ (ros2_ws)" $(WS_DIR)/coverage/cxx.json $(COV_MIN_CXX) \
 		--coverage-py "ROS Python (ros2_ws)" $(WS_DIR)/coverage/python.json $(COV_MIN_PY) >> $(STEP_SUMMARY); exit $$st
 

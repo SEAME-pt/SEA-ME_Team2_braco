@@ -21,6 +21,7 @@
   <depend>braco_interfaces</depend>
 
   <!-- move_to_pose.launch.py: the MoveIt config of the Gazebo arm -->
+  <exec_depend>ament_index_python</exec_depend>
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
   <exec_depend>moveit_configs_utils</exec_depend>
