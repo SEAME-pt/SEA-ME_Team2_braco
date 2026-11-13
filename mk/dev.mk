@@ -1,10 +1,11 @@
-# mk/dev.mk - working on the code, in the `dev` container: shell run build test sim-gui gaze-gui rviz-gui, plus clean.
+# mk/dev.mk - working on the code, in the `dev` container: shell run build test sim-gui gaze-gui rviz-gui moveit, plus
+# clean.
 #
 # `dev` is the same image as the system, with the workspace mounted at /ws, so a build here is what the system runs
 # after `make restart`. PC: started by `make up` or by these commands, and kept up. Jetson: a throw-away container
 # per command (`run --rm`), gone when the command ends.
 
-.PHONY: shell run build test sim-gui gaze-gui rviz-gui clean
+.PHONY: shell run build test sim-gui gaze-gui rviz-gui moveit clean
 
 ##@ Development (in the dev container)
 
@@ -52,6 +53,15 @@ rviz-gui: _image _dev_up ## PC: open RViz + MoveIt on the running simulation, in
 	$(call gui_start,$(RVIZ_GUI))
 
 sim-gui: gaze-gui rviz-gui ## PC: open both windows on the running simulation, in the background (make up SIM=1 first)
+
+# MoveIt on the real arm (#101): the Jetson image has no MoveIt, so move_group runs here, on the arm's domain.
+# real.launch.py runs the domain check (#103) first and stops on FAIL. In the foreground: Ctrl-C ends it.
+# RVIZ=false on the command line: no RViz window. Read docs/guides/safety.md §9 first.
+MOVEIT_RVIZ = $(if $(filter command line,$(origin RVIZ)),$(RVIZ),true)
+moveit: _image _dev_up ## PC: MoveIt on the real arm: domain check, then move_group + RViz (RVIZ=false: none)
+	@[ "$(ROLE)" = pc ] || { echo "$@: MoveIt runs on the PC (the Jetson image has none)" >&2; exit 1; }
+	$(call dev_cmd,-e ROS_DOMAIN_ID=$(ARM_ROS_DOMAIN_ID) -e ARM_ROS_DOMAIN_ID=$(ARM_ROS_DOMAIN_ID)) \
+	  ros2 launch braco_moveit_config real.launch.py rviz:=$(MOVEIT_RVIZ)
 
 clean: _role ## Delete colcon's build/ install/ log/ and the ROS logs (~/.ros/log, here and in the containers)
 	rm -rf $(WS_DIR)/build $(WS_DIR)/install $(WS_DIR)/log $(HOME)/.ros/log
