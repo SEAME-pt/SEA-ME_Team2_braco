@@ -136,7 +136,8 @@ Position only: send the orientation as all zeros. Checked in Gazebo (2026-11-10)
 | `include/braco_mission/mission.hpp`, `src/mission.cpp` | The steps of a goal against `ArmBackend`, no ROS |
 | `include/braco_mission/cartesian.hpp`, `src/cartesian.cpp` | The steps of a straight-line goal against `CartesianBackend`, the request check and the line deviation, no ROS |
 | `include/braco_mission/control_guard.hpp` | Releases the control on every path of a goal (both actions) |
-| `src/move_to_pose_node.cpp` | `CartesianBackend` with MoveIt 2 (`MoveGroupInterface`, `computeCartesianPath`, TOTG), TF and `/arm/take_control`; both action servers |
+| `include/braco_mission/move_to_pose_node.hpp`, `src/move_to_pose_node.cpp` | `MoveToPoseNode`: `CartesianBackend` with MoveIt 2 (`MoveGroupInterface`, `computeCartesianPath`, TOTG), TF and `/arm/take_control`; both action servers. A library, so tests can run it in-process |
+| `src/move_to_pose.cpp` | `main()` only |
 | `launch/move_to_pose.launch.py` | The node with the MoveIt config of the Gazebo arm |
 | `scripts/draw_line.py` | Draw one straight line and plot the executed `tcp` path |
 

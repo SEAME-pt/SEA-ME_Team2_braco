@@ -23,14 +23,18 @@ find_package(braco_interfaces REQUIRED)
 add_library(braco_mission_core STATIC src/mission.cpp src/cartesian.cpp)
 target_include_directories(braco_mission_core PUBLIC include)
 
-add_executable(move_to_pose src/move_to_pose_node.cpp)
-target_link_libraries(move_to_pose braco_mission_core
+# The node in a library, so the tests can run it in-process; the program only holds main()
+add_library(braco_mission_node STATIC src/move_to_pose_node.cpp)
+target_link_libraries(braco_mission_node PUBLIC braco_mission_core
   rclcpp::rclcpp rclcpp_action::rclcpp_action ${geometry_msgs_TARGETS}
   tf2::tf2 tf2_ros::tf2_ros tf2_geometry_msgs::tf2_geometry_msgs
   moveit_ros_planning_interface::moveit_move_group_interface
   moveit_core::moveit_robot_state moveit_core::moveit_robot_trajectory
   moveit_core::moveit_trajectory_processing ${moveit_msgs_TARGETS}
   ${braco_interfaces_TARGETS})
+
+add_executable(move_to_pose src/move_to_pose.cpp)
+target_link_libraries(move_to_pose braco_mission_node)
 
 install(TARGETS move_to_pose DESTINATION lib/${PROJECT_NAME})
 install(DIRECTORY launch DESTINATION share/${PROJECT_NAME})
