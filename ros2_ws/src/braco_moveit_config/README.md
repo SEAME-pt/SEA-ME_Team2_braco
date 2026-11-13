@@ -18,7 +18,8 @@ the arm on the Jetson through DDS.
 | `config/braco.urdf.xacro` | The demo's model: `braco_description`'s `braco.urdf.xacro` + a `mock_components/GenericSystem` `<ros2_control>` |
 | `config/moveit.rviz` | RViz with the MotionPlanning panel on `arm` |
 | `launch/demo.launch.py` | ros2_control with the mock hardware, then `move_group` and RViz once `arm_controller` is active |
-| `launch/sim.launch.py` | Gazebo (`braco_simulation`'s `gazebo.launch.py`), then `move_group`, RViz and `lab_bench_scene.py` once `arm_controller` is active |
+| `launch/sim.launch.py` | Gazebo (`braco_simulation`'s `gazebo.launch.py`), then the domain check (`--target sim`), then `move_group`, RViz and `lab_bench_scene.py` once `arm_controller` is active |
+| `launch/real.launch.py` | The real arm, from the PC: the domain check (`--target real`), then `move_group` and RViz (`make moveit`) |
 | `scripts/lab_bench_scene.py` | Adds the lab bench's table tops to `move_group`'s planning scene, read from `braco_simulation`'s `lab_bench.sdf` and `lab_table/model.sdf` and placed with the arm's spawn pose |
 | `launch/rviz.launch.py` | RViz only, on a `move_group` already running (`make rviz-gui`) |
 | `.setup_assistant` | Lets MoveItConfigsBuilder and the Setup Assistant find the model and the SRDF |
@@ -76,6 +77,24 @@ Run it with `sim` stopped (`make down`, then `make up`) or on another domain (`e
 
 `move_group` and RViz start only once the `arm_controller` spawner has succeeded, because nothing can execute without
 the controller. If it fails, the launch shuts down, so RViz never opens: look for that spawner's error in the log.
+Then `docker/tests/domain-check.sh --target sim` runs (#103): not the real arm's domain, one simulation on it. On
+FAIL the launch shuts down before `move_group` starts.
+
+## Run on the real arm
+
+Read [safety.md §9](../../../docs/guides/safety.md#9-first-moveit-2-motion-on-the-real-arm) first. The Jetson runs the
+arm (`make up`: `arm_driver`, `braco_hardware`, `arm_controller`). Its image has no MoveIt, so `move_group` runs on the
+PC, on the arm's domain (22):
+
+```bash
+make moveit              # domain check, then move_group + RViz (Ctrl+C ends it)
+make moveit RVIZ=false   # move_group only
+```
+
+`real.launch.py` first runs `docker/tests/domain-check.sh --target real`: domain 22, one `/joint_states` publisher
+(`arm_driver`), no `/clock`. On FAIL it shuts down and `move_group` never starts, so MoveIt cannot take a simulation
+for the real arm. A goal moves the arm only while `mission` holds the control (ADR-0004): use `move_to_pose`, not RViz
+alone.
 
 ## Rules of the config
 

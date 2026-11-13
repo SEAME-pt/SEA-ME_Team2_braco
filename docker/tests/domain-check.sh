@@ -4,9 +4,11 @@
 #   domain-check.sh [--target real]   MoveIt on the real arm: this shell must be on the arm's domain
 #   domain-check.sh --target sim      MoveIt on Gazebo: this shell must NOT be on the arm's domain
 #
-# Run it in the shell that will start MoveIt (a dev shell), or with make domain-check [TARGET=sim].
-# The real arm is arm_driver alone: one /joint_states publisher, no /clock, no controller_manager. A simulation
-# (Gazebo + ros2_control) adds a /joint_states publisher (joint_state_broadcaster), /clock and a controller_manager.
+# Run it in the shell that will start MoveIt (a dev shell), or with make domain-check [TARGET=sim]. The MoveIt
+# launches run it first: real.launch.py (make moveit) with --target real, sim.launch.py with --target sim.
+# The real arm: one /joint_states publisher (arm_driver), no /clock, one controller_manager (braco_hardware). A
+# simulation (Gazebo + ros2_control) adds a /joint_states publisher (joint_state_broadcaster), /clock and a
+# controller_manager.
 # Fails when:
 #   the domain       real: not ARM_ROS_DOMAIN_ID.  sim: ARM_ROS_DOMAIN_ID (checked first, no discovery needed)
 #   /joint_states    publishers: 0 (nothing seen) or more than 1 (a second arm or simulation)

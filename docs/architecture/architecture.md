@@ -2,7 +2,7 @@
 
 How the braco software is built today: layers, nodes, topics, packages and deployment. If the code and this document disagree, the code wins. CPU and memory: [resources.md](resources.md). Timing: [timing-budget.md](timing-budget.md).
 
-Last checked against the code: **2026-11-12**.
+Last checked against the code: **2026-11-13**.
 
 **Contents:** [Principles](#1-principles) · [Layers](#2-layers) · [Nodes and devices](#3-nodes-and-devices) · [Topics and services](#4-topics-and-services) · [Control of the arm](#5-control-of-the-arm) · [Packages](#6-packages) · [Deployment](#7-deployment) · [Launch and parameters](#8-launch-and-parameters) · [Simulation and planned layers](#9-simulation-and-planned-layers) · [Status](#10-status) · [Changing the architecture](#11-changing-the-architecture)
 
@@ -206,7 +206,8 @@ braco_mission ──► MoveIt 2 ──trajectory──┬──► real: braco_
   (`FollowJointTrajectory`), the controller name of `braco_description/config/controllers.yaml`. Its joint limits are
   `JOINT_LIMITS`; its named states `home`/`park` are `ZERO_ANGLES`/`PARK_ANGLES` of `mycobot.hpp`. Its demo runs the
   same controllers on `mock_components` (no Gazebo, no arm): [Run the demo](../../ros2_ws/src/braco_moveit_config/README.md#run-the-demo).
-- In simulation, `braco.launch.py sim:=true moveit:=true` adds `move_group` once `arm_controller` is active, on simulated time. The `sim` container runs it by default (`SIM_MOVEIT`); RViz opens from `dev` (`make rviz-gui`) and reaches it over DDS: [Run on the Gazebo arm](../../ros2_ws/src/braco_moveit_config/README.md#run-on-the-gazebo-arm).
+- In simulation, `braco.launch.py sim:=true moveit:=true` adds `move_group` once `arm_controller` is active, on simulated time. The `sim` container runs it by default (`SIM_MOVEIT`); RViz opens from `dev` (`make rviz-gui`) and reaches it over DDS: [Run on the Gazebo arm](../../ros2_ws/src/braco_moveit_config/README.md#run-on-the-gazebo-arm). Before `move_group` it runs the domain check (`--target sim`, #103) and shuts down on FAIL.
+- On the real arm, `move_group` runs on the PC (the Jetson image has no MoveIt), on the arm's domain: `make moveit` runs `braco_moveit_config`'s `real.launch.py`, which first runs the domain check (`--target real`, #103) and starts `move_group` and RViz only on PASS: [Run on the real arm](../../ros2_ws/src/braco_moveit_config/README.md#run-on-the-real-arm).
 - Every mesh declares the COLLADA unit 1 and the URDF scales the millimetre ones: MoveIt ignores the unit and would
   otherwise check collisions on meshes 1000x too big.
 - The URDF (`braco_description`) uses the joint names of `/joint_states` and the limits of `JOINT_LIMITS`.
@@ -243,7 +244,7 @@ braco_mission ──► MoveIt 2 ──trajectory──┬──► real: braco_
 **Pending:**
 - `arm_driver` as a lifecycle node
 - E-stop node
-- Real arm with MoveIt ([ADR-0004](../decisions/ADR-0004-trajectories-through-arm-driver.md), #101): the domain check before MoveIt (#103), bench
+- Real arm with MoveIt ([ADR-0004](../decisions/ADR-0004-trajectories-through-arm-driver.md), #101): first motion and bench (docs/guides/safety.md §9)
 - `braco_moveit_config`
 - `braco_mission` beyond `move_to_pose`: Cartesian path (#85), demo (#102), on the real arm with `use_control` (#101)
 - Measured CPU/RAM ([resources.md](resources.md))

@@ -101,8 +101,9 @@ Go/no-go checklist. If any box is not ticked, do not move the arm.
 
 ### 9.1 Before
 
-- [ ] `make domain-check` passed ([#103](https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/103)): real arm
-  on domain 22, nothing else on it.
+- [ ] MoveIt started with `make moveit`: its domain check passed
+  ([#103](https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/103)): real arm on domain 22, nothing else on it.
+  On FAIL `move_group` does not start.
 - [ ] Limits test green ([#99](https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/99)).
 - [ ] MoveIt `max_velocity_scaling_factor` and `max_acceleration_scaling_factor` **≤ 0.1**.
 - [ ] Everyone present has signed the induction (section 1).

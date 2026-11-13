@@ -76,7 +76,7 @@ docker compose exec dev bash            # ROS ready
 | System | `up` (`SIM=1` on the PC), `down` (`PARK=1`), `restart`, `status`, `logs` (`S=web`, `S=arm_driver`, any word) |
 | Web page | `web` (`MOCK=1`: fake arm data), `web-stop` |
 | Arm (Jetson) | `zero`, `park`, `rest`, `resume`, `temps`, `bench` |
-| Development | `shell`, `run CMD='...'`, `build` (`COLCON_ARGS=...`), `test`, `sim-gui`, `gaze-gui`, `rviz-gui`, `clean` |
+| Development | `shell`, `run CMD='...'`, `build` (`COLCON_ARGS=...`), `test`, `sim-gui`, `gaze-gui`, `rviz-gui`, `moveit` (real arm; `RVIZ=false`), `clean` |
 | Setup | `setup` (on the PC also your ROS domain, [section 6](#ros-domain-per-teammate)), `role`, `doctor`, `image` (`IMAGE_ARGS='--no-cache --pull'`), `boot-on`, `boot-off`, `jetson-image` (`NANO=user@host`), `re`, `fclean` |
 | Network | `net-test`, `net-talk`, `net-listen`, `domain-check` (before MoveIt; `TARGET=sim`, `WAIT=<s>`) |
 | CI | `ci`, `web-test`, `ci-image`, `ci-ros`, `cppcheck`, `tidy`, `coverage`, `lint`, `format`, `format-check` ([CI guide](../docs/guides/ci.md)) |
@@ -142,8 +142,8 @@ docker compose exec dev bash            # ROS ready
   or `export ROS_DOMAIN_ID=78` in that shell (outside 20–29, so no teammate's).
 - **Windows, in the background:** `make sim-gui` opens Gazebo and RViz (only one: `make gaze-gui`, `make rviz-gui`). Or
   `SIM_GUI=true` in `.env` + `make restart SIM=1`: `sim` opens Gazebo itself.
-- **MoveIt:** `SIM_MOVEIT=true` (the default) also runs `move_group` in `sim`; `make rviz-gui` needs it. Before
-  planning, `make domain-check TARGET=sim` checks the domain and that exactly one arm is there.
+- **MoveIt:** `SIM_MOVEIT=true` (the default) also runs `move_group` in `sim`; `make rviz-gui` needs it. It starts
+  only after the domain check (`--target sim`) passes. On the real arm: `make moveit` (domain check `--target real`).
 - **Web page:** `make web` (runs in `dev`), http://localhost:8000.
 - Step by step: [Run it](../ros2_ws/src/braco_simulation/README.md#run-it).
 ### ROS domain per teammate
