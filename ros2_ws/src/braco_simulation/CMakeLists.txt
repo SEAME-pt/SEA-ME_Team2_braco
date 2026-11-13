@@ -18,6 +18,10 @@ if(BUILD_TESTING)
   find_package(ament_cmake_pytest REQUIRED)
   ament_add_pytest_test(test_scripts test/test_scripts.py)
   ament_add_pytest_test(test_lab_bench test/test_lab_bench.py)
+  # The launch descriptions, built without starting Gazebo; on its own ROS domain, as one test
+  # looks for a /controller_manager
+  find_package(ament_cmake_ros REQUIRED)
+  ament_add_ros_isolated_pytest_test(test_launch test/test_launch.py)
 endif()
 
 ament_package()
