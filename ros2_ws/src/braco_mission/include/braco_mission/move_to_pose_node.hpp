@@ -33,6 +33,7 @@
 // tf_timeout_s (1.0), eef_step_m (0.005: the default of a MoveCartesian goal).
 //
 // In a library, so tests can run it in-process; src/move_to_pose.cpp only holds main().
+// MoveIt 2 is behind MotionGroup: tests pass a fake through the factory.
 
 #ifndef BRACO_MISSION__MOVE_TO_POSE_NODE_HPP_
 #define BRACO_MISSION__MOVE_TO_POSE_NODE_HPP_
@@ -50,8 +51,8 @@
 #include "braco_interfaces/srv/take_control.hpp"
 #include "braco_mission/cartesian.hpp"
 #include "braco_mission/mission.hpp"
+#include "braco_mission/motion_group.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
-#include "moveit/move_group_interface/move_group_interface.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"
 #include "tf2_ros/buffer.hpp"
@@ -68,9 +69,13 @@ public:
   using MoveCartesian = braco_interfaces::action::MoveCartesian;
   using CartesianGoalHandle = rclcpp_action::ServerGoalHandle<MoveCartesian>;
   using TakeControl = braco_interfaces::srv::TakeControl;
-  using MoveGroupInterface = moveit::planning_interface::MoveGroupInterface;
+  // Builds the MotionGroup in start(); empty: MoveItMotionGroup.
+  using MotionGroupFactory = std::function<std::unique_ptr<MotionGroup>(
+        const rclcpp::Node::SharedPtr &, const MotionConfig &)>;
 
-  explicit MoveToPoseNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions());
+  explicit MoveToPoseNode(
+    const rclcpp::NodeOptions & options = rclcpp::NodeOptions(),
+    MotionGroupFactory make_motion_group = nullptr);
 
   // MoveGroupInterface needs the node spinning (it waits for the robot state): call it from
   // main once the executor runs.
@@ -90,9 +95,8 @@ public:
   std::optional<Pose> measure() override;
   void report(const std::string & stage) override;
 
-  // computeCartesianPath from the current state, then TOTG with the node's scaling: the
-  // trajectory it returns is timed for full speed. The tcp of every point comes from forward
-  // kinematics in the model frame, `world`, the planning frame of the waypoints.
+  // ---- CartesianBackend ----------------------------------------------------------------
+
   CartesianPlan plan_cartesian(
     const std::vector<Pose> & waypoints, double eef_step, std::string & message) override;
 
@@ -114,21 +118,17 @@ private:
 
   TakeControl::Response::SharedPtr call_take_control(bool release);
 
-  std::string group_;
-  std::string end_effector_;
+  MotionConfig motion_config_;
   Settings settings_;
-  double velocity_scaling_ = 0.1;
-  double acceleration_scaling_ = 0.1;
-  double planning_time_s_ = 5.0;
   double settle_s_ = 0.5;
   double tf_timeout_s_ = 1.0;
   double eef_step_m_ = 0.005;
 
+  MotionGroupFactory make_motion_group_;
   std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
   std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
   rclcpp::Client<TakeControl>::SharedPtr control_client_;
-  std::unique_ptr<MoveGroupInterface> move_group_;
-  MoveGroupInterface::Plan plan_;
+  std::unique_ptr<MotionGroup> motion_group_;
   rclcpp_action::Server<MoveToPose>::SharedPtr server_;
   rclcpp_action::Server<MoveCartesian>::SharedPtr cartesian_server_;
   // Feedback of the goal that runs (one at a time: busy_); set and used on its thread

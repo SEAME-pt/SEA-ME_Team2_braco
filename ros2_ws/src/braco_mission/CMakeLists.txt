@@ -24,7 +24,7 @@ add_library(braco_mission_core STATIC src/mission.cpp src/cartesian.cpp)
 target_include_directories(braco_mission_core PUBLIC include)
 
 # The node in a library, so the tests can run it in-process; the program only holds main()
-add_library(braco_mission_node STATIC src/move_to_pose_node.cpp)
+add_library(braco_mission_node STATIC src/move_to_pose_node.cpp src/moveit_motion_group.cpp)
 target_link_libraries(braco_mission_node PUBLIC braco_mission_core
   rclcpp::rclcpp rclcpp_action::rclcpp_action ${geometry_msgs_TARGETS}
   tf2::tf2 tf2_ros::tf2_ros tf2_geometry_msgs::tf2_geometry_msgs

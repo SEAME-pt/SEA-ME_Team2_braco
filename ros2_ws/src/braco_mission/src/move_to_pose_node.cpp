@@ -20,19 +20,14 @@
 
 #include <chrono>
 #include <cmath>
-#include <cstddef>
 #include <future>
 #include <memory>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
-#include "moveit/robot_state/robot_state.hpp"
-#include "moveit/robot_trajectory/robot_trajectory.hpp"
-#include "moveit/trajectory_processing/time_optimal_trajectory_generation.hpp"
-#include "moveit_msgs/msg/move_it_error_codes.hpp"
-#include "moveit_msgs/msg/robot_state.hpp"
-#include "moveit_msgs/msg/robot_trajectory.hpp"
+#include "braco_mission/moveit_motion_group.hpp"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
 
 using namespace std::chrono_literals;
@@ -51,19 +46,6 @@ Pose from_msg(const geometry_msgs::msg::Pose & p)
     {p.orientation.x, p.orientation.y, p.orientation.z, p.orientation.w}};
 }
 
-geometry_msgs::msg::Pose to_msg(const Pose & p)
-{
-  geometry_msgs::msg::Pose m;
-  m.position.x = p.position.x;
-  m.position.y = p.position.y;
-  m.position.z = p.position.z;
-  m.orientation.x = p.orientation.x;
-  m.orientation.y = p.orientation.y;
-  m.orientation.z = p.orientation.z;
-  m.orientation.w = p.orientation.w;
-  return m;
-}
-
 std::chrono::duration<double> seconds(double s)
 {
   return std::chrono::duration<double>(s);
@@ -71,22 +53,29 @@ std::chrono::duration<double> seconds(double s)
 
 }  // namespace
 
-MoveToPoseNode::MoveToPoseNode(const rclcpp::NodeOptions & options)
-: Node("move_to_pose", options)
+MoveToPoseNode::MoveToPoseNode(
+  const rclcpp::NodeOptions & options, MotionGroupFactory make_motion_group)
+: Node("move_to_pose", options), make_motion_group_(std::move(make_motion_group))
 {
-  group_ = declare_parameter<std::string>("group", "arm");
-  end_effector_ = declare_parameter<std::string>("end_effector", "tcp");
+  motion_config_.group = declare_parameter<std::string>("group", "arm");
+  motion_config_.end_effector = declare_parameter<std::string>("end_effector", "tcp");
   settings_.use_control = declare_parameter<bool>("use_control", false);
-  velocity_scaling_ = declare_parameter<double>("velocity_scaling", 0.1);
-  acceleration_scaling_ = declare_parameter<double>("acceleration_scaling", 0.1);
-  planning_time_s_ = declare_parameter<double>("planning_time_s", 5.0);
+  motion_config_.velocity_scaling = declare_parameter<double>("velocity_scaling", 0.1);
+  motion_config_.acceleration_scaling = declare_parameter<double>("acceleration_scaling", 0.1);
+  motion_config_.planning_time_s = declare_parameter<double>("planning_time_s", 5.0);
   settings_.position_tolerance_m = declare_parameter<double>("position_tolerance_m", 0.005);
   settings_.orientation_tolerance_rad =
     declare_parameter<double>("orientation_tolerance_deg", 2.0) * M_PI / 180.0;
   settle_s_ = declare_parameter<double>("settle_s", 0.5);
   tf_timeout_s_ = declare_parameter<double>("tf_timeout_s", 1.0);
+  motion_config_.state_timeout_s = tf_timeout_s_;
   eef_step_m_ = declare_parameter<double>("eef_step_m", 0.005);
 
+  if (!make_motion_group_) {
+    make_motion_group_ = [](const rclcpp::Node::SharedPtr & node, const MotionConfig & config) {
+        return std::make_unique<MoveItMotionGroup>(node, config);
+      };
+  }
   tf_buffer_ = std::make_unique<tf2_ros::Buffer>(get_clock());
   tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
   control_client_ = create_client<TakeControl>("/arm/take_control");
@@ -94,11 +83,7 @@ MoveToPoseNode::MoveToPoseNode(const rclcpp::NodeOptions & options)
 
 void MoveToPoseNode::start()
 {
-  move_group_ = std::make_unique<MoveGroupInterface>(shared_from_this(), group_);
-  move_group_->setEndEffectorLink(end_effector_);
-  move_group_->setMaxVelocityScalingFactor(velocity_scaling_);
-  move_group_->setMaxAccelerationScalingFactor(acceleration_scaling_);
-  move_group_->setPlanningTime(planning_time_s_);
+  motion_group_ = make_motion_group_(shared_from_this(), motion_config_);
   server_ = rclcpp_action::create_server<MoveToPose>(
     this, "move_to_pose",
     [this](const rclcpp_action::GoalUUID &, std::shared_ptr<const MoveToPose::Goal>) {
@@ -120,7 +105,8 @@ void MoveToPoseNode::start()
   RCLCPP_INFO(
     get_logger(),
     "ready: /move_to_pose and /move_cartesian, group %s, link %s, planning frame %s, control %s",
-    group_.c_str(), end_effector_.c_str(), move_group_->getPlanningFrame().c_str(),
+    motion_config_.group.c_str(), motion_config_.end_effector.c_str(),
+    motion_group_->planning_frame().c_str(),
     settings_.use_control ? "on (real arm)" : "off (simulation)");
 }
 
@@ -128,7 +114,7 @@ void MoveToPoseNode::stop()
 {
   server_.reset();
   cartesian_server_.reset();
-  move_group_.reset();
+  motion_group_.reset();
 }
 
 // ---- ArmBackend ------------------------------------------------------------------------
@@ -153,22 +139,14 @@ void MoveToPoseNode::release_control()
 
 bool MoveToPoseNode::plan(const Pose & goal, bool position_only, std::string & message)
 {
-  move_group_->setStartStateToCurrentState();
-  move_group_->clearPoseTargets();
-  if (position_only) {
-    move_group_->setPositionTarget(
-      goal.position.x, goal.position.y, goal.position.z, end_effector_);
-  } else {
-    move_group_->setPoseTarget(to_msg(goal), end_effector_);
-  }
-  const bool ok = static_cast<bool>(move_group_->plan(plan_));
+  const bool ok = motion_group_->plan(goal, position_only);
   if (!ok) {message = position_only ? "no plan to the position" : "no plan to the pose";}
   return ok;
 }
 
 bool MoveToPoseNode::execute(std::string & message)
 {
-  const bool ok = static_cast<bool>(move_group_->execute(plan_));
+  const bool ok = motion_group_->execute();
   if (!ok) {message = "arm_controller did not complete the trajectory";}
   return ok;
 }
@@ -178,7 +156,7 @@ std::optional<Pose> MoveToPoseNode::measure()
   std::this_thread::sleep_for(seconds(settle_s_));   // let the arm and TF settle
   try {
     const auto t = tf_buffer_->lookupTransform(
-      move_group_->getPlanningFrame(), end_effector_, tf2::TimePointZero,
+      motion_group_->planning_frame(), motion_config_.end_effector, tf2::TimePointZero,
       tf2::durationFromSec(tf_timeout_s_));
     const auto & r = t.transform.rotation;
     const auto & p = t.transform.translation;
@@ -195,52 +173,12 @@ void MoveToPoseNode::report(const std::string & stage)
   RCLCPP_INFO(get_logger(), "%s", stage.c_str());
 }
 
+// ---- CartesianBackend ------------------------------------------------------------------
+
 CartesianPlan MoveToPoseNode::plan_cartesian(
   const std::vector<Pose> & waypoints, double eef_step, std::string & message)
 {
-  CartesianPlan out;
-  move_group_->setStartStateToCurrentState();
-  std::vector<geometry_msgs::msg::Pose> poses;
-  poses.reserve(waypoints.size());
-  for (const auto & w : waypoints) {
-    poses.push_back(to_msg(w));
-  }
-
-  moveit_msgs::msg::RobotTrajectory path;
-  moveit_msgs::msg::MoveItErrorCodes error;
-  out.fraction = move_group_->computeCartesianPath(poses, eef_step, path, true, &error);
-  if (out.fraction < 0.0) {
-    message = "computeCartesianPath failed, MoveIt error code " + std::to_string(error.val);
-    return out;
-  }
-
-  const moveit::core::RobotStatePtr start_state = move_group_->getCurrentState(tf_timeout_s_);
-  if (!start_state) {
-    out.fraction = -1.0;
-    message = "the current robot state is not available";
-    return out;
-  }
-  robot_trajectory::RobotTrajectory trajectory(move_group_->getRobotModel(), group_);
-  trajectory.setRobotTrajectoryMsg(*start_state, path);
-  trajectory_processing::TimeOptimalTrajectoryGeneration totg;
-  if (!totg.computeTimeStamps(trajectory, velocity_scaling_, acceleration_scaling_)) {
-    out.fraction = -1.0;
-    message = "time parameterisation (TOTG) failed";
-    return out;
-  }
-
-  for (std::size_t i = 0; i < trajectory.getWayPointCount(); ++i) {
-    moveit::core::RobotState state(trajectory.getWayPoint(i));
-    state.updateLinkTransforms();
-    const auto & tcp = state.getGlobalLinkTransform(end_effector_).translation();
-    out.tcp_path.push_back({tcp.x(), tcp.y(), tcp.z()});
-  }
-  plan_.start_state = moveit_msgs::msg::RobotState();   // execute() sends the trajectory only
-  trajectory.getRobotTrajectoryMsg(plan_.trajectory);
-  RCLCPP_INFO(
-    get_logger(), "Cartesian path: %.1f%% planned, %zu points, %.1f s",
-    out.fraction * 100.0, trajectory.getWayPointCount(), trajectory.getDuration());
-  return out;
+  return motion_group_->plan_cartesian(waypoints, eef_step, message);
 }
 
 // ---- private ---------------------------------------------------------------------------
@@ -256,7 +194,7 @@ rclcpp_action::GoalResponse MoveToPoseNode::accept()
 
 rclcpp_action::CancelResponse MoveToPoseNode::cancel()
 {
-  move_group_->stop();
+  motion_group_->stop();
   return rclcpp_action::CancelResponse::ACCEPT;
 }
 
@@ -350,7 +288,7 @@ void MoveToPoseNode::run(const std::shared_ptr<GoalHandle> & goal)
 std::optional<Pose> MoveToPoseNode::in_planning_frame(
   const geometry_msgs::msg::PoseStamped & target, std::string & message)
 {
-  const std::string frame = move_group_->getPlanningFrame();
+  const std::string frame = motion_group_->planning_frame();
   if (target.header.frame_id.empty() || target.header.frame_id == frame) {
     return from_msg(target.pose);
   }
