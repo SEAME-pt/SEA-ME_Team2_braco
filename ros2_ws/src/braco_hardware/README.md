@@ -149,7 +149,7 @@ port: the `arm_driver` it starts talks to `PtyArm`, a fake arm on a pseudo-termi
 | `ReconfigureDropsStaleJointStates` | `on_configure` drops the message kept before it |
 | `ConfigureFailsWithoutNode` | `on_configure` fails without a node from the controller manager |
 
-`write()` is not tested: it does nothing yet (#101).
+`write()` has no tests yet (#101): see [When it sends](#when-it-sends) for what it does.
 
 The domain, the timeout and a stuck `arm_driver`: see
 [braco_hardware test](../../../docs/guides/ci.md#braco_hardware-test).
