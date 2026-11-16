@@ -32,7 +32,7 @@ while [ $# -gt 0 ]; do
     esac
 done
 case "${TARGET}" in real|sim) ;; *) usage ;; esac
-WAIT="${WAIT:-3}"
+WAIT="${WAIT:-10}"
 [[ "${WAIT}" =~ ^[0-9]+([.][0-9]+)?$ ]] || { echo "WAIT must be a number of seconds, not '${WAIT}'" >&2; exit 2; }
 
 if ! python3 -c 'import rclpy' 2>/dev/null; then
