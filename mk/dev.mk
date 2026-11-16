@@ -56,11 +56,13 @@ sim-gui: gaze-gui rviz-gui ## PC: open both windows on the running simulation, i
 
 # MoveIt on the real arm (#101): the Jetson image has no MoveIt, so move_group runs here, on the arm's domain.
 # real.launch.py runs the domain check (#103) first and stops on FAIL. In the foreground: Ctrl-C ends it.
-# RVIZ=false on the command line: no RViz window. Read docs/guides/safety.md §9 first.
+# RVIZ=false on the command line: no RViz window; WAIT=<s>: longer discovery for the domain check, as
+# make domain-check. Read docs/guides/safety.md §9 first.
 MOVEIT_RVIZ = $(if $(filter command line,$(origin RVIZ)),$(RVIZ),true)
 moveit: _image _dev_up ## PC: MoveIt on the real arm: domain check, then move_group + RViz (RVIZ=false: none)
 	@[ "$(ROLE)" = pc ] || { echo "$@: MoveIt runs on the PC (the Jetson image has none)" >&2; exit 1; }
-	$(call dev_cmd,-e ROS_DOMAIN_ID=$(ARM_ROS_DOMAIN_ID) -e ARM_ROS_DOMAIN_ID=$(ARM_ROS_DOMAIN_ID)) \
+	$(call dev_cmd,-e ROS_DOMAIN_ID=$(ARM_ROS_DOMAIN_ID) -e ARM_ROS_DOMAIN_ID=$(ARM_ROS_DOMAIN_ID) \
+	  $(if $(filter command line,$(origin WAIT)),-e WAIT=$(WAIT))) \
 	  ros2 launch braco_moveit_config real.launch.py rviz:=$(MOVEIT_RVIZ)
 
 clean: _role ## Delete colcon's build/ install/ log/ and the ROS logs (~/.ros/log, here and in the containers)

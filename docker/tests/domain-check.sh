@@ -17,7 +17,7 @@
 # The counting is in domain_check.py, next to this script.
 #
 # Environment: ARM_ROS_DOMAIN_ID  the real arm's domain (docker/compose.yml sets it; default 22)
-#              WAIT               seconds of DDS discovery before counting (default 3)
+#              WAIT               seconds of DDS discovery before counting (default 10: 3 was too short on Wi-Fi)
 # Exit status: 0 PASS, 1 FAIL, 2 cannot run (ROS not sourced, bad arguments).
 set -uo pipefail
 
