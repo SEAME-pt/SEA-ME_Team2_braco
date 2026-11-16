@@ -28,7 +28,7 @@
 // distance from the lines is reported as `max_deviation_m`.
 //
 // No ROS: every ROS call is behind CartesianBackend, unit tested with a fake
-// (test/test_cartesian.cpp); move_to_pose_node.cpp implements it with MoveIt 2 and TF.
+// (test/test_cartesian.cpp); MoveToPoseNode implements it with MoveIt 2 and TF.
 
 #ifndef BRACO_MISSION__CARTESIAN_HPP_
 #define BRACO_MISSION__CARTESIAN_HPP_

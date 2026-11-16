@@ -22,7 +22,7 @@
 //   5. the control taken in 2 is released on every path, also on failure
 //
 // Every ROS call is behind ArmBackend, so the steps are unit tested with a fake
-// (test/test_mission.cpp); move_to_pose_node.cpp implements it with MoveIt 2 and TF.
+// (test/test_mission.cpp); MoveToPoseNode implements it with MoveIt 2 and TF.
 
 #ifndef BRACO_MISSION__MISSION_HPP_
 #define BRACO_MISSION__MISSION_HPP_
