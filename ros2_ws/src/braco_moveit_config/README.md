@@ -25,7 +25,7 @@ the arm on the Jetson through DDS.
 | `.setup_assistant` | Lets MoveItConfigsBuilder and the Setup Assistant find the model and the SRDF |
 
 The ros2_control controllers are not copied here: the demo starts those of `braco_description/config/controllers.yaml`,
-the one set used in Gazebo and (planned) on the real arm.
+the one set used in Gazebo and on the real arm.
 
 Named states (radians in the SRDF) are the fixed poses of `mycobot_cpp/includes/mycobot.hpp`:
 `home` = `ZERO_ANGLES` (all 0, the arm upright) and `park` = `PARK_ANGLES` {0, 131, -148, 146, 4.5, 0} deg.
