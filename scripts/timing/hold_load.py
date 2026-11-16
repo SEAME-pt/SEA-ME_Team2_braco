@@ -40,8 +40,8 @@ def take_control(node, release=False):
 def watch_stop(node):
     """{'stop': True} once a STOP is seen on /arm/command, from any client: the run must end.
 
-    arm_driver stops the arm on a STOP but keeps the control with its owner, so a client
-    that resends its target would start the arm again on the next command.
+    A STOP is the emergency stop: arm_driver latches it (ADR-0005) and this run must not
+    try to go on. A HALT (routine stop) does not end it.
     """
     seen = {'stop': False}
 

@@ -7,6 +7,10 @@
 // being dragged) is mirrored live to every other page. The speed is one shared value
 // held by the server: only the operator changes it, everybody sees it, and above the
 // limit (80) the operator has to accept a warning.
+//
+// STOP is the emergency stop and latches (ADR-0005): until it is released nothing moves and
+// nobody holds the control. Anyone can release it, like STOP, but only 3 s after the last
+// STOP; the release does not move the arm.
 
 import { mountActivity } from "../activity.js";
 import { mountCamera } from "../camera.js";
@@ -42,6 +46,10 @@ function controlHTML() {
       <div class="rest-banner" id="c-rest" hidden>
         <div><b>☾ Arm resting</b><span class="muted small">Motion is refused (rest mode). Wake up leaves rest mode and powers the servos; the arm stays where it is.</span></div>
         <button id="c-wake">☀ Wake up</button>
+      </div>
+      <div class="stop-banner" id="c-stopped" hidden>
+        <div><b>■ STOP latched</b><span class="muted small">The arm is held stopped and nobody can take control. Release the STOP (from 3 s after it) when the area is safe; the arm does not move, take control again to move it.</span></div>
+        <button id="c-release" data-cap="release_stop">Release STOP</button>
       </div>
       <div class="ctl-top">
         <button class="stop-btn" id="a-stop" title="Anyone can stop the arm, operator or not">■ STOP</button>
@@ -112,6 +120,7 @@ export function render(root) {
   const dragging = rows.map(() => false);
   let connected = false;
   let resting = false;
+  let stopped = false;  // STOP latched in arm_driver
   let owner = null;     // arm_driver's control owner, last drawn
   let operator = isOperator();
   let remote = null;   // the operator's mirrored panel, when someone else is in control
@@ -133,7 +142,7 @@ export function render(root) {
   const share = (drag) => shareUi(panelState(drag));
 
   function updateEnabled() {
-    const canMove = operator && armBox.checked && connected && !resting;
+    const canMove = operator && armBox.checked && connected && !resting && !stopped;
     root.querySelectorAll(".ctl-rows button, .ctl-rows input, [data-pose], .ctl-extra button, .ctl-extra input")
       .forEach((el) => { el.disabled = !canMove; });
     // rest mode on/off and LED do not move the arm: operator + connected is enough
@@ -142,9 +151,12 @@ export function render(root) {
     speedEl.disabled = stepEl.disabled = !operator;
     $("#c-speed-lock").hidden = operator;
     $("#a-stop").disabled = !connected;
-    $("#c-rest").hidden = !resting;
+    $("#c-rest").hidden = !resting || stopped;   // the STOP banner says more
     $("#c-wake").disabled = !(operator && connected);
-    $(".ctl").classList.toggle("is-resting", resting);
+    $("#c-stopped").hidden = !stopped;
+    $("#c-release").disabled = !connected;   // anyone, like STOP: nobody holds the lease now
+    $(".ctl").classList.toggle("is-resting", resting && !stopped);
+    $(".ctl").classList.toggle("is-stopped", stopped);
     $(".ctl").classList.toggle("view-only", !operator);
     drawLease();
   }
@@ -225,8 +237,14 @@ export function render(root) {
   speedEl.addEventListener("pointerup", () => { speedDragging = false; });
   stepEl.addEventListener("change", () => share());
 
+  // No confirmation: STOP is the emergency stop and must act on the first click. Releasing it
+  // is the deliberate step, so that one still asks.
   $("#a-stop").addEventListener("click", () => {
-    if (confirm("Send STOP to the arm?")) send("/api/stop", null, "STOP sent");
+    send("/api/stop", null, "STOP sent");
+  });
+  $("#c-release").addEventListener("click", () => {
+    if (!confirm("Release the STOP?\n\nThe arm does not move. Whoever moves it next must take control again.")) return;
+    send("/api/release_stop", null, "STOP released");   // inside the 3 s hold: the reason is shown
   });
 
   root.querySelectorAll("[data-pose]").forEach((btn) => btn.addEventListener("click", () => {
@@ -318,6 +336,7 @@ export function render(root) {
       !s.connected ? '<span class="pill hot">disconnected</span>'
         : s.source === "gazebo" ? '<span class="pill info">Gazebo simulation</span>'
         : s.mock ? '<span class="pill info">mock arm</span>' : '<span class="pill ok">connected</span>',
+      s.stopped ? '<span class="pill hot">STOP latched</span>' : "",
       s.resting ? '<span class="pill warn">resting</span>'
         : s.power_on == null ? "" : s.power_on ? '<span class="pill">servos on</span>' : '<span class="pill warn">servos released</span>',
       s.moving == null ? "" : s.moving ? '<span class="pill accent">moving</span>' : '<span class="pill">still</span>',
@@ -332,9 +351,11 @@ export function render(root) {
     if (s.led && document.activeElement !== $("#c-led")) $("#c-led").value = hex(s.led);
 
     const nowResting = !!s.resting;
-    if (connected !== !!s.connected || resting !== nowResting) {
+    const nowStopped = !!s.stopped;
+    if (connected !== !!s.connected || resting !== nowResting || stopped !== nowStopped) {
       connected = !!s.connected;
       resting = nowResting;
+      stopped = nowStopped;
       updateEnabled();
     }
     if ((s.control_owner ?? null) !== owner) {

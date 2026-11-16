@@ -24,6 +24,10 @@ class FakeArmCommand(FakeMsg):
     STOP = 0
     JOINTS = 1
     ALL_ANGLES = 2
+    HALT = 3
+
+
+STOPS = (FakeArmCommand.STOP, FakeArmCommand.HALT)  # emergency and routine
 
 
 class FakeSrv:
@@ -124,7 +128,14 @@ def ros_arm():
     source._led_pub = FakePublisher()
     source._clients = {
         n: n
-        for n in ('power_on', 'release_servos', 'set_gripper', 'set_read_only', 'take_control')
+        for n in (
+            'power_on',
+            'release_servos',
+            'set_gripper',
+            'set_read_only',
+            'take_control',
+            'release_stop',
+        )
     }
     source._update(control_owner='web')  # most tests: the page holds the control
     feeders = []
@@ -288,7 +299,7 @@ def test_move_timeout_stops_and_notifies(ros_arm, monkeypatch):
     ros_arm.feed([0] * 6)
     ros_arm.move_joint(0, 90)
     assert wait_for(lambda: ros_arm.snapshot()['notice'] is not None)
-    assert ros_arm._cmd_pub.sent[-1].type == FakeArmCommand.STOP
+    assert ros_arm._cmd_pub.sent[-1].type == FakeArmCommand.HALT  # routine: no latch
     assert 'not reached' in ros_arm.snapshot()['notice']['text']
 
 
@@ -325,7 +336,7 @@ def test_losing_the_control_ends_the_move_without_stop(ros_arm):
     time.sleep(0.3)
     assert len(ros_arm._cmd_pub.sent) == count  # the stream stopped
     # and the page did not STOP the joystick's motion
-    assert all(m.type != FakeArmCommand.STOP for m in ros_arm._cmd_pub.sent)
+    assert all(m.type not in STOPS for m in ros_arm._cmd_pub.sent)
 
 
 def test_idle_release_by_the_driver_is_not_a_loss(ros_arm):
@@ -340,9 +351,64 @@ def test_no_timeout_stop_without_the_control(ros_arm, monkeypatch):
     ros_arm.feed([0] * 6)
     ros_arm.move_joint(0, 90)
     assert wait_for(lambda: moves(ros_arm))
-    ros_arm._update(control_owner='script')  # without the callback: only the final STOP is checked
+    ros_arm._update(control_owner='script')  # without the callback: only the final stop is checked
     time.sleep(0.6)
-    assert all(m.type != FakeArmCommand.STOP for m in ros_arm._cmd_pub.sent)
+    assert all(m.type not in STOPS for m in ros_arm._cmd_pub.sent)
+
+
+# ---- STOP latch (ADR-0005) --------------------------------------------------------------
+
+
+def test_a_latched_stop_from_anyone_cancels_the_running_move(ros_arm):
+    ros_arm.feed([0] * 6)
+    ros_arm.move_joint(0, 90)
+    assert wait_for(lambda: moves(ros_arm))
+    ros_arm._on_stopped(FakeMsg(data=True))  # e.g. from the terminal
+    assert ros_arm.snapshot()['stopped'] is True
+    time.sleep(0.15)
+    count = len(ros_arm._cmd_pub.sent)
+    time.sleep(0.3)
+    assert len(ros_arm._cmd_pub.sent) == count  # the stream ended
+    # not ours to send: the driver already stopped the arm
+    assert all(m.type not in STOPS for m in ros_arm._cmd_pub.sent)
+
+
+def test_nothing_that_moves_runs_while_stopped(ros_arm):
+    ros_arm.feed([0] * 6)
+    ros_arm._on_stopped(FakeMsg(data=True))
+    for action in (
+        lambda: ros_arm.move_joint(0, 10),
+        lambda: ros_arm.go_to_pose('zero'),
+        lambda: ros_arm.set_gripper(True),
+        ros_arm.wake_up,
+        lambda: ros_arm.set_rest(False),
+    ):
+        with pytest.raises(arm.StoppedError, match='STOP latched'):
+            action()
+    assert moves(ros_arm) == []
+    assert ros_arm.bridge.calls == []  # refused here, before any service call
+    ros_arm.set_rest(True)  # entering rest is still fine
+    assert ros_arm.bridge.calls == [('set_read_only', True)]
+
+
+def test_release_stop(ros_arm):
+    ros_arm._on_stopped(FakeMsg(data=True))
+    ros_arm.bridge.fail = {'release_stop'}  # inside the hold
+    with pytest.raises(arm.StoppedError, match='release_stop refused'):
+        ros_arm.release_stop()
+    assert ros_arm.snapshot()['stopped'] is True
+    ros_arm.bridge.fail = set()
+    ros_arm.release_stop()
+    assert ros_arm.snapshot()['stopped'] is False
+    assert ros_arm.bridge.calls == [('release_stop', None), ('release_stop', None)]
+    assert ros_arm._cmd_pub.sent == []  # the release moves nothing
+    ros_arm._on_stopped(FakeMsg(data=False))
+    assert ros_arm.snapshot()['stopped'] is False
+
+
+def test_the_page_stop_is_the_emergency_stop(ros_arm):
+    ros_arm.stop_motion()
+    assert ros_arm._cmd_pub.sent[-1].type == FakeArmCommand.STOP
 
 
 # ---- poses, rest, wake ------------------------------------------------------------------

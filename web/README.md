@@ -20,6 +20,8 @@ is in sync**: who is online, who controls the arm, what each person did, and the
   control", with your panel mirrored live (speed, step, the slider you are dragging). Every command except STOP
   needs control, and runs one at a time (a second one while the first is running is refused as *busy*).
 - **STOP works for everybody**, operator or not, and stops the arm whoever moves it (the joystick too).
+  It latches ([ADR-0005](../docs/decisions/ADR-0005-stop-latch.md)): the page shows a banner, motion is refused,
+  and anyone can **Release STOP** from 3 s after it. The release does not move the arm.
 - **The page is one client among others.** On the real arm, taking control also asks `arm_driver` for the arm
   ([ADR-0002](../docs/decisions/ADR-0002-unique-control.md)): while the **joystick** or `make zero` / `make park` has it,
   *Take control* is refused (409) and the page shows "the joystick is in control". While the page has it, the
@@ -146,7 +148,8 @@ runs **409**.
 | `GET /api/status` | latest arm snapshot (`capabilities` lists what the source supports) |
 | `POST /api/control/take` · `/release` | take / release control; take answers **409** while the joystick or zero/park has the arm |
 | `GET /api/session` | clients, lease and activity log |
-| `POST /api/stop` | STOP, **anyone** |
+| `POST /api/stop` | STOP, **anyone**; it latches |
+| `POST /api/release_stop` | release a latched STOP, **anyone**; 409 inside the 3 s hold; the arm does not move |
 | `POST /api/pose/{park\|zero}` | move to a fixed pose at the shared speed; 409 while resting |
 | `POST /api/wake` | leave rest mode and power on; the arm does not move |
 | `POST /api/joint/{1-6}` `{angle}` | move one joint, inside its soft limit, at the shared speed |

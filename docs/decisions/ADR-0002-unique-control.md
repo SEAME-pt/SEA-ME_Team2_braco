@@ -38,12 +38,12 @@ deciders: all
 | Owner | One of `web`, `joystick`, `script`, `mission`, or `""` (free). Latched on `/arm/control_owner` |
 | Take | `/arm/take_control`: succeeds if free, already owned, or `force`. Forcing stops the arm |
 | Motion | `JOINTS` / `ALL_ANGLES` obeyed only from the owner. Motion never takes control by itself |
-| STOP | Always obeyed, from any source |
-| Release | `release: true`, forced take by another client, or 5 s without motion (`control_idle_s`) |
+| STOP | Always obeyed, from any source. It latches and frees the control ([ADR-0005](ADR-0005-stop-latch.md)) |
+| Release | `release: true`, forced take by another client, 5 s without motion (`control_idle_s`), or a STOP |
 
 Clients:
 
-- **Joystick:** first real input takes a free control. Hold **button 8 for 1 s** to force it. Without control, it never sends STOP.
+- **Joystick:** first real input takes a free control. Hold **button 8 for 1 s** to force it. Without control, it sends nothing (not even `HALT`).
 - **Web page:** its lease calls `take_control("web")`. It answers **409** while another client owns the arm and renews every second.
 - **zero / park:** force-take before moving, release at the end (also on failure).
 - `power_on`, `set_gripper`, `release_servos` carry no `source`. Clients call them only while they own the control; the driver does not check.

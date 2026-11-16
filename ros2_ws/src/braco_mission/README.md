@@ -152,11 +152,15 @@ Position only: send the orientation as all zeros. Checked in Gazebo (2026-11-10)
 | `include/braco_mission/mission.hpp`, `src/mission.cpp` | The steps of a goal against `ArmBackend`, no ROS |
 | `include/braco_mission/cartesian.hpp`, `src/cartesian.cpp` | The steps of a straight-line goal against `CartesianBackend`, the request check and the line deviation, no ROS |
 | `include/braco_mission/control_guard.hpp` | Releases the control on every path of a goal (both actions) |
-| `src/move_to_pose_node.cpp` | `CartesianBackend` with MoveIt 2 (`MoveGroupInterface`, `computeCartesianPath`, TOTG), TF, `/arm/take_control` and the controller manager services; both action servers |
+| `include/braco_mission/move_to_pose_node.hpp`, `src/move_to_pose_node.cpp` | `MoveToPoseNode`: `CartesianBackend` with a `MotionGroup`, TF, `/arm/take_control` and the controller manager services; both action servers. A library, so tests can run it in-process |
+| `include/braco_mission/motion_group.hpp` | `MotionGroup`: the MoveIt 2 calls of the node, faked in tests |
+| `include/braco_mission/moveit_motion_group.hpp`, `src/moveit_motion_group.cpp` | `MotionGroup` with MoveIt 2 (`MoveGroupInterface`, `computeCartesianPath`, TOTG) |
+| `src/move_to_pose.cpp` | `main()` only |
 | `launch/move_to_pose.launch.py` | The node with the MoveIt config of the Gazebo arm, or of the real arm with `real:=true` |
 | `scripts/draw_line.py` | Draw one straight line and plot the executed `tcp` path |
 
 Tests (`colcon test --packages-select braco_mission`): `test/test_pose_math.cpp`, `test/test_mission.cpp` and
 `test/test_cartesian.cpp` (every step against a fake arm: control, fallback, fraction, failures, tolerances), and
-`test/test_draw_line.py` (the script's path geometry, CSV and plot). No ROS graph, no MoveIt. The node itself is
-checked in Gazebo.
+`test/test_draw_line.py` (the script's path geometry, CSV and plot). No ROS graph, no MoveIt.
+`test/test_move_to_pose_node.cpp` runs the node in-process with a fake `MotionGroup`: both actions, cancel, one goal
+at a time, TF frames and `/arm/take_control`. `MoveItMotionGroup` is checked in Gazebo.
