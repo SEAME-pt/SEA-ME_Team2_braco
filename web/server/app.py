@@ -37,7 +37,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from . import docs, github, ros
-from .arm import JOINT_LIMITS, POSES, GazeboArm, MockArm, RestingError, RosArm
+from .arm import JOINT_LIMITS, POSES, GazeboArm, MockArm, RestingError, RosArm, StoppedError
 from .camera import BOUNDARY, Camera
 from .role import machine_role
 from .ros_graph import Graph
@@ -152,7 +152,7 @@ def command(request, action, fn, operator=True):
         return hub.run(cid, action, fn, operator=operator, ip=ip)
     except LockedError as e:
         raise HTTPException(status_code=423, detail=str(e)) from e
-    except (BusyError, RestingError) as e:
+    except (BusyError, RestingError, StoppedError) as e:
         raise HTTPException(status_code=409, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
@@ -176,6 +176,21 @@ def status():
 def stop(request: Request):
     """Anyone may stop the arm, operator or not."""
     command(request, 'STOP', arm.stop_motion, operator=False)
+    return {'ok': True}
+
+
+@app.post('/api/release_stop')
+def release_stop(request: Request):
+    """Release a latched STOP (ADR-0005); 409 inside the 3 s hold. The arm does not move.
+
+    Anyone, like STOP: while latched arm_driver refuses take_control, so nobody holds the lease.
+    """
+
+    def run():
+        capable('release_stop')
+        arm.release_stop()
+
+    command(request, 'release STOP', run, operator=False)
     return {'ok': True}
 
 

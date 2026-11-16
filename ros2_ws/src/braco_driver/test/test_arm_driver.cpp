@@ -118,6 +118,12 @@ protected:
         std::lock_guard<std::mutex> lock(mutex_);
         read_only_.push_back(msg.data);
       });
+    stopped_sub_ = client_->create_subscription<std_msgs::msg::Bool>(
+      "arm/stopped", latched, [this](const std_msgs::msg::Bool & msg) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        stopped_.push_back(msg.data);
+      });
+    release_stop_client_ = client_->create_client<Trigger>("arm/release_stop");
     take_client_ = client_->create_client<TakeControl>("arm/take_control");
     power_client_ = client_->create_client<Trigger>("arm/power_on");
     release_client_ = client_->create_client<Trigger>("arm/release_servos");
@@ -200,6 +206,13 @@ protected:
     return owners_.empty() ? "?" : owners_.back();
   }
 
+  // Last /arm/stopped value: -1 none yet, 0 false, 1 true
+  int lastStopped()
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return stopped_.empty() ? -1 : static_cast<int>(stopped_.back());
+  }
+
   std::unique_ptr<PtyArm> arm_;
   std::shared_ptr<braco_driver::ArmDriver> driver_;
   std::shared_ptr<rclcpp::Node> client_;
@@ -212,6 +225,7 @@ protected:
   std::vector<ServoVoltages> volts_;
   std::vector<std::string> owners_;
   std::vector<bool> read_only_;
+  std::vector<bool> stopped_;
 
   rclcpp::Publisher<ArmCommand>::SharedPtr command_pub_;
   rclcpp::Publisher<std_msgs::msg::ColorRGBA>::SharedPtr led_pub_;
@@ -220,6 +234,8 @@ protected:
   rclcpp::Subscription<ServoVoltages>::SharedPtr volt_sub_;
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr owner_sub_;
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr read_only_sub_;
+  rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr stopped_sub_;
+  rclcpp::Client<Trigger>::SharedPtr release_stop_client_;
   rclcpp::Client<TakeControl>::SharedPtr take_client_;
   rclcpp::Client<Trigger>::SharedPtr power_client_;
   rclcpp::Client<Trigger>::SharedPtr release_client_;
@@ -386,6 +402,110 @@ TEST_F(ArmDriverTest, MotionOnlyFromTheOwner)
   const size_t stops = frames(protocol::STOP);
   sendType("joystick", ArmCommand::STOP);   // STOP passes, whoever sends it
   EXPECT_TRUE(waitUntil([&] {return frames(protocol::STOP) > stops;}));
+}
+
+// ---- STOP latch (ADR-0005) --------------------------------------------------------
+
+TEST_F(ArmDriverTest, StopLatchesUntilReleasedAfterTheHold)
+{
+  start({rclcpp::Parameter("stop_hold_s", 1.5)});
+  ASSERT_TRUE(waitUntil([this] {return lastStopped() == 0;}));
+  ASSERT_TRUE(take("web")->success);
+  sendJoints("web", {target(1, 5)});
+  ASSERT_TRUE(waitUntil([this] {return frames(protocol::SEND_ANGLE) == 1;}));
+
+  // From the terminal: no source, not the owner
+  size_t stops = frames(protocol::STOP);
+  sendType("", ArmCommand::STOP);
+  EXPECT_TRUE(waitUntil([&] {return frames(protocol::STOP) > stops;}));
+  EXPECT_TRUE(waitUntil([this] {return lastStopped() == 1;}));
+  EXPECT_TRUE(waitUntil([this] {return lastOwner() == "";}));   // the STOP freed the control
+
+  auto rel = trigger(release_stop_client_);   // inside the hold
+  ASSERT_TRUE(rel);
+  EXPECT_FALSE(rel->success);
+  EXPECT_NE(rel->message.find("release refused"), std::string::npos) << rel->message;
+
+  // Whoever asks, nothing can move the arm
+  const std::string latched = " refused: STOP latched (make resume, or call arm/release_stop)";
+  auto t = take("web");
+  ASSERT_TRUE(t);
+  EXPECT_FALSE(t->success);
+  EXPECT_EQ(t->message, "take control" + latched);
+  EXPECT_FALSE(take("joystick", true)->success);   // not even force
+  sendJoints("web", {target(1, 10)});
+  auto p = trigger(power_client_);
+  EXPECT_FALSE(p->success);
+  EXPECT_EQ(p->message, "power on" + latched);
+  auto rs = trigger(release_client_);
+  EXPECT_FALSE(rs->success);
+  EXPECT_EQ(rs->message, "release servos" + latched);
+  EXPECT_FALSE(setBool(gripper_client_, true)->success);
+  auto ro = setBool(rest_client_, false);   // what zero, park and the scripts do first
+  EXPECT_FALSE(ro->success);
+  EXPECT_EQ(ro->message, "rest mode off" + latched);
+  EXPECT_TRUE(setBool(rest_client_, true)->success);   // entering rest is still fine
+
+  // A second STOP keeps the latch and restarts the hold
+  std::this_thread::sleep_for(1600ms);
+  stops = frames(protocol::STOP);
+  sendType("joystick", ArmCommand::STOP);
+  ASSERT_TRUE(waitUntil([&] {return frames(protocol::STOP) > stops;}));
+  rel = trigger(release_stop_client_);
+  EXPECT_FALSE(rel->success) << "a second STOP must not release, nor shorten the hold";
+  EXPECT_EQ(lastStopped(), 1);
+
+  EXPECT_EQ(frames(protocol::SEND_ANGLE), 1u);
+  EXPECT_EQ(frames(protocol::POWER_ON), 0u);
+  EXPECT_EQ(frames(protocol::RELEASE_ALL_SERVOS), 0u);
+  EXPECT_EQ(frames(protocol::SET_GRIPPER_STATE), 0u);
+
+  // After the hold: the release works and moves nothing
+  std::this_thread::sleep_for(1600ms);
+  rel = trigger(release_stop_client_);
+  ASSERT_TRUE(rel);
+  EXPECT_TRUE(rel->success) << rel->message;
+  EXPECT_TRUE(waitUntil([this] {return lastStopped() == 0;}));
+  EXPECT_EQ(trigger(release_stop_client_)->message, "not stopped");
+  EXPECT_TRUE(setBool(rest_client_, false)->success);   // make resume's second call
+  std::this_thread::sleep_for(300ms);
+  EXPECT_EQ(frames(protocol::SEND_ANGLE), 1u);   // the refused targets were not kept
+  EXPECT_EQ(lastOwner(), "");
+
+  // A new owner and a new command move it again
+  ASSERT_TRUE(take("web")->success);
+  sendJoints("web", {target(1, 15)});
+  EXPECT_TRUE(waitUntil([this] {return frames(protocol::SEND_ANGLE) == 2;}));
+}
+
+TEST_F(ArmDriverTest, HaltStopsWithoutLatching)
+{
+  start();
+  ASSERT_TRUE(waitUntil([this] {return lastStopped() == 0;}));
+  ASSERT_TRUE(take("joystick")->success);
+  sendJoints("joystick", {target(1, 5)});
+  ASSERT_TRUE(waitUntil([this] {return frames(protocol::SEND_ANGLE) == 1;}));
+
+  const size_t stops = frames(protocol::STOP);
+  sendType("joystick", ArmCommand::HALT);   // the stick was let go
+  EXPECT_TRUE(waitUntil([&] {return frames(protocol::STOP) > stops;}));
+  std::this_thread::sleep_for(200ms);
+  EXPECT_EQ(lastStopped(), 0);
+  EXPECT_EQ(lastOwner(), "joystick");   // keeps the control
+
+  sendJoints("joystick", {target(1, 10)});   // and jogs again at once
+  EXPECT_TRUE(waitUntil([this] {return frames(protocol::SEND_ANGLE) == 2;}));
+}
+
+TEST_F(ArmDriverTest, StopHoldDefaultsToThreeSeconds)
+{
+  start();
+  sendType("web", ArmCommand::STOP);
+  ASSERT_TRUE(waitUntil([this] {return lastStopped() == 1;}));
+  std::this_thread::sleep_for(2s);   // well inside the 3 s, even on a loaded runner
+  EXPECT_FALSE(trigger(release_stop_client_)->success);
+  std::this_thread::sleep_for(1300ms);
+  EXPECT_TRUE(trigger(release_stop_client_)->success);
 }
 
 TEST_F(ArmDriverTest, WatchdogStopsOnceWhenCommandsStop)

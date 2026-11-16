@@ -20,8 +20,10 @@
 //
 //   sub  /joint_states        the real angles (older than state_timeout_ms = no feedback)
 //   sub  /arm/control_owner   who may move the arm (latched)
+//   sub  /arm/stopped         STOP latch (latched, ADR-0005)
 //   pub  /arm/command         STOP / JOINTS / ALL_ANGLES, one per tick, source "joystick"
-//   pub  /arm/led             speed mode colour (dimmed while another client has the control)
+//   pub  /arm/led             speed mode colour (dimmed while another client has the control,
+//                             yellow while a STOP is latched)
 //   cli  /arm/take_control    on the first stick move when the control is free, or forced
 //   cli  /arm/power_on        when a joystick connects, once the joystick has the control
 //   cli  /arm/set_gripper     A = close, B = open
@@ -63,6 +65,7 @@
 #include "mycobot.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/joint_state.hpp"
+#include "std_msgs/msg/bool.hpp"
 #include "std_msgs/msg/color_rgba.hpp"
 #include "std_msgs/msg/string.hpp"
 #include "std_srvs/srv/set_bool.hpp"
@@ -130,6 +133,7 @@ private:
   // Control owner (arm/control_owner, or the answer to our take_control)
   std::string owner_;
   bool take_pending_ = false;
+  bool stopped_ = false;   // arm/stopped: STOP latched in arm_driver
   mycobot::teleop::ButtonHold force_hold_;
 
   // Joystick connection
@@ -162,6 +166,7 @@ private:
   rclcpp::Client<std_srvs::srv::SetBool>::SharedPtr gripper_client_;
   rclcpp::Client<TakeControl>::SharedPtr take_client_;
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr owner_sub_;
+  rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr stopped_sub_;
   rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr joint_sub_;
   rclcpp::TimerBase::SharedPtr timer_;
   rclcpp::PreShutdownCallbackHandle shutdown_cb_;

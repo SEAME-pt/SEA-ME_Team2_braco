@@ -107,6 +107,38 @@ def test_mock_arm_stop_freezes_angles(monkeypatch):
     assert s['moving'] is False
 
 
+def test_mock_arm_stop_latches_until_released_after_the_hold(monkeypatch):
+    monkeypatch.setattr(arm, 'MOCK_STOP_HOLD_S', 0.2)
+    mock = arm.MockArm()
+    mock.stop_motion()
+    assert mock.snapshot()['stopped'] is True
+    for action in (
+        lambda: mock.go_to_pose('zero'),
+        lambda: mock.move_joint(0, 10),
+        lambda: mock.set_gripper(True),
+        mock.wake_up,
+        lambda: mock.set_rest(False),
+    ):
+        with pytest.raises(arm.StoppedError):
+            action()
+    with pytest.raises(arm.StoppedError, match='release refused'):
+        mock.release_stop()  # inside the hold
+    time.sleep(0.25)
+    mock.release_stop()
+    assert mock.snapshot()['stopped'] is False
+    assert mock._stopped_until == math.inf  # the release moves nothing, ever
+    mock.release_stop()  # not stopped: nothing to do
+    mock.go_to_pose('zero')
+    assert mock._stopped_until == 0.0  # a new command moves it again
+
+
+def test_mock_rest_does_not_latch_a_stop():
+    mock = arm.MockArm()
+    mock.set_rest(True)
+    assert mock.snapshot()['stopped'] is False
+    mock.set_rest(False)
+
+
 # ---- docs.py --------------------------------------------------------------------
 
 
@@ -460,9 +492,16 @@ def test_status(client):
     assert len(s['angles']) == 6 and len(s['coords']) == 6
 
 
-def test_stop(client):
+def test_stop(client, monkeypatch):
     assert client.post('/api/stop').json() == {'ok': True}
     assert client.get('/api/stop').status_code != 200  # only POST stops the arm
+    assert client.get('/api/status').json()['stopped'] is True
+    # Latched: a release inside the hold is a 409 (StoppedError), with the driver's reason
+    r = client.post('/api/release_stop')
+    assert r.status_code == 409 and 'release refused' in r.json()['detail']
+    monkeypatch.setattr(arm, 'MOCK_STOP_HOLD_S', 0)
+    assert client.post('/api/release_stop').json() == {'ok': True}  # anyone, like STOP
+    assert client.get('/api/status').json()['stopped'] is False
 
 
 def test_websocket_streams_snapshots(client):
@@ -633,7 +672,7 @@ def test_ws_welcome_presence_and_telemetry(client):
         assert len(next_of(ws, 'telemetry')['data']['angles']) == 6
 
 
-def test_lease_and_live_sync_between_two_pages(client):
+def test_lease_and_live_sync_between_two_pages(client, monkeypatch):
     A, B = {'X-Client-Id': 't-ana'}, {'X-Client-Id': 't-bruno'}
     with client.websocket_connect('/ws') as wa, client.websocket_connect('/ws') as wb:
         hello(wa, 't-ana', 'Ana')
@@ -679,6 +718,8 @@ def test_lease_and_live_sync_between_two_pages(client):
 
             assert client.get('/api/session').json()['lease']['holder']['id'] == 't-ana'
         finally:
+            monkeypatch.setattr(arm, 'MOCK_STOP_HOLD_S', 0)  # the STOP latched the mock
+            client.post('/api/release_stop', headers=B)
             client.post('/api/control/release', headers=A)
         assert client.get('/api/session').json()['lease']['holder'] is None
         next_of(wb, 'lease', lambda m: m['holder'] is None)

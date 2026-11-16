@@ -180,8 +180,8 @@ export async function post(url, body) {
     if (res.ok) return { ok: true, data };
     const detail = typeof data.detail === "string" ? data.detail
       : Array.isArray(data.detail) ? data.detail.map((d) => d.msg).join("; ") : res.statusText;
-    // 409 is also "the joystick has the arm": that message speaks for itself
-    const busy = res.status === 409 && !/controlled by/.test(detail);
+    // 409 is also "the joystick has the arm" or the STOP latch: those messages speak for themselves
+    const busy = res.status === 409 && !/controlled by|STOP/.test(detail);
     const prefix = res.status === 423 ? "Locked: " : busy ? "Busy: " : "";
     return { ok: false, status: res.status, error: prefix + detail };
   } catch (e) {
