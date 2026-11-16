@@ -37,14 +37,16 @@ if(BUILD_TESTING)
   ament_lint_auto_find_test_dependencies()
 
   # BracoSystem loaded by pluginlib from the real-arm URDF, reading a spawned arm_driver that talks
-  # to a fake arm (PtyArm, a pseudo-terminal). Isolated: its own ROS graph, never the real arm's.
+  # to a fake arm (PtyArm, a pseudo-terminal), and writing to arm_driver's topics, faked.
+  # Isolated: its own ROS graph, never the real arm's.
   find_package(ament_cmake_ros REQUIRED)
   find_package(ament_index_cpp REQUIRED)
   find_package(mycobot_cpp REQUIRED)
-  ament_add_ros_isolated_gtest(test_braco_system test/test_braco_system.cpp TIMEOUT 120)
+  ament_add_ros_isolated_gtest(test_braco_system test/test_braco_system.cpp TIMEOUT 180)
   target_link_libraries(test_braco_system
     hardware_interface::hardware_interface pluginlib::pluginlib rclcpp::rclcpp
-    ament_index_cpp::ament_index_cpp mycobot_cpp::mycobot_cpp ${sensor_msgs_TARGETS} util)
+    ament_index_cpp::ament_index_cpp mycobot_cpp::mycobot_cpp ${sensor_msgs_TARGETS}
+    ${braco_interfaces_TARGETS} ${std_msgs_TARGETS} util)
 endif()
 
 ament_package()

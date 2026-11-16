@@ -27,6 +27,7 @@
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_lifecycle/state.hpp"
 #include "sensor_msgs/msg/joint_state.hpp"
+#include "std_msgs/msg/bool.hpp"
 #include "std_msgs/msg/string.hpp"
 
 namespace braco_hardware
@@ -64,10 +65,10 @@ private:
   bool make_command(braco_interfaces::msg::ArmCommand & msg);
   // write(): true once the target has not changed for HOLD_S (the arm is holding it)
   bool target_is_idle(const braco_interfaces::msg::ArmCommand & msg, int64_t now_ns);
-  // on_configure(): /joint_states, /arm/control_owner and /arm/command from arm_driver
+  // on_configure(): /joint_states, /arm/control_owner and /arm/stopped from arm_driver
   void subscribe();
   void on_owner(const std_msgs::msg::String & msg);
-  void on_command(const braco_interfaces::msg::ArmCommand & msg);
+  void on_stopped(const std_msgs::msg::Bool & msg);
 
   rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr joint_states_sub_;
   sensor_msgs::msg::JointState::ConstSharedPtr latest_joint_states_;
@@ -83,9 +84,9 @@ private:
   std::atomic<bool> commanding_{false};  // a controller holds our position commands
 
   // The control owner (ADR-0002): write() sends only while it is "mission", and aborts the goal
-  // on a STOP or when another client takes the control from mission
+  // on a STOP (ADR-0005 latch) or when another client takes the control from mission
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr owner_sub_;
-  rclcpp::Subscription<braco_interfaces::msg::ArmCommand>::SharedPtr command_sub_;
+  rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr stopped_sub_;
   std::atomic<bool> owner_is_mission_{false};
   std::atomic<bool> stop_seen_{false};
   std::atomic<bool> lost_control_{false};

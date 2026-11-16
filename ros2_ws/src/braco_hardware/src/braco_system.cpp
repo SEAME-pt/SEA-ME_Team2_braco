@@ -143,8 +143,10 @@ void BracoSystem::subscribe()
   owner_sub_ = get_node()->create_subscription<std_msgs::msg::String>(
     "/arm/control_owner", rclcpp::QoS(1).transient_local(),
     [this](const std_msgs::msg::String & msg) {on_owner(msg);});
-  command_sub_ = get_node()->create_subscription<ArmCommand>(
-    "/arm/command", 10, [this](const ArmCommand & msg) {on_command(msg);});
+  // The STOP latch of arm_driver (ADR-0005), latched too: true from a STOP until its release
+  stopped_sub_ = get_node()->create_subscription<std_msgs::msg::Bool>(
+    "/arm/stopped", rclcpp::QoS(1).transient_local(),
+    [this](const std_msgs::msg::Bool & msg) {on_stopped(msg);});
 }
 
 void BracoSystem::on_owner(const std_msgs::msg::String & msg)
@@ -158,11 +160,12 @@ void BracoSystem::on_owner(const std_msgs::msg::String & msg)
   owner_is_mission_ = mission;
 }
 
-void BracoSystem::on_command(const ArmCommand & msg)
+void BracoSystem::on_stopped(const std_msgs::msg::Bool & msg)
 {
-  // A STOP is not latched by arm_driver: without ending the goal, write() would move the arm
-  // again ~50 ms later. Only ours to handle while mission holds the control.
-  if (msg.type == ArmCommand::STOP && owner_is_mission_) {
+  // A STOP also frees the control, so the owner may turn "" before this arrives: do not check
+  // it. write() acts on stop_seen_ only while a controller is commanding. The release (false)
+  // clears nothing: the goal is already aborted, the next activation starts clean.
+  if (msg.data) {
     stop_seen_ = true;
   }
 }

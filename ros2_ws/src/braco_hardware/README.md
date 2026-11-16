@@ -36,7 +36,7 @@ Sending:  arm_driver ◄──/arm/command─── BracoSystem ◄──write()
 |---|---|---|
 | Listens to | `/joint_states` | where the arm is, for `read()` |
 | Listens to | `/arm/control_owner` | who controls the arm: `write()` sends only when it is `mission` |
-| Listens to | `/arm/command` | to see a STOP |
+| Listens to | `/arm/stopped` | the STOP latch (ADR-0005): a STOP aborts the goal |
 | Publishes | `/arm/command` | where the arm must go (`ALL_ANGLES`, `source: mission`) |
 | Parameters | `publish_rate_hz`, `speed` | optional, in the URDF: 20 per second, servo speed 50 |
 
@@ -57,7 +57,8 @@ For each joint, `joint1` to `joint6`:
 5. If `mission` forgot to give the control back, `arm_driver` takes it back after 5 s.
 
 If someone presses STOP, or another client takes the control from `mission`, the plugin stops `arm_controller`
-and the goal is aborted (`arm_driver` has already stopped the arm). `braco_mission` turns both back on at the
+and the goal is aborted (`arm_driver` has already stopped the arm). A STOP latches (ADR-0005): `make resume`
+releases it first, or the next `take_control` is refused. `braco_mission` turns both back on at the
 start of its next goal, right after taking the control. Without `braco_mission` (a goal sent by hand):
 
 ```bash
@@ -148,8 +149,20 @@ port: the `arm_driver` it starts talks to `PtyArm`, a fake arm on a pseudo-termi
 | `ReadFailsWhenJointMissing` | `read()` fails when `/joint_states` lacks a URDF joint |
 | `ReconfigureDropsStaleJointStates` | `on_configure` drops the message kept before it |
 | `ConfigureFailsWithoutNode` | `on_configure` fails without a node from the controller manager |
+| `InitFailsWithoutSixJoints` | `on_init` refuses a URDF without six joints |
+| `InitChecksTheParameters` | `on_init` refuses `speed` outside 1..100, `publish_rate_hz` ≤ 0 or not numbers |
+| `WriteSendsTheTargetsAsMissionInDegrees` | `write()` sends `ALL_ANGLES`, `source: mission`, in degrees, speed 50 |
+| `WriteSendsNothingWhileAnotherClientOwnsTheArm` | another owner: nothing sent, `OK` |
+| `WriteSendsNothingWithoutAController` | no controller, or after it released the commands: nothing sent |
+| `WriteHoldsAStillTargetForTwoSeconds` | a still target is resent for 2 s, then not; a new one is sent |
+| `WriteAbortsTheGoalOnTheStopLatch` | `/arm/stopped` true: `DEACTIVATE` |
+| `WriteAbortsOnTheStopLatchEvenWhenTheOwnerIsFreedFirst` | the STOP frees the owner first: still `DEACTIVATE` (ADR-0005) |
+| `WriteAbortsTheGoalWhenTheControlIsTaken` | the owner changes from `mission` to another client: `DEACTIVATE` |
+| `WriteStopsSendingWhenMissionReleasesTheControl` | owner free without a STOP: nothing sent, `OK` |
+| `WriteSendsAgainAtTheNextGoalAfterAStop` | after a STOP and its release, the next claim sends again |
 
-`write()` has no tests yet (#101): see [When it sends](#when-it-sends) for what it does.
+The `write()` tests fake `arm_driver`'s topics (`/arm/control_owner`, `/arm/stopped`, `/arm/command`) and drive
+the manager's clock themselves, so the 2 s hold takes no real time (#132).
 
 The domain, the timeout and a stuck `arm_driver`: see
 [braco_hardware test](../../../docs/guides/ci.md#braco_hardware-test).
