@@ -20,6 +20,8 @@
 #include <string>
 #include <utility>
 
+#include "lifecycle_msgs/msg/state.hpp"
+
 using namespace std::chrono_literals;
 
 namespace braco_driver
@@ -80,7 +82,7 @@ ArmDriver::CallbackReturn ArmDriver::on_configure(const rclcpp_lifecycle::State 
 
   stopped_pub_ = plainPublisher<std_msgs::msg::Bool>(
     "arm/stopped", rclcpp::QoS(1).transient_local());
-  publishStopped(false);
+  publishStopped(stopped_);   // a latch survives cleanup (ADR-0005)
   release_stop_srv_ = create_service<std_srvs::srv::Trigger>(
     "arm/release_stop",
     [this](std_srvs::srv::Trigger::Request::ConstSharedPtr,
@@ -148,6 +150,7 @@ ArmDriver::CallbackReturn ArmDriver::on_configure(const rclcpp_lifecycle::State 
         [this, state]() {mc_->setGripperState(state, gripper_speed_);});
     });
 
+  running_ = true;
   serial_thread_ = std::thread([this]() {serialLoop();});   // monitoring starts here
   return CallbackReturn::SUCCESS;
 }
@@ -167,30 +170,82 @@ ArmDriver::CallbackReturn ArmDriver::on_deactivate(const rclcpp_lifecycle::State
 {
   active_ = false;   // first: the serial thread drops motion from now on (serviceCommands)
   latchStop("lifecycle");
-  try {
-    std::lock_guard<std::mutex> lock(serial_mutex_);
-    mc_->stop();
-    moving_ = false;
-  } catch (const std::exception & e) {
-    // Motion is refused anyway; the serial thread retries the stop latchStop requested
-    RCLCPP_ERROR(get_logger(), "deactivate: stop failed: %s", e.what());
-  }
+  // If it fails, motion is refused anyway and the serial thread retries latchStop's stop
+  stopArm();
   RCLCPP_WARN(get_logger(), "inactive: arm stopped, monitoring only");
   return CallbackReturn::SUCCESS;
 }
 
+ArmDriver::CallbackReturn ArmDriver::on_cleanup(const rclcpp_lifecycle::State &)
+{
+  stopSerialThread();
+  {
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    stop_requested_ = false;
+    pending_joints_.clear();
+    pending_all_.reset();
+    pending_led_.reset();
+    control_.clear();
+    last_owner_.clear();
+  }
+  command_sub_.reset();
+  led_sub_.reset();
+  power_srv_.reset();
+  release_srv_.reset();
+  gripper_srv_.reset();
+  read_only_srv_.reset();
+  take_control_srv_.reset();
+  release_stop_srv_.reset();
+  joint_pub_.reset();
+  temp_pub_.reset();
+  volt_pub_.reset();
+  read_only_pub_.reset();
+  owner_pub_.reset();
+  stopped_pub_.reset();
+  mc_.reset();
+  RCLCPP_INFO(get_logger(), "unconfigured: serial port closed");
+  return CallbackReturn::SUCCESS;
+}
+
+ArmDriver::CallbackReturn ArmDriver::on_shutdown(const rclcpp_lifecycle::State & state)
+{
+  if (state.id() == lifecycle_msgs::msg::State::PRIMARY_STATE_ACTIVE) {on_deactivate(state);}
+  if (state.id() != lifecycle_msgs::msg::State::PRIMARY_STATE_UNCONFIGURED) {on_cleanup(state);}
+  return CallbackReturn::SUCCESS;
+}
+
+ArmDriver::CallbackReturn ArmDriver::on_error(const rclcpp_lifecycle::State & state)
+{
+  RCLCPP_ERROR(get_logger(), "transition failed: stopping the arm and closing the port");
+  active_ = false;
+  stopSerialThread();
+  stopArm();
+  on_cleanup(state);
+  return CallbackReturn::SUCCESS;   // back to unconfigured
+}
+
 ArmDriver::~ArmDriver()
+{
+  stopSerialThread();
+  stopArm();   // whatever ended the node, leave the arm stopped
+}
+
+void ArmDriver::stopSerialThread()
 {
   running_ = false;
   if (serial_thread_.joinable()) {serial_thread_.join();}
-  if (!mc_) {return;}   // never configured
-  // Whatever ended the node, leave the arm stopped.
+}
+
+void ArmDriver::stopArm()
+{
+  if (!mc_) {return;}   // port not open
   try {
     std::lock_guard<std::mutex> lock(serial_mutex_);
     mc_->stop();
+    moving_ = false;
     RCLCPP_INFO(get_logger(), "arm stopped");
   } catch (const std::exception & e) {
-    RCLCPP_ERROR(get_logger(), "could not send final stop: %s", e.what());
+    RCLCPP_ERROR(get_logger(), "could not send stop: %s", e.what());
   }
 }
 

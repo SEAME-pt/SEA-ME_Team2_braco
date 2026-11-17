@@ -570,6 +570,44 @@ TEST_F(ArmDriverTest, InactiveRefusesMotionButObeysStop)
   EXPECT_TRUE(waitUntil([this] {return frames(protocol::SEND_ANGLE) == 1;}));
 }
 
+TEST_F(ArmDriverTest, CleanupClosesPortAndReconfigures)
+{
+  start({rclcpp::Parameter("stop_hold_s", 0.0)});
+  ASSERT_EQ(driver_->deactivate().id(), State::PRIMARY_STATE_INACTIVE);
+  ASSERT_EQ(driver_->cleanup().id(), State::PRIMARY_STATE_UNCONFIGURED);
+
+  // Monitoring stopped
+  const auto count = [this] {std::lock_guard<std::mutex> lock(mutex_); return joints_.size();};
+  std::this_thread::sleep_for(300ms);
+  const size_t seen = count();
+  std::this_thread::sleep_for(300ms);
+  EXPECT_EQ(count(), seen);
+
+  // The port opens again; the latch from the deactivate holds
+  arm_->unlock();   // PtyArm keeps the port open, so TIOCEXCL outlives the close
+  ASSERT_EQ(driver_->configure().id(), State::PRIMARY_STATE_INACTIVE);
+  EXPECT_TRUE(waitUntil([&] {return count() > seen;}));
+  EXPECT_EQ(lastStopped(), 1);
+  ASSERT_EQ(driver_->activate().id(), State::PRIMARY_STATE_ACTIVE);
+  ASSERT_TRUE(trigger(release_stop_client_)->success);
+  ASSERT_TRUE(take("web")->success);
+  sendJoints("web", {target(1, 5)});
+  EXPECT_TRUE(waitUntil([this] {return frames(protocol::SEND_ANGLE) == 1;}));
+}
+
+TEST_F(ArmDriverTest, ShutdownFromActiveStops)
+{
+  start();
+  ASSERT_TRUE(take("web")->success);
+  sendJoints("web", {target(1, 5)});
+  ASSERT_TRUE(waitUntil([this] {return frames(protocol::SEND_ANGLE) == 1;}));
+
+  const size_t stops = frames(protocol::STOP);
+  ASSERT_EQ(driver_->shutdown().id(), State::PRIMARY_STATE_FINALIZED);
+  EXPECT_TRUE(waitUntil([&] {return frames(protocol::STOP) > stops;}));
+  EXPECT_TRUE(waitUntil([this] {return lastStopped() == 1;}));
+}
+
 TEST_F(ArmDriverTest, StopHoldDefaultsToThreeSeconds)
 {
   start();

@@ -118,6 +118,12 @@ public:
   CallbackReturn on_activate(const rclcpp_lifecycle::State & state) override;
   // A STOP (latched): stops the arm before returning. Monitoring goes on
   CallbackReturn on_deactivate(const rclcpp_lifecycle::State & state) override;
+  // Stops monitoring and closes the port. A STOP latch survives it
+  CallbackReturn on_cleanup(const rclcpp_lifecycle::State & state) override;
+  // Deactivate and cleanup, as far as the current state needs
+  CallbackReturn on_shutdown(const rclcpp_lifecycle::State & state) override;
+  // Stops the arm, closes the port: back to unconfigured
+  CallbackReturn on_error(const rclcpp_lifecycle::State & state) override;
 
 private:
   using ArmCommand = braco_interfaces::msg::ArmCommand;
@@ -167,6 +173,10 @@ private:
   // Run one serial action for a service and fill its response.
   template<typename F>
   void runSerial(bool & success, std::string & message, const char * what, F action);
+
+  void stopSerialThread();
+  // Sends a stop now, if the port is open; logs a failure
+  void stopArm();
 
   // ---- Serial thread -------------------------------------------------------
 
