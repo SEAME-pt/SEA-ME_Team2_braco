@@ -29,9 +29,11 @@ int main(int argc, char ** argv)
   int code = 0;
   try {
     auto node = std::make_shared<braco_driver::ArmDriver>();
-    // Configured here until braco.launch.py does it (#95); a failure still exits non-zero
-    if (node->configure().id() != lifecycle_msgs::msg::State::PRIMARY_STATE_INACTIVE) {
-      throw std::runtime_error("configure failed");
+    // Configured and activated here until braco.launch.py does it (#95); a failure exits non-zero
+    if (node->configure().id() != lifecycle_msgs::msg::State::PRIMARY_STATE_INACTIVE ||
+      node->activate().id() != lifecycle_msgs::msg::State::PRIMARY_STATE_ACTIVE)
+    {
+      throw std::runtime_error("configure or activate failed");
     }
     rclcpp::spin(node->get_node_base_interface());
   } catch (const std::exception & e) {

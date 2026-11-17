@@ -109,6 +109,8 @@ public:
 
   // Opens the port (FAILURE if it cannot), creates the interfaces, starts the serial thread
   CallbackReturn on_configure(const rclcpp_lifecycle::State & state) override;
+  // Allows motion. A latched STOP stays latched (ADR-0005)
+  CallbackReturn on_activate(const rclcpp_lifecycle::State & state) override;
 
 private:
   using ArmCommand = braco_interfaces::msg::ArmCommand;
@@ -174,6 +176,7 @@ private:
   std::mutex state_mutex_;    // everything below that callbacks write
   std::thread serial_thread_;
   std::atomic<bool> running_{true};
+  std::atomic<bool> active_{false};    // lifecycle state active: motion allowed
   std::atomic<bool> read_only_{false};
   std::atomic<bool> stopped_{false};   // STOP latch; the executor thread writes it
 

@@ -149,6 +149,17 @@ ArmDriver::CallbackReturn ArmDriver::on_configure(const rclcpp_lifecycle::State 
   return CallbackReturn::SUCCESS;
 }
 
+ArmDriver::CallbackReturn ArmDriver::on_activate(const rclcpp_lifecycle::State &)
+{
+  active_ = true;
+  if (stopped_) {
+    RCLCPP_WARN(get_logger(), "active, but STOP latched: motion refused until released");
+  } else {
+    RCLCPP_INFO(get_logger(), "active: motion accepted");
+  }
+  return CallbackReturn::SUCCESS;
+}
+
 ArmDriver::~ArmDriver()
 {
   running_ = false;

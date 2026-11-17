@@ -91,6 +91,7 @@ protected:
     driver_ = std::make_shared<braco_driver::ArmDriver>(
       rclcpp::NodeOptions().parameter_overrides(params));
     ASSERT_EQ(driver_->configure().id(), State::PRIMARY_STATE_INACTIVE);
+    ASSERT_EQ(driver_->activate().id(), State::PRIMARY_STATE_ACTIVE);
 
     client_ = std::make_shared<rclcpp::Node>("arm_driver_test_client");
     const auto latched = rclcpp::QoS(1).transient_local();
