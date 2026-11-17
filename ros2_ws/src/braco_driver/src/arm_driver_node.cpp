@@ -47,7 +47,10 @@ ArmDriver::ArmDriver(const rclcpp::NodeOptions & options)
   declare_parameter<double>("control_idle_s", 5.0);
   declare_parameter<double>("stop_hold_s", 3.0);
   declare_parameter<bool>("read_only", false);
+}
 
+ArmDriver::CallbackReturn ArmDriver::on_configure(const rclcpp_lifecycle::State &)
+{
   const auto port = get_parameter("port").as_string();
   const auto baud = get_parameter("baud").as_int();
   state_period_ = std::chrono::duration<double>(
@@ -60,8 +63,12 @@ ArmDriver::ArmDriver(const rclcpp::NodeOptions & options)
   stop_hold_ = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
     std::chrono::duration<double>(std::max(0.0, get_parameter("stop_hold_s").as_double())));
 
-  // Throws if the port cannot be opened: main() reports it and exits non-zero.
-  mc_ = std::make_unique<mycobot::MyCobot280>(port, static_cast<int>(baud));
+  try {
+    mc_ = std::make_unique<mycobot::MyCobot280>(port, static_cast<int>(baud));
+  } catch (const std::exception & e) {
+    RCLCPP_ERROR(get_logger(), "cannot open %s: %s", port.c_str(), e.what());
+    return CallbackReturn::FAILURE;   // stays unconfigured
+  }
   RCLCPP_INFO(get_logger(), "serial port %s open at %ld baud", port.c_str(), baud);
 
   joint_pub_ = plainPublisher<sensor_msgs::msg::JointState>("joint_states", 10);
@@ -138,13 +145,15 @@ ArmDriver::ArmDriver(const rclcpp::NodeOptions & options)
         [this, state]() {mc_->setGripperState(state, gripper_speed_);});
     });
 
-  serial_thread_ = std::thread([this]() {serialLoop();});
+  serial_thread_ = std::thread([this]() {serialLoop();});   // monitoring starts here
+  return CallbackReturn::SUCCESS;
 }
 
 ArmDriver::~ArmDriver()
 {
   running_ = false;
   if (serial_thread_.joinable()) {serial_thread_.join();}
+  if (!mc_) {return;}   // never configured
   // Whatever ended the node, leave the arm stopped.
   try {
     std::lock_guard<std::mutex> lock(serial_mutex_);

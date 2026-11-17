@@ -28,6 +28,7 @@
 #include <vector>
 
 #include "braco_driver/arm_driver.hpp"
+#include "lifecycle_msgs/msg/state.hpp"
 #include "pty_arm.hpp"
 
 using namespace std::chrono_literals;
@@ -36,6 +37,7 @@ using braco_interfaces::msg::JointTarget;
 using braco_interfaces::msg::ServoTemperatures;
 using braco_interfaces::msg::ServoVoltages;
 using braco_interfaces::srv::TakeControl;
+using lifecycle_msgs::msg::State;
 using mycobot::fake::PtyArm;
 using std_srvs::srv::SetBool;
 using std_srvs::srv::Trigger;
@@ -88,6 +90,7 @@ protected:
     params.insert(params.end(), extra.begin(), extra.end());
     driver_ = std::make_shared<braco_driver::ArmDriver>(
       rclcpp::NodeOptions().parameter_overrides(params));
+    ASSERT_EQ(driver_->configure().id(), State::PRIMARY_STATE_INACTIVE);
 
     client_ = std::make_shared<rclcpp::Node>("arm_driver_test_client");
     const auto latched = rclcpp::QoS(1).transient_local();
@@ -247,11 +250,11 @@ protected:
 
 // ---- Start and feedback -----------------------------------------------------------
 
-TEST_F(ArmDriverTest, MissingPortThrows)
+TEST_F(ArmDriverTest, ConfigureFailsOnMissingPort)
 {
-  const auto options = rclcpp::NodeOptions().parameter_overrides(
-    {rclcpp::Parameter("port", "/dev/does-not-exist")});
-  EXPECT_THROW(braco_driver::ArmDriver{options}, std::exception);
+  auto driver = std::make_shared<braco_driver::ArmDriver>(
+    rclcpp::NodeOptions().parameter_overrides({rclcpp::Parameter("port", "/dev/does-not-exist")}));
+  EXPECT_EQ(driver->configure().id(), State::PRIMARY_STATE_UNCONFIGURED);
 }
 
 TEST_F(ArmDriverTest, PublishesAnglesTemperaturesAndVoltages)

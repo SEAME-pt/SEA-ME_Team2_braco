@@ -101,9 +101,14 @@ namespace braco_driver
 class ArmDriver : public rclcpp_lifecycle::LifecycleNode
 {
 public:
-  // Throws if the port cannot be opened.
+  using CallbackReturn = rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn;
+
+  // Declares the parameters only
   explicit ArmDriver(const rclcpp::NodeOptions & options = rclcpp::NodeOptions());
   ~ArmDriver() override;
+
+  // Opens the port (FAILURE if it cannot), creates the interfaces, starts the serial thread
+  CallbackReturn on_configure(const rclcpp_lifecycle::State & state) override;
 
 private:
   using ArmCommand = braco_interfaces::msg::ArmCommand;

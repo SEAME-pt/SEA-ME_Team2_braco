@@ -17,8 +17,10 @@
 
 #include <exception>
 #include <memory>
+#include <stdexcept>
 
 #include "braco_driver/arm_driver.hpp"
+#include "lifecycle_msgs/msg/state.hpp"
 #include "rclcpp/rclcpp.hpp"
 
 int main(int argc, char ** argv)
@@ -26,7 +28,12 @@ int main(int argc, char ** argv)
   rclcpp::init(argc, argv);
   int code = 0;
   try {
-    rclcpp::spin(std::make_shared<braco_driver::ArmDriver>()->get_node_base_interface());
+    auto node = std::make_shared<braco_driver::ArmDriver>();
+    // Configured here until braco.launch.py does it (#95); a failure still exits non-zero
+    if (node->configure().id() != lifecycle_msgs::msg::State::PRIMARY_STATE_INACTIVE) {
+      throw std::runtime_error("configure failed");
+    }
+    rclcpp::spin(node->get_node_base_interface());
   } catch (const std::exception & e) {
     RCLCPP_FATAL(rclcpp::get_logger("arm_driver"), "%s", e.what());
     code = 1;
