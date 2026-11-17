@@ -1,5 +1,6 @@
 # CI for every PR and every push to main (issue #16). Every job calls the Makefile, so a failure can be
-# reproduced locally with the same command. A PR that changes only docs/ and .md files skips ros and coverage.
+# reproduced locally with the same command. A PR or push to main that changes no code (docs/, .md, templates,
+# CODEOWNERS, LICENSE, images; see the changes job) skips ros and coverage; host always runs.
 #
 #   host  make ci        (lint, web page tests with coverage; no robot, no docker image)
 #   ros   make ci-ros    (rosdep, colcon build, colcon test of ros2_ws/src)
@@ -25,9 +26,13 @@ permissions:
   contents: read
 
 jobs:
-  # code=false when every file a PR changes is under docs/ or a .md: ros and coverage are then skipped, which a
-  # required check counts as passed. Pushes to main and manual runs always build. If this job fails, code is empty and
-  # both run anyway. --no-renames lists both paths of a rename, so moving code into docs/ still builds.
+  # code=false when every changed file is non-code (see is_code below): ros and coverage are then skipped, which a
+  # required check counts as passed. A PR diffs its base...head, a push to main diffs before..sha (everything the push
+  # brought, a merge included). Manual runs, a push with no `before` (all zeros) and a failed diff build everything; if
+  # this job fails, code is empty and both run anyway. --no-renames lists both paths of a rename, so moving code into
+  # docs/ still builds. host is never skipped: it takes under a minute.
+  # A skipped ros on main saves no cache: the next code run restores the last one by prefix (restore-keys), built
+  # from the same sources, since non-code files never reach the build.
   changes:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -35,21 +40,49 @@ jobs:
       code: ${{ steps.diff.outputs.code }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
-        if: github.event_name == 'pull_request'
+        if: github.event_name != 'workflow_dispatch'
         with:
           fetch-depth: 0
 
       - id: diff
         env:
           EVENT: ${{ github.event_name }}
-          BASE: ${{ github.event.pull_request.base.sha }}
-          HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_AFTER: ${{ github.sha }}
         run: |
+          # Non-code: docs, Markdown, LICENSE, GitHub's issue/PR templates and CODEOWNERS, images. Anything under
+          # ros2_ws/ other than .md is code (the mesh textures are package data colcon installs), and so is
+          # .github/workflows/, so a workflow change is always tested.
+          is_code() {
+            case "$1" in
+              *.md) return 1 ;;
+              ros2_ws/*) return 0 ;;
+              docs/* | LICENSE | LICENSE.* | .github/CODEOWNERS | .github/ISSUE_TEMPLATE/*) return 1 ;;
+              *.png | *.jpg | *.jpeg | *.gif | *.svg | *.webp) return 1 ;;
+              *) return 0 ;;
+            esac
+          }
+
+          case "$EVENT" in
+            pull_request) range="$PR_BASE...$PR_HEAD" ;;
+            push) range="$PUSH_BEFORE..$PUSH_AFTER" ;;
+            *) range= ;;
+          esac
+          if [ "$PUSH_BEFORE" = 0000000000000000000000000000000000000000 ]; then range=; fi
+
           code=true
-          if [ "$EVENT" = pull_request ]; then
-            files=$(git diff --name-only --no-renames "$BASE...$HEAD")
+          if [ -n "$range" ] && files=$(git diff --name-only --no-renames "$range") && [ -n "$files" ]; then
             printf '%s\n' "$files"
-            if [ -n "$files" ] && ! printf '%s\n' "$files" | grep -qvE '^docs/|\.md$'; then code=false; fi
+            code=false
+            while IFS= read -r f; do
+              if is_code "$f"; then
+                echo "code: $f"
+                code=true
+                break
+              fi
+            done <<< "$files"
           fi
           echo "code=$code" | tee -a "$GITHUB_OUTPUT"
 
