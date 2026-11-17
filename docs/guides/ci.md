@@ -20,13 +20,19 @@ the same commands, from the repo folder.
   `SHELLCHECK_IMAGE` and `HADOLINT_IMAGE` through docker, so it never skips a check that CI runs.
 - `make lint`, `make format` and `make format-check` take their files from `git ls-files`: a new file is skipped
   until it is `git add`ed. Add it first, or a check that passes locally can fail once the file is on the PR.
-- A PR that changes only files under `docs/` or `.md` files skips `ros` and `coverage` (a small `changes` job
-  decides from `git diff`); a skipped job counts as passed for the required checks. `host` always runs, and pushes
-  to `main` always run everything.
+- A PR or a push to `main` that changes no code skips `ros` and `coverage`; a skipped job counts as passed for the
+  required checks. A small `changes` job decides from `git diff` (a PR: its base to its head; a push: from the old
+  `main` to the new one, so a docs-only merge does not rebuild). Non-code is: `docs/`, any `.md`, `LICENSE`,
+  `.github/CODEOWNERS`, `.github/ISSUE_TEMPLATE/`, and images outside `ros2_ws/` (the mesh textures are package
+  data). `.github/workflows/` counts as code, and a rename lists both paths, so moving code into `docs/` still builds.
+  `host` always runs (under a minute). A manual run (`workflow_dispatch`), the first push of a branch, or a failed diff
+  runs everything.
 - Caches: pip (`actions/setup-python`), the image layers (BuildKit `type=gha`), and ccache + colcon `build/`
   (`actions/cache`, reset when the Dockerfile, `docker/config/` or `docker/scripts/` change). A warm run only
   recompiles what changed. Only pushes to `main` save the image layers and the build caches: a PR reads `main`'s but
-  can't share its own with other PRs, so saving them would only fill the 10 GB repo cache.
+  can't share its own with other PRs, so saving them would only fill the 10 GB repo cache. A `main` push that skipped
+  `ros` saves nothing: the next run restores the last saved build by key prefix, which is still current because
+  non-code files never reach the build.
 - The arm64 Jetson image is not built in CI (QEMU is too slow); build it by hand with `make jetson-image`.
 - `ci-ros` writes to `ros2_ws/build`, `install` and `log`, like `make build`, plus its ccache in `ros2_ws/.ccache`.
 
