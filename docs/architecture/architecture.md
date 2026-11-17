@@ -54,7 +54,7 @@ Each layer talks only to the one below it. Layers 1–2 are identical in simulat
    HTTP/WS :8000          /dev/input/js0               I2C LCD1602
 ```
 
-Also on the real arm (`sim:=false`), with no device of their own: `robot_state_publisher` (the URDF on `/robot_description`, `/tf` from `/joint_states`) and `ros2_control_node` with the `braco_hardware` plugin, which reads `/joint_states` from `arm_driver` and sends `arm_controller`'s targets on `/arm/command` as `mission` (ADR-0004), and `arm_controller` on it (no `joint_state_broadcaster`, #97).
+Also on the real arm (`sim:=false`), with no device of their own: `robot_state_publisher` (the URDF on `/robot_description`, `/tf` from `/joint_states`) and `ros2_control_node` with the `braco_hardware` plugin, which reads `/joint_states` from `arm_driver` and sends `arm_controller`'s targets on `/arm/command` as `mission` (ADR-0004), and `arm_controller` on it (no `joint_state_broadcaster`).
 
 A motion command passes the `arm_driver` gates in order:
 
@@ -133,7 +133,7 @@ One colcon workspace, `ros2_ws/src`, mounted at `/ws`. Each package has a README
 | [`braco_description`](../../ros2_ws/src/braco_description/README.md) | Robot model: URDF/xacro, meshes, `controllers.yaml` (no Gazebo, so also on the Jetson) | done |
 | [`braco_simulation`](../../ros2_ws/src/braco_simulation/README.md) | Gazebo launch and the scripts that move the simulated arm (PC only) | done |
 | [`braco_moveit_config`](../../ros2_ws/src/braco_moveit_config/README.md) | MoveIt 2 config (SRDF, kinematics, joint limits, controllers), demo with mock hardware, launches on the Gazebo arm and the real arm | done |
-| [`braco_mission`](../../ros2_ws/src/braco_mission/README.md) | `move_to_pose`: a Cartesian pose goal and straight lines through MoveIt 2 (C++); later the mission state machine | `move_to_pose` done (#84, #85, #101) |
+| [`braco_mission`](../../ros2_ws/src/braco_mission/README.md) | `move_to_pose`: a Cartesian pose goal and straight lines through MoveIt 2 (C++); later the mission state machine | `move_to_pose` done |
 
 ```
 mycobot_cpp   braco_interfaces
@@ -242,7 +242,7 @@ Real arm (ADR-0004): move_group on the PC, the arm on the Jetson, both on domain
   `joint_state_broadcaster` and `gripper_action_controller` only in simulation. Only the hardware plugin in the URDF
   differs: `GazeboSimSystem` in simulation, `braco_hardware/BracoSystem` on the real arm (`real_arm:=true`).
 - A goal the arm does not reach fails: `arm_controller` aborts it when a joint falls more than 0.3 rad behind the trajectory (`PATH_TOLERANCE_VIOLATED`) or is more than 0.07 rad from its last point 0.5 s after its end (`GOAL_TOLERANCE_VIOLATED`), and MoveIt returns `CONTROL_FAILED`, so the mission sees a blocked or stalled arm (`constraints` in `controllers.yaml`).
-- Before `move_group` starts, the domain check (#103) runs and a FAIL stops the launch: `--target sim` in simulation, `--target real` on the real arm. A teammate's shell on the wrong domain, or a second arm on 22, never gets a trajectory.
+- Before `move_group` starts, the domain check runs and a FAIL stops the launch: `--target sim` in simulation, `--target real` on the real arm. A teammate's shell on the wrong domain, or a second arm on 22, never gets a trajectory.
 
 **Simulation**
 
@@ -254,19 +254,19 @@ Real arm (ADR-0004): move_group on the PC, the arm on the Jetson, both on domain
 
 **Real arm** ([ADR-0004](../decisions/ADR-0004-trajectories-through-arm-driver.md), checklist: [safety.md §9](../guides/safety.md#9-first-moveit-2-motion-on-the-real-arm))
 
-- On the Jetson, `braco.launch.py sim:=false` (`make up`) starts `ros2_control_node` with `BracoSystem` and spawns `arm_controller`. `joint_state_broadcaster` is not spawned: `arm_driver` keeps publishing `/joint_states` (#97).
+- On the Jetson, `braco.launch.py sim:=false` (`make up`) starts `ros2_control_node` with `BracoSystem` and spawns `arm_controller`. `joint_state_broadcaster` is not spawned: `arm_driver` keeps publishing `/joint_states`.
 - On the PC (the Jetson image has no MoveIt), on the arm's domain: `make moveit` runs `braco_moveit_config`'s `real.launch.py` (domain check, then `move_group` and RViz): [Run on the real arm](../../ros2_ws/src/braco_moveit_config/README.md#run-on-the-real-arm). `move_to_pose.launch.py real:=true` runs the mission with the real arm's model, the system clock and `use_control`: [Run it on the real arm](../../ros2_ws/src/braco_mission/README.md#run-it-on-the-real-arm).
 - **Control:** with `use_control`, `braco_mission` calls `take_control("mission")` without `force` before each goal; refused → nothing is sent, nothing is queued. It releases the control after the result, also on failure. The plugin never takes the control.
 - **Sending:** `BracoSystem` `write()` sends `arm_controller`'s target as `ALL_ANGLES` with `source: "mission"` at 20 Hz, only while `arm_controller` is active and `mission` owns the arm, so trajectories pass the same gates as every client. Once the target stops changing it keeps sending it for 2 s so the arm gets there, then sends nothing: 300 ms later the watchdog stops the arm (already there), and a control `braco_mission` could not release is freed after 5 s. `arm_driver` clamps to `JOINT_LIMITS`; the plugin does not.
 - **Stopping:** while `arm_controller` is commanding, a STOP from any client (seen on the latched `/arm/stopped`), a forced take (page or joystick) or the park on overheat makes `write()` return `DEACTIVATE`: `arm_controller` stops, the goal is aborted and the plugin goes inactive. After a STOP the latch ([ADR-0005](../decisions/ADR-0005-stop-latch.md)) refuses `take_control("mission")` until `make resume`, so no goal runs before a person releases it. `braco_mission` turns `BracoSystem` and `arm_controller` back on at its next goal, right after taking the control (no new configure). By hand: [braco_hardware](../../ros2_ws/src/braco_hardware/README.md#when-it-sends).
-- **Timing** ([timing-budget.md](timing-budget.md), #90): setpoints reach the arm at ~14 Hz and motion starts ~200 ms after a command.
-- **Resources** ([resources.md](resources.md), #96): `move_group` and the mission run on the PC, so the Jetson adds only `robot_state_publisher` and `ros2_control_node` with `arm_controller`. The Jetson figures are estimates until #96 measures them.
+- **Timing** ([timing-budget.md](timing-budget.md)): setpoints reach the arm at ~14 Hz and motion starts ~200 ms after a command.
+- **Resources** ([resources.md](resources.md)): `move_group` and the mission run on the PC, so the Jetson adds only `robot_state_publisher` and `ros2_control_node` with `arm_controller`. The Jetson figures are still estimates.
 
 ---
 
 ## 10. Status
 
-**Done:** single serial owner · one control owner · STOP latch ([ADR-0005](../decisions/ADR-0005-stop-latch.md)) · one thermal authority · rest on overheat · `braco_*` layout with READMEs · one Makefile (`mk/`) · simulation (#34, #123) · validated URDF ([report](../hardware/urdf-sim-to-real.md), #25) · trajectories through `arm_driver` ([ADR-0004](../decisions/ADR-0004-trajectories-through-arm-driver.md), #86) · `braco_moveit_config`: MoveIt 2 config, Gazebo and real-arm launches (#82, #83, #88, #101) · `braco_mission`: `/move_to_pose` and `/move_cartesian`, control held as `mission` on the real arm (#84, #85, #89, #101) · `braco_hardware` `SystemInterface`: `read()` (#87, #125) and `write()` (#101, #132) · `arm_controller` on the real arm (#97, #98, #101) · domain check before MoveIt (#103) · timing budget ([timing-budget.md](timing-budget.md), #90).
+**Done:** single serial owner · one control owner · STOP latch ([ADR-0005](../decisions/ADR-0005-stop-latch.md)) · one thermal authority · rest on overheat · `braco_*` layout with READMEs · one Makefile (`mk/`) · simulation · validated URDF ([report](../hardware/urdf-sim-to-real.md)) · trajectories through `arm_driver` ([ADR-0004](../decisions/ADR-0004-trajectories-through-arm-driver.md)) · `braco_moveit_config`: MoveIt 2 config, Gazebo and real-arm launches · `braco_mission`: `/move_to_pose` and `/move_cartesian`, control held as `mission` on the real arm · `braco_hardware` `SystemInterface`: `read()` and `write()` · `arm_controller` on the real arm · domain check before MoveIt · timing budget ([timing-budget.md](timing-budget.md)).
 
 **Differs from the target (accepted):**
 
@@ -280,9 +280,9 @@ Real arm (ADR-0004): move_group on the PC, the arm on the Jetson, both on domain
 | Dedicated e-stop node | software STOP on `/arm/command`, latched in `arm_driver` until `make resume` (gate 1, [ADR-0005](../decisions/ADR-0005-stop-latch.md)); no wired e-stop |
 
 **Pending:**
-- `arm_driver` as a lifecycle node (#95)
+- `arm_driver` as a lifecycle node
 - `braco_mission` beyond `move_to_pose` and `move_cartesian`: the mission state machine
-- Measured CPU/RAM on the Jetson ([resources.md](resources.md), #96)
+- Measured CPU/RAM on the Jetson ([resources.md](resources.md))
 
 ---
 
