@@ -46,5 +46,6 @@
 | The arm is loose after `make resume` | `make resume` does not turn the motors on: use `make zero` |
 | It parks again soon after `make zero` | It was not cool enough: back to step 2, and wait longer |
 | Hot during a STOP: it does not park, the motors stay on | A STOP blocks the park ([ADR-0005](../decisions/ADR-0005-stop-latch.md)): `make resume`, then `make park` |
+| Hot while `arm_driver` is inactive: it does not park, only rest mode | An inactive driver refuses motion (#95): `ros2 lifecycle set /arm_driver activate`, `make resume`, then `make park` |
 
 Why it works this way: [ADR-0003](../decisions/ADR-0003-rest-per-temp.md).
