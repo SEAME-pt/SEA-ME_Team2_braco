@@ -501,6 +501,27 @@ TEST_F(ArmDriverTest, HaltStopsWithoutLatching)
   EXPECT_TRUE(waitUntil([this] {return frames(protocol::SEND_ANGLE) == 2;}));
 }
 
+TEST_F(ArmDriverTest, DeactivateStopsTheArm)
+{
+  start();
+  ASSERT_TRUE(waitUntil([this] {return lastStopped() == 0;}));
+  ASSERT_TRUE(take("web")->success);
+  sendJoints("web", {target(1, 5)});
+  ASSERT_TRUE(waitUntil([this] {return frames(protocol::SEND_ANGLE) == 1;}));
+
+  const size_t stops = frames(protocol::STOP);
+  ASSERT_EQ(driver_->deactivate().id(), State::PRIMARY_STATE_INACTIVE);
+  EXPECT_TRUE(waitUntil([&] {return frames(protocol::STOP) > stops;}));
+  EXPECT_TRUE(waitUntil([this] {return lastStopped() == 1;}));   // latched, like a STOP
+  EXPECT_TRUE(waitUntil([this] {return lastOwner() == "";}));
+
+  // Monitoring goes on
+  const auto count = [this] {std::lock_guard<std::mutex> lock(mutex_); return joints_.size();};
+  const size_t seen = count();
+  EXPECT_TRUE(waitUntil([&] {return count() > seen;}));
+  EXPECT_EQ(frames(protocol::SEND_ANGLE), 1u);
+}
+
 TEST_F(ArmDriverTest, StopHoldDefaultsToThreeSeconds)
 {
   start();

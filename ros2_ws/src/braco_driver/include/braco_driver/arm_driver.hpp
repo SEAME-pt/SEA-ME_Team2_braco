@@ -111,6 +111,8 @@ public:
   CallbackReturn on_configure(const rclcpp_lifecycle::State & state) override;
   // Allows motion. A latched STOP stays latched (ADR-0005)
   CallbackReturn on_activate(const rclcpp_lifecycle::State & state) override;
+  // A STOP (latched): stops the arm before returning. Monitoring goes on
+  CallbackReturn on_deactivate(const rclcpp_lifecycle::State & state) override;
 
 private:
   using ArmCommand = braco_interfaces::msg::ArmCommand;

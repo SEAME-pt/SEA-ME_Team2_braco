@@ -160,6 +160,22 @@ ArmDriver::CallbackReturn ArmDriver::on_activate(const rclcpp_lifecycle::State &
   return CallbackReturn::SUCCESS;
 }
 
+ArmDriver::CallbackReturn ArmDriver::on_deactivate(const rclcpp_lifecycle::State &)
+{
+  active_ = false;   // first: the serial thread drops motion from now on (serviceCommands)
+  latchStop("lifecycle");
+  try {
+    std::lock_guard<std::mutex> lock(serial_mutex_);
+    mc_->stop();
+    moving_ = false;
+  } catch (const std::exception & e) {
+    // Motion is refused anyway; the serial thread retries the stop latchStop requested
+    RCLCPP_ERROR(get_logger(), "deactivate: stop failed: %s", e.what());
+  }
+  RCLCPP_WARN(get_logger(), "inactive: arm stopped, monitoring only");
+  return CallbackReturn::SUCCESS;
+}
+
 ArmDriver::~ArmDriver()
 {
   running_ = false;
@@ -516,6 +532,8 @@ bool ArmDriver::serviceCommands()
     mc_->setColor((*led)[0], (*led)[1], (*led)[2]);
     std::this_thread::sleep_for(COMMAND_GAP);
   }
+  // Checked under serial_mutex_: a target taken before a deactivate never follows its stop
+  if (!active_) {return false;}
   if (!all && !joint) {return false;}
   if (all) {
     mc_->sendAngles(all->angles, all->speed);
