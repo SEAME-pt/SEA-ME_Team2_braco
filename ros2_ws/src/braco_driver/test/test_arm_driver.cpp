@@ -131,7 +131,7 @@ protected:
     rest_client_ = client_->create_client<SetBool>("arm/set_read_only");
 
     executor_ = std::make_shared<rclcpp::executors::SingleThreadedExecutor>();
-    executor_->add_node(driver_);
+    executor_->add_node(driver_->get_node_base_interface());
     executor_->add_node(client_);
     spinner_ = std::thread([this] {executor_->spin();});
     // A message published before the subscription is matched would be lost

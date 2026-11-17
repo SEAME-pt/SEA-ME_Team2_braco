@@ -86,6 +86,7 @@
 #include "braco_interfaces/srv/take_control.hpp"
 #include "mycobot.hpp"
 #include "rclcpp/rclcpp.hpp"
+#include "rclcpp_lifecycle/lifecycle_node.hpp"
 #include "sensor_msgs/msg/joint_state.hpp"
 #include "std_msgs/msg/bool.hpp"
 #include "std_msgs/msg/color_rgba.hpp"
@@ -96,7 +97,8 @@
 namespace braco_driver
 {
 
-class ArmDriver : public rclcpp::Node
+// A lifecycle node (#95). Its publishers are plain, not lifecycle: monitoring never stops.
+class ArmDriver : public rclcpp_lifecycle::LifecycleNode
 {
 public:
   // Throws if the port cannot be opened.
@@ -120,6 +122,14 @@ private:
     mycobot::Angles angles;
     int speed;
   };
+
+  // A plain rclcpp::Publisher: LifecycleNode::create_publisher would make a lifecycle one
+  template<typename T>
+  typename rclcpp::Publisher<T>::SharedPtr plainPublisher(
+    const std::string & topic, const rclcpp::QoS & qos)
+  {
+    return rclcpp::create_publisher<T>(*this, topic, qos);
+  }
 
   // ---- Callbacks (executor thread): only record what was asked -------------
 

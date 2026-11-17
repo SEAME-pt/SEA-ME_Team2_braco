@@ -35,7 +35,7 @@ constexpr double DEG_TO_RAD = M_PI / 180.0;
 }  // namespace
 
 ArmDriver::ArmDriver(const rclcpp::NodeOptions & options)
-: Node("arm_driver", options)
+: LifecycleNode("arm_driver", options)
 {
   const auto port = declare_parameter<std::string>(
     "port", mycobot::MyCobot280::DEFAULT_PORT);
@@ -56,11 +56,11 @@ ArmDriver::ArmDriver(const rclcpp::NodeOptions & options)
   mc_ = std::make_unique<mycobot::MyCobot280>(port, static_cast<int>(baud));
   RCLCPP_INFO(get_logger(), "serial port %s open at %ld baud", port.c_str(), baud);
 
-  joint_pub_ = create_publisher<sensor_msgs::msg::JointState>("joint_states", 10);
-  temp_pub_ = create_publisher<ServoTemperatures>("arm/servo_temperatures", 10);
-  volt_pub_ = create_publisher<ServoVoltages>("arm/servo_voltages", 10);
+  joint_pub_ = plainPublisher<sensor_msgs::msg::JointState>("joint_states", 10);
+  temp_pub_ = plainPublisher<ServoTemperatures>("arm/servo_temperatures", 10);
+  volt_pub_ = plainPublisher<ServoVoltages>("arm/servo_voltages", 10);
 
-  stopped_pub_ = create_publisher<std_msgs::msg::Bool>(
+  stopped_pub_ = plainPublisher<std_msgs::msg::Bool>(
     "arm/stopped", rclcpp::QoS(1).transient_local());
   publishStopped(false);
   release_stop_srv_ = create_service<std_srvs::srv::Trigger>(
@@ -70,7 +70,7 @@ ArmDriver::ArmDriver(const rclcpp::NodeOptions & options)
       releaseStop(res->success, res->message);
     });
 
-  read_only_pub_ = create_publisher<std_msgs::msg::Bool>(
+  read_only_pub_ = plainPublisher<std_msgs::msg::Bool>(
     "arm/read_only", rclcpp::QoS(1).transient_local());
   setReadOnly(declare_parameter<bool>("read_only", false));
 
@@ -87,7 +87,7 @@ ArmDriver::ArmDriver(const rclcpp::NodeOptions & options)
       res->message = req->data ? "rest mode on" : "rest mode off";
     });
 
-  owner_pub_ = create_publisher<std_msgs::msg::String>(
+  owner_pub_ = plainPublisher<std_msgs::msg::String>(
     "arm/control_owner", rclcpp::QoS(1).transient_local());
   publishOwner("");
   take_control_srv_ = create_service<TakeControl>(
