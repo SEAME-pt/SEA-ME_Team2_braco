@@ -57,7 +57,7 @@ Codes from `pymycobot`'s `ProtocolCode`. The column "arm_driver" marks what the 
 | `0x2B` | `isMoving()` | Is the arm moving? | |
 | `0x66` | `setGripperState(state, speed)` | Gripper: `1` closes, `0` opens | yes |
 | `0x6A` | `setColor(r, g, b)` | LED colour on the arm's top | yes |
-| `0x52` / `0x53` | `getServoData()` / `setPid()` | Reads / writes servo settings (PID). Configuration only (`pid_tool`) | |
+| `0x53` / `0x52` | `getServoData()` / `setPid()` | Reads / writes servo settings (PID). Configuration only (`pid_tool`) | |
 | `0xE3` | `getVoltages()` | Six servo supply voltages | yes |
 | `0xE5` | `getTemps()` | Six servo temperatures (°C) | yes |
 

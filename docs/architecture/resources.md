@@ -33,7 +33,9 @@ Running, braco is light. **The risk is the build:** on a 2 GB Nano or with the d
 | `ros2 launch` | 50–70 MB | <1% |
 | Web page (uvicorn + rclpy) | 100–150 MB | 5–15% (20–40% with the ROS tab open) |
 | Docker + containerd | 80–120 MB | 1–2% |
-| **Total** | **~330–490 MB** | **~15–38%** |
+| `robot_state_publisher` | to measure (#96) | to measure (#96) |
+| `ros2_control_node` + `arm_controller` (100 Hz) | to measure (#96) | to measure (#96) |
+| **Total** (without the two rows above) | **~330–490 MB** | **~15–38%** |
 | `colcon build` | 0.6–1 GB per g++ | 100% per job; 10–25 min from scratch, 1–3 min incremental |
 
 MoveIt 2 (`move_group`, 300–600 MB, a full core while planning) and `braco_mission` run on the PC, not the Jetson.

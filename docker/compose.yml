@@ -136,9 +136,6 @@ services:
     devices:
       - ${MYCOBOT_PORT:-/dev/ttyTHS1}:${MYCOBOT_PORT:-/dev/ttyTHS1}:rwm
       - ${LCD_I2C_BUS:-/dev/i2c-0}:${LCD_I2C_BUS:-/dev/i2c-0}:rw
-      # Hardwired e-stop: if it reaches the Jetson through a GPIO line, expose the chip here
-      # (the class README does not say how it is wired - confirm with the lab first):
-      # - /dev/gpiochip0:/dev/gpiochip0
     # The whole /dev/input plus a cgroup rule for joystick/event devices (major 13), so the
     # controller can be plugged in after the container started, or unplugged and replugged.
     # The camera the same way (V4L2, major 81), but its node is directly in /dev: the host's /dev is mounted
