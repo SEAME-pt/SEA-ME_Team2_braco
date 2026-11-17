@@ -37,20 +37,28 @@ constexpr double DEG_TO_RAD = M_PI / 180.0;
 ArmDriver::ArmDriver(const rclcpp::NodeOptions & options)
 : LifecycleNode("arm_driver", options)
 {
-  const auto port = declare_parameter<std::string>(
-    "port", mycobot::MyCobot280::DEFAULT_PORT);
-  const auto baud = declare_parameter<int>("baud", mycobot::MyCobot280::DEFAULT_BAUD);
+  // Declared here, read below: settable before configure (#95)
+  declare_parameter<std::string>("port", mycobot::MyCobot280::DEFAULT_PORT);
+  declare_parameter<int>("baud", mycobot::MyCobot280::DEFAULT_BAUD);
+  declare_parameter<double>("state_rate_hz", 20.0);
+  declare_parameter<double>("temp_period_s", 2.0);
+  declare_parameter<int>("command_timeout_ms", 300);
+  declare_parameter<int>("gripper_speed", 50);
+  declare_parameter<double>("control_idle_s", 5.0);
+  declare_parameter<double>("stop_hold_s", 3.0);
+  declare_parameter<bool>("read_only", false);
+
+  const auto port = get_parameter("port").as_string();
+  const auto baud = get_parameter("baud").as_int();
   state_period_ = std::chrono::duration<double>(
-    1.0 / declare_parameter<double>("state_rate_hz", 20.0));
-  temp_period_ = std::chrono::duration<double>(declare_parameter<double>("temp_period_s", 2.0));
-  command_timeout_ = std::chrono::milliseconds(
-    declare_parameter<int>("command_timeout_ms", 300));
-  gripper_speed_ = static_cast<int>(declare_parameter<int>("gripper_speed", 50));
+    1.0 / get_parameter("state_rate_hz").as_double());
+  temp_period_ = std::chrono::duration<double>(get_parameter("temp_period_s").as_double());
+  command_timeout_ = std::chrono::milliseconds(get_parameter("command_timeout_ms").as_int());
+  gripper_speed_ = static_cast<int>(get_parameter("gripper_speed").as_int());
   control_idle_ = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-    std::chrono::duration<double>(declare_parameter<double>("control_idle_s", 5.0)));
+    std::chrono::duration<double>(get_parameter("control_idle_s").as_double()));
   stop_hold_ = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-    std::chrono::duration<double>(
-      std::max(0.0, declare_parameter<double>("stop_hold_s", 3.0))));
+    std::chrono::duration<double>(std::max(0.0, get_parameter("stop_hold_s").as_double())));
 
   // Throws if the port cannot be opened: main() reports it and exits non-zero.
   mc_ = std::make_unique<mycobot::MyCobot280>(port, static_cast<int>(baud));
@@ -72,7 +80,7 @@ ArmDriver::ArmDriver(const rclcpp::NodeOptions & options)
 
   read_only_pub_ = plainPublisher<std_msgs::msg::Bool>(
     "arm/read_only", rclcpp::QoS(1).transient_local());
-  setReadOnly(declare_parameter<bool>("read_only", false));
+  setReadOnly(get_parameter("read_only").as_bool());
 
   read_only_srv_ = create_service<std_srvs::srv::SetBool>(
     "arm/set_read_only",
