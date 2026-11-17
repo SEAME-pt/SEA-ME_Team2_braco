@@ -18,7 +18,8 @@ The launch descriptions of launch/, built without starting anything.
 Each file is loaded from the source tree (the installed copy is not measured by coverage) and
 its generate_launch_description() called: MoveItConfigsBuilder runs xacro and reads the share
 dirs of braco_description and this package. The exit handlers are driven with a ProcessExited
-event: a spawner that succeeds starts move_group and RViz, one that fails shuts the launch down.
+event: a spawner that succeeds starts the domain check (#103), one that fails shuts the launch
+down; a check that passes starts move_group and RViz, one that fails shuts the launch down.
 """
 
 import importlib.util
@@ -26,7 +27,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from launch import LaunchContext
-from launch.actions import (DeclareLaunchArgument, IncludeLaunchDescription,
+from launch.actions import (DeclareLaunchArgument, ExecuteProcess, IncludeLaunchDescription,
                             RegisterEventHandler, Shutdown)
 from launch.events.process import ProcessExited
 from launch.utilities import normalize_to_list_of_substitutions, perform_substitutions
@@ -103,9 +104,9 @@ def spawner(command):
     return SimpleNamespace(process_description=SimpleNamespace(final_cmd=command))
 
 
-def test_sim_arguments(sim_ld):
-    """Default both gui and rviz to true."""
-    assert arguments(sim_ld) == {'gui': 'true', 'rviz': 'true'}
+def test_sim_arguments(sim, sim_ld):
+    """Default both gui and rviz to true, and the domain check to the repository's script."""
+    assert arguments(sim_ld) == {'gui': 'true', 'rviz': 'true', 'domain_check': sim.DOMAIN_CHECK}
 
 
 def test_sim_includes_gazebo_with_gui(sim_ld):
@@ -135,20 +136,102 @@ def test_sim_handler_matches_arm_controller_exit(sim_ld):
     assert not handler.matches(exited(spawner(['spawner', 'joint_state_broadcaster']), 0))
 
 
-def test_sim_controller_up_starts_moveit(sim_ld):
-    """arm_controller active: move_group, RViz (rviz arg) and the lab bench scene start."""
+def check_command(check, script='/check.sh'):
+    """Return the domain check's command line, with the domain_check argument set to `script`."""
+    context = LaunchContext()
+    context.launch_configurations['domain_check'] = script
+    return [perform_substitutions(context, part) for part in check.cmd]
+
+
+def sim_check(sim_ld):
+    """arm_controller active: return the domain check it starts and the handler of its exit."""
     (handler,) = handlers(sim_ld)
     started = handler.handle(exited(spawner(['spawner', 'arm_controller']), 0), LaunchContext())
+    assert executables(started) == []   # nothing of MoveIt before the check (#103)
+    (check,) = of_type(started, ExecuteProcess)
+    (check_handler,) = [r.event_handler for r in of_type(started, RegisterEventHandler)]
+    return check, check_handler
+
+
+def test_sim_controller_up_runs_the_domain_check(sim_ld):
+    """arm_controller active: the domain check runs first, with --target sim."""
+    check, check_handler = sim_check(sim_ld)
+    assert check_command(check) == ['bash', '/check.sh', '--target', 'sim']
+    assert check_handler.matches(exited(check, 0))
+
+
+def test_sim_check_pass_starts_moveit(sim_ld):
+    """Domain check PASS: move_group, RViz (rviz arg) and the lab bench scene start."""
+    check, check_handler = sim_check(sim_ld)
+    started = check_handler.handle(exited(check, 0), LaunchContext())
     assert executables(started) == ['move_group', 'rviz2', 'lab_bench_scene.py']
     rviz = of_type(started, Node)[1]
     assert rviz_enabled(rviz, 'true')
     assert not rviz_enabled(rviz, 'false')
 
 
+@pytest.mark.parametrize('returncode', [1, 2])
+def test_sim_check_fail_shuts_down(sim_ld, returncode):
+    """Domain check FAIL (1) or could not run (2): no move_group, the launch shuts down."""
+    check, check_handler = sim_check(sim_ld)
+    started = check_handler.handle(exited(check, returncode), LaunchContext())
+    assert len(started) == 1
+    assert isinstance(started[0], Shutdown)
+
+
 def test_sim_controller_failed_shuts_down(sim_ld):
     """arm_controller failed: nothing can execute, so the launch shuts down."""
     (handler,) = handlers(sim_ld)
     started = handler.handle(exited(spawner(['spawner', 'arm_controller']), 1), LaunchContext())
+    assert len(started) == 1
+    assert isinstance(started[0], Shutdown)
+
+
+@pytest.fixture(scope='module')
+def real():
+    return load('real.launch.py')
+
+
+@pytest.fixture(scope='module')
+def real_ld(real):
+    return real.generate_launch_description()
+
+
+def real_check(real_ld):
+    """Return the domain check real.launch.py starts at once and the handler of its exit."""
+    (check,) = of_type(real_ld.entities, ExecuteProcess)
+    (check_handler,) = handlers(real_ld)
+    return check, check_handler
+
+
+def test_real_arguments(real, real_ld):
+    """Default rviz to true and the domain check to the repository's script."""
+    assert arguments(real_ld) == {'rviz': 'true', 'domain_check': real.DOMAIN_CHECK}
+
+
+def test_real_runs_only_the_domain_check_first(real_ld):
+    """Nothing of MoveIt at start: only the domain check, with --target real (#103)."""
+    assert executables(real_ld.entities) == []
+    check, check_handler = real_check(real_ld)
+    assert check_command(check) == ['bash', '/check.sh', '--target', 'real']
+    assert check_handler.matches(exited(check, 0))
+
+
+def test_real_check_pass_starts_moveit(real_ld):
+    """Domain check PASS: move_group and RViz (rviz arg) start, no lab bench scene."""
+    check, check_handler = real_check(real_ld)
+    started = check_handler.handle(exited(check, 0), LaunchContext())
+    assert executables(started) == ['move_group', 'rviz2']
+    rviz = of_type(started, Node)[1]
+    assert rviz_enabled(rviz, 'true')
+    assert not rviz_enabled(rviz, 'false')
+
+
+@pytest.mark.parametrize('returncode', [1, 2])
+def test_real_check_fail_shuts_down(real_ld, returncode):
+    """Domain check FAIL (1) or could not run (2): no move_group, the launch shuts down."""
+    check, check_handler = real_check(real_ld)
+    started = check_handler.handle(exited(check, returncode), LaunchContext())
     assert len(started) == 1
     assert isinstance(started[0], Shutdown)
 

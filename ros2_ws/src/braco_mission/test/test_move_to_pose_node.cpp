@@ -34,6 +34,7 @@
 
 #include "braco_mission/move_to_pose_node.hpp"
 #include "geometry_msgs/msg/transform_stamped.hpp"
+#include "lifecycle_msgs/msg/state.hpp"
 #include "tf2_ros/static_transform_broadcaster.hpp"
 
 using namespace std::chrono_literals;
@@ -240,6 +241,25 @@ protected:
           response->owner = ok ? request->source : "web";
           response->message = ok ? "" : "owned by web";
         });
+      // The controller manager of the real arm, braco_hardware and arm_controller already active
+      list_hardware_ = helper_->create_service<MoveToPoseNode::ListHardware>(
+        "/controller_manager/list_hardware_components",
+        [](
+          const MoveToPoseNode::ListHardware::Request::SharedPtr,
+          MoveToPoseNode::ListHardware::Response::SharedPtr response) {
+          response->component.resize(1);
+          response->component[0].name = "BracoSystem";
+          response->component[0].state.id = lifecycle_msgs::msg::State::PRIMARY_STATE_ACTIVE;
+        });
+      list_controllers_ = helper_->create_service<MoveToPoseNode::ListControllers>(
+        "/controller_manager/list_controllers",
+        [](
+          const MoveToPoseNode::ListControllers::Request::SharedPtr,
+          MoveToPoseNode::ListControllers::Response::SharedPtr response) {
+          response->controller.resize(1);
+          response->controller[0].name = "arm_controller";
+          response->controller[0].state = "active";
+        });
     }
     pose_client_ = rclcpp_action::create_client<MoveToPose>(helper_, "move_to_pose");
     line_client_ = rclcpp_action::create_client<MoveCartesian>(helper_, "move_cartesian");
@@ -317,6 +337,8 @@ protected:
   rclcpp::Node::SharedPtr helper_;
   std::shared_ptr<tf2_ros::StaticTransformBroadcaster> tf_;
   rclcpp::Service<TakeControl>::SharedPtr control_;
+  rclcpp::Service<MoveToPoseNode::ListHardware>::SharedPtr list_hardware_;
+  rclcpp::Service<MoveToPoseNode::ListControllers>::SharedPtr list_controllers_;
   rclcpp_action::Client<MoveToPose>::SharedPtr pose_client_;
   rclcpp_action::Client<MoveCartesian>::SharedPtr line_client_;
   std::shared_ptr<rclcpp::executors::SingleThreadedExecutor> executor_;

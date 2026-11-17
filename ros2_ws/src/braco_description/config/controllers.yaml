@@ -16,7 +16,7 @@
 #
 # Only the hardware under them changes, in the URDF's <ros2_control> block:
 #   simulation  gz_ros2_control/GazeboSimSystem (urdf/braco.gazebo.xacro, gazebo:=true)   #34
-#   real arm    planned: a braco SystemInterface over arm_driver (#87)
+#   real arm    braco_hardware/BracoSystem over arm_driver (urdf/braco.real.xacro, ADR-0004)
 # so MoveIt, the mission and the page use the same arm_controller on both.
 controller_manager:
   ros__parameters:

@@ -17,6 +17,8 @@
 //   action  /move_to_pose     braco_interfaces/action/MoveToPose     point to point
 //   action  /move_cartesian   braco_interfaces/action/MoveCartesian  straight lines
 //   client  /arm/take_control (only with `use_control`, the real arm: ADR-0004)
+//   clients /controller_manager/{list_hardware_components, set_hardware_component_state,
+//           list_controllers, switch_controller} (only with `use_control`, #101)
 //
 // A goal is planned with MoveIt 2 (group `arm`, link `tcp`) and executed on arm_controller;
 // then the tcp is read from TF and the error reported. The steps and their order are in
@@ -52,6 +54,10 @@
 #include "braco_mission/cartesian.hpp"
 #include "braco_mission/mission.hpp"
 #include "braco_mission/motion_group.hpp"
+#include "controller_manager_msgs/srv/list_controllers.hpp"
+#include "controller_manager_msgs/srv/list_hardware_components.hpp"
+#include "controller_manager_msgs/srv/set_hardware_component_state.hpp"
+#include "controller_manager_msgs/srv/switch_controller.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"
@@ -69,6 +75,10 @@ public:
   using MoveCartesian = braco_interfaces::action::MoveCartesian;
   using CartesianGoalHandle = rclcpp_action::ServerGoalHandle<MoveCartesian>;
   using TakeControl = braco_interfaces::srv::TakeControl;
+  using ListHardware = controller_manager_msgs::srv::ListHardwareComponents;
+  using SetHardwareState = controller_manager_msgs::srv::SetHardwareComponentState;
+  using ListControllers = controller_manager_msgs::srv::ListControllers;
+  using SwitchController = controller_manager_msgs::srv::SwitchController;
   // Builds the MotionGroup in start(); empty: MoveItMotionGroup.
   using MotionGroupFactory = std::function<std::unique_ptr<MotionGroup>(
         const rclcpp::Node::SharedPtr &, const MotionConfig &)>;
@@ -90,6 +100,7 @@ public:
 
   bool take_control(std::string & message) override;
   void release_control() override;
+  bool ensure_active(std::string & message) override;
   bool plan(const Pose & goal, bool position_only, std::string & message) override;
   bool execute(std::string & message) override;
   std::optional<Pose> measure() override;
@@ -118,6 +129,15 @@ private:
 
   TakeControl::Response::SharedPtr call_take_control(bool release);
 
+  // One call to a controller manager service; nothing if it did not answer
+  template<typename Srv>
+  typename Srv::Response::SharedPtr call(
+    rclcpp::Client<Srv> & client, const typename Srv::Request::SharedPtr & request);
+  // braco_hardware active; from inactive this runs only its on_activate (no new configure)
+  bool hardware_active(std::string & message);
+  // arm_controller active (STRICT: fails instead of skipping it)
+  bool controller_active(std::string & message);
+
   MotionConfig motion_config_;
   Settings settings_;
   double settle_s_ = 0.5;
@@ -128,6 +148,10 @@ private:
   std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
   std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
   rclcpp::Client<TakeControl>::SharedPtr control_client_;
+  rclcpp::Client<ListHardware>::SharedPtr list_hardware_client_;
+  rclcpp::Client<SetHardwareState>::SharedPtr set_hardware_client_;
+  rclcpp::Client<ListControllers>::SharedPtr list_controllers_client_;
+  rclcpp::Client<SwitchController>::SharedPtr switch_client_;
   std::unique_ptr<MotionGroup> motion_group_;
   rclcpp_action::Server<MoveToPose>::SharedPtr server_;
   rclcpp_action::Server<MoveCartesian>::SharedPtr cartesian_server_;

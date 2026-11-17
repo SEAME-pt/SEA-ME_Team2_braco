@@ -16,18 +16,21 @@ other nodes that move the arm.
 | action | `/move_to_pose` | `braco_interfaces/action/MoveToPose` |
 | action | `/move_cartesian` | `braco_interfaces/action/MoveCartesian` ([straight lines](#straight-lines-move_cartesian)) |
 | client | `/arm/take_control` | `braco_interfaces/srv/TakeControl` (only with `use_control`) |
+| clients | `/controller_manager/list_hardware_components`, `set_hardware_component_state`, `list_controllers`, `switch_controller` | `controller_manager_msgs/srv/*` (only with `use_control`) |
 
 A goal is a `geometry_msgs/PoseStamped` of the `tcp`:
 1. A pose that is not finite, or whose orientation is not a rotation, is refused.
 2. With `use_control` (real arm): `take_control("mission")` without `force`. Refused → nothing is sent.
+   Then `BracoSystem` and `arm_controller` are turned back on if they are off (a STOP or a lost control turns
+   them off, ADR-0004). Not possible → nothing is sent.
 3. MoveIt 2 plans the full pose (group `arm`). An orientation of all zeros asks for the position only. With
    `position_only_fallback`, a full pose without a plan (no IK) is retried as its position only.
 4. `arm_controller` executes the plan. Then the `tcp` is read from TF and compared with the goal.
 5. The control is released on every path, also on failure.
 
 The result has `success` (within both tolerances), the position and orientation error, `position_only` and a
-`message`. The feedback names the stage: `control`, `planning`, `executing`, `measuring`. One goal at a time, on
-either action; cancelling stops the arm.
+`message`. The feedback names the stage: `control`, `activating`, `planning`, `executing`, `measuring`. One goal at a
+time, on either action; cancelling stops the arm.
 
 | Parameter | Default | |
 |---|---|---|
@@ -101,6 +104,19 @@ The executed deviation is about three times the planned one: `arm_controller` la
 moves (it rises while accelerating, holds ~0.1 mm at cruise speed, and falls back as the arm stops). The real arm's
 servos will add far more.
 
+## Run it on the real arm
+
+Follow [safety.md §9](../../../docs/guides/safety.md#9-first-moveit-2-motion-on-the-real-arm). The Jetson runs the arm
+(`make up`), the PC runs `move_group` (`make moveit`, after the domain check) and this node, on the arm's domain.
+`real:=true` gives it the real arm's model, the system clock and `use_control`: it takes the control as `mission`
+before each goal and turns `braco_hardware` and `arm_controller` back on if they are off.
+
+```bash
+make run CMD='ROS_DOMAIN_ID=22 ros2 launch braco_mission move_to_pose.launch.py real:=true'
+```
+
+Goals as below, with `ROS_DOMAIN_ID=22`. Start with a small move near `park`.
+
 ## Run it on the Gazebo arm
 
 ```bash
@@ -136,11 +152,11 @@ Position only: send the orientation as all zeros. Checked in Gazebo (2026-11-10)
 | `include/braco_mission/mission.hpp`, `src/mission.cpp` | The steps of a goal against `ArmBackend`, no ROS |
 | `include/braco_mission/cartesian.hpp`, `src/cartesian.cpp` | The steps of a straight-line goal against `CartesianBackend`, the request check and the line deviation, no ROS |
 | `include/braco_mission/control_guard.hpp` | Releases the control on every path of a goal (both actions) |
-| `include/braco_mission/move_to_pose_node.hpp`, `src/move_to_pose_node.cpp` | `MoveToPoseNode`: `CartesianBackend` with a `MotionGroup`, TF and `/arm/take_control`; both action servers. A library, so tests can run it in-process |
+| `include/braco_mission/move_to_pose_node.hpp`, `src/move_to_pose_node.cpp` | `MoveToPoseNode`: `CartesianBackend` with a `MotionGroup`, TF, `/arm/take_control` and the controller manager services; both action servers. A library, so tests can run it in-process |
 | `include/braco_mission/motion_group.hpp` | `MotionGroup`: the MoveIt 2 calls of the node, faked in tests |
 | `include/braco_mission/moveit_motion_group.hpp`, `src/moveit_motion_group.cpp` | `MotionGroup` with MoveIt 2 (`MoveGroupInterface`, `computeCartesianPath`, TOTG) |
 | `src/move_to_pose.cpp` | `main()` only |
-| `launch/move_to_pose.launch.py` | The node with the MoveIt config of the Gazebo arm |
+| `launch/move_to_pose.launch.py` | The node with the MoveIt config of the Gazebo arm, or of the real arm with `real:=true` |
 | `scripts/draw_line.py` | Draw one straight line and plot the executed `tcp` path |
 
 Tests (`colcon test --packages-select braco_mission`): `test/test_pose_math.cpp`, `test/test_mission.cpp` and

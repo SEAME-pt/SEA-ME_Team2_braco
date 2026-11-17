@@ -67,6 +67,7 @@ class FakeArm : public CartesianBackend
 {
 public:
   bool control_granted = true;
+  bool activates = true;
   CartesianPlan planned{1.0, straight_path()};
   bool executes = true;
   std::optional<Pose> tcp = END;   // what measure() returns
@@ -83,6 +84,12 @@ public:
     return control_granted;
   }
   void release_control() override {calls.push_back("release_control");}
+  bool ensure_active(std::string & message) override
+  {
+    calls.push_back("ensure_active");
+    if (!activates) {message = "arm_controller is not loaded";}
+    return activates;
+  }
   bool plan(const Pose &, bool, std::string &) override
   {
     calls.push_back("plan");
@@ -285,6 +292,7 @@ TEST(MoveCartesian, SimulationNeverTouchesTheControl)
   arm.executes = false;
   move_cartesian(arm, line(), Settings{});
   EXPECT_EQ(arm.count("take_control"), 0);
+  EXPECT_EQ(arm.count("ensure_active"), 0);
   EXPECT_EQ(arm.count("release_control"), 0);
 }
 
@@ -296,6 +304,27 @@ TEST(MoveCartesian, ControlRefusedPlansNothing)
   EXPECT_FALSE(o.success);
   EXPECT_EQ(arm.calls, (std::vector<std::string>{"take_control"}));
   EXPECT_EQ(o.message, "control refused: owned by web");
+}
+
+TEST(MoveCartesian, ActivatesRightAfterTakingTheControl)
+{
+  FakeArm arm;
+  move_cartesian(arm, line(), real_arm());
+  EXPECT_EQ(arm.calls[0], "take_control");
+  EXPECT_EQ(arm.calls[1], "ensure_active");
+  EXPECT_EQ(arm.stages[1], "activating");
+}
+
+TEST(MoveCartesian, NotActivePlansNothingAndReleases)
+{
+  FakeArm arm;
+  arm.activates = false;
+  const auto o = move_cartesian(arm, line(), real_arm());
+  EXPECT_FALSE(o.success);
+  EXPECT_EQ(
+    arm.calls,
+    (std::vector<std::string>{"take_control", "ensure_active", "release_control"}));
+  EXPECT_EQ(o.message, "not active: arm_controller is not loaded");
 }
 
 TEST(MoveCartesian, PositionOnlyWaypointKeepsTheStartOrientation)

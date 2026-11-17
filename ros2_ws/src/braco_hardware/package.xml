@@ -3,17 +3,19 @@
 <package format="3">
   <name>braco_hardware</name>
   <version>0.0.0</version>
-  <description>ros2_control SystemInterface of the real arm: reads the joints from arm_driver over topics, never opens the serial port (ADR-0004)</description>
+  <description>ros2_control SystemInterface of the real arm: reads the joints from and sends the targets to arm_driver over topics, never opens the serial port (ADR-0004)</description>
   <maintainer email="carlosleal2000@gmail.com">Carlos Teixeira</maintainer>
   <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
+  <depend>braco_interfaces</depend>
   <depend>hardware_interface</depend>
   <depend>pluginlib</depend>
   <depend>rclcpp</depend>
   <depend>rclcpp_lifecycle</depend>
   <depend>sensor_msgs</depend>
+  <depend>std_msgs</depend>
 
   <test_depend>ament_cmake_gtest</test_depend>
   <test_depend>ament_cmake_ros</test_depend>

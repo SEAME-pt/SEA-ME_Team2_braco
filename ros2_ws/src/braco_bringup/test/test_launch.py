@@ -84,7 +84,12 @@ def test_real_nodes(ld):
     nodes = of_type(ld.entities, Node)
     assert [n.node_executable for n in nodes] == [
         'arm_driver', 'temperature_monitor', 'robot_state_publisher', 'ros2_control_node',
-        'joystick_teleop', 'camera']
+        'spawner', 'joystick_teleop', 'camera']
+    # arm_controller only: arm_driver publishes /joint_states, no joint_state_broadcaster (#97)
+    (spawner,) = [n for n in nodes if n.node_executable == 'spawner']
+    spawner_args = [perform_substitutions(LaunchContext(), part) for part in spawner.cmd[1:]]
+    assert spawner_args[0] == 'arm_controller'
+    assert 'joint_state_broadcaster' not in spawner_args
     for node in nodes:
         assert node.condition.evaluate(configured(sim='false', moveit='false'))
         assert not node.condition.evaluate(configured(sim='true', moveit='false'))

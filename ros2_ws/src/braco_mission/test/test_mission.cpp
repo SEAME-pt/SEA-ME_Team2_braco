@@ -40,6 +40,7 @@ class FakeArm : public ArmBackend
 {
 public:
   bool control_granted = true;
+  bool activates = true;
   bool full_pose_plans = true;
   bool position_plans = true;
   bool executes = true;
@@ -56,6 +57,12 @@ public:
     return control_granted;
   }
   void release_control() override {calls.push_back("release_control");}
+  bool ensure_active(std::string & message) override
+  {
+    calls.push_back("ensure_active");
+    if (!activates) {message = "arm_controller is not loaded";}
+    return activates;
+  }
   bool plan(const Pose & goal, bool position_only, std::string & message) override
   {
     calls.push_back(position_only ? "plan_position" : "plan_pose");
@@ -113,6 +120,7 @@ TEST(MoveToPose, SimulationNeverTouchesTheControl)
   arm.executes = false;
   move_to_pose(arm, GOAL, false, Settings{});
   EXPECT_EQ(arm.count("take_control"), 0);
+  EXPECT_EQ(arm.count("ensure_active"), 0);
   EXPECT_EQ(arm.count("release_control"), 0);
 }
 
@@ -134,6 +142,28 @@ TEST(MoveToPose, ControlRefusedSendsNothing)
   EXPECT_FALSE(o.success);
   EXPECT_EQ(arm.calls, (std::vector<std::string>{"take_control"}));   // nothing planned
   EXPECT_NE(o.message.find("control refused: owned by web"), std::string::npos);
+}
+
+TEST(MoveToPose, ActivatesRightAfterTakingTheControl)
+{
+  FakeArm arm;
+  move_to_pose(arm, GOAL, false, real_arm());
+  EXPECT_EQ(arm.calls[0], "take_control");
+  EXPECT_EQ(arm.calls[1], "ensure_active");
+  EXPECT_EQ(arm.calls[2], "plan_pose");
+  EXPECT_EQ(arm.stages[1], "activating");
+}
+
+TEST(MoveToPose, NotActiveSendsNothingAndReleases)
+{
+  FakeArm arm;
+  arm.activates = false;
+  const auto o = move_to_pose(arm, GOAL, true, real_arm());
+  EXPECT_FALSE(o.success);
+  EXPECT_EQ(
+    arm.calls,
+    (std::vector<std::string>{"take_control", "ensure_active", "release_control"}));
+  EXPECT_NE(o.message.find("not active: arm_controller is not loaded"), std::string::npos);
 }
 
 TEST(MoveToPose, ControlIsReleasedWhenThePlanFails)

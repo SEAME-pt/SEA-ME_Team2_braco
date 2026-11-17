@@ -18,6 +18,8 @@ find_package(moveit_core REQUIRED)
 find_package(moveit_ros_planning_interface REQUIRED)
 find_package(moveit_msgs REQUIRED)
 find_package(braco_interfaces REQUIRED)
+find_package(controller_manager_msgs REQUIRED)
+find_package(lifecycle_msgs REQUIRED)
 
 # The steps of a goal, no ROS (mission.cpp, cartesian.cpp): the node and the tests link it
 add_library(braco_mission_core STATIC src/mission.cpp src/cartesian.cpp)
@@ -31,7 +33,7 @@ target_link_libraries(braco_mission_node PUBLIC braco_mission_core
   moveit_ros_planning_interface::moveit_move_group_interface
   moveit_core::moveit_robot_state moveit_core::moveit_robot_trajectory
   moveit_core::moveit_trajectory_processing ${moveit_msgs_TARGETS}
-  ${braco_interfaces_TARGETS})
+  ${braco_interfaces_TARGETS} ${controller_manager_msgs_TARGETS} ${lifecycle_msgs_TARGETS})
 
 add_executable(move_to_pose src/move_to_pose.cpp)
 target_link_libraries(move_to_pose braco_mission_node)

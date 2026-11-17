@@ -106,14 +106,18 @@ Go/no-go checklist. If any box is not ticked, do not move the arm.
 
 ### 9.1 Before
 
-- [ ] `make domain-check` passed ([#103](https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/103)): real arm
-  on domain 22, nothing else on it.
+- [ ] MoveIt started with `make moveit`: its domain check passed
+  ([#103](https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/103)): real arm on domain 22, nothing else on it.
+  On FAIL `move_group` does not start.
 - [ ] Limits test green ([#99](https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/99)).
-- [ ] MoveIt `max_velocity_scaling_factor` and `max_acceleration_scaling_factor` **≤ 0.1**.
+- [ ] MoveIt velocity and acceleration scaling **≤ 0.1**: `default_velocity_scaling_factor` and
+  `default_acceleration_scaling_factor` in `braco_moveit_config/config/joint_limits.yaml`, and `move_to_pose`'s
+  `velocity_scaling` / `acceleration_scaling` (ADR-0004).
 - [ ] Everyone present has signed the induction (section 1).
 - [ ] Work area clear (section 3).
-- [ ] Arm at park. The MoveIt client takes control (`/arm/take_control`, source `script`), and
-  `/arm/control_owner` shows `script` ([ADR-0002](../decisions/ADR-0002-unique-control.md)).
+- [ ] Arm at park. Goals go through `move_to_pose` with `use_control: true`: it takes the control as `mission`
+  (without force) before each goal and gives it back after ([ADR-0004](../decisions/ADR-0004-trajectories-through-arm-driver.md)).
+  `braco_hardware` sends only while `/arm/control_owner` is `mission`, so a goal from RViz alone does not move the arm.
 - [ ] Rest mode left (`make resume`), then motors on (`/arm/power_on`).
 - [ ] Motor temperatures OK (section 7, [overheating.md](overheating.md)).
 
@@ -122,6 +126,7 @@ Go/no-go checklist. If any box is not ticked, do not move the arm.
 - [ ] One person on STOP (section 6.2): the web page's STOP button, or
   `ROS_DOMAIN_ID=22 ros2 topic pub --once /arm/command braco_interfaces/msg/ArmCommand '{type: 0}'`.
   The STOP latches (section 6.2): the MoveIt client cannot move the arm again until someone releases it.
+  `braco_mission`'s next goal is refused (its `take_control` is refused while latched) until `make resume`.
 - [ ] One person on the power switch (section 6.1).
 - [ ] First move small, in a direction with nothing in the way.
 

@@ -17,7 +17,8 @@
 //
 //   1. a request that cannot be planned (no waypoints, a waypoint that is not a pose, two
 //      waypoints at the same place, eef_step or min_fraction out of range) is refused first
-//   2. with `use_control` (the real arm): take the control as "mission", without force
+//   2. with `use_control` (the real arm): take the control as "mission", without force; then
+//      braco_hardware and arm_controller active again, if a STOP or a lost control turned them off
 //   3. a waypoint with its orientation all 0 keeps the tcp orientation measured at the start
 //   4. plan the straight-line path (computeCartesianPath): an error (fraction -1) or less
 //      than `min_fraction` of the path planned -> nothing is executed

@@ -132,6 +132,8 @@ CartesianOutcome move_cartesian(
     std::string why;
     if (!arm.take_control(why)) {return failed("control refused: " + why);}
     guard.hold();
+    arm.report("activating");
+    if (!arm.ensure_active(why)) {return failed("not active: " + why);}
   }
 
   Quat start_orientation{0.0, 0.0, 0.0, 1.0};

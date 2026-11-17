@@ -28,6 +28,7 @@
 #include <vector>
 
 #include "braco_mission/moveit_motion_group.hpp"
+#include "lifecycle_msgs/msg/state.hpp"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
 
 using namespace std::chrono_literals;
@@ -38,7 +39,11 @@ namespace braco_mission
 namespace
 {
 
+using LifecycleState = lifecycle_msgs::msg::State;
+
 constexpr const char * SOURCE = "mission";   // control owner name (ADR-0002, ADR-0004)
+constexpr const char * HARDWARE = "BracoSystem";       // <ros2_control name> of braco.real.xacro
+constexpr const char * CONTROLLER = "arm_controller";  // controllers.yaml
 
 Pose from_msg(const geometry_msgs::msg::Pose & p)
 {
@@ -79,6 +84,13 @@ MoveToPoseNode::MoveToPoseNode(
   tf_buffer_ = std::make_unique<tf2_ros::Buffer>(get_clock());
   tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
   control_client_ = create_client<TakeControl>("/arm/take_control");
+  list_hardware_client_ =
+    create_client<ListHardware>("/controller_manager/list_hardware_components");
+  set_hardware_client_ =
+    create_client<SetHardwareState>("/controller_manager/set_hardware_component_state");
+  list_controllers_client_ =
+    create_client<ListControllers>("/controller_manager/list_controllers");
+  switch_client_ = create_client<SwitchController>("/controller_manager/switch_controller");
 }
 
 void MoveToPoseNode::start()
@@ -135,6 +147,11 @@ void MoveToPoseNode::release_control()
   if (!call_take_control(true)) {
     RCLCPP_WARN(get_logger(), "could not release the control: it frees itself after 5 s");
   }
+}
+
+bool MoveToPoseNode::ensure_active(std::string & message)
+{
+  return hardware_active(message) && controller_active(message);
 }
 
 bool MoveToPoseNode::plan(const Pose & goal, bool position_only, std::string & message)
@@ -320,6 +337,63 @@ MoveToPoseNode::TakeControl::Response::SharedPtr MoveToPoseNode::call_take_contr
   auto future = control_client_->async_send_request(request);
   if (future.wait_for(5s) != std::future_status::ready) {return nullptr;}
   return future.get();
+}
+
+template<typename Srv>
+typename Srv::Response::SharedPtr MoveToPoseNode::call(
+  rclcpp::Client<Srv> & client, const typename Srv::Request::SharedPtr & request)
+{
+  if (!client.wait_for_service(2s)) {return nullptr;}
+  auto future = client.async_send_request(request);
+  if (future.wait_for(5s) != std::future_status::ready) {return nullptr;}
+  return future.get();
+}
+
+bool MoveToPoseNode::hardware_active(std::string & message)
+{
+  const auto list = call(*list_hardware_client_, std::make_shared<ListHardware::Request>());
+  if (!list) {
+    message = "list_hardware_components did not answer";
+    return false;
+  }
+  for (const auto & component : list->component) {
+    if (component.name != HARDWARE) {continue;}
+    if (component.state.id == LifecycleState::PRIMARY_STATE_ACTIVE) {return true;}
+    auto request = std::make_shared<SetHardwareState::Request>();
+    request->name = HARDWARE;
+    request->target_state.id = LifecycleState::PRIMARY_STATE_ACTIVE;
+    request->target_state.label = "active";
+    const auto set = call(*set_hardware_client_, request);
+    if (set && set->ok) {return true;}
+    message = std::string(HARDWARE) + " not activated, it is " + component.state.label;
+    return false;
+  }
+  message = std::string(HARDWARE) + " is not loaded";
+  return false;
+}
+
+bool MoveToPoseNode::controller_active(std::string & message)
+{
+  const auto list =
+    call(*list_controllers_client_, std::make_shared<ListControllers::Request>());
+  if (!list) {
+    message = "list_controllers did not answer";
+    return false;
+  }
+  for (const auto & controller : list->controller) {
+    if (controller.name != CONTROLLER) {continue;}
+    if (controller.state == "active") {return true;}
+    auto request = std::make_shared<SwitchController::Request>();
+    request->activate_controllers = {CONTROLLER};
+    request->strictness = SwitchController::Request::STRICT;
+    request->timeout = rclcpp::Duration(5s);
+    const auto done = call(*switch_client_, request);
+    if (done && done->ok) {return true;}
+    message = std::string(CONTROLLER) + " not activated" + (done ? ": " + done->message : "");
+    return false;
+  }
+  message = std::string(CONTROLLER) + " is not loaded";
+  return false;
 }
 
 }  // namespace braco_mission

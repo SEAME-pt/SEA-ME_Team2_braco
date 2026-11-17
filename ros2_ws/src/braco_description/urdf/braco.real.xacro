@@ -6,8 +6,8 @@
   tests) and the simulation never see it.
 
   Same joints and interfaces as braco.gazebo.xacro, so config/controllers.yaml drives both: only
-  this <hardware> plugin differs. The position command interface is there for arm_controller;
-  BracoSystem::write() does not send it yet (#101).
+  this <hardware> plugin differs. BracoSystem::write() sends the position command to arm_driver
+  (#101).
 -->
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
 

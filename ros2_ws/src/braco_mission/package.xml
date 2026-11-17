@@ -19,6 +19,8 @@
   <depend>moveit_ros_planning_interface</depend>
   <depend>moveit_msgs</depend>
   <depend>braco_interfaces</depend>
+  <depend>controller_manager_msgs</depend>
+  <depend>lifecycle_msgs</depend>
 
   <!-- move_to_pose.launch.py: the MoveIt config of the Gazebo arm -->
   <exec_depend>ament_index_python</exec_depend>

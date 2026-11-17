@@ -13,18 +13,19 @@ the arm on the Jetson through DDS.
 |---|---|
 | `config/braco.srdf` | Planning group `arm` (chain `base_link` -> `tcp`), group `gripper` and its end effector, named states `home` and `park`, disabled collision pairs |
 | `config/kinematics.yaml` | IK of `arm`: KDL, timeout and resolution |
-| `config/joint_limits.yaml` | Position limits = `JOINT_LIMITS` of `mycobot.hpp`; velocity measured on the real arm (from the URDF); acceleration UNMEASURED (5 rad/s²); default scaling 0.3 |
+| `config/joint_limits.yaml` | Position limits = `JOINT_LIMITS` of `mycobot.hpp`; velocity measured on the real arm (from the URDF); acceleration UNMEASURED (5 rad/s²); default scaling 0.1 (ADR-0004: the real arm) |
 | `config/moveit_controllers.yaml` | `arm_controller`, `FollowJointTrajectory` on `/arm_controller/follow_joint_trajectory` |
 | `config/braco.urdf.xacro` | The demo's model: `braco_description`'s `braco.urdf.xacro` + a `mock_components/GenericSystem` `<ros2_control>` |
 | `config/moveit.rviz` | RViz with the MotionPlanning panel on `arm` |
 | `launch/demo.launch.py` | ros2_control with the mock hardware, then `move_group` and RViz once `arm_controller` is active |
-| `launch/sim.launch.py` | Gazebo (`braco_simulation`'s `gazebo.launch.py`), then `move_group`, RViz and `lab_bench_scene.py` once `arm_controller` is active |
+| `launch/sim.launch.py` | Gazebo (`braco_simulation`'s `gazebo.launch.py`), then the domain check (`--target sim`), then `move_group`, RViz and `lab_bench_scene.py` once `arm_controller` is active |
+| `launch/real.launch.py` | The real arm, from the PC: the domain check (`--target real`), then `move_group` and RViz (`make moveit`) |
 | `scripts/lab_bench_scene.py` | Adds the lab bench's table tops to `move_group`'s planning scene, read from `braco_simulation`'s `lab_bench.sdf` and `lab_table/model.sdf` and placed with the arm's spawn pose |
 | `launch/rviz.launch.py` | RViz only, on a `move_group` already running (`make rviz-gui`) |
 | `.setup_assistant` | Lets MoveItConfigsBuilder and the Setup Assistant find the model and the SRDF |
 
 The ros2_control controllers are not copied here: the demo starts those of `braco_description/config/controllers.yaml`,
-the one set used in Gazebo and (planned) on the real arm.
+the one set used in Gazebo and on the real arm.
 
 Named states (radians in the SRDF) are the fixed poses of `mycobot_cpp/includes/mycobot.hpp`:
 `home` = `ZERO_ANGLES` (all 0, the arm upright) and `park` = `PARK_ANGLES` {0, 131, -148, 146, 4.5, 0} deg.
@@ -76,13 +77,31 @@ Run it with `sim` stopped (`make down`, then `make up`) or on another domain (`e
 
 `move_group` and RViz start only once the `arm_controller` spawner has succeeded, because nothing can execute without
 the controller. If it fails, the launch shuts down, so RViz never opens: look for that spawner's error in the log.
+Then `docker/tests/domain-check.sh --target sim` runs (#103): not the real arm's domain, one simulation on it. On
+FAIL the launch shuts down before `move_group` starts.
+
+## Run on the real arm
+
+Read [safety.md §9](../../../docs/guides/safety.md#9-first-moveit-2-motion-on-the-real-arm) first. The Jetson runs the
+arm (`make up`: `arm_driver`, `braco_hardware`, `arm_controller`). Its image has no MoveIt, so `move_group` runs on the
+PC, on the arm's domain (22):
+
+```bash
+make moveit              # domain check, then move_group + RViz (Ctrl+C ends it)
+make moveit RVIZ=false   # move_group only
+```
+
+`real.launch.py` first runs `docker/tests/domain-check.sh --target real`: domain 22, one `/joint_states` publisher
+(`arm_driver`), no `/clock`. On FAIL it shuts down and `move_group` never starts, so MoveIt cannot take a simulation
+for the real arm. A goal moves the arm only while `mission` holds the control (ADR-0004): use `move_to_pose`, not RViz
+alone.
 
 ## Rules of the config
 
 - **Joint limits** must never be wider than `JOINT_LIMITS` of `mycobot.hpp`: MoveIt would plan moves the driver
   then clamps. Change `mycobot.hpp` first, then the URDF and `config/joint_limits.yaml`; `test/test_joint_limits.py`
   fails if they disagree.
-- **Speed**: the default scaling (0.3 of the measured speed) is applied by the clients (RViz, `MoveGroupInterface`),
+- **Speed**: the default scaling (0.1 of the measured speed, ADR-0004) is applied by the clients (RViz, `MoveGroupInterface`),
   which read it from `robot_description_planning`. A raw `/move_action` request with scaling 0 runs at full speed.
 - **Collisions**: the disabled pairs come from `collisions_updater` (below) plus three set by hand, each explained
   in the SRDF. Pairs in contact in the zero pose are never disabled automatically: a collision there is a model bug

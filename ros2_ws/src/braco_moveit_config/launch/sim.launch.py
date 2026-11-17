@@ -17,7 +17,8 @@ MoveIt 2 on the simulated braco arm: plan in RViz, execute in Gazebo.
 
 Includes braco_simulation's gazebo.launch.py, then starts move_group and RViz once
 arm_controller is active, and puts the lab bench's table tops into the planning scene
-(scripts/lab_bench_scene.py).
+(scripts/lab_bench_scene.py). Before move_group it runs docker/tests/domain-check.sh
+--target sim (#103): not the real arm's domain, one simulation on it; on FAIL it shuts down.
 
 In the dev container (pc image):
   ros2 launch braco_moveit_config sim.launch.py                         # both windows
@@ -28,7 +29,7 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import (DeclareLaunchArgument, IncludeLaunchDescription,
+from launch.actions import (DeclareLaunchArgument, ExecuteProcess, IncludeLaunchDescription,
                             RegisterEventHandler, Shutdown)
 from launch.conditions import IfCondition
 from launch.event_handlers import OnProcessExit
@@ -38,6 +39,8 @@ from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
 from moveit_configs_utils import MoveItConfigsBuilder
+
+DOMAIN_CHECK = '/opt/braco/docker/tests/domain-check.sh'
 
 
 def is_arm_controller_spawner(action):
@@ -84,17 +87,30 @@ def generate_launch_description():
         parameters=[{name: ParameterValue(LaunchConfiguration(name), value_type=float)
                      for name in ('robot_x', 'robot_y', 'robot_z', 'robot_yaw')}])
 
+    domain_check = ExecuteProcess(
+        cmd=['bash', LaunchConfiguration('domain_check'), '--target', 'sim'], output='screen')
+
+    def on_check_exit(event, context):
+        if event.returncode != 0:
+            return [Shutdown(reason='domain check failed: move_group not started')]
+        return [move_group, rviz, lab_bench_scene]
+
     def on_spawner_exit(event, context):
-        # OnProcessExit also fires on failure: without the controller nothing can execute
+        # OnProcessExit also fires on failure: without the controller nothing can execute.
+        # The check runs once the simulation is up: it counts its /clock and /joint_states
         if event.returncode != 0:
             return [Shutdown(reason='arm_controller did not start')]
-        return [move_group, rviz, lab_bench_scene]
+        return [domain_check,
+                RegisterEventHandler(OnProcessExit(target_action=domain_check,
+                                                   on_exit=on_check_exit))]
 
     return LaunchDescription([
         DeclareLaunchArgument('gui', default_value='true',
                               description='true: Gazebo window; false: server only'),
         DeclareLaunchArgument('rviz', default_value='true',
                               description='true: RViz with the MotionPlanning panel'),
+        DeclareLaunchArgument('domain_check', default_value=DOMAIN_CHECK,
+                              description='the domain check script (#103)'),
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(PathJoinSubstitution(
                 [FindPackageShare('braco_simulation'), 'launch', 'gazebo.launch.py'])),
