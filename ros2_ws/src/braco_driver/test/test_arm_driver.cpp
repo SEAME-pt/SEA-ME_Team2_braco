@@ -522,6 +522,54 @@ TEST_F(ArmDriverTest, DeactivateStopsTheArm)
   EXPECT_EQ(frames(protocol::SEND_ANGLE), 1u);
 }
 
+TEST_F(ArmDriverTest, InactiveRefusesMotionButObeysStop)
+{
+  start({rclcpp::Parameter("stop_hold_s", 0.0)});
+  ASSERT_EQ(driver_->deactivate().id(), State::PRIMARY_STATE_INACTIVE);
+  ASSERT_TRUE(waitUntil([this] {return lastStopped() == 1;}));
+  ASSERT_TRUE(trigger(release_stop_client_)->success);   // allowed while inactive
+  ASSERT_TRUE(waitUntil([this] {return lastStopped() == 0;}));
+
+  // Latch released: only the inactive state refuses now
+  const std::string inactive =
+    " refused: arm_driver inactive (ros2 lifecycle set /arm_driver activate)";
+  auto t = take("web", true);
+  ASSERT_TRUE(t);
+  EXPECT_FALSE(t->success);
+  EXPECT_EQ(t->message, "take control" + inactive);
+  EXPECT_EQ(trigger(power_client_)->message, "power on" + inactive);
+  EXPECT_EQ(trigger(release_client_)->message, "release servos" + inactive);
+  EXPECT_FALSE(setBool(gripper_client_, true)->success);
+  EXPECT_EQ(setBool(rest_client_, false)->message, "rest mode off" + inactive);
+  EXPECT_TRUE(setBool(rest_client_, true)->success);   // entering rest is fine
+  sendJoints("web", {target(1, 5)});
+
+  std_msgs::msg::ColorRGBA led;
+  led.g = 1.0f;
+  led_pub_->publish(led);
+  EXPECT_TRUE(waitUntil([this] {return frames(protocol::SET_COLOR) == 1;}));
+  size_t stops = frames(protocol::STOP);
+  sendType("web", ArmCommand::HALT);
+  EXPECT_TRUE(waitUntil([&] {return frames(protocol::STOP) > stops;}));
+  stops = frames(protocol::STOP);
+  sendType("web", ArmCommand::STOP);
+  EXPECT_TRUE(waitUntil([&] {return frames(protocol::STOP) > stops;}));
+  EXPECT_TRUE(waitUntil([this] {return lastStopped() == 1;}));
+
+  EXPECT_EQ(frames(protocol::SEND_ANGLE), 0u);
+  EXPECT_EQ(frames(protocol::POWER_ON), 0u);
+  EXPECT_EQ(frames(protocol::RELEASE_ALL_SERVOS), 0u);
+  EXPECT_EQ(frames(protocol::SET_GRIPPER_STATE), 0u);
+
+  // Active again (latch and rest released): it moves
+  ASSERT_EQ(driver_->activate().id(), State::PRIMARY_STATE_ACTIVE);
+  ASSERT_TRUE(trigger(release_stop_client_)->success);
+  ASSERT_TRUE(setBool(rest_client_, false)->success);
+  ASSERT_TRUE(take("web")->success);
+  sendJoints("web", {target(1, 5)});
+  EXPECT_TRUE(waitUntil([this] {return frames(protocol::SEND_ANGLE) == 1;}));
+}
+
 TEST_F(ArmDriverTest, StopHoldDefaultsToThreeSeconds)
 {
   start();

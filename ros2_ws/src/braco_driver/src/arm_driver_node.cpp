@@ -31,6 +31,9 @@ namespace
 constexpr auto COMMAND_GAP = 50ms;   // pause after each motion command
 constexpr int ANGLE_READ_RETRIES = 1;
 constexpr double DEG_TO_RAD = M_PI / 180.0;
+constexpr const char * INACTIVE =
+  " refused: arm_driver inactive (ros2 lifecycle set /arm_driver activate)";
+constexpr const char * LATCHED = " refused: STOP latched (make resume, or call arm/release_stop)";
 
 }  // namespace
 
@@ -209,9 +212,9 @@ void ArmDriver::setReadOnly(bool on)
 
 bool ArmDriver::refuseWhileStopped(bool & success, std::string & message, const char * what)
 {
-  if (!stopped_) {return false;}
+  if (active_ && !stopped_) {return false;}
   success = false;
-  message = std::string(what) + " refused: STOP latched (make resume, or call arm/release_stop)";
+  message = std::string(what) + (!active_ ? INACTIVE : LATCHED);
   RCLCPP_WARN(get_logger(), "%s", message.c_str());
   return true;
 }
@@ -305,11 +308,11 @@ void ArmDriver::onTakeControl(const TakeControl::Request & req, TakeControl::Res
   bool changed = false;
   {
     std::lock_guard<std::mutex> lock(state_mutex_);
-    if (!req.release && stopped_) {
+    if (!req.release && (!active_ || stopped_)) {
       // Even force: a STOP holds until a person releases it (ADR-0005)
       res.success = false;
       res.owner = control_.owner();
-      res.message = "take control refused: STOP latched (make resume, or call arm/release_stop)";
+      res.message = std::string("take control") + (!active_ ? INACTIVE : LATCHED);
     } else if (req.release) {
       res.success = control_.release(req.source) || control_.owner().empty();
       res.owner = control_.owner();
@@ -342,8 +345,8 @@ void ArmDriver::onTakeControl(const TakeControl::Request & req, TakeControl::Res
     RCLCPP_INFO(
       get_logger(), "control: %s (%s)",
       owner.empty() ? "free" : owner.c_str(), res.message.c_str());
-  } else if (!res.success && stopped_) {
-    // A held stick asks again after every answer while latched
+  } else if (!res.success && (!active_ || stopped_)) {
+    // A held stick asks again after every answer while refused
     RCLCPP_WARN_THROTTLE(
       get_logger(), *get_clock(), 2000, "take_control from '%s': %s", req.source.c_str(),
       res.message.c_str());
@@ -382,6 +385,11 @@ void ArmDriver::onCommand(const ArmCommand & msg)
     stop_requested_ = true;
     pending_joints_.clear();
     pending_all_.reset();
+    return;
+  }
+  if (!active_) {
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *get_clock(), 2000, "motion from '%s'%s", msg.source.c_str(), INACTIVE);
     return;
   }
   if (stopped_) {

@@ -63,6 +63,11 @@
 //      told to move -> stop once. Together with the step-ahead targets of the
 //      teleop node this bounds how far the arm coasts if a client dies.
 // The driver never powers the arm on or moves it by itself.
+//
+// Lifecycle (#95): configure opens the port and starts monitoring; only an active driver
+// moves. While inactive, motion, take_control, power_on, set_gripper, release_servos and
+// set_read_only false are refused; STOP, HALT, LED, rest on and release_stop still work.
+// Deactivate is a STOP.
 
 #ifndef BRACO_DRIVER__ARM_DRIVER_HPP_
 #define BRACO_DRIVER__ARM_DRIVER_HPP_
@@ -146,7 +151,7 @@ private:
   void setReadOnly(bool on);
   // True (and the response filled in) when the STOP latch or rest mode refuses `what`.
   bool refuseInRest(bool & success, std::string & message, const char * what);
-  // True (and the response filled in) when the STOP latch refuses `what`.
+  // True (and the response filled in) when the inactive state or the STOP latch refuses `what`.
   bool refuseWhileStopped(bool & success, std::string & message, const char * what);
   // A STOP from anyone: stop, drop pending motion, free the control, latch.
   void latchStop(const std::string & source);
