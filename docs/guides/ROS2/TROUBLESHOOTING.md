@@ -30,7 +30,7 @@ ros2 node list; ros2 topic list     # what this machine can see
 | `No executable found` | The executable is not installed | C++: add it to `install(TARGETS ... DESTINATION lib/${PROJECT_NAME})`. Python: add it to `entry_points` in `setup.py`. Rebuild and re-source |
 | A Python change has no effect | Built without `--symlink-install`, or a new file/entry point was added | Rebuild. Our images use symlink install by default; new entry points always need a rebuild |
 | Strange errors mixing ROS 1 and ROS 2, or two distros | Several `setup.bash` files sourced in one shell (the Nano host has Noetic and Galactic) | Open a new shell and source only one distro. Never source ROS from `~/.bashrc` on the Nano host |
-| `bash: /opt/seame/tests/talker-listener.sh: No such file or directory` (from `make net-test`) | `docker/tests` was deleted and recreated on the host (e.g. by a `git checkout`) after the container started; the bind mount still points to the old, deleted folder | Recreate the containers: `make down && make up`. `ws/` and the named volumes are kept |
+| `bash: /opt/seame/tests/talker-listener.sh: No such file or directory` (from `make net-test`) | `docker/tests` was deleted and recreated on the host (e.g. by a `git checkout`) after the container started; the bind mount still points to the old, deleted folder | Recreate the containers: `make down && make up`. `ros2_ws/` and the named volumes are kept |
 | `AttributeError: 'RcutilsLogger' object has no attribute 'warn'` | Older tutorials use `get_logger().warn()`, which does not exist in Lyrical | Use `get_logger().warning()` |
 | `ModuleNotFoundError: No module named 'ros2_basics_interfaces'` | Interface package not built, or built after the shell was sourced | `colcon build --packages-select ros2_basics_interfaces && source install/setup.bash` |
 
@@ -126,7 +126,7 @@ Go through this list in order.
 | Container does not start: `error gathering device information ... /dev/ttyTHS1` | `real` needs the serial port and the LCD on the host | `make doctor` checks both. On a PC use `ROLE=pc`. On the Jetson: `ls -l /dev/ttyTHS1` |
 | `Permission denied` / port busy on `/dev/ttyTHS1` | Serial console (`nvgetty`) holds the UART, or wrong `DIALOUT_GID` | `nvgetty`: [dev-setup → Jetson](../dev-setup.md#jetson). `DIALOUT_GID`: `getent group dialout`, set it in `.env` |
 | Docker on the Nano freezes during builds | Parallel image builds | Build one image at a time, or build on the PC (`make jetson-image NANO=user@host`) |
-| SD card full | Images and build caches | `docker system df`; `docker image prune`; `make clean` (asks first) |
+| SD card full | Images and build caches | `docker system df`; `docker image prune`; `make clean` (no prompt: deletes `build/`, `install/`, `log/`) |
 
 ## Still stuck
 

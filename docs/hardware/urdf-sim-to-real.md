@@ -24,9 +24,9 @@ ros2 topic pub --once /arm_controller/joint_trajectory trajectory_msgs/msg/Joint
 xacro urdf/braco.urdf.xacro > /tmp/braco.urdf && check_urdf /tmp/braco.urdf
 ```
 
-Tests: `make test` (`test/test_urdf.py`, 16 cases). They fail if a limit changes in `mycobot.hpp` without changing in the
+Tests: `make test` (`test/test_urdf.py`, 32 cases). They fail if a limit changes in `mycobot.hpp` without changing in the
 URDF, if a joint name leaves `joint1..joint6`, if a link with geometry has no positive mass/inertia, if a frame (`tool0`,
-`tcp`, `camera_optical_frame`) disappears, or if the position of `tool0` in the zero pose changes by accident.
+`tcp`, `camera_optical_frame`, …) disappears, if the ros2_control plugin or `arm_controller`'s joints or tolerances change, or if the position of `tool0` in the zero pose changes by accident.
 
 ## Origin of the model and what was changed
 

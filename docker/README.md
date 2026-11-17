@@ -18,7 +18,7 @@ Ubuntu 26.04 + ROS 2 Lyrical for the myCobot 280 Jetson Nano, in Docker.
 | `dev` | PC | `braco-image/pc` | Your tools: shell, build, tests, RViz2, MoveIt 2, Gazebo, PlotJuggler 4. `make web` runs the page here | Yes |
 | `dev` | Jetson | `braco-image/jetson` | Build and tools | No: one throw-away container per command |
 | `sim` | PC | `braco-image/pc` | The simulated arm (Gazebo). Only with `make up SIM=1` | While the simulation runs |
-| `real` | Jetson | `braco-image/jetson` | The real arm (driver, temperatures, joystick, camera) and the page (`make web`) | Yes |
+| `real` | Jetson | `braco-image/jetson` | The real arm (driver, temperatures, joystick, camera, `ros2_control_node` with `arm_controller`) and the page (`make web`) | Yes |
  
 ## 2. Files
  
@@ -79,7 +79,7 @@ docker compose exec dev bash            # ROS ready
 | Development | `shell`, `run CMD='...'`, `build` (`COLCON_ARGS=...`), `test`, `sim-gui`, `gaze-gui`, `rviz-gui`, `moveit` (real arm; `RVIZ=false`, `WAIT=<s>`), `clean` |
 | Setup | `setup` (on the PC also your ROS domain, [section 6](#ros-domain-per-teammate)), `role`, `doctor`, `image` (`IMAGE_ARGS='--no-cache --pull'`), `boot-on`, `boot-off`, `jetson-image` (`NANO=user@host`), `re`, `fclean` |
 | Network | `net-test`, `net-talk`, `net-listen`, `domain-check` (before MoveIt; `TARGET=sim`, `WAIT=<s>`) |
-| CI | `ci`, `web-test`, `ci-image`, `ci-ros`, `cppcheck`, `tidy`, `coverage`, `lint`, `format`, `format-check` ([CI guide](../docs/guides/ci.md)) |
+| CI | `ci`, `web-test`, `timing-test`, `ci-image`, `ci-ros`, `cppcheck`, `tidy`, `coverage`, `lint`, `format`, `format-check` ([CI guide](../docs/guides/ci.md)) |
  
 **Options**
  
@@ -104,7 +104,7 @@ docker compose exec dev bash            # ROS ready
  
 - **It never simulates:** no Gazebo, MoveIt or RViz in its image.
 - **It builds only what the real arm needs:** `braco_bringup` and its dependencies (driver, teleop, camera,
-  interfaces, `mycobot_cpp`).
+  interfaces, `mycobot_cpp`, `braco_hardware`, `braco_description`, ros2_control).
   - A new package the real arm needs: add it to `braco_bringup/package.xml` as `exec_depend`.
   - Never make `braco_bringup` depend on a simulation package, or the Jetson builds it too.
 - **It builds slowly on purpose** (4 GB of RAM): one package at a time, 2 compiler jobs, `Release`, no tests (they run
@@ -128,6 +128,8 @@ docker compose exec dev bash            # ROS ready
   mounted at `/run/hostdev`).
 - **One owner of the serial port:** `arm_driver`. A second program gets `Device or resource busy`. Use `make park`,
   `make zero`, `make temps`; for a script of your own, `make down` first.
+- **Emergency stop:** software, not wired. STOP from the page or the terminal stops the arm and keeps it stopped
+  until `make resume` ([ADR-0005](../docs/decisions/ADR-0005-stop-latch.md), [safety.md §6](../docs/guides/safety.md#6-stopping-the-arm)).
 - **The web page** (`make web`) runs here, from the repo mounted read-only at `/opt/braco`.
   See [web/README.md](../web/README.md).
 - **Inspect:** `make run CMD='ros2 node list'`, `make logs S=arm_driver`, `make logs S=web`.
@@ -213,7 +215,6 @@ plotjuggler4
 ## 9. Not verified yet
  
 - **Live ROS 2 topics in PlotJuggler** (recordings work).
-- **E-stop:** how it reaches the Jetson is unknown. If it is a GPIO line, uncomment `/dev/gpiochip0` in `compose.yml`.
 ## 10. If the build fails
  
 | Error | Fix |
