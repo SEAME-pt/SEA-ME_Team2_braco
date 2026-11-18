@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: rejected
 date: 2026-11-18
 deciders: all
 ---
@@ -30,20 +30,26 @@ Today a MoveIt trajectory reaches the arm as hundreds of micro-targets: `arm_con
 
 ## Decision
 
-**Pending the measurements below.** Expected: waypoints in fresh mode 1, because it keeps every safety rule as it is and only changes how a goal is cut. Mode 0 is chosen only if `stop` passes and it is clearly smoother.
+**Keep streamed setpoints (today, ADR-0004)**, because on the real arm the stream was as smooth as a single long move, waypoints were worse, and fresh mode 0 is unsafe.
 
-- A trajectory is cut at the vertices of the planned path (not the time-parameterized points); at most a handful per goal
-- Each segment is one `SEND_ANGLES` with a speed from the segment's planned duration
-- The next waypoint is sent when the arm is within tolerance of the current one, or when `IS_MOVING` turns false
-- `arm_driver` keeps the serial port and the gates; the new piece is a controller that replaces `arm_controller` on the real arm only
+Measured on 2026-11-18 with `waypoint_test.py` (speed 15, J1 +40° and J2 +20° and back, one run per way):
+
+| Way | cv J1 | cv J2 | Stops on the way | Time |
+|---|---|---|---|---|
+| stream (a target every ~70 ms, open loop in time) | 0.04–0.06 | 0.07–0.10 | 0 | 2.1 s |
+| single `SEND_ANGLES` | 0.06–0.08 | 0.04–0.07 | 0 | 1.8 s |
+| 3 waypoints, fresh mode 1, next on arrival | 0.12–0.19 | ~1.0 | 2 (J2) | 1.8 s |
+
+- **Fresh mode 0 fails `stop`:** STOP (0x29) at J1 = 7.0° ended only the current move; the Atom ran the rest of the queue to 38.4° (31.4° after the STOP). A STOP would not stop the arm.
+- **Waypoints stop at every waypoint:** the Atom moves each joint at the same angular speed without synchronising arrival, so J2 (shorter travel) reaches each waypoint first and waits for J1.
+- **Streaming is not the cause of jitter:** what made the joystick jitter (#93) was a target computed from ~200 ms old feedback (measured + lead), not the number of commands. A target that follows the clock, as the JTC does, is smooth.
 
 ## Consequences
 
-- ✅ Segments as smooth as the firmware allows; far fewer serial commands per goal
-- ✅ STOP, owner, rest and limits unchanged (mode 1)
-- ❌ A brief stop at each intermediate waypoint (the Atom has no blending)
-- ❌ Sim and real no longer share `arm_controller`: the simulation keeps the JTC
-- ❌ The watchdog needs a new rule: a long segment runs with no new command by design
+- ✅ No new controller: sim and real keep sharing `arm_controller` (ADR-0004)
+- ✅ The Atom stays in fresh mode 1; STOP, watchdog and coast bound unchanged
+- ❌ Jitter in cartesian trajectories (#141) still needs its own cause: measure the real MoveIt pipeline (`/arm/command` and `/joint_states` during `draw_line.py`)
+- ⚠️ Nothing in `arm_driver` checks the fresh mode: a tool that sets it to 0 would make STOP unsafe
 
 ## Confirmation
 
@@ -56,4 +62,4 @@ Today a MoveIt trajectory reaches the arm as hundreds of micro-targets: `arm_con
 ## Links
 
 - #93; [ADR-0004](ADR-0004-trajectories-through-arm-driver.md), [ADR-0005](ADR-0005-stop-latch.md), [timing budget](../architecture/timing-budget.md)
-- Revisit if: the measurements show stream close to the other ways, or a firmware with blending appears
+- Revisit if: a firmware with blending or synchronised joints appears, or STOP empties the queue in fresh mode 0
