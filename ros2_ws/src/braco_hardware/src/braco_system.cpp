@@ -39,6 +39,9 @@ constexpr const char * SOURCE = "mission";   // ArmCommand.source and the contro
 // An unchanged target is still sent this long (the arm reaches it before arm_driver's 300 ms
 // watchdog), then nothing: arm_driver frees a control left unreleased after 5 s without motion
 constexpr double HOLD_S = 2.0;
+// command_speed(): gaps above this between two sends count as this long. arm_driver takes a
+// command every ~70 ms under load (docs/architecture/timing-budget.md): longer is a pause
+constexpr int64_t MAX_SPEED_DT_NS = 100'000'000;
 
 }  // namespace
 
@@ -177,6 +180,8 @@ hardware_interface::CallbackReturn BracoSystem::on_activate(
   stop_seen_ = false;
   lost_control_ = false;
   target_changed_ns_ = 0;   // the first target after this counts as new
+  has_sent_ = false;        // and its speed is not measured against an old goal's last target
+  sent_speed_ = std::min<uint8_t>(MIN_SPEED, speed_);
 
   // read() runs right after this, too soon for the first /joint_states to have arrived, and a
   // read() without one stops the hardware. So wait here (up to 2 s) until it arrives: the
@@ -275,6 +280,7 @@ hardware_interface::return_type BracoSystem::write(
   if (!make_command(msg) || target_is_idle(msg, time.nanoseconds())) {
     return hardware_interface::return_type::OK;
   }
+  msg.speed = command_speed(msg, time.nanoseconds());
   // Also when the target has not changed (for HOLD_S): arm_driver stops the arm after
   // command_timeout_ms (300 ms) without a motion command. Not clamped: arm_driver clamps.
   command_pub_->publish(msg);
@@ -291,11 +297,34 @@ bool BracoSystem::target_is_idle(const ArmCommand & msg, int64_t now_ns)
   return now_ns - target_changed_ns_ > static_cast<int64_t>(HOLD_S * 1e9);
 }
 
+uint8_t BracoSystem::command_speed(const ArmCommand & msg, int64_t now_ns)
+{
+  // The servo should reach each target about when the next one comes, as the trajectory does,
+  // not rush there at a fixed speed and wait. The fastest joint sets it: one speed for all six.
+  // An unchanged target (the arm finishing the last point) keeps the speed it was moving at.
+  uint8_t speed = sent_speed_;
+  if (has_sent_) {
+    double max_delta_deg = 0.0;
+    for (std::size_t i = 0; i < msg.angles_deg.size(); ++i) {
+      max_delta_deg = std::max(max_delta_deg, std::abs(msg.angles_deg[i] - sent_deg_[i]));
+    }
+    if (max_delta_deg > 0.0) {
+      // A long gap (the trajectory paused, or the first send after one) is not a slow target
+      const double dt_s = static_cast<double>(std::min(now_ns - sent_ns_, MAX_SPEED_DT_NS)) / 1e9;
+      speed = speed_for_velocity(max_delta_deg / RAD_TO_DEG / dt_s, speed_);
+    }
+  }
+  has_sent_ = true;
+  sent_deg_ = msg.angles_deg;
+  sent_ns_ = now_ns;
+  sent_speed_ = speed;
+  return speed;
+}
+
 bool BracoSystem::make_command(ArmCommand & msg)
 {
   msg.type = ArmCommand::ALL_ANGLES;
-  msg.source = SOURCE;
-  msg.speed = speed_;
+  msg.source = SOURCE;   // the speed is write()'s: command_speed()
   const auto & joints = get_hardware_info().joints;
   for (std::size_t i = 0; i < joints.size(); ++i) {
     const double position =

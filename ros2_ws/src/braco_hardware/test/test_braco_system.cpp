@@ -41,6 +41,7 @@
 
 #include "ament_index_cpp/get_package_prefix.hpp"
 #include "ament_index_cpp/get_package_share_path.hpp"
+#include "braco_hardware/braco_system.hpp"
 #include "braco_interfaces/msg/arm_command.hpp"
 #include "hardware_interface/component_parser.hpp"
 #include "hardware_interface/system_interface.hpp"
@@ -302,7 +303,7 @@ protected:
   }
   return_type read() {return system_->read(rclcpp::Time(0, 0, RCL_STEADY_TIME), 10ms);}
 
-  // write() at the next tick of the manager's clock: 60 ms later, above its 20 Hz throttle. The
+  // write() at the next tick of the manager's clock: 60 ms later, above its 50 Hz throttle. The
   // clock is ours, so HOLD_S passes without waiting for it.
   return_type write()
   {
@@ -516,7 +517,7 @@ TEST_F(BracoSystemTest, InitChecksTheParameters)
 // ---- write() (#101, ADR-0004, ADR-0005) -----------------------------------------------------
 
 // mission owns the arm: arm_controller's targets go to arm_driver as ALL_ANGLES, source mission,
-// in degrees, at the default speed (50).
+// in degrees. The first target has no previous one to measure a velocity from: MIN_SPEED.
 TEST_F(BracoSystemTest, WriteSendsTheTargetsAsMissionInDegrees)
 {
   JointStatesPublisher joint_states(jointStates(6));
@@ -526,10 +527,51 @@ TEST_F(BracoSystemTest, WriteSendsTheTargetsAsMissionInDegrees)
   const auto msg = topics.commands().front();
   EXPECT_EQ(msg.type, ArmCommand::ALL_ANGLES);
   EXPECT_EQ(msg.source, "mission");
-  EXPECT_EQ(msg.speed, 50);
+  EXPECT_EQ(msg.speed, braco_hardware::MIN_SPEED);
   for (size_t i = 0; i < TARGETS_RAD.size(); ++i) {
     EXPECT_NEAR(msg.angles_deg[i], TARGETS_RAD[i] * 180.0 / M_PI, 1e-4) << "joint" << i + 1;
   }
+}
+
+// The speed setting follows the velocity (x SPEED_MARGIN, ~0.0265 rad/s per unit), between
+// MIN_SPEED and the URDF's speed, whatever the direction.
+TEST(SpeedForVelocity, FollowsTheVelocityBetweenMinAndMax)
+{
+  using braco_hardware::speed_for_velocity;
+  EXPECT_EQ(speed_for_velocity(0.0, 50), braco_hardware::MIN_SPEED);   // still: the floor
+  EXPECT_EQ(speed_for_velocity(0.5, 50), 29);    // 0.5 * 1.5 / 0.0265 = 28.3, rounded up
+  EXPECT_EQ(speed_for_velocity(-0.5, 50), 29);   // the sign is the direction, not the speed
+  EXPECT_EQ(speed_for_velocity(10.0, 50), 50);   // capped at the URDF's speed
+  EXPECT_EQ(speed_for_velocity(100.0, 100), 100);
+  EXPECT_EQ(speed_for_velocity(0.0, 5), 5);      // a URDF speed below the floor wins
+}
+
+// A moving target is sent at the speed of its fastest joint, not at a fixed one; a target that
+// stops changing keeps that speed while the arm finishes the move. Too fast: the URDF's 50.
+TEST_F(BracoSystemTest, WriteSendsTheSpeedOfTheTargetsMotion)
+{
+  JointStatesPublisher joint_states(jointStates(6));
+  ArmDriverTopics topics;
+  startSending(topics);
+
+  // write() ticks 60 ms apart: joint1 0.03 rad per tick is 0.5 rad/s, joint2 slower
+  auto target = TARGETS_RAD;
+  target[0] += 0.03;
+  target[1] -= 0.01;
+  setTargets(target);
+  write();
+  settledCount(topics);
+  EXPECT_EQ(topics.commands().back().speed, 29);
+
+  write();   // unchanged target
+  settledCount(topics);
+  EXPECT_EQ(topics.commands().back().speed, 29);
+
+  target[0] += 0.3;   // 5 rad/s
+  setTargets(target);
+  write();
+  settledCount(topics);
+  EXPECT_EQ(topics.commands().back().speed, 50);
 }
 
 // Another client owns the arm (or nobody): write() sends nothing and reports no error.

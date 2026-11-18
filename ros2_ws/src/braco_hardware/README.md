@@ -38,7 +38,7 @@ Sending:  arm_driver ◄──/arm/command─── BracoSystem ◄──write()
 | Listens to | `/arm/control_owner` | who controls the arm: `write()` sends only when it is `mission` |
 | Listens to | `/arm/stopped` | the STOP latch (ADR-0005): a STOP aborts the goal |
 | Publishes | `/arm/command` | where the arm must go (`ALL_ANGLES`, `source: mission`) |
-| Parameters | `publish_rate_hz`, `speed` | optional, in the URDF: 20 per second, servo speed 50 |
+| Parameters | `publish_rate_hz`, `speed` | optional, in the URDF: 50 per second; `speed` is the highest servo speed sent (default 50). Each command's speed follows the target's velocity (×1.5, at least 10): a fixed speed made the servo rush to each setpoint and stop (jerky motion) |
 
 For each joint, `joint1` to `joint6`:
 
@@ -151,7 +151,9 @@ port: the `arm_driver` it starts talks to `PtyArm`, a fake arm on a pseudo-termi
 | `ConfigureFailsWithoutNode` | `on_configure` fails without a node from the controller manager |
 | `InitFailsWithoutSixJoints` | `on_init` refuses a URDF without six joints |
 | `InitChecksTheParameters` | `on_init` refuses `speed` outside 1..100, `publish_rate_hz` ≤ 0 or not numbers |
-| `WriteSendsTheTargetsAsMissionInDegrees` | `write()` sends `ALL_ANGLES`, `source: mission`, in degrees, speed 50 |
+| `WriteSendsTheTargetsAsMissionInDegrees` | `write()` sends `ALL_ANGLES`, `source: mission`, in degrees; the first at `MIN_SPEED` |
+| `SpeedForVelocity.FollowsTheVelocityBetweenMinAndMax` | the speed setting is the velocity ×1.5 / 0.0265 rad/s, between `MIN_SPEED` and the URDF's `speed` |
+| `WriteSendsTheSpeedOfTheTargetsMotion` | a moving target goes at its fastest joint's speed, kept while it holds still, capped at the URDF's `speed` |
 | `WriteSendsNothingWhileAnotherClientOwnsTheArm` | another owner: nothing sent, `OK` |
 | `WriteSendsNothingWithoutAController` | no controller, or after it released the commands: nothing sent |
 | `WriteHoldsAStillTargetForTwoSeconds` | a still target is resent for 2 s, then not; a new one is sent |

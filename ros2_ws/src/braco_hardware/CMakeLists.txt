@@ -43,6 +43,8 @@ if(BUILD_TESTING)
   find_package(ament_index_cpp REQUIRED)
   find_package(mycobot_cpp REQUIRED)
   ament_add_ros_isolated_gtest(test_braco_system test/test_braco_system.cpp TIMEOUT 180)
+  # The header only, for speed_for_velocity(): the plugin itself comes through pluginlib
+  target_include_directories(test_braco_system PRIVATE include)
   target_link_libraries(test_braco_system
     hardware_interface::hardware_interface pluginlib::pluginlib rclcpp::rclcpp
     ament_index_cpp::ament_index_cpp mycobot_cpp::mycobot_cpp ${sensor_msgs_TARGETS}
