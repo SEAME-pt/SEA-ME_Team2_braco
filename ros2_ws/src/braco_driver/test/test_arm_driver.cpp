@@ -404,6 +404,19 @@ TEST_F(ArmDriverTest, MotionOnlyFromTheOwner)
   EXPECT_TRUE(waitUntil([&] {return frames(protocol::STOP) > stops;}));
 }
 
+// command_gap_ms is the pause after each serial command: with three joints pending, one frame
+// goes out per gap (round robin), not all three at once.
+TEST_F(ArmDriverTest, CommandGapPacesTheSerialCommands)
+{
+  start({rclcpp::Parameter("command_timeout_ms", 5000), rclcpp::Parameter("command_gap_ms", 400)});
+  ASSERT_TRUE(take("web")->success);
+  sendJoints("web", {target(1, 5), target(2, 5), target(3, 5)});
+  ASSERT_TRUE(waitUntil([this] {return frames(protocol::SEND_ANGLE) >= 1;}));
+  std::this_thread::sleep_for(250ms);
+  EXPECT_EQ(frames(protocol::SEND_ANGLE), 1u) << "the next joint did not wait for the gap";
+  EXPECT_TRUE(waitUntil([this] {return frames(protocol::SEND_ANGLE) == 3;}));
+}
+
 // ---- STOP latch (ADR-0005) --------------------------------------------------------
 
 TEST_F(ArmDriverTest, StopLatchesUntilReleasedAfterTheHold)

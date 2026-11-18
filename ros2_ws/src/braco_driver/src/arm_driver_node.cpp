@@ -28,7 +28,6 @@ namespace braco_driver
 namespace
 {
 
-constexpr auto COMMAND_GAP = 50ms;   // pause after each motion command
 constexpr int ANGLE_READ_RETRIES = 1;
 constexpr double DEG_TO_RAD = M_PI / 180.0;
 
@@ -46,6 +45,10 @@ ArmDriver::ArmDriver(const rclcpp::NodeOptions & options)
   command_timeout_ = std::chrono::milliseconds(
     declare_parameter<int>("command_timeout_ms", 300));
   gripper_speed_ = static_cast<int>(declare_parameter<int>("gripper_speed", 50));
+  // Pause after each serial command (motion, stop, LED). It bounds the loop under commands: 50 ms
+  // gives ~14 commands and /joint_states per second (docs/architecture/timing-budget.md, #93)
+  command_gap_ = std::chrono::milliseconds(
+    std::max<int64_t>(0, declare_parameter<int>("command_gap_ms", 50)));
   control_idle_ = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
     std::chrono::duration<double>(declare_parameter<double>("control_idle_s", 5.0)));
   stop_hold_ = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
@@ -54,7 +57,9 @@ ArmDriver::ArmDriver(const rclcpp::NodeOptions & options)
 
   // Throws if the port cannot be opened: main() reports it and exits non-zero.
   mc_ = std::make_unique<mycobot::MyCobot280>(port, static_cast<int>(baud));
-  RCLCPP_INFO(get_logger(), "serial port %s open at %ld baud", port.c_str(), baud);
+  RCLCPP_INFO(
+    get_logger(), "serial port %s open at %ld baud, command gap %d ms", port.c_str(), baud,
+    static_cast<int>(command_gap_.count()));
 
   joint_pub_ = create_publisher<sensor_msgs::msg::JointState>("joint_states", 10);
   temp_pub_ = create_publisher<ServoTemperatures>("arm/servo_temperatures", 10);
@@ -427,6 +432,11 @@ void ArmDriver::serialLoop()
 {
   auto next_state = std::chrono::steady_clock::now();
   auto next_temp = next_state;
+  // Half a period after the temperatures: two reads in one pass stalled the loop ~20 ms, a
+  // visible stop of the arm during a trajectory every temp_period_s (#93)
+  const auto temp_period = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+    temp_period_);
+  auto next_volt = next_state + temp_period / 2;
 
   while (running_ && rclcpp::ok()) {
     try {
@@ -438,11 +448,16 @@ void ArmDriver::serialLoop()
         next_state = now + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
           state_period_);
       }
-      if (now >= next_temp) {
-        publishTemps();
+      // At most one of the two per pass, the more overdue first: when reads are slow (a silent
+      // arm times out) both are always due, and neither may starve the other
+      const bool temp_due = now >= next_temp;
+      const bool volt_due = now >= next_volt;
+      if (volt_due && (!temp_due || next_volt < next_temp)) {
         publishVoltages();
-        next_temp = now + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-          temp_period_);
+        next_volt = now + temp_period;
+      } else if (temp_due) {
+        publishTemps();
+        next_temp = now + temp_period;
       }
       checkWatchdog();
       expireControl();
@@ -482,11 +497,11 @@ bool ArmDriver::serviceCommands()
   if (stop) {
     mc_->stop();
     moving_ = false;
-    std::this_thread::sleep_for(COMMAND_GAP);
+    std::this_thread::sleep_for(command_gap_);
   }
   if (led) {
     mc_->setColor((*led)[0], (*led)[1], (*led)[2]);
-    std::this_thread::sleep_for(COMMAND_GAP);
+    std::this_thread::sleep_for(command_gap_);
   }
   if (!all && !joint) {return false;}
   if (all) {
@@ -495,7 +510,7 @@ bool ArmDriver::serviceCommands()
     mc_->sendAngle(joint->first, joint->second.angle, joint->second.speed);
   }
   moving_ = true;
-  std::this_thread::sleep_for(COMMAND_GAP);
+  std::this_thread::sleep_for(command_gap_);
   return true;
 }
 
@@ -571,7 +586,7 @@ void ArmDriver::checkWatchdog()
     std::lock_guard<std::mutex> lock(serial_mutex_);
     mc_->stop();
     moving_ = false;
-    std::this_thread::sleep_for(COMMAND_GAP);
+    std::this_thread::sleep_for(command_gap_);
   }
 }
 

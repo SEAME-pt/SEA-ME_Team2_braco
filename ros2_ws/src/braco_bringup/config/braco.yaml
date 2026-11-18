@@ -8,6 +8,8 @@ arm_driver:
                               # continuous commands at any rate (docs/architecture/timing-budget.md)
     temp_period_s: 2.0        # servo temperature read period
     command_timeout_ms: 300   # watchdog: stop the arm when motion commands stop for this long
+    command_gap_ms: 50        # pause after each serial command: bounds the loop to ~14 Hz under commands
+                              # (docs/architecture/timing-budget.md, #93)
     gripper_speed: 50         # 1..100
     read_only: false          # start in rest mode
     control_idle_s: 5.0       # the control owner loses it after this long without motion
