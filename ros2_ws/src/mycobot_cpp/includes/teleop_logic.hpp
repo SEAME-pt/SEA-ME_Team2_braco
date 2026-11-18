@@ -55,7 +55,8 @@ constexpr double LEAD_MIN_DEG = 1.0;
 // down, the stale angle stalled, the target stalled, and the joint moved in pulses (stick-slip
 // on the servo's ~3 deg dead zone). Now the target advances on its own at the jog velocity and
 // the measured angle only bounds it.
-constexpr double DEG_PER_S_PER_SPEED = 1.52;  // measured, linear (docs/hardware/urdf-sim-to-real.md)
+// Measured, linear (docs/hardware/urdf-sim-to-real.md)
+constexpr double DEG_PER_S_PER_SPEED = 1.52;
 // How far the measured angle lags the arm: the bound adds velocity * this, so the target stays
 // at most about `lead` ahead of where the arm really is (the coast bound of the step-ahead).
 constexpr double FEEDBACK_LAG_S = 0.2;
@@ -184,8 +185,8 @@ inline double advanceJogTarget(std::optional<double> previous, double measured, 
                                int speed, double lead, double remaining, double dt) {
     const double velocity = speed * DEG_PER_S_PER_SPEED;
     const double reach = std::max(0.0, std::min(lead + velocity * FEEDBACK_LAG_S, remaining));
-    const double ahead = previous ? (*previous - measured) * direction + velocity * dt
-                                  : BREAKAWAY_DEG;
+    const double ahead =
+        previous ? (*previous - measured) * direction + velocity * dt : BREAKAWAY_DEG;
     return measured + direction * std::clamp(ahead, 0.0, reach);
 }
 
