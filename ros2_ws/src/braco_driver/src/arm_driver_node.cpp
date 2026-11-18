@@ -40,7 +40,7 @@ ArmDriver::ArmDriver(const rclcpp::NodeOptions & options)
     "port", mycobot::MyCobot280::DEFAULT_PORT);
   const auto baud = declare_parameter<int>("baud", mycobot::MyCobot280::DEFAULT_BAUD);
   state_period_ = std::chrono::duration<double>(
-    1.0 / declare_parameter<double>("state_rate_hz", 20.0));
+    1.0 / declare_parameter<double>("state_rate_hz", 50.0));
   temp_period_ = std::chrono::duration<double>(declare_parameter<double>("temp_period_s", 2.0));
   command_timeout_ = std::chrono::milliseconds(
     declare_parameter<int>("command_timeout_ms", 300));
@@ -48,7 +48,7 @@ ArmDriver::ArmDriver(const rclcpp::NodeOptions & options)
   // Pause after each serial command (motion, stop, LED). It bounds the loop under commands: 50 ms
   // gives ~14 commands and /joint_states per second (docs/architecture/timing-budget.md, #93)
   command_gap_ = std::chrono::milliseconds(
-    std::max<int64_t>(0, declare_parameter<int>("command_gap_ms", 50)));
+    std::max<int64_t>(0, declare_parameter<int>("command_gap_ms", 30)));
   control_idle_ = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
     std::chrono::duration<double>(declare_parameter<double>("control_idle_s", 5.0)));
   stop_hold_ = std::chrono::duration_cast<std::chrono::steady_clock::duration>(

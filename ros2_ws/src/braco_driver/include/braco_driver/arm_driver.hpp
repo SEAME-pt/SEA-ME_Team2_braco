@@ -56,7 +56,7 @@
 //
 // One serial thread does all the work, in this order on every pass:
 //   1. a requested stop (drops everything pending)
-//   2. one pending motion command, then command_gap_ms (50 by default, as the C++ programs do)
+//   2. one pending motion command, then command_gap_ms (30 by default: measured best, #141)
 //   3. read the angles and publish /joint_states
 //   4. every temp_period_s read the servo temperatures, and half a period later the voltages
 //      (never both in one pass: that stalled the loop ~20 ms during a trajectory)

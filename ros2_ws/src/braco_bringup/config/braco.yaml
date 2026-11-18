@@ -4,12 +4,12 @@
 
 arm_driver:
   ros__parameters:
-    state_rate_hz: 20.0       # /joint_states rate. Measured: 18.7 Hz idle, ~45 Hz at most, ~14 Hz under
-                              # continuous commands at any rate (docs/architecture/timing-budget.md)
+    state_rate_hz: 50.0       # /joint_states rate. Measured ~45 Hz at most; with command_gap_ms 30 the
+                              # loop keeps up better under commands (docs/architecture/timing-budget.md, #141)
     temp_period_s: 2.0        # servo temperature read period
     command_timeout_ms: 300   # watchdog: stop the arm when motion commands stop for this long
-    command_gap_ms: 50        # pause after each serial command: bounds the loop to ~14 Hz under commands
-                              # (docs/architecture/timing-budget.md, #93)
+    command_gap_ms: 30        # pause after each serial command. 50 bounded the loop to ~14 Hz under commands;
+                              # 30 measured best, 10 cut moves short (docs/architecture/timing-budget.md, #141)
     gripper_speed: 50         # 1..100
     read_only: false          # start in rest mode
     control_idle_s: 5.0       # the control owner loses it after this long without motion
