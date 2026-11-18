@@ -49,6 +49,20 @@ constexpr int GRIPPER_SPEED = 50;
 // ---- Step-ahead lead -------------------------------------------------------
 constexpr double LEAD_MIN_DEG = 1.0;
 
+// ---- Open-loop jog target (#93) --------------------------------------------
+// The target used to be "latest measured angle + lead". The measured angle is ~200 ms old
+// (docs/architecture/timing-budget.md), so at low speed the servo saw almost no error, slowed
+// down, the stale angle stalled, the target stalled, and the joint moved in pulses (stick-slip
+// on the servo's ~3 deg dead zone). Now the target advances on its own at the jog velocity and
+// the measured angle only bounds it.
+constexpr double DEG_PER_S_PER_SPEED = 1.52;  // measured, linear (docs/hardware/urdf-sim-to-real.md)
+// How far the measured angle lags the arm: the bound adds velocity * this, so the target stays
+// at most about `lead` ahead of where the arm really is (the coast bound of the step-ahead).
+constexpr double FEEDBACK_LAG_S = 0.2;
+// First target of a jog: this far ahead at once, to break the joint's static friction
+// (about the servo's dead zone). Never beyond the bound.
+constexpr double BREAKAWAY_DEG = 3.0;
+
 // ---- Soft limit zone -------------------------------------------------------
 constexpr double SLOW_ZONE_DEG = 25.0;
 constexpr double MIN_LIMIT_FACTOR = 0.15;
@@ -156,6 +170,23 @@ inline std::optional<Shaped> shapeNearLimit(const JointLimit& lim, double angle,
     const int shapedSpeed = std::max(1, static_cast<int>(std::lround(speed * factor)));
     lead = std::min(lead * factor, remaining);  // never step past the limit
     return Shaped{angle + direction * lead, shapedSpeed};
+}
+
+// The jog target of one joint for this tick, open loop (see FEEDBACK_LAG_S).
+//   previous   last tick's target; nullopt when the jog starts (or reverses): breakaway step
+//   measured   latest measured angle;  direction  +1 / -1
+//   speed      firmware speed sent (1..100): the target moves at speed * DEG_PER_S_PER_SPEED
+//   lead       allowed lead (after shapeNearLimit);  remaining  degrees left to the limit
+//   dt         seconds since the previous tick
+// The target never goes behind the measured angle nor further ahead than
+// min(lead + velocity * FEEDBACK_LAG_S, remaining).
+inline double advanceJogTarget(std::optional<double> previous, double measured, int direction,
+                               int speed, double lead, double remaining, double dt) {
+    const double velocity = speed * DEG_PER_S_PER_SPEED;
+    const double reach = std::max(0.0, std::min(lead + velocity * FEEDBACK_LAG_S, remaining));
+    const double ahead = previous ? (*previous - measured) * direction + velocity * dt
+                                  : BREAKAWAY_DEG;
+    return measured + direction * std::clamp(ahead, 0.0, reach);
 }
 
 // Desired motion per joint. Axes in `blocked` never produce motion.

@@ -258,6 +258,7 @@ void JoystickTeleop::resetState()
   hold_.clear();
   last_hold_send_.clear();
   limit_reported_.clear();
+  jog_.clear();
   axis_changed_ms_.clear();
   blocked_axes_.clear();
   speed_btn_ms_.reset();
@@ -488,8 +489,9 @@ void JoystickTeleop::jog(const tl::Wanted & wanted, const mycobot::Angles & angl
   for (int j = 1; j <= 6; ++j) {
     if (moving.count(j)) {
       hold_.erase(j);
-    } else if (!hold_.count(j)) {
-      hold_[j] = angles[j - 1];
+    } else {
+      jog_.erase(j);   // the next jog of this joint starts again from its measured angle
+      if (!hold_.count(j)) {hold_[j] = angles[j - 1];}
     }
   }
 
@@ -514,13 +516,15 @@ void JoystickTeleop::jog(const tl::Wanted & wanted, const mycobot::Angles & angl
     }
   }
 
-  // 6d. Moving joints: proportional speed, slowed near limits
+  // 6d. Moving joints: proportional speed, slowed near limits. The target advances open loop
+  // at the jog velocity, bounded by the measured angle (tl::advanceJogTarget, #93)
   for (const auto & [joint, motion] : wanted) {
     const double angle = angles[joint - 1];
+    const auto & limit = mycobot::JOINT_LIMITS[joint - 1];
     const auto shaped = tl::shapeNearLimit(
-      mycobot::JOINT_LIMITS[joint - 1], angle,
-      motion.direction, motion.speed, motion.lead);
+      limit, angle, motion.direction, motion.speed, motion.lead);
     if (!shaped) {
+      jog_.erase(joint);
       if (!limit_reported_.count(joint)) {
         RCLCPP_INFO(get_logger(), ">>> J%d at limit", joint);
         limit_reported_.insert(joint);
@@ -528,11 +532,22 @@ void JoystickTeleop::jog(const tl::Wanted & wanted, const mycobot::Angles & angl
       continue;
     }
     limit_reported_.erase(joint);
-    if (debug_) {
-      RCLCPP_INFO(
-        get_logger(), "J%d %.1f -> %.1f @%d", joint, angle, shaped->target, shaped->speed);
+    const double remaining = motion.direction > 0 ? limit.max - angle : angle - limit.min;
+    std::optional<double> previous;
+    double dt = 0.0;
+    const auto it = jog_.find(joint);
+    if (it != jog_.end() && it->second.direction == motion.direction) {
+      previous = it->second.target;
+      dt = now - it->second.time_s;
     }
-    add(joint, shaped->target, shaped->speed);
+    const double target = tl::advanceJogTarget(
+      previous, angle, motion.direction, shaped->speed, std::abs(shaped->target - angle),
+      remaining, dt);
+    jog_[joint] = JogTarget{target, motion.direction, now};
+    if (debug_) {
+      RCLCPP_INFO(get_logger(), "J%d %.1f -> %.1f @%d", joint, angle, target, shaped->speed);
+    }
+    add(joint, target, shaped->speed);
   }
 
   if (!cmd.targets.empty()) {command_pub_->publish(cmd);}
