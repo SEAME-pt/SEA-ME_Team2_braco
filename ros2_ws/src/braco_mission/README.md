@@ -5,7 +5,7 @@ Its first node, `move_to_pose`, moves the tool centre point (`tcp`) to a Cartesi
 lines through waypoints (#85), a first step toward drawing with a pen.
 
 The mission never talks to the serial port: it plans and executes through MoveIt 2 (`braco_moveit_config`), so the
-same code runs in simulation and, later, on the real arm. On the real arm it also holds the control as `mission`
+same code runs in simulation and on the real arm (`real:=true`). On the real arm it also holds the control as `mission`
 around each goal ([ADR-0004](../../../docs/decisions/ADR-0004-trajectories-through-arm-driver.md)). C++, like the
 other nodes that move the arm.
 
@@ -164,3 +164,5 @@ Tests (`colcon test --packages-select braco_mission`): `test/test_pose_math.cpp`
 `test/test_draw_line.py` (the script's path geometry, CSV and plot). No ROS graph, no MoveIt.
 `test/test_move_to_pose_node.cpp` runs the node in-process with a fake `MotionGroup`: both actions, cancel, one goal
 at a time, TF frames and `/arm/take_control`. `MoveItMotionGroup` is checked in Gazebo.
+`test/test_launch.py` builds `move_to_pose.launch.py` without starting it: one node for the simulation, one for the
+real arm (`real:=true`: real-arm model, `use_control`).
