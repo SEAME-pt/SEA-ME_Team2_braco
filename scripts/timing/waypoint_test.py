@@ -208,7 +208,7 @@ def restore_mode(atom):
 def test_stop(atom, start, args):
     goal = list(start)
     goal[0] += args.j1
-    wps = [lerp(start, goal, f) for f in (1 / 3, 2 / 3, 1.0)]
+    wps = [lerp(start, goal, k / args.waypoints) for k in range(1, args.waypoints + 1)]
     if not atom.set_fresh_mode(0):
         raise RuntimeError('could not set fresh mode 0')
     try:
@@ -219,6 +219,10 @@ def test_stop(atom, start, args):
         # Read right BEFORE the STOP: read after it, a queue that survived the STOP would already
         # have moved the arm on, and the test would pass wrongly
         at_stop = atom.angles()
+        if args.clear == 'mode1':
+            # Does leaving fresh mode 0 empty the queue? Then STOP stops the current move
+            atom.send(SET_FRESH_MODE, bytes([1]))
+            time.sleep(0.02)
         atom.send(STOP)
         time.sleep(3.0)
         after = atom.angles()
@@ -230,6 +234,7 @@ def test_stop(atom, start, args):
     ok = drift is not None and drift < 3.0 and not still_moving
     result = {
         'test': 'stop',
+        'clear': args.clear,
         'j1_at_stop': at_stop and round(at_stop[0], 1),
         'j1_after_3s': after and round(after[0], 1),
         'drift_deg': drift if drift is None else round(drift, 1),
@@ -249,7 +254,7 @@ def test_smooth(atom, start, args):
     results = []
     for way in ways:
         for a, b in ((start, goal), (goal, start)):
-            wps = [lerp(a, b, f) for f in (1 / 3, 2 / 3, 1.0)]
+            wps = [lerp(a, b, k / args.waypoints) for k in range(1, args.waypoints + 1)]
             t0 = time.monotonic()
             samples = run_way(atom, way, a, b, args.speed, wps)
             r = {'test': 'smooth', 'way': way, 'dir': 'out' if a is start else 'back'}
@@ -274,6 +279,13 @@ def main():
     ap.add_argument('--j2', type=float, default=20.0, help='J2 travel, degrees (smooth)')
     ap.add_argument(
         '--mode0', action='store_true', help='smooth: include wp-mode0 (after stop PASS)'
+    )
+    ap.add_argument('--waypoints', type=int, default=3, help='waypoints per move (stop, smooth)')
+    ap.add_argument(
+        '--clear',
+        choices=['stop', 'mode1'],
+        default='stop',
+        help='stop: STOP alone, or fresh mode 1 then STOP (does that empty the queue?)',
     )
     ap.add_argument('--out', help='JSON lines file to append the results to')
     args = ap.parse_args()

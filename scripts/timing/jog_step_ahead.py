@@ -46,9 +46,9 @@ FEEDBACK_LAG_S = 0.2
 BREAKAWAY_DEG = 3.0
 
 
-def advance_jog_target(previous, measured, direction, speed, lead, remaining, dt):
+def advance_jog_target(previous, measured, direction, speed, lead, remaining, dt, vel_scale=1.0):
     """Python copy of mycobot::teleop::advanceJogTarget: open-loop target, bounded."""
-    velocity = speed * DEG_PER_S_PER_SPEED
+    velocity = speed * DEG_PER_S_PER_SPEED * vel_scale
     reach = max(0.0, min(lead + velocity * FEEDBACK_LAG_S, remaining))
     ahead = (
         BREAKAWAY_DEG if previous is None else (previous - measured) * direction + velocity * dt
@@ -65,6 +65,12 @@ def main():
     ap.add_argument('--cycles', type=int, default=2)
     ap.add_argument('--tick', type=float, default=0.02, help='s, joystick_teleop LOOP_PERIOD')
     ap.add_argument('--label', default='')
+    ap.add_argument(
+        '--vel-scale',
+        type=float,
+        default=1.0,
+        help='--open-loop: target velocity = speed * 1.52 deg/s * this',
+    )
     ap.add_argument(
         '--open-loop',
         action='store_true',
@@ -138,7 +144,14 @@ def main():
                 if args.open_loop:
                     now = time.monotonic()
                     target = advance_jog_target(
-                        target, angle, direction, args.speed, args.lead, remaining, now - t_prev
+                        target,
+                        angle,
+                        direction,
+                        args.speed,
+                        args.lead,
+                        remaining,
+                        now - t_prev,
+                        args.vel_scale,
                     )
                     t_prev = now
                     send(target, args.speed)
@@ -190,6 +203,7 @@ def main():
         'speed': args.speed,
         'lead': args.lead,
         'open_loop': args.open_loop,
+        'vel_scale': args.vel_scale,
         'expected_v': round(args.speed * 1.52, 1),
         'v_mean': round(v_mean, 1),
         'cv_v': round(st.pstdev(vel) / v_mean, 3) if v_mean else None,
