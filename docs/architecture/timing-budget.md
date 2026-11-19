@@ -13,7 +13,7 @@ Measured on **2026-11-09** (#90), real arm, Jetson Nano, no desktop (`multi-user
 |---|---|---|
 | Serial round trip, one joint read (`getAngles`) | **9.3 ms** mean, 11.8 ms p99, 13.9 ms max, 0 failures / 2000 | Atom firmware (the wire is 0.22 ms) |
 | `/joint_states`, arm idle | **18.7 Hz** at `state_rate_hz` 20; ceiling **~45 Hz** from 60 Hz up | `sleep(10ms)` + read in the serial loop |
-| `/joint_states`, continuous commands (the #87 plugin) | **~14 Hz** (70 ms) at any `state_rate_hz` from 20 to 100 | `COMMAND_GAP` (50 ms) after every motion command |
+| `/joint_states`, continuous commands (the plugin's `write()`, #101) | **~14 Hz** (70 ms) at any `state_rate_hz` from 20 to 100 | `COMMAND_GAP` (50 ms) after every motion command |
 | Command → first joint motion (J6, 5°, speed 30) | **~205 ms** p50, 140 ms min, 268 ms max | Atom and servos starting the move |
 
 **Conclusion:** during a trajectory the real arm takes a new command and gives a new position about every **70 ms
@@ -55,7 +55,7 @@ every pass:  [motion command pending?] ── yes ──► sendAngles ─► sl
 ### 2. `/joint_states` rate
 
 `scripts/timing/js_rate.py`: 60 s per point, intervals from `header.stamp`. *Load* = `scripts/timing/hold_load.py`
-sending `ALL_ANGLES` of the current pose at the same rate as `state_rate_hz`, as the #87 plugin will (ADR-0004); the arm
+sending `ALL_ANGLES` of the current pose at the same rate as `state_rate_hz`, as the plugin's `write()` does (#101, ADR-0004); the arm
 holds still. CPU: `arm_driver`, % of one core.
 
 | `state_rate_hz` | Load | Achieved Hz | Achieved / requested | Mean ms | p50 ms | p99 ms | Max ms | CPU % |
@@ -85,8 +85,7 @@ holds still. CPU: `arm_driver`, % of one core.
 - p99 / max idle (~40 / ~48 ms at the ceiling): the temperature and voltage reads every 2 s. This is the "before"
   jitter for #93.
 - Read failures: one `no valid angle feedback` right after each `power on`, none during the runs.
-- *Commands* is a stand-in for #87, not yet merged: re-run `js_rate.py` and `latency_step.py` with the real plugin
-  when it lands.
+- *Commands* is a stand-in for the plugin's `write()` (#101, now merged), not re-run with it yet: re-run `js_rate.py` and `latency_step.py` with the real plugin.
 
 ### 3. Command → motion latency
 

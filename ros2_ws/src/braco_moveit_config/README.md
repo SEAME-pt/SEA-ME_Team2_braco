@@ -129,3 +129,5 @@ and the final `/joint_states` (120 s timeout). It fails on a config MoveIt canno
 static test misses (e.g. a joint with `max_velocity: 0`, or the SRDF's disabled collision pairs removed).
 `test/test_joint_limits.py`: the positions of `joint_limits.yaml` equal `JOINT_LIMITS` and the URDF `<limit>`, and its
 velocities are not above the measured URDF ones.
+`test/test_launch.py` builds the launch files without starting them and checks the order: `arm_controller` spawner,
+domain check (#103), then `move_group` and RViz; a failure at either step shuts the launch down.

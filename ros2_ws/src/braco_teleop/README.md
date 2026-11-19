@@ -18,7 +18,7 @@ anything dies.
 
 | | Name |
 |---|---|
-| sub | `/joint_states`, `/arm/control_owner` |
+| sub | `/joint_states`, `/arm/control_owner`, `/arm/stopped` (latched: the LED turns yellow) |
 | pub | `/arm/command` (`source: joystick`), `/arm/led` |
 | client | `/arm/take_control`, `/arm/power_on` (when a joystick connects, once it has the control), `/arm/set_gripper` |
 

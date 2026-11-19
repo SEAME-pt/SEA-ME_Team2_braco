@@ -23,8 +23,8 @@ is in sync**: who is online, who controls the arm, what each person did, and the
   It latches ([ADR-0005](../docs/decisions/ADR-0005-stop-latch.md)): the page shows a banner, motion is refused,
   and anyone can **Release STOP** from 3 s after it. The release does not move the arm.
 - **The page is one client among others.** On the real arm, taking control also asks `arm_driver` for the arm
-  ([ADR-0002](../docs/decisions/ADR-0002-unique-control.md)): while the **joystick** or `make zero` / `make park` has it,
-  *Take control* is refused (409) and the page shows "the joystick is in control". While the page has it, the
+  ([ADR-0002](../docs/decisions/ADR-0002-unique-control.md)): while another client (the **joystick**, `make zero` / `make park`
+  or `mission`) has it, or a STOP is latched, *Take control* is refused (409) and the page shows who is in control. While the page has it, the
   joystick is ignored unless someone holds its button 8 for about 1 s; then the page's control ends at once.
 - **Speed is shared**: one value held by the server, shown to everybody, changed only by the operator (viewers see
   it locked). It is capped at **80**; going above asks the operator to accept a warning, and the fast range is
@@ -116,7 +116,7 @@ docker run --rm -v "$PWD":/src:ro python:3.8 bash -c 'cp -r /src /w && cd /w && 
 | `ARM_MOCK` | — | `1` uses mock data |
 | `BRACO_ROS` | `1` | `0` never starts ROS 2 (health and graph stay empty) |
 | `GZ_JOINT_NAMES` | myCobot 280 URDF names | joints in `/joint_states` for Gazebo, comma separated |
-| `WEB_PORT` | `8000` | port of the page in the `real` / `sim` container (`docker/.env`) |
+| `WEB_PORT` | `8000` | port of the page in the `real` (Jetson) / `dev` (PC) container (`docker/.env`) |
 | `GITHUB_TOKEN` | — | optional; raises the GitHub API limit (60 req/h without) |
 | `GITHUB_REPO` | `SEAME-pt/SEA-ME_Team2_braco` | repository of the sprints |
 
@@ -146,7 +146,7 @@ runs **409**.
 | `WS /ws` | the page's connection. First message `{"type": "hello", "id", "name", "page"}`; then the server sends `telemetry` (200 ms), `presence`, `lease`, `activity`, `ui`, `speed`, `health`, `graph` (ROS page), `echo` (watched topic); the page sends `ui`, `page`, `rename`, `watch` / `unwatch` |
 | `WS /ws/telemetry` | bare snapshot stream every 200 ms (scripts, old pages) |
 | `GET /api/status` | latest arm snapshot (`capabilities` lists what the source supports) |
-| `POST /api/control/take` · `/release` | take / release control; take answers **409** while the joystick or zero/park has the arm |
+| `POST /api/control/take` · `/release` | take / release control; take answers **409** while another client has the arm or a STOP is latched |
 | `GET /api/session` | clients, lease and activity log |
 | `POST /api/stop` | STOP, **anyone**; it latches |
 | `POST /api/release_stop` | release a latched STOP, **anyone**; 409 inside the 3 s hold; the arm does not move |

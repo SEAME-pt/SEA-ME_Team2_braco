@@ -20,13 +20,31 @@ the same commands, from the repo folder.
   `SHELLCHECK_IMAGE` and `HADOLINT_IMAGE` through docker, so it never skips a check that CI runs.
 - `make lint`, `make format` and `make format-check` take their files from `git ls-files`: a new file is skipped
   until it is `git add`ed. Add it first, or a check that passes locally can fail once the file is on the PR.
-- A PR that changes only files under `docs/` or `.md` files skips `ros` and `coverage` (a small `changes` job
-  decides from `git diff`); a skipped job counts as passed for the required checks. `host` always runs, and pushes
-  to `main` always run everything.
-- Caches: pip (`actions/setup-python`), the image layers (BuildKit `type=gha`), and ccache + colcon `build/`
-  (`actions/cache`, reset when the Dockerfile, `docker/config/` or `docker/scripts/` change). A warm run only
-  recompiles what changed. Only pushes to `main` save the image layers and the build caches: a PR reads `main`'s but
-  can't share its own with other PRs, so saving them would only fill the 10 GB repo cache.
+- A small `changes` job decides from `git diff` what a change needs (a PR: its base to its head; a push: from the old
+  `main` to the new one, so a docs-only merge does not rebuild). A skipped job or step counts as passed for the
+  required checks. `host` always runs (under a minute).
+  - `ros` and `coverage` run only when a file they read changed: `ros2_ws/` (except `.md`), `docker/Dockerfile`,
+    `docker/config/`, `docker/scripts/`, `scripts/`, `Makefile`, `mk/` or `.github/workflows/`. Docs, compose files,
+    `docker/tests/`, `web/`, templates and the like are checked by `host` alone. A folder that `ros` or `coverage`
+    starts to read (a new mount in `mk/ci.mk`, a new `COPY` in the Dockerfile) must be added to `ros_input` in the
+    `changes` job, or a change to it skips the jobs that test it.
+  - `make tidy` runs only when a C++ input changed: a `.cpp`, `.cc`, `.hpp` or `.h`, a `CMakeLists.txt`,
+    `package.xml`, `.msg`/`.srv`/`.action` or `.clang-tidy` in `ros2_ws/`, the image (`docker/Dockerfile`,
+    `docker/config/`, `docker/scripts/`), `Makefile`, `mk/ci.mk` or the workflow (`tidy_input`).
+  - A rename lists both paths, so moving code into `docs/` still builds. A manual run (`workflow_dispatch`), the first
+    push of a branch, or a failed diff runs everything.
+- `make tidy` goes through [ctcache](https://github.com/matus-chochlik/ctcache) (in the `ci` image): a file that
+  passed before with the same preprocessed source (headers and comments included, so a header change or a removed
+  `NOLINT` re-checks it), the same config and arguments is not analysed again. Its cache is `ros2_ws/.ctcache`, also
+  kept locally, so a second `make tidy` on a workstation only re-checks what changed. The log ends with the cache's
+  hits and misses. A finding is never cached. The databases of every package are merged into `build/.tidy`, so one
+  `run-clang-tidy` keeps every core busy.
+- Caches: pip (`actions/setup-python`), the image layers (BuildKit `type=gha`), ccache + colcon `build/` and the
+  ctcache (`actions/cache`, reset when the Dockerfile, `docker/config/` or `docker/scripts/` change). A warm run only
+  recompiles and re-checks what changed. Only pushes to `main` save the image layers and the build caches (the
+  ctcache only after a passing `make tidy`): a PR reads `main`'s but can't share its own with other PRs, so saving them
+  would only fill the 10 GB repo cache. A `main` push that skipped `ros` or `make tidy` saves nothing: the next run
+  restores the last saved cache by key prefix, which is still current because the skipped files never reach it.
 - The arm64 Jetson image is not built in CI (QEMU is too slow); build it by hand with `make jetson-image`.
 - `ci-ros` writes to `ros2_ws/build`, `install` and `log`, like `make build`, plus its ccache in `ros2_ws/.ccache`.
 
@@ -59,7 +77,7 @@ spawned `arm_driver` that talks to a fake arm on a pseudo-terminal (`PtyArm`), n
 - Floors: `COV_MIN_CXX`, `COV_MIN_PY` and `COV_MIN_WEB` in [`mk/ci.mk`](../../mk/ci.mk), 80% for every component. A PR
   below a floor adds tests; the floors are not lowered to make it pass.
 - The ROS Python in scope is every `.py` of `ros2_ws/src` that git tracks outside `script/`, `scripts/` and `test/`,
-  launch files included (today the 7 launch files, all at 100%). A file no test loads still counts, at 0%
+  launch files included (today the 8 launch files). A file no test loads still counts, at 0%
   (`scripts/coverage_touch.py`), so a new launch file without a test lowers the total. A new file counts once git
   tracks it. The helper's own test (`scripts/test_coverage_touch.py`) runs in the same job, on the coverage.py of
   the `ci` image; if it fails, the job fails.
