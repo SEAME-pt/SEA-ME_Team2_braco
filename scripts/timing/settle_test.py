@@ -239,14 +239,16 @@ def main():
     for block in ('free', 'oneway'):
         r = [x for x in rows if x['block'] == block and x['move'].startswith('from_')]
         if r:
-            spread = [max(x['rest_deg'][j] for x in r) - min(x['rest_deg'][j] for x in r)
-                      for j in range(6)]
+            spread = [
+                max(x['rest_deg'][j] for x in r) - min(x['rest_deg'][j] for x in r)
+                for j in range(6)
+            ]
             print(f'{block:<8} rest spread per joint (deg): {[round(s, 2) for s in spread]}')
             summary(lambda x, b=block: x['block'] == b and x['move'].startswith('from_'), block)
     for x in rows:
         if x['block'] == 'speed':
             cv = ' '.join('  -  ' if c is None else f'{c:.3f}' for c in x['cv_w'])
-            print(f"speed {x['move']:<10} cv@200ms J1..J6: {cv}   settle@0.1 {x['settle_s_01']}")
+            print(f'speed {x["move"]:<10} cv@200ms J1..J6: {cv}   settle@0.1 {x["settle_s_01"]}')
 
 
 if __name__ == '__main__':
