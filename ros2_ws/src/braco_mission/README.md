@@ -104,6 +104,49 @@ The executed deviation is about three times the planned one: `arm_controller` la
 moves (it rises while accelerating, holds ~0.1 mm at cruise speed, and falls back as the arm stops). The real arm's
 servos will add far more.
 
+## The goal set: run_goal_set.py
+
+`scripts/run_goal_set.py` runs a fixed set of goals, the same in Gazebo and on the real arm, and reports the pose
+error of each one (#140). The set is [`config/goal_set.yaml`](config/goal_set.yaml): a `start` pose and goals that
+are either a `line` (an end point for `/move_cartesian`, keeping the start orientation) or a full `pose` (for
+`/move_to_pose`, from `/compute_fk`). Before every goal the arm goes back to `start`, and that return is reported as
+a `start` goal too.
+
+```bash
+make run CMD='ros2 run braco_mission run_goal_set.py'                          # all goals; asks before moving
+make run CMD='ros2 run braco_mission run_goal_set.py --only line_y,pose_turn --out bags/real_1'
+```
+
+It prints one line per goal and writes `<out>/summary.csv` (one row per goal: success, position and orientation
+error, and for lines `fraction`, planned and executed deviation) and `<out>/<line>.csv/.png` as `draw_line.py` does.
+`<out>` is `bags/goal_set` by default. It stops at the first goal that does not run to the end (refused, partial
+plan, execution error); a goal outside the tolerance is reported and the set goes on. `--set` takes another YAML.
+
+From `start` the tool points down, so the reachable lines go in (toward the base) and down: moving the `tcp` 50 mm
+out (+x) or up plans only 55–73% of the path, and nothing moves.
+
+Checked in Gazebo (2026-11-19), `run_goal_set.py` with the default set:
+
+| Goal | Kind | Length | Reached (position, orientation) | Planned deviation | Executed deviation max |
+|---|---|---|---|---|---|
+| `start` (8 returns) | pose | | 0.32–0.43 mm, 0.04–0.15° | | |
+| `line_y` | line | 130 mm along +y | 0.35 mm, 0.08° | 0.04 mm | 0.33 mm |
+| `line_x_in` | line | 50 mm along −x | 0.19 mm, 0.04° | 0.04 mm | 0.25 mm |
+| `line_z_down` | line | 40 mm down | 0.33 mm, 0.07° | 0.04 mm | 0.33 mm |
+| `line_z_up` | line | 30 mm up | 0.35 mm, 0.09° | 0.06 mm | 0.20 mm |
+| `line_xy` | line | 89 mm, x-y diagonal | 0.17 mm, 0.04° | 0.04 mm | 0.31 mm |
+| `line_xyz` | line | 78 mm, x-y-z diagonal | 0.20 mm, 0.04° | 0.04 mm | 0.26 mm |
+| `pose_turn` | pose | | 0.32 mm, 0.13° | | |
+| `pose_tilted` | pose | | 0.42 mm, 0.14° | | |
+
+All within the tolerances (5 mm, 2°). The errors are larger than on 2026-11-11 (0.02 mm at the end of `line_y`):
+the `tcp` sits ~0.3 mm below the goal for the whole line, which looks like the simulated arm sagging under gravity.
+`line_z_down` takes the `tcp` to z = 73 mm: on the real arm, check where the table is first.
+
+On the real arm the error comes from TF, so from the angles the servos report through the URDF: it shows whether the
+joints got there, not errors of the model itself (such as `tcp_length`, still to check with a ruler in
+[urdf-sim-to-real.md](../../../docs/hardware/urdf-sim-to-real.md#open-items-need-the-hardware)).
+
 ## Run it on the real arm
 
 Follow [safety.md §9](../../../docs/guides/safety.md#9-first-moveit-2-motion-on-the-real-arm). The Jetson runs the arm
@@ -158,10 +201,12 @@ Position only: send the orientation as all zeros. Checked in Gazebo (2026-11-10)
 | `src/move_to_pose.cpp` | `main()` only |
 | `launch/move_to_pose.launch.py` | The node with the MoveIt config of the Gazebo arm, or of the real arm with `real:=true` |
 | `scripts/draw_line.py` | Draw one straight line and plot the executed `tcp` path |
+| `scripts/run_goal_set.py`, `config/goal_set.yaml` | Run the fixed goal set and report the pose error of every goal |
 
 Tests (`colcon test --packages-select braco_mission`): `test/test_pose_math.cpp`, `test/test_mission.cpp` and
 `test/test_cartesian.cpp` (every step against a fake arm: control, fallback, fraction, failures, tolerances), and
-`test/test_draw_line.py` (the script's path geometry, CSV and plot). No ROS graph, no MoveIt.
+`test/test_draw_line.py` (the script's path geometry, CSV and plot) and `test/test_run_goal_set.py` (the goal set
+check, the package's set, the summary). No ROS graph, no MoveIt.
 `test/test_move_to_pose_node.cpp` runs the node in-process with a fake `MotionGroup`: both actions, cancel, one goal
 at a time, TF frames and `/arm/take_control`. `MoveItMotionGroup` is checked in Gazebo.
 `test/test_launch.py` builds `move_to_pose.launch.py` without starting it: one node for the simulation, one for the
