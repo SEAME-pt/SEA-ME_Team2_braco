@@ -50,3 +50,23 @@ def windowed_speeds(points, window_s):
         tb, ab = points[k]
         speeds.append(abs(ab - aa) / (tb - ta))
     return speeds
+
+
+def settle_time(samples, t0, tol_deg, consecutive=3, rest_s=0.3):
+    """Seconds after t0 until every joint stays within tol_deg of where it comes to rest.
+
+    samples: (time s, [angle deg per joint]), ascending. The rest pose is the mean of the last
+    rest_s seconds. Settled = `consecutive` samples in a row inside the tolerance; 0.0 if it
+    already was at t0, None if it never settles (#141: wait for this before the gripper acts).
+    """
+    after = [(t, a) for t, a in samples if t >= t0]
+    tail = [a for t, a in after if t >= after[-1][0] - rest_s] if after else []
+    if len(after) < consecutive or not tail:
+        return None
+    rest = [sum(col) / len(col) for col in zip(*tail)]
+    run = 0
+    for i, (_, a) in enumerate(after):
+        run = run + 1 if all(abs(x - r) <= tol_deg for x, r in zip(a, rest)) else 0
+        if run == consecutive:
+            return max(0.0, after[i - consecutive + 1][0] - t0)
+    return None
