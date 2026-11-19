@@ -13,6 +13,9 @@ Ubuntu 26.04 + ROS 2 Lyrical for the myCobot 280 Jetson Nano, in Docker.
 - **`COMPOSE_PROFILES` in `docker/.env` says which machine this is** (`pc` or `jetson`). It turns on `sim` or `real`
   and picks the image of `dev`.
 - **The machines talk over DDS** (ROS 2), on the host network, with the same RMW.
+- **The Jetson also runs a CI runner**, `jetson-braco`, as the user `gh-runner`, outside these containers. Its manual
+  `hil` job only reads (`docker ps`, `ls -l /dev/ttyTHS1`) and never starts or stops `real`:
+  [HIL runner](../docs/guides/ci.md#hil-runner).
 | Container | Machine | Image | What it runs | Stays up? |
 |---|---|---|---|---|
 | `dev` | PC | `braco-image/pc` | Your tools: shell, build, tests, RViz2, MoveIt 2, Gazebo, PlotJuggler 4. `make web` runs the page here | Yes |
