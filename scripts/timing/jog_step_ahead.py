@@ -14,6 +14,8 @@ Metrics, on the cruise part of each segment (after 0.3 s, until the last lead of
   v_mean   mean velocity (deg/s);  expected about speed * 1.52 deg/s
   cv_v     std / mean of the velocity between two /joint_states: 0 = perfectly even
   stall    share of /joint_states intervals slower than 20 % of v_mean
+  cv_v_w   cv_v and stall over --window (default 0.2 s, #141), as cv_v_w and stall_pct_w: a slow
+           joint moves only a few encoder steps between two /joint_states, so cv_v has a floor
   js_dt    /joint_states interval, median / p95 / max (ms); gaps > 250 ms counted as dropouts
 
 The arm must be powered on, out of rest, in a pose where the joint can move --range degrees.
@@ -34,7 +36,7 @@ from braco_interfaces.msg import ArmCommand, JointTarget
 from hold_load import SOURCE, publish_unless_stopped, release_control, take_control, watch_stop
 from rclpy.node import Node
 from sensor_msgs.msg import JointState
-from stats import percentile
+from stats import percentile, windowed_speeds
 
 # JOINT_LIMITS of mycobot.hpp (degrees), minus a margin: the run never asks beyond them
 LIMITS = [(-166, 166), (-138, 138), (-149, 149), (-149, 149), (-153, 158), (-178, 178)]
@@ -76,7 +78,9 @@ def main():
         action='store_true',
         help='the #93 teleop: target advances open loop (advanceJogTarget), not measured + lead',
     )
+    ap.add_argument('--window', type=float, default=0.2, help='s, for cv_v_w and stall_pct_w')
     ap.add_argument('--out', help='JSON lines file to append the result to')
+    ap.add_argument('--raw', help='JSON lines file to append the samples and segments to')
     args = ap.parse_args()
     j = args.joint - 1
 
@@ -177,7 +181,7 @@ def main():
         node.destroy_node()
         rclpy.shutdown()
 
-    vel, dts, vmeans = [], [], []
+    vel, dts, vmeans, vel_w = [], [], [], []
     for ta, tb in segments:
         pts = [p for p in samples if ta <= p[0] <= tb]
         if len(pts) < 4:
@@ -185,6 +189,7 @@ def main():
         v = [(b[1] - a[1]) / (b[0] - a[0]) for a, b in zip(pts, pts[1:]) if b[0] > a[0]]
         vm = (pts[-1][1] - pts[0][1]) / (pts[-1][0] - pts[0][0])
         vel += [abs(x) for x in v]
+        vel_w += windowed_speeds(pts, args.window)
         vmeans.append(abs(vm))
         dts += [(b[0] - a[0]) * 1e3 for a, b in zip(pts, pts[1:])]
     if not vel and stalled is None:
@@ -208,6 +213,13 @@ def main():
         'v_mean': round(v_mean, 1),
         'cv_v': round(st.pstdev(vel) / v_mean, 3) if v_mean else None,
         'stall_pct': round(100 * sum(1 for x in vel if x < 0.2 * v_mean) / len(vel), 1),
+        'window_s': args.window,
+        'cv_v_w': round(st.pstdev(vel_w) / v_mean, 3) if v_mean and vel_w else None,
+        'stall_pct_w': (
+            round(100 * sum(1 for x in vel_w if x < 0.2 * v_mean) / len(vel_w), 1)
+            if vel_w
+            else None
+        ),
         'js_dt_p50': round(percentile(sorted(dts), 0.5), 1),
         'js_dt_p95': round(percentile(sorted(dts), 0.95), 1),
         'js_dt_max': round(max(dts), 1),
@@ -219,6 +231,16 @@ def main():
     if args.out:
         with open(args.out, 'a') as f:
             f.write(json.dumps(result) + '\n')
+    if args.raw:
+        with open(args.raw, 'a') as f:
+            raw = {
+                'label': args.label,
+                'joint': args.joint,
+                'speed': args.speed,
+                'segments': segments,
+                'samples': samples,
+            }
+            f.write(json.dumps(raw) + '\n')
 
 
 if __name__ == '__main__':

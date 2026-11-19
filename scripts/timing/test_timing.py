@@ -10,7 +10,7 @@ import types
 
 import pytest
 import serial_rtt
-from stats import interval_stats, percentile
+from stats import interval_stats, percentile, windowed_speeds
 
 FRAME = serial_rtt.REPLY_HEAD + bytes(range(12)) + b'\xfa'  # a complete getAngles reply
 
@@ -187,3 +187,29 @@ def test_release_control_never_raises(hold_load, monkeypatch, capsys):
     monkeypatch.setattr(hold_load, 'take_control', gone)
     hold_load.release_control(FakeNode())
     assert 'could not release the control' in capsys.readouterr().out
+
+
+def test_windowed_speeds_steady_motion():
+    # 10 deg/s sampled every 20 ms: every window of 10 samples reads 10 deg/s
+    pts = [(i * 0.02, i * 0.2) for i in range(50)]
+    speeds = windowed_speeds(pts, 0.19)
+    assert len(speeds) == 40
+    assert all(v == pytest.approx(10.0) for v in speeds)
+
+
+def test_windowed_speeds_smooth_out_one_step_quantization():
+    # the same motion read through a 0.088 deg encoder: two-sample speeds jump, windowed ones don't
+    step = 0.088
+    pts = [(i * 0.02, round(i * 0.18 / step) * step) for i in range(100)]
+    pair = windowed_speeds(pts, 0.0)
+    window = windowed_speeds(pts, 0.2)
+
+    def spread(v):
+        return (max(v) - min(v)) / (sum(v) / len(v))
+
+    assert spread(pair) > 0.4
+    assert spread(window) < 0.1
+
+
+def test_windowed_speeds_shorter_than_the_window():
+    assert windowed_speeds([(0.0, 0.0), (0.1, 1.0)], 0.2) == []

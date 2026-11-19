@@ -30,3 +30,23 @@ def interval_stats(stamps_s, requested_hz):
         'max_ms': iv[-1],
         'late_pct': 100.0 * sum(1 for x in iv if x > 1.5 * period_ms) / len(iv),
     }
+
+
+def windowed_speeds(points, window_s):
+    """|velocity| over a window instead of between two samples (deg/s): one value per sample,
+    from it to the first sample at least window_s later. points: (time s, angle deg), ascending.
+
+    Between two /joint_states 20-60 ms apart a slow joint moves only a few encoder steps, so a
+    one-step error looks like jitter; over ~200 ms it is small (#141).
+    """
+    speeds = []
+    k = 0
+    for i, (ta, aa) in enumerate(points):
+        k = max(k, i + 1)
+        while k < len(points) and points[k][0] - ta < window_s:
+            k += 1
+        if k == len(points):
+            break
+        tb, ab = points[k]
+        speeds.append(abs(ab - aa) / (tb - ta))
+    return speeds
