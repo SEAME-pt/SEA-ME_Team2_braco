@@ -8,6 +8,7 @@
 #         make cppcheck  (cppcheck on the C++ packages, same image)
 #         make tidy      (clang-tidy on the C++ packages, from the ci-ros build)
 #   coverage  make coverage  (GoogleTests with gcovr, pytests with pytest-cov; same image as ros)
+#   hil   manual only (Run workflow with hil): smoke check on the Jetson runner next to the real arm, never moves it
 #
 # The Jetson (arm64) image is not built here: a QEMU build is too slow, use make jetson-image by hand.
 name: CI
@@ -17,6 +18,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      hil:
+        description: Also run the hil job on the Jetson next to the real arm
+        type: boolean
+        default: false
 
 # A new push to a PR cancels its older run; runs on main always finish.
 concurrency:
@@ -305,3 +311,22 @@ jobs:
         with:
           path: ros2_ws/.ccache
           key: ${{ steps.coverage-cache.outputs.cache-primary-key }}
+
+  hil:
+    if: github.event_name == 'workflow_dispatch' && inputs.hil
+    runs-on: [self-hosted, braco-arm]
+    environment: hil
+    timeout-minutes: 5
+    concurrency:
+      group: hil
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - name: Smoke check of the Jetson
+        run: |
+          uname -m
+          test "$(uname -m)" = aarch64
+          docker ps
+          ls -l /dev/ttyTHS1
