@@ -294,5 +294,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         ros-${ROS_DISTRO}-rviz2 \
  && rm -rf /var/lib/apt/lists/*
 
+# ctcache (make tidy): caches clang-tidy's passing results per file. One Python file with no dependencies outside the
+# standard library in local mode; the project has no tags, so a commit and its checksum are pinned.
+ARG CTCACHE_COMMIT=2cb1c2bdd86f5e56a9044908f7c36a8a04a30ca2
+ARG CTCACHE_SHA256=21eabf0105a38c63b43e80825a1656b0efd6cd9b040cb91490b34cbfb1f0b277
+RUN mkdir -p /usr/local/lib/ctcache \
+ && curl -fsSL -o /usr/local/lib/ctcache/clang_tidy_cache.py \
+        "https://raw.githubusercontent.com/matus-chochlik/ctcache/${CTCACHE_COMMIT}/src/ctcache/clang_tidy_cache.py" \
+ && echo "${CTCACHE_SHA256}  /usr/local/lib/ctcache/clang_tidy_cache.py" | sha256sum -c -
+COPY --chmod=0755 scripts/clang-tidy-cache.sh /usr/local/bin/clang-tidy-cache
+
 USER dev
 CMD ["bash"]

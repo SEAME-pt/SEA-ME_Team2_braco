@@ -1,5 +1,7 @@
 # CI for every PR and every push to main (issue #16). Every job calls the Makefile, so a failure can be
-# reproduced locally with the same command. A PR that changes only docs/ and .md files skips ros and coverage.
+# reproduced locally with the same command. A PR or push to main that changes nothing ros and coverage read (docs,
+# compose files, web/, templates; see the changes job) skips them, and one with no C++ input skips make tidy; host
+# always runs.
 #
 #   host  make ci        (lint, web page tests with coverage; no robot, no docker image)
 #   ros   make ci-ros    (rosdep, colcon build, colcon test of ros2_ws/src)
@@ -25,33 +27,81 @@ permissions:
   contents: read
 
 jobs:
-  # code=false when every file a PR changes is under docs/ or a .md: ros and coverage are then skipped, which a
-  # required check counts as passed. Pushes to main and manual runs always build. If this job fails, code is empty and
-  # both run anyway. --no-renames lists both paths of a rename, so moving code into docs/ still builds.
+  # Decides from git diff which heavy work a change needs. Both outputs are false only when no changed file is an
+  # input of that work; a skipped job counts as passed for a required check.
+  #   code  ros and coverage: what they read (see ros_input below). The container mounts only ros2_ws/, the image is
+  #         built from docker/Dockerfile, config/ and scripts/, coverage mounts scripts/, and every job runs make.
+  #         Docs, compose files, web/ and the like are checked by host alone.
+  #   cpp   make tidy, a subset of code (see tidy_input): the C++ sources and what reaches their compile commands.
+  # A PR diffs its base...head, a push to main diffs before..sha (everything the push brought, a merge included).
+  # Manual runs, a push with no `before` (all zeros) and a failed diff run everything; if this job fails, both outputs
+  # are empty and everything runs anyway. --no-renames lists both paths of a rename, so moving code into docs/ still
+  # builds. host is never skipped: it takes under a minute.
+  # A skipped ros on main saves no cache: the next run restores the last one by prefix (restore-keys), built from the
+  # same inputs, since a file outside ros_input never reaches the build.
   changes:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
       code: ${{ steps.diff.outputs.code }}
+      cpp: ${{ steps.diff.outputs.cpp }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
-        if: github.event_name == 'pull_request'
+        if: github.event_name != 'workflow_dispatch'
         with:
           fetch-depth: 0
 
       - id: diff
         env:
           EVENT: ${{ github.event_name }}
-          BASE: ${{ github.event.pull_request.base.sha }}
-          HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_AFTER: ${{ github.sha }}
         run: |
+          # A new folder that ros or coverage reads (a mount in mk/ci.mk, a COPY in the Dockerfile) goes here too,
+          # or a change to it would skip the jobs that test it.
+          ros_input() {
+            case "$1" in
+              *.md) return 1 ;;
+              ros2_ws/* | docker/Dockerfile | docker/config/* | docker/scripts/* | scripts/*) return 0 ;;
+              Makefile | mk/* | .github/workflows/*) return 0 ;;
+              *) return 1 ;;
+            esac
+          }
+          # The image (clang-tidy and the ROS headers), the make target and the workflow, then in ros2_ws/src: the
+          # sources, the CMake and package files that set their flags and dependencies, the interfaces whose
+          # generated headers they include, and the .clang-tidy files.
+          tidy_input() {
+            case "$1" in
+              docker/Dockerfile | docker/config/* | docker/scripts/* | Makefile | mk/ci.mk | .github/workflows/*) return 0 ;;
+              ros2_ws/*.cpp | ros2_ws/*.cc | ros2_ws/*.hpp | ros2_ws/*.h) return 0 ;;
+              ros2_ws/*/CMakeLists.txt | ros2_ws/*/package.xml | ros2_ws/*/.clang-tidy | ros2_ws/.clang-tidy) return 0 ;;
+              ros2_ws/*.msg | ros2_ws/*.srv | ros2_ws/*.action) return 0 ;;
+              *) return 1 ;;
+            esac
+          }
+
+          case "$EVENT" in
+            pull_request) range="$PR_BASE...$PR_HEAD" ;;
+            push) range="$PUSH_BEFORE..$PUSH_AFTER" ;;
+            *) range= ;;
+          esac
+          if [ "$PUSH_BEFORE" = 0000000000000000000000000000000000000000 ]; then range=; fi
+
           code=true
-          if [ "$EVENT" = pull_request ]; then
-            files=$(git diff --name-only --no-renames "$BASE...$HEAD")
+          cpp=true
+          if [ -n "$range" ] && files=$(git diff --name-only --no-renames "$range") && [ -n "$files" ]; then
             printf '%s\n' "$files"
-            if [ -n "$files" ] && ! printf '%s\n' "$files" | grep -qvE '^docs/|\.md$'; then code=false; fi
+            code=false
+            cpp=false
+            while IFS= read -r f; do
+              if [ "$code" = false ] && ros_input "$f"; then echo "code: $f"; code=true; fi
+              if [ "$cpp" = false ] && tidy_input "$f"; then echo "cpp: $f"; cpp=true; fi
+            done <<< "$files"
           fi
           echo "code=$code" | tee -a "$GITHUB_OUTPUT"
+          echo "cpp=$cpp" | tee -a "$GITHUB_OUTPUT"
 
   host:
     runs-on: ubuntu-24.04
@@ -158,10 +208,31 @@ jobs:
         run: make cppcheck CI_IMAGE=${{ env.CI_IMAGE }}
 
       # clang-tidy reads the compile_commands.json of make ci-ros's build, so it also runs when a test failed (the build
-      # is there); after a failed build it stops at the missing database or reports the compile errors.
+      # is there); after a failed build it stops at the missing database or reports the compile errors. Skipped when the
+      # change has no C++ input (changes job, output cpp).
+      # ctcache keeps one entry per file that passed, keyed on its preprocessed source (comments kept, so removing a
+      # NOLINT re-checks it), its clang-tidy config and arguments: only the files a change reaches are analysed again.
+      # The key here adds the image definition (the clang-tidy version is not in ctcache's). Saved only on pushes to
+      # main, like the colcon cache, and only after a passing tidy; a failure is never cached.
+      - id: tidy-cache
+        if: ${{ !cancelled() && steps.image.outcome == 'success' && needs.changes.outputs.cpp != 'false' }}
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ros2_ws/.ctcache
+          key: ctcache-${{ hashFiles('docker/Dockerfile', 'docker/config/**', 'docker/scripts/**') }}-${{ github.sha }}
+          restore-keys: ctcache-${{ hashFiles('docker/Dockerfile', 'docker/config/**', 'docker/scripts/**') }}-
+
       - name: make tidy
-        if: ${{ !cancelled() && steps.image.outcome == 'success' }}
+        id: tidy
+        if: ${{ !cancelled() && steps.image.outcome == 'success' && needs.changes.outputs.cpp != 'false' }}
         run: make tidy CI_IMAGE=${{ env.CI_IMAGE }}
+
+      - name: Save the clang-tidy cache
+        if: github.event_name == 'push' && steps.tidy.outcome == 'success'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ros2_ws/.ctcache
+          key: ${{ steps.tidy-cache.outputs.cache-primary-key }}
 
       # Only when every step passed, as actions/cache did: a failed build is never the next run's starting point.
       - name: Save the colcon cache

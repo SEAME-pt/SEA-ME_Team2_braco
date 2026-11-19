@@ -113,16 +113,33 @@ CI_CPPCHECK_SH    := cppcheck $(CPPCHECK_FLAGS) -j"$$(nproc)" $(CPPCHECK_INCLUDE
 
 # tidy: clang-tidy (checks in ros2_ws/.clang-tidy) on the sources of ros2_ws/src, from the compile_commands.json that
 # ci-ros's build leaves in build/<pkg> (colcon-defaults.yaml exports it): run make ci-ros first. Generated code
-# (braco_interfaces) lives in build/, not src/, and is skipped. A package's failure does not stop the others; the exit status is the worst. Only the packages colcon finds
-# in src/ are checked: build/ is restored from CI's cache, and colcon never deletes the build of a removed or renamed
-# package, whose compile_commands.json still lists sources that are gone.
+# (braco_interfaces) lives in build/, not src/, and is skipped. Only the packages colcon finds in src/ are checked:
+# build/ is restored from CI's cache, and colcon never deletes the build of a removed or renamed package, whose
+# compile_commands.json still lists sources that are gone. Their databases are merged into build/.tidy, so a single
+# run-clang-tidy keeps every core busy (one run per package left cores idle while a small package finished).
+# Through ctcache (clang-tidy-cache, in the ci image) when the image has it: a file that passed before with the same
+# preprocessed source, comments included (CTCACHE_KEEP_COMMENTS, so removing a NOLINT re-checks it), config and
+# arguments is not analysed again. The cache is ros2_ws/.ctcache, next to .ccache; a failure is never cached.
+# One clang-tidy on a MoveIt or ros2_control source peaks at about 1.4 GB, so the jobs are capped by the free memory
+# (TIDY_JOB_KB each) as well as by the cores: 16 jobs on a 16-core, 14 GB laptop ran it out of memory.
+CTCACHE_PY  := /usr/local/lib/ctcache/clang_tidy_cache.py
+TIDY_JOB_KB := 1600000
 CI_TIDY_SH := dbs=""; for pkg in $$(colcon list --base-paths $(WS_BASE_PATHS) -n); do \
-                [ -f "build/$$pkg/compile_commands.json" ] && dbs="$$dbs build/$$pkg"; \
+                [ -f "build/$$pkg/compile_commands.json" ] && dbs="$$dbs build/$$pkg/compile_commands.json"; \
               done; \
               [ -n "$$dbs" ] || { echo "no build of $(WS_DIR)/src in $(WS_DIR)/build: run make ci-ros first" >&2; exit 1; }; \
-              rc=0; for dir in $$dbs; do \
-                run-clang-tidy -quiet -p "$$dir" -j "$$(nproc)" "^/ws/src/" 2>/dev/null || rc=1; \
-              done; exit $$rc
+              mkdir -p build/.tidy && python3 -c "import json, sys; \
+                json.dump([e for f in sys.argv[2:] for e in json.load(open(f))], open(sys.argv[1], \"w\"))" \
+                build/.tidy/compile_commands.json $$dbs || exit 1; \
+              tidy=clang-tidy; if command -v clang-tidy-cache >/dev/null; then \
+                tidy=clang-tidy-cache; export CTCACHE_DIR=/ws/.ctcache CTCACHE_KEEP_COMMENTS=1; \
+                python3 $(CTCACHE_PY) --zero-stats >/dev/null; \
+              fi; \
+              jobs=$$(awk -v n="$$(nproc)" '\''/^MemAvailable:/ { j = int($$2 / $(TIDY_JOB_KB)); \
+                print (j < 1 ? 1 : (j > n ? n : j)) }'\'' /proc/meminfo); \
+              rc=0; run-clang-tidy -quiet -clang-tidy-binary "$$(command -v $$tidy)" -p build/.tidy -j "$$jobs" \
+                "^/ws/src/" 2>/dev/null || rc=1; \
+              [ "$$tidy" = clang-tidy ] || python3 $(CTCACHE_PY) --show-stats | grep -F "(local)"; exit $$rc
 
 BUILDX_MISSING := docker buildx not found: the Dockerfile needs BuildKit (apt install docker-buildx, or docker-buildx-plugin from Docker's repo)
 
