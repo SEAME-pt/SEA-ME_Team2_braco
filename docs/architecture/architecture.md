@@ -176,6 +176,7 @@ braco_camera braco_hardware braco_description ◄┄ braco_simulation, braco_mov
   All are in the 0–101 range that is safe on Linux
   ([ROS 2 docs, *The ROS_DOMAIN_ID*](https://github.com/ros2/ros2_documentation/blob/rolling/source/ROS-Framework/nodes/About-Domain-ID.rst)).
 - Gazebo transport is kept local (`GZ_IP=127.0.0.1`).
+- The Jetson also hosts a self-hosted CI runner, `jetson-braco` (user `gh-runner`, label `braco-arm`), outside the containers. It runs only the manual `hil` job, which never opens the serial port: [HIL runner](../guides/ci.md#hil-runner).
 
 ---
 
