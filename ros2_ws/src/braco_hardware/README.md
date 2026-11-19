@@ -38,7 +38,7 @@ Sending:  arm_driver ◄──/arm/command─── BracoSystem ◄──write()
 | Listens to | `/arm/control_owner` | who controls the arm: `write()` sends only when it is `mission` |
 | Listens to | `/arm/stopped` | the STOP latch (ADR-0005): a STOP aborts the goal |
 | Publishes | `/arm/command` | where the arm must go (`ALL_ANGLES`, `source: mission`) |
-| Parameters | `publish_rate_hz`, `speed` | optional, in the URDF: 20 per second, servo speed 50 |
+| Parameters | `publish_rate_hz`, `min_speed` | optional, in the URDF: 25 per second, minimum servo speed 5 |
 
 For each joint, `joint1` to `joint6`:
 
@@ -47,11 +47,33 @@ For each joint, `joint1` to `joint6`:
 | `position` | state | the joint angle from `/joint_states`, in radians |
 | `velocity` | state | from `/joint_states`, or 0 when missing. `arm_driver` sends none, so it is always 0 |
 | `position` | command | where `arm_controller` wants the joint; `write()` sends it to `arm_driver` in degrees |
+| `velocity` | command | the planned velocity, rad/s; `write()` turns it into the servo speed, see [Servo speed](#servo-speed) |
+
+`arm_controller` claims the velocity command only on the real arm: `braco_description/config/controllers_real.yaml`,
+loaded after `controllers.yaml`. The MoveIt mock and Gazebo accept one command interface per joint.
+
+## Servo speed
+
+`ALL_ANGLES` has one speed (1..100) for the six joints. Speed 100 is each joint's max velocity, the URDF's
+`<limit velocity>` (measured at speed 100). For each command:
+
+1. Each joint: `|velocity| / max velocity × 100`.
+2. Keep the largest: the fastest joint sets the speed, so no joint falls behind.
+3. × 1.5, rounded up: the arm starts ~200 ms after a command and must catch up with the trajectory.
+4. Never below `min_speed` (5), never above 100. A velocity not written yet (NaN) gives `min_speed`.
+
+Example: joint2 at 0.5 rad/s of its 2.44: 20.5, × 1.5 = 30.7, speed **31**.
+
+Why `min_speed`: a trajectory starts and ends at velocity 0. Without it the last degrees, which the late arm still
+has to cover, would go at speed 1.
+
+The speed is a limit, not a motion: the target angles decide whether the arm moves. A fixed speed above the
+trajectory's made the servo reach each target early and wait for the next one, so the arm moved in jerks.
 
 ## When it sends
 
 1. The plugin sends only while `mission` controls the arm and `arm_controller` is on. Otherwise it sends nothing.
-2. While the target moves, the plugin sends it 20 times per second.
+2. While the target moves, the plugin sends it 25 times per second.
 3. When the target stops, it sends the same target for 2 more seconds, so the arm gets there.
 4. Then it stops sending. 300 ms later `arm_driver` stops the arm (its watchdog): the arm is already there.
 5. If `mission` forgot to give the control back, `arm_driver` takes it back after 5 s.
@@ -85,7 +107,7 @@ The plugin's steps:
 
 | Step | When | What it does | Fails if |
 |---|---|---|---|
-| `on_init` | once | checks the URDF joints | a joint has no `position` or `velocity` state |
+| `on_init` | once | checks the URDF joints, keeps their max velocities | a joint has no `position` or `velocity` state, or no velocity limit |
 | `on_configure` | once | starts listening to the three topics, keeps the latest `/joint_states` | |
 | `on_activate` | each time it is turned on | forgets a past STOP, waits up to 2 s for the first message | none arrives: `is arm_driver running?` |
 | `read()` | 100 per second | copies the latest message into the joint states | there is no message yet |
@@ -150,8 +172,10 @@ port: the `arm_driver` it starts talks to `PtyArm`, a fake arm on a pseudo-termi
 | `ReconfigureDropsStaleJointStates` | `on_configure` drops the message kept before it |
 | `ConfigureFailsWithoutNode` | `on_configure` fails without a node from the controller manager |
 | `InitFailsWithoutSixJoints` | `on_init` refuses a URDF without six joints |
-| `InitChecksTheParameters` | `on_init` refuses `speed` outside 1..100, `publish_rate_hz` ≤ 0 or not numbers |
-| `WriteSendsTheTargetsAsMissionInDegrees` | `write()` sends `ALL_ANGLES`, `source: mission`, in degrees, speed 50 |
+| `InitFailsWithoutVelocityLimit` | `on_init` refuses a joint with no velocity limit, or a limit of 0 |
+| `InitChecksTheParameters` | `on_init` refuses `min_speed` outside 1..100, `publish_rate_hz` ≤ 0 or not numbers |
+| `WriteSendsTheTargetsAsMissionInDegrees` | `write()` sends `ALL_ANGLES`, `source: mission`, in degrees; no velocity yet: speed 5 |
+| `WriteSendsTheSpeedOfTheFastestJoint` | the velocity commands set the speed: joint2 at 0.5 rad/s gives 31 |
 | `WriteSendsNothingWhileAnotherClientOwnsTheArm` | another owner: nothing sent, `OK` |
 | `WriteSendsNothingWithoutAController` | no controller, or after it released the commands: nothing sent |
 | `WriteHoldsAStillTargetForTwoSeconds` | a still target is resent for 2 s, then not; a new one is sent |
@@ -163,6 +187,17 @@ port: the `arm_driver` it starts talks to `PtyArm`, a fake arm on a pseudo-termi
 
 The `write()` tests fake `arm_driver`'s topics (`/arm/control_owner`, `/arm/stopped`, `/arm/command`) and drive
 the manager's clock themselves, so the 2 s hold takes no real time (#132).
+
+`test/test_speed_for_velocity.cpp`: the [Servo speed](#servo-speed) rule alone, no ROS.
+
+| Test | Checks |
+|---|---|
+| `StoppedGivesMinSpeed` | velocity 0: `min_speed` |
+| `NanGivesMinSpeed` | a velocity not written yet: `min_speed` |
+| `FastestJointWinsRoundedUp` | the fastest joint, relative to its own max, sets the speed, rounded up |
+| `NegativeVelocityCountsItsSize` | moving backwards counts the same |
+| `CappedAt100` | never above 100 |
+| `SlowGivesAtLeastMinSpeed` | never below `min_speed` |
 
 The domain, the timeout and a stuck `arm_driver`: see
 [braco_hardware test](../../../docs/guides/ci.md#braco_hardware-test).
