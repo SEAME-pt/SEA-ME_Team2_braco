@@ -2,7 +2,7 @@
 
 How the braco software is built today: layers, nodes, topics, packages and deployment. If the code and this document disagree, the code wins. CPU and memory: [resources.md](resources.md). Timing: [timing-budget.md](timing-budget.md).
 
-Last checked against the code: **2026-11-18**.
+Last checked against the code: **2026-11-19**.
 
 **Contents:** [Principles](#1-principles) · [Layers](#2-layers) · [Nodes and devices](#3-nodes-and-devices) · [Topics and services](#4-topics-and-services) · [Control of the arm](#5-control-of-the-arm) · [Packages](#6-packages) · [Deployment](#7-deployment) · [Launch and parameters](#8-launch-and-parameters) · [MoveIt 2, simulation and the real arm](#9-moveit-2-simulation-and-the-real-arm) · [Status](#10-status) · [Changing the architecture](#11-changing-the-architecture)
 
@@ -267,7 +267,7 @@ Real arm (ADR-0004): move_group on the PC, the arm on the Jetson, both on domain
 
 ## 10. Status
 
-**Done:** single serial owner · one control owner · STOP latch ([ADR-0005](../decisions/ADR-0005-stop-latch.md)) · one thermal authority · rest on overheat · `braco_*` layout with READMEs · one Makefile (`mk/`) · simulation · validated URDF ([report](../hardware/urdf-sim-to-real.md)) · trajectories through `arm_driver` ([ADR-0004](../decisions/ADR-0004-trajectories-through-arm-driver.md)) · `braco_moveit_config`: MoveIt 2 config, Gazebo and real-arm launches · `braco_mission`: `/move_to_pose` and `/move_cartesian`, control held as `mission` on the real arm · `braco_hardware` `SystemInterface`: `read()` and `write()` · `arm_controller` on the real arm · domain check before MoveIt · timing budget ([timing-budget.md](timing-budget.md)).
+**Done:** single serial owner · one control owner · STOP latch ([ADR-0005](../decisions/ADR-0005-stop-latch.md)) · one thermal authority · rest on overheat · `braco_*` layout with READMEs · one Makefile (`mk/`) · simulation · validated URDF ([report](../hardware/urdf-sim-to-real.md)) · trajectories through `arm_driver` ([ADR-0004](../decisions/ADR-0004-trajectories-through-arm-driver.md)) · `braco_moveit_config`: MoveIt 2 config, Gazebo and real-arm launches · `braco_mission`: `/move_to_pose` and `/move_cartesian`, control held as `mission` on the real arm · `braco_hardware` `SystemInterface`: `read()` and `write()` · `arm_controller` on the real arm · domain check before MoveIt · timing budget ([timing-budget.md](timing-budget.md)) · `SCHED_FIFO` measured, not enabled ([timing-budget.md](timing-budget.md#sched_fifo)).
 
 **Differs from the target (accepted):**
 
