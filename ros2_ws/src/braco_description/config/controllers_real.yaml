@@ -1,0 +1,8 @@
+# Real arm only, loaded after controllers.yaml. arm_controller also commands the planned
+# velocity: braco_hardware turns it into the servo speed. Not in controllers.yaml because the
+# mock and Gazebo accept one command interface per joint.
+arm_controller:
+  ros__parameters:
+    command_interfaces:
+      - position
+      - velocity

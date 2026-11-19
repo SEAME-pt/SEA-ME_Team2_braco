@@ -39,8 +39,24 @@ constexpr const char * SOURCE = "mission";   // ArmCommand.source and the contro
 // An unchanged target is still sent this long (the arm reaches it before arm_driver's 300 ms
 // watchdog), then nothing: arm_driver frees a control left unreleased after 5 s without motion
 constexpr double HOLD_S = 2.0;
+// The arm starts ~200 ms after a command: a faster servo catches up with the trajectory
+constexpr double SPEED_MARGIN = 1.5;
 
 }  // namespace
+
+uint8_t speed_for_velocity(
+  const JointValues & velocity, const JointValues & max_velocity, uint8_t min_speed)
+{
+  double speed = 0.0;
+  for (std::size_t i = 0; i < velocity.size(); ++i) {
+    if (std::isnan(velocity[i])) {
+      return min_speed;
+    }
+    speed = std::max(speed, std::abs(velocity[i]) / max_velocity[i] * 100.0);
+  }
+  speed = std::clamp(std::ceil(speed * SPEED_MARGIN), static_cast<double>(min_speed), 100.0);
+  return static_cast<uint8_t>(speed);
+}
 
 hardware_interface::CallbackReturn BracoSystem::on_init(
   const hardware_interface::HardwareComponentInterfaceParams & params)
@@ -82,6 +98,20 @@ bool BracoSystem::joints_are_valid()
       get_hardware_info().joints.size());
     return false;
   }
+
+  // write() scales the servo speed by each joint's max velocity: refuse a joint without one
+  const auto & limits = get_hardware_info().limits;
+  for (std::size_t i = 0; i < max_velocity_.size(); ++i) {
+    const auto & name = get_hardware_info().joints[i].name;
+    const auto limit = limits.find(name);
+    if (limit == limits.end() || !limit->second.has_velocity_limits ||
+      limit->second.max_velocity <= 0.0)
+    {
+      RCLCPP_ERROR(get_logger(), "joint %s needs a velocity limit > 0 in the URDF", name.c_str());
+      return false;
+    }
+    max_velocity_[i] = limit->second.max_velocity;
+  }
   return true;
 }
 
@@ -90,25 +120,26 @@ bool BracoSystem::load_parameters()
   // Optional <param>s of the <hardware> block; without them, the defaults of the header
   const auto & params_in_urdf = get_hardware_info().hardware_parameters;
   double rate = publish_rate_hz_;
-  int speed = speed_;
+  int min_speed = min_speed_;
   try {
     if (params_in_urdf.count("publish_rate_hz")) {
       rate = std::stod(params_in_urdf.at("publish_rate_hz"));
     }
-    if (params_in_urdf.count("speed")) {
-      speed = std::stoi(params_in_urdf.at("speed"));
+    if (params_in_urdf.count("min_speed")) {
+      min_speed = std::stoi(params_in_urdf.at("min_speed"));
     }
   } catch (const std::exception &) {
-    RCLCPP_ERROR(get_logger(), "publish_rate_hz and speed must be numbers");
+    RCLCPP_ERROR(get_logger(), "publish_rate_hz and min_speed must be numbers");
     return false;
   }
-  if (rate <= 0.0 || speed < 1 || speed > 100) {
+  if (rate <= 0.0 || min_speed < 1 || min_speed > 100) {
     RCLCPP_ERROR(
-      get_logger(), "publish_rate_hz must be > 0 and speed 1..100 (got %.1f, %d)", rate, speed);
+      get_logger(), "publish_rate_hz must be > 0 and min_speed 1..100 (got %.1f, %d)", rate,
+      min_speed);
     return false;
   }
   publish_rate_hz_ = rate;
-  speed_ = static_cast<uint8_t>(speed);
+  min_speed_ = static_cast<uint8_t>(min_speed);
   return true;
 }
 
@@ -295,8 +326,8 @@ bool BracoSystem::make_command(ArmCommand & msg)
 {
   msg.type = ArmCommand::ALL_ANGLES;
   msg.source = SOURCE;
-  msg.speed = speed_;
   const auto & joints = get_hardware_info().joints;
+  JointValues velocity{};
   for (std::size_t i = 0; i < joints.size(); ++i) {
     const double position =
       get_command(joints[i].name + "/" + hardware_interface::HW_IF_POSITION);
@@ -304,7 +335,9 @@ bool BracoSystem::make_command(ArmCommand & msg)
       return false;   // NaN until the controller writes its first target
     }
     msg.angles_deg[i] = position * RAD_TO_DEG;
+    velocity[i] = get_command(joints[i].name + "/" + hardware_interface::HW_IF_VELOCITY);
   }
+  msg.speed = speed_for_velocity(velocity, max_velocity_, min_speed_);
   return true;
 }
 

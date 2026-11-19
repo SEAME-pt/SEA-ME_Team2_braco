@@ -90,6 +90,9 @@ def test_real_nodes(ld):
     spawner_args = [perform_substitutions(LaunchContext(), part) for part in spawner.cmd[1:]]
     assert spawner_args[0] == 'arm_controller'
     assert 'joint_state_broadcaster' not in spawner_args
+    # The real-arm override last: the last param file wins
+    files = [spawner_args[i + 1] for i, a in enumerate(spawner_args) if a == '--param-file']
+    assert [Path(f).name for f in files] == ['controllers.yaml', 'controllers_real.yaml']
     for node in nodes:
         assert node.condition.evaluate(configured(sim='false', moveit='false'))
         assert not node.condition.evaluate(configured(sim='true', moveit='false'))
