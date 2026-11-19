@@ -67,7 +67,7 @@ cleanup() {
   ros topic pub --once /arm/command braco_interfaces/msg/ArmCommand "{type: 3, source: 'script'}" >/dev/null 2>&1
   take script release >/dev/null 2>&1
   ros service call /arm/set_read_only std_srvs/srv/SetBool "{data: false}" >/dev/null 2>&1
-  [[ -n ${FAKE_PID:-} ]] && kill "$FAKE_PID" 2>/dev/null
+  stop_fake
   stop_stream
   [[ $(stopped) == true ]] && echo "bench: STOP is still latched: make resume" >&2
 }
@@ -77,6 +77,16 @@ stop_stream() {  # killing docker exec leaves the publisher running in the conta
   [[ -n ${STREAM_PID:-} ]] && kill "$STREAM_PID" 2>/dev/null
   [[ -n ${KEEPALIVE_PID:-} ]] && kill "$KEEPALIVE_PID" 2>/dev/null
   unset STREAM_PID KEEPALIVE_PID
+}
+stop_fake() {  # the fake HOT temperatures (section 6); same docker exec caveat
+  [[ -n ${FAKE_PID:-} ]] && kill "$FAKE_PID" 2>/dev/null
+  $EXEC pkill -f '[t]opic pub -r 10 /arm/servo_temperatures' 2>/dev/null
+  unset FAKE_PID
+}
+
+hottest() {  # hottest joint of the next /arm/servo_temperatures, in C
+  ros topic echo --once /arm/servo_temperatures braco_interfaces/msg/ServoTemperatures 2>/dev/null |
+    tr -d '\r' | awk '/^celsius:/ {on = 1; next} on && /^- / {if ($2 > max) max = $2; next} on {exit} END {print max + 0}'
 }
 trap cleanup EXIT
 
@@ -296,17 +306,29 @@ if ask "The arm will fold to the park pose by itself. Is the area clear?"; then
   else
     record FAIL "HOT: arm parked and joints released"
   fi
-  kill "$FAKE_PID" 2>/dev/null
-  unset FAKE_PID
-  sleep 5
+  stop_fake
+  # A fake still publishing next to arm_driver's real readings ends and restarts the hot episode:
+  # park again, rest back on. Section 7 needs a real reading below 60 C first.
+  cool=""
+  for _ in $(seq 1 5); do
+    t=$(hottest)
+    if ((t > 0 && t < 60)); then cool=$t; break; fi
+    sleep 1
+  done
+  if [[ -n $cool ]]; then record PASS "HOT: fake stopped, real reading ${cool} C"; else record FAIL "HOT: no real reading below 60 C (fake still publishing?)"; fi
 else
   record SKIP "HOT: park and rest (operator did not confirm the area)"
 fi
 
 say "7. make resume leaves rest mode, motion accepted again"
-ros service call /arm/set_read_only std_srvs/srv/SetBool "{data: false}" >/dev/null
+out=$(ros service call /arm/set_read_only std_srvs/srv/SetBool "{data: false}" 2>&1 | tr -d '\r')
 sleep 1
-if [[ $(read_only) == false ]]; then record PASS "resume: rest mode off"; else record FAIL "resume: rest mode off"; fi
+if [[ $(read_only) == false ]]; then
+  record PASS "resume: rest mode off"
+else
+  # Refused (STOP latched, arm_driver inactive) or overruled afterwards (a new park)
+  record FAIL "resume: rest mode off ($(grep -o "message='[^']*'" <<<"$out"))"
+fi
 sleep 5
 if [[ $(read_only) == false ]]; then
   record PASS "resume on a cooled arm is not overruled (once per episode)"
