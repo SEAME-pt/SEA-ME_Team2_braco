@@ -33,6 +33,7 @@ deciders: all
 - `arm_controller` commands `position` and `velocity` on the real arm (`controllers_real.yaml`)
 - Speed = largest `|velocity| / URDF max velocity × 100`, × 1.5, rounded up, clamped to [`min_speed` 5, 100]
 - `on_init` refuses a joint without a velocity command or a velocity limit
+- `write()` publishes at 25 Hz (was 20): faster than `arm_driver` sends, ~14 Hz at `COMMAND_GAP` 50 ms and ~20 Hz at 30 ms (tested by the team, changed in #141), so `arm_driver` always finds a fresh target and never waits; the extra ones are dropped by design (latest wins)
 
 **Why × 1.5, with the scaling ≤ 0.1 of ADR-0004:** the two set different things.
 
