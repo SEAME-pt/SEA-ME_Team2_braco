@@ -69,10 +69,14 @@ Safety rules for the arm, its gripper and its camera.
   - Release it, once the area is safe, with `make resume` or the page's **Release STOP**. Both are refused for 3 s
     after the last STOP.
   - The release does not move the arm. Take control and send a new command to move it.
+- **Deactivating `arm_driver` is a STOP** (#95): `ros2 lifecycle set /arm_driver deactivate` stops the arm and
+  latches. Motion stays refused until `ros2 lifecycle set /arm_driver activate`, and activating does not release the
+  latch. Angles and temperatures are still read.
 - **Only one client moves the arm at a time** ([ADR-0002](../decisions/ADR-0002-unique-control.md)).
   - Who is in control: see the web page, or `ros2 topic echo /arm/control_owner`.
   - The joystick takes control from the page only if you hold **button 8 for about 1 s**.
-- **If `arm_driver` crashes,** the whole system stops. Check with `make status` and `make logs`.
+- **If `arm_driver` crashes or cannot open the serial port,** the whole system stops. Check with `make status` and
+  `make logs`.
 
 ### 6.3 Turning off the motors (free the joints)
 
@@ -92,6 +96,8 @@ Safety rules for the arm, its gripper and its camera.
 ## 7. Hot motors
 
 - **The arm is hot?** Follow [overheating.md](overheating.md).
+- **Parking on overheat needs an active `arm_driver`.** While it is inactive, a hot motor only puts the arm in rest
+  mode: the motors stay on.
 
 ## 8. Starting again after an emergency stop
 

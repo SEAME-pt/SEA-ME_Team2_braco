@@ -47,6 +47,8 @@
 #include "hardware_interface/types/hardware_component_params.hpp"
 #include "hardware_interface/types/hardware_interface_type_values.hpp"
 #include "lifecycle_msgs/msg/state.hpp"
+#include "lifecycle_msgs/msg/transition.hpp"
+#include "lifecycle_msgs/srv/change_state.hpp"
 #include "pluginlib/class_loader.hpp"
 #include "pty_arm.hpp"
 #include "rclcpp/rclcpp.hpp"
@@ -124,6 +126,21 @@ public:
     }
     kill(pid_, SIGKILL);
     waitpid(pid_, nullptr, 0);
+  }
+
+  // A lifecycle node (#95): configured as braco.launch.py does. Monitoring (/joint_states) is
+  // all read() needs, so it stays inactive.
+  bool configure(std::chrono::seconds timeout = 10s)
+  {
+    using lifecycle_msgs::srv::ChangeState;
+    auto node = std::make_shared<rclcpp::Node>("test_arm_driver_lifecycle");
+    auto client = node->create_client<ChangeState>("/arm_driver/change_state");
+    if (!client->wait_for_service(timeout)) {return false;}
+    auto req = std::make_shared<ChangeState::Request>();
+    req->transition.id = lifecycle_msgs::msg::Transition::TRANSITION_CONFIGURE;
+    auto future = client->async_send_request(req);
+    return rclcpp::spin_until_future_complete(node, future, timeout) ==
+           rclcpp::FutureReturnCode::SUCCESS && future.get()->success;
   }
 
   ArmDriverProcess(const ArmDriverProcess &) = delete;
@@ -417,6 +434,7 @@ TEST_F(BracoSystemTest, ReadGivesArmDriverAnglesInRadians)
   arm.update([&](auto & s) {s.angles = angles;});
   arm.serve();
   ArmDriverProcess driver(arm.path());   // after arm: stopped before the port closes
+  ASSERT_TRUE(driver.configure());
 
   // The driver's start-up stays out of on_activate's 2 s
   ASSERT_TRUE(arm.waitFor(mycobot::protocol::GET_ANGLES, 10s));
