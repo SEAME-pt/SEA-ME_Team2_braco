@@ -75,6 +75,7 @@ hardware_interface::CallbackReturn BracoSystem::on_init(
 
 bool BracoSystem::joints_are_valid()
 {
+  // read() fills both states, write() reads both commands (position and velocity)
   const auto has_both = [](const auto & interfaces) {
       bool has_position = false;
       bool has_velocity = false;
@@ -240,19 +241,25 @@ hardware_interface::return_type BracoSystem::perform_command_mode_switch(
 {
   // Called when a controller claims or releases command interfaces. After arm_controller
   // releases ours they keep its last target, which write() must not keep sending.
-  const auto has_ours = [this](const std::vector<std::string> & interfaces) {
+  const auto has_ours = [this](const std::vector<std::string> & interfaces, const char * type) {
       for (const auto & joint : get_hardware_info().joints) {
-        const auto name = joint.name + "/" + hardware_interface::HW_IF_POSITION;
+        const auto name = joint.name + "/" + type;
         if (std::find(interfaces.begin(), interfaces.end(), name) != interfaces.end()) {
           return true;
         }
       }
       return false;
     };
-  if (has_ours(stop_interfaces)) {
+  if (has_ours(stop_interfaces, hardware_interface::HW_IF_POSITION)) {
     commanding_ = false;
   }
-  if (has_ours(start_interfaces)) {
+  if (has_ours(start_interfaces, hardware_interface::HW_IF_POSITION)) {
+    // Without the velocity command write() sends min_speed all along: the arm falls behind
+    if (!has_ours(start_interfaces, hardware_interface::HW_IF_VELOCITY)) {
+      RCLCPP_WARN(
+        get_logger(), "the controller claims no velocity command: servo speed stays at %d "
+        "(controllers_real.yaml loaded?)", min_speed_);
+    }
     commanding_ = true;
     stop_seen_ = false;   // arm_controller back: what aborted the last goal is over
     lost_control_ = false;
