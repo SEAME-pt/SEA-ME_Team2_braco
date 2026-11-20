@@ -47,6 +47,8 @@
 #include "hardware_interface/types/hardware_component_params.hpp"
 #include "hardware_interface/types/hardware_interface_type_values.hpp"
 #include "lifecycle_msgs/msg/state.hpp"
+#include "lifecycle_msgs/msg/transition.hpp"
+#include "lifecycle_msgs/srv/change_state.hpp"
 #include "pluginlib/class_loader.hpp"
 #include "pty_arm.hpp"
 #include "rclcpp/rclcpp.hpp"
@@ -124,6 +126,21 @@ public:
     }
     kill(pid_, SIGKILL);
     waitpid(pid_, nullptr, 0);
+  }
+
+  // A lifecycle node (#95): configured as braco.launch.py does. Monitoring (/joint_states) is
+  // all read() needs, so it stays inactive.
+  bool configure(std::chrono::seconds timeout = 10s)
+  {
+    using lifecycle_msgs::srv::ChangeState;
+    auto node = std::make_shared<rclcpp::Node>("test_arm_driver_lifecycle");
+    auto client = node->create_client<ChangeState>("/arm_driver/change_state");
+    if (!client->wait_for_service(timeout)) {return false;}
+    auto req = std::make_shared<ChangeState::Request>();
+    req->transition.id = lifecycle_msgs::msg::Transition::TRANSITION_CONFIGURE;
+    auto future = client->async_send_request(req);
+    return rclcpp::spin_until_future_complete(node, future, timeout) ==
+           rclcpp::FutureReturnCode::SUCCESS && future.get()->success;
   }
 
   ArmDriverProcess(const ArmDriverProcess &) = delete;
@@ -302,7 +319,7 @@ protected:
   }
   return_type read() {return system_->read(rclcpp::Time(0, 0, RCL_STEADY_TIME), 10ms);}
 
-  // write() at the next tick of the manager's clock: 60 ms later, above its 20 Hz throttle. The
+  // write() at the next tick of the manager's clock: 60 ms later, above its 25 Hz throttle. The
   // clock is ours, so HOLD_S passes without waiting for it.
   return_type write()
   {
@@ -417,6 +434,7 @@ TEST_F(BracoSystemTest, ReadGivesArmDriverAnglesInRadians)
   arm.update([&](auto & s) {s.angles = angles;});
   arm.serve();
   ArmDriverProcess driver(arm.path());   // after arm: stopped before the port closes
+  ASSERT_TRUE(driver.configure());
 
   // The driver's start-up stays out of on_activate's 2 s
   ASSERT_TRUE(arm.waitFor(mycobot::protocol::GET_ANGLES, 10s));
@@ -442,6 +460,21 @@ TEST_F(BracoSystemTest, InitFailsWithoutVelocityState)
       states.begin(), states.end(),
       [](const auto & state) {return state.name == hardware_interface::HW_IF_VELOCITY;}),
     states.end());
+
+  auto system = loader_.createUniqueInstance("braco_hardware/BracoSystem");
+  EXPECT_EQ(system->init(params(info, nullptr)), CallbackReturn::ERROR);
+}
+
+// write() turns the velocity command into the servo speed: a joint without it is refused.
+TEST_F(BracoSystemTest, InitFailsWithoutVelocityCommand)
+{
+  auto info = bracoSystemInfo();
+  auto & commands = info.joints.at(2).command_interfaces;
+  commands.erase(
+    std::remove_if(
+      commands.begin(), commands.end(),
+      [](const auto & command) {return command.name == hardware_interface::HW_IF_VELOCITY;}),
+    commands.end());
 
   auto system = loader_.createUniqueInstance("braco_hardware/BracoSystem");
   EXPECT_EQ(system->init(params(info, nullptr)), CallbackReturn::ERROR);
@@ -492,12 +525,26 @@ TEST_F(BracoSystemTest, InitFailsWithoutSixJoints)
   EXPECT_EQ(system->init(params(info, nullptr)), CallbackReturn::ERROR);
 }
 
-// publish_rate_hz > 0 and speed 1..100, numbers: anything else is refused at init.
+// write() scales the speed by each joint's max velocity: a joint without one is refused.
+TEST_F(BracoSystemTest, InitFailsWithoutVelocityLimit)
+{
+  auto missing = bracoSystemInfo();
+  missing.limits.erase("joint3");
+  auto system = loader_.createUniqueInstance("braco_hardware/BracoSystem");
+  EXPECT_EQ(system->init(params(missing, nullptr)), CallbackReturn::ERROR);
+
+  auto zero = bracoSystemInfo();
+  zero.limits.at("joint3").max_velocity = 0.0;
+  system = loader_.createUniqueInstance("braco_hardware/BracoSystem");
+  EXPECT_EQ(system->init(params(zero, nullptr)), CallbackReturn::ERROR);
+}
+
+// publish_rate_hz > 0 and min_speed 1..100, numbers: anything else is refused at init.
 TEST_F(BracoSystemTest, InitChecksTheParameters)
 {
   const auto info = bracoSystemInfo();
   const std::vector<std::pair<std::string, std::string>> bad = {
-    {"speed", "0"}, {"speed", "101"}, {"speed", "fast"}, {"publish_rate_hz", "0"},
+    {"min_speed", "0"}, {"min_speed", "101"}, {"min_speed", "slow"}, {"publish_rate_hz", "0"},
     {"publish_rate_hz", "often"}};
   for (const auto & [name, value] : bad) {
     auto with_param = info;
@@ -507,7 +554,7 @@ TEST_F(BracoSystemTest, InitChecksTheParameters)
       << name << "=" << value;
   }
   auto good = info;
-  good.hardware_parameters["speed"] = "30";
+  good.hardware_parameters["min_speed"] = "10";
   good.hardware_parameters["publish_rate_hz"] = "10";
   auto system = loader_.createUniqueInstance("braco_hardware/BracoSystem");
   EXPECT_EQ(system->init(params(good, nullptr)), CallbackReturn::SUCCESS);
@@ -516,7 +563,7 @@ TEST_F(BracoSystemTest, InitChecksTheParameters)
 // ---- write() (#101, ADR-0004, ADR-0005) -----------------------------------------------------
 
 // mission owns the arm: arm_controller's targets go to arm_driver as ALL_ANGLES, source mission,
-// in degrees, at the default speed (50).
+// in degrees; no velocity written yet: the default min_speed (5).
 TEST_F(BracoSystemTest, WriteSendsTheTargetsAsMissionInDegrees)
 {
   JointStatesPublisher joint_states(jointStates(6));
@@ -526,10 +573,26 @@ TEST_F(BracoSystemTest, WriteSendsTheTargetsAsMissionInDegrees)
   const auto msg = topics.commands().front();
   EXPECT_EQ(msg.type, ArmCommand::ALL_ANGLES);
   EXPECT_EQ(msg.source, "mission");
-  EXPECT_EQ(msg.speed, 50);
+  EXPECT_EQ(msg.speed, 5);
   for (size_t i = 0; i < TARGETS_RAD.size(); ++i) {
     EXPECT_NEAR(msg.angles_deg[i], TARGETS_RAD[i] * 180.0 / M_PI, 1e-4) << "joint" << i + 1;
   }
+}
+
+// arm_controller's velocity commands set the speed: joint2 at 0.5 rad/s of its 2.44 gives 31
+// (speed_for_velocity, test_speed_for_velocity.cpp).
+TEST_F(BracoSystemTest, WriteSendsTheSpeedOfTheFastestJoint)
+{
+  JointStatesPublisher joint_states(jointStates(6));
+  ArmDriverTopics topics;
+  startSending(topics);
+
+  const std::array<double, 6> velocity = {0.2, -0.5, 0.0, 0.0, 0.0, 0.0};
+  for (size_t i = 0; i < velocity.size(); ++i) {
+    system_->set_command("joint" + std::to_string(i + 1) + "/velocity", velocity[i]);
+  }
+  writeUntil([&](return_type) {return topics.commands().back().speed == 31;});
+  EXPECT_EQ(topics.commands().back().speed, 31);
 }
 
 // Another client owns the arm (or nobody): write() sends nothing and reports no error.

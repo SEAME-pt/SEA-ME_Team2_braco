@@ -20,6 +20,8 @@
 #include <string>
 #include <utility>
 
+#include "lifecycle_msgs/msg/state.hpp"
+
 using namespace std::chrono_literals;
 
 namespace braco_driver
@@ -31,38 +33,56 @@ namespace
 constexpr auto COMMAND_GAP = 50ms;   // pause after each motion command
 constexpr int ANGLE_READ_RETRIES = 1;
 constexpr double DEG_TO_RAD = M_PI / 180.0;
+constexpr const char * INACTIVE =
+  " refused: arm_driver inactive (ros2 lifecycle set /arm_driver activate)";
+constexpr const char * LATCHED = " refused: STOP latched (make resume, or call arm/release_stop)";
 
 }  // namespace
 
 ArmDriver::ArmDriver(const rclcpp::NodeOptions & options)
-: Node("arm_driver", options)
+: LifecycleNode("arm_driver", options)
 {
-  const auto port = declare_parameter<std::string>(
-    "port", mycobot::MyCobot280::DEFAULT_PORT);
-  const auto baud = declare_parameter<int>("baud", mycobot::MyCobot280::DEFAULT_BAUD);
-  state_period_ = std::chrono::duration<double>(
-    1.0 / declare_parameter<double>("state_rate_hz", 20.0));
-  temp_period_ = std::chrono::duration<double>(declare_parameter<double>("temp_period_s", 2.0));
-  command_timeout_ = std::chrono::milliseconds(
-    declare_parameter<int>("command_timeout_ms", 300));
-  gripper_speed_ = static_cast<int>(declare_parameter<int>("gripper_speed", 50));
-  control_idle_ = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-    std::chrono::duration<double>(declare_parameter<double>("control_idle_s", 5.0)));
-  stop_hold_ = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-    std::chrono::duration<double>(
-      std::max(0.0, declare_parameter<double>("stop_hold_s", 3.0))));
+  // Declared here, read below: settable before configure (#95)
+  declare_parameter<std::string>("port", mycobot::MyCobot280::DEFAULT_PORT);
+  declare_parameter<int>("baud", mycobot::MyCobot280::DEFAULT_BAUD);
+  declare_parameter<double>("state_rate_hz", 20.0);
+  declare_parameter<double>("temp_period_s", 2.0);
+  declare_parameter<int>("command_timeout_ms", 300);
+  declare_parameter<int>("gripper_speed", 50);
+  declare_parameter<double>("control_idle_s", 5.0);
+  declare_parameter<double>("stop_hold_s", 3.0);
+  declare_parameter<bool>("read_only", false);
+}
 
-  // Throws if the port cannot be opened: main() reports it and exits non-zero.
-  mc_ = std::make_unique<mycobot::MyCobot280>(port, static_cast<int>(baud));
+ArmDriver::CallbackReturn ArmDriver::on_configure(const rclcpp_lifecycle::State &)
+{
+  const auto port = get_parameter("port").as_string();
+  const auto baud = get_parameter("baud").as_int();
+  state_period_ = std::chrono::duration<double>(
+    1.0 / get_parameter("state_rate_hz").as_double());
+  temp_period_ = std::chrono::duration<double>(get_parameter("temp_period_s").as_double());
+  command_timeout_ = std::chrono::milliseconds(get_parameter("command_timeout_ms").as_int());
+  gripper_speed_ = static_cast<int>(get_parameter("gripper_speed").as_int());
+  control_idle_ = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+    std::chrono::duration<double>(get_parameter("control_idle_s").as_double()));
+  stop_hold_ = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+    std::chrono::duration<double>(std::max(0.0, get_parameter("stop_hold_s").as_double())));
+
+  try {
+    mc_ = std::make_unique<mycobot::MyCobot280>(port, static_cast<int>(baud));
+  } catch (const std::exception & e) {
+    RCLCPP_ERROR(get_logger(), "cannot open %s: %s", port.c_str(), e.what());
+    return CallbackReturn::FAILURE;   // stays unconfigured
+  }
   RCLCPP_INFO(get_logger(), "serial port %s open at %ld baud", port.c_str(), baud);
 
-  joint_pub_ = create_publisher<sensor_msgs::msg::JointState>("joint_states", 10);
-  temp_pub_ = create_publisher<ServoTemperatures>("arm/servo_temperatures", 10);
-  volt_pub_ = create_publisher<ServoVoltages>("arm/servo_voltages", 10);
+  joint_pub_ = plainPublisher<sensor_msgs::msg::JointState>("joint_states", 10);
+  temp_pub_ = plainPublisher<ServoTemperatures>("arm/servo_temperatures", 10);
+  volt_pub_ = plainPublisher<ServoVoltages>("arm/servo_voltages", 10);
 
-  stopped_pub_ = create_publisher<std_msgs::msg::Bool>(
+  stopped_pub_ = plainPublisher<std_msgs::msg::Bool>(
     "arm/stopped", rclcpp::QoS(1).transient_local());
-  publishStopped(false);
+  publishStopped(stopped_);   // a latch survives cleanup (ADR-0005)
   release_stop_srv_ = create_service<std_srvs::srv::Trigger>(
     "arm/release_stop",
     [this](std_srvs::srv::Trigger::Request::ConstSharedPtr,
@@ -70,9 +90,9 @@ ArmDriver::ArmDriver(const rclcpp::NodeOptions & options)
       releaseStop(res->success, res->message);
     });
 
-  read_only_pub_ = create_publisher<std_msgs::msg::Bool>(
+  read_only_pub_ = plainPublisher<std_msgs::msg::Bool>(
     "arm/read_only", rclcpp::QoS(1).transient_local());
-  setReadOnly(declare_parameter<bool>("read_only", false));
+  setReadOnly(get_parameter("read_only").as_bool());
 
   read_only_srv_ = create_service<std_srvs::srv::SetBool>(
     "arm/set_read_only",
@@ -87,7 +107,7 @@ ArmDriver::ArmDriver(const rclcpp::NodeOptions & options)
       res->message = req->data ? "rest mode on" : "rest mode off";
     });
 
-  owner_pub_ = create_publisher<std_msgs::msg::String>(
+  owner_pub_ = plainPublisher<std_msgs::msg::String>(
     "arm/control_owner", rclcpp::QoS(1).transient_local());
   publishOwner("");
   take_control_srv_ = create_service<TakeControl>(
@@ -130,20 +150,102 @@ ArmDriver::ArmDriver(const rclcpp::NodeOptions & options)
         [this, state]() {mc_->setGripperState(state, gripper_speed_);});
     });
 
-  serial_thread_ = std::thread([this]() {serialLoop();});
+  running_ = true;
+  serial_thread_ = std::thread([this]() {serialLoop();});   // monitoring starts here
+  return CallbackReturn::SUCCESS;
+}
+
+ArmDriver::CallbackReturn ArmDriver::on_activate(const rclcpp_lifecycle::State &)
+{
+  active_ = true;
+  if (stopped_) {
+    RCLCPP_WARN(get_logger(), "active, but STOP latched: motion refused until released");
+  } else {
+    RCLCPP_INFO(get_logger(), "active: motion accepted");
+  }
+  return CallbackReturn::SUCCESS;
+}
+
+ArmDriver::CallbackReturn ArmDriver::on_deactivate(const rclcpp_lifecycle::State &)
+{
+  active_ = false;   // first: the serial thread drops motion from now on (serviceCommands)
+  latchStop("lifecycle");
+  // If it fails, motion is refused anyway and the serial thread retries latchStop's stop
+  stopArm();
+  RCLCPP_WARN(get_logger(), "inactive: arm stopped, monitoring only");
+  return CallbackReturn::SUCCESS;
+}
+
+ArmDriver::CallbackReturn ArmDriver::on_cleanup(const rclcpp_lifecycle::State &)
+{
+  stopSerialThread();
+  {
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    stop_requested_ = false;
+    pending_joints_.clear();
+    pending_all_.reset();
+    pending_led_.reset();
+    control_.clear();
+    last_owner_.clear();
+  }
+  command_sub_.reset();
+  led_sub_.reset();
+  power_srv_.reset();
+  release_srv_.reset();
+  gripper_srv_.reset();
+  read_only_srv_.reset();
+  take_control_srv_.reset();
+  release_stop_srv_.reset();
+  joint_pub_.reset();
+  temp_pub_.reset();
+  volt_pub_.reset();
+  read_only_pub_.reset();
+  owner_pub_.reset();
+  stopped_pub_.reset();
+  mc_.reset();
+  RCLCPP_INFO(get_logger(), "unconfigured: serial port closed");
+  return CallbackReturn::SUCCESS;
+}
+
+ArmDriver::CallbackReturn ArmDriver::on_shutdown(const rclcpp_lifecycle::State & state)
+{
+  if (state.id() == lifecycle_msgs::msg::State::PRIMARY_STATE_ACTIVE) {on_deactivate(state);}
+  if (state.id() != lifecycle_msgs::msg::State::PRIMARY_STATE_UNCONFIGURED) {on_cleanup(state);}
+  return CallbackReturn::SUCCESS;
+}
+
+ArmDriver::CallbackReturn ArmDriver::on_error(const rclcpp_lifecycle::State & state)
+{
+  RCLCPP_ERROR(get_logger(), "transition failed: stopping the arm and closing the port");
+  active_ = false;
+  stopSerialThread();
+  stopArm();
+  on_cleanup(state);
+  return CallbackReturn::SUCCESS;   // back to unconfigured
 }
 
 ArmDriver::~ArmDriver()
 {
+  stopSerialThread();
+  stopArm();   // whatever ended the node, leave the arm stopped
+}
+
+void ArmDriver::stopSerialThread()
+{
   running_ = false;
   if (serial_thread_.joinable()) {serial_thread_.join();}
-  // Whatever ended the node, leave the arm stopped.
+}
+
+void ArmDriver::stopArm()
+{
+  if (!mc_) {return;}   // port not open
   try {
     std::lock_guard<std::mutex> lock(serial_mutex_);
     mc_->stop();
+    moving_ = false;
     RCLCPP_INFO(get_logger(), "arm stopped");
   } catch (const std::exception & e) {
-    RCLCPP_ERROR(get_logger(), "could not send final stop: %s", e.what());
+    RCLCPP_ERROR(get_logger(), "could not send stop: %s", e.what());
   }
 }
 
@@ -165,9 +267,9 @@ void ArmDriver::setReadOnly(bool on)
 
 bool ArmDriver::refuseWhileStopped(bool & success, std::string & message, const char * what)
 {
-  if (!stopped_) {return false;}
+  if (active_ && !stopped_) {return false;}
   success = false;
-  message = std::string(what) + " refused: STOP latched (make resume, or call arm/release_stop)";
+  message = std::string(what) + (!active_ ? INACTIVE : LATCHED);
   RCLCPP_WARN(get_logger(), "%s", message.c_str());
   return true;
 }
@@ -261,11 +363,11 @@ void ArmDriver::onTakeControl(const TakeControl::Request & req, TakeControl::Res
   bool changed = false;
   {
     std::lock_guard<std::mutex> lock(state_mutex_);
-    if (!req.release && stopped_) {
+    if (!req.release && (!active_ || stopped_)) {
       // Even force: a STOP holds until a person releases it (ADR-0005)
       res.success = false;
       res.owner = control_.owner();
-      res.message = "take control refused: STOP latched (make resume, or call arm/release_stop)";
+      res.message = std::string("take control") + (!active_ ? INACTIVE : LATCHED);
     } else if (req.release) {
       res.success = control_.release(req.source) || control_.owner().empty();
       res.owner = control_.owner();
@@ -298,8 +400,8 @@ void ArmDriver::onTakeControl(const TakeControl::Request & req, TakeControl::Res
     RCLCPP_INFO(
       get_logger(), "control: %s (%s)",
       owner.empty() ? "free" : owner.c_str(), res.message.c_str());
-  } else if (!res.success && stopped_) {
-    // A held stick asks again after every answer while latched
+  } else if (!res.success && (!active_ || stopped_)) {
+    // A held stick asks again after every answer while refused
     RCLCPP_WARN_THROTTLE(
       get_logger(), *get_clock(), 2000, "take_control from '%s': %s", req.source.c_str(),
       res.message.c_str());
@@ -338,6 +440,11 @@ void ArmDriver::onCommand(const ArmCommand & msg)
     stop_requested_ = true;
     pending_joints_.clear();
     pending_all_.reset();
+    return;
+  }
+  if (!active_) {
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *get_clock(), 2000, "motion from '%s'%s", msg.source.c_str(), INACTIVE);
     return;
   }
   if (stopped_) {
@@ -488,6 +595,8 @@ bool ArmDriver::serviceCommands()
     mc_->setColor((*led)[0], (*led)[1], (*led)[2]);
     std::this_thread::sleep_for(COMMAND_GAP);
   }
+  // Checked under serial_mutex_: a target taken before a deactivate never follows its stop
+  if (!active_) {return false;}
   if (!all && !joint) {return false;}
   if (all) {
     mc_->sendAngles(all->angles, all->speed);

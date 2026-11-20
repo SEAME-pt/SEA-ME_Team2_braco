@@ -15,6 +15,7 @@
 #ifndef BRACO_HARDWARE__BRACO_SYSTEM_HPP_
 #define BRACO_HARDWARE__BRACO_SYSTEM_HPP_
 
+#include <array>
 #include <atomic>
 #include <cstdint>
 #include <mutex>
@@ -32,6 +33,13 @@
 
 namespace braco_hardware
 {
+
+using JointValues = std::array<double, 6>;
+
+// Servo speed (min_speed..100) for the fastest joint: speed 100 is the joint's max velocity
+// (rad/s), with a margin for the arm's latency. A NaN velocity gives min_speed.
+uint8_t speed_for_velocity(
+  const JointValues & velocity, const JointValues & max_velocity, uint8_t min_speed);
 
 // The real arm for ros2_control (ADR-0004): reads the joints from arm_driver's /joint_states and
 // sends arm_controller's targets on /arm/command. Never opens the serial port: arm_driver owns it.
@@ -79,8 +87,9 @@ private:
   int64_t last_publish_ns_{0};    // last publish, on the controller manager's clock (ns)
   decltype(braco_interfaces::msg::ArmCommand::angles_deg) last_target_deg_{};
   int64_t target_changed_ns_{0};  // when last_target_deg_ last changed (0: none yet)
-  double publish_rate_hz_{20.0};  // <param> publish_rate_hz of the URDF
-  uint8_t speed_{50};             // <param> speed of the URDF, 1..100
+  double publish_rate_hz_{25.0};  // <param> publish_rate_hz of the URDF
+  uint8_t min_speed_{5};          // <param> min_speed of the URDF, 1..100
+  JointValues max_velocity_{};    // rad/s at speed 100: the URDF's <limit velocity>, per joint
   std::atomic<bool> commanding_{false};  // a controller holds our position commands
 
   // The control owner (ADR-0002): write() sends only while it is "mission", and aborts the goal

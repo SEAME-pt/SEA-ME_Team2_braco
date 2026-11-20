@@ -2,7 +2,7 @@
 
 How the braco software is built today: layers, nodes, topics, packages and deployment. If the code and this document disagree, the code wins. CPU and memory: [resources.md](resources.md). Timing: [timing-budget.md](timing-budget.md).
 
-Last checked against the code: **2026-11-17**.
+Last checked against the code: **2026-11-20**.
 
 **Contents:** [Principles](#1-principles) · [Layers](#2-layers) · [Nodes and devices](#3-nodes-and-devices) · [Topics and services](#4-topics-and-services) · [Control of the arm](#5-control-of-the-arm) · [Packages](#6-packages) · [Deployment](#7-deployment) · [Launch and parameters](#8-launch-and-parameters) · [MoveIt 2, simulation and the real arm](#9-moveit-2-simulation-and-the-real-arm) · [Status](#10-status) · [Changing the architecture](#11-changing-the-architecture)
 
@@ -18,7 +18,7 @@ Last checked against the code: **2026-11-17**.
 - **One source for each fact.** The thermal level comes from `temperature_monitor` (`/diagnostics`); the control owner from `arm_driver`.
 - **Same interface for real and simulated.** Everything above the hardware abstraction uses the same names and types. Only layer 3 changes with `sim:=true|false`.
 - **Logic without ROS where possible.** Protocol, joystick, LCD and teleop logic live in `mycobot_cpp`. Control owner and auto-rest are plain headers in `braco_driver/include`. All unit-tested without ROS.
-- **Every node that moves the arm is a lifecycle node.** *Target, not implemented yet* ([Status](#10-status)).
+- **Every node that moves the arm is a lifecycle node.** *Partly: `arm_driver` is ([§5](#5-control-of-the-arm)); the clients are not yet* ([Status](#10-status)).
 
 ---
 
@@ -62,6 +62,8 @@ A motion command passes the `arm_driver` gates in order:
 2. **Rest mode** refuses motion.
 3. **Owner:** motion from anyone but the control owner is ignored.
 4. **Watchdog:** 300 ms without commands stops the arm.
+
+An inactive `arm_driver` refuses all motion before gate 2 (lifecycle, [§5](#5-control-of-the-arm)).
 
 ---
 
@@ -113,7 +115,17 @@ Details: [ADR-0002](../decisions/ADR-0002-unique-control.md) (owner), [ADR-0003]
 | Joystick | first input if free; **hold button 8 for 1 s** to force | 5 s after the last move |
 | zero / park | forced | at the end, also on failure |
 
-**Overheat:** at ≥ 65 °C, `temperature_monitor` runs `park` once per episode: the arm folds, the joints are released and rest mode turns on. The episode ends when every joint is below 60 °C. Resuming is manual (`make resume`, [overheating guide](../guides/overheating.md)).
+**Overheat:** at ≥ 65 °C, `temperature_monitor` runs `park` once per episode: the arm folds, the joints are released and rest mode turns on. The episode ends when every joint is below 60 °C. Resuming is manual (`make resume`, [overheating guide](../guides/overheating.md)). While `arm_driver` is inactive, `park` is refused and only rest mode turns on.
+
+**Lifecycle of `arm_driver`**. `braco.launch.py` configures and activates it; a failed configure ends the launch.
+
+| State | Port | Publishes `/joint_states`, temperatures | Motion |
+|---|---|---|---|
+| unconfigured | closed | no | no |
+| inactive | open | yes | refused; STOP, HALT, LED, rest on and `release_stop` still work |
+| active | open | yes | through the gates (§3) |
+
+Deactivate is a STOP: it latches and frees the control. Activate does not release the latch. Cleanup closes the port; the latch survives it.
 
 ---
 
@@ -130,7 +142,7 @@ One colcon workspace, `ros2_ws/src`, mounted at `/ws`. Each package has a README
 | [`braco_teleop`](../../ros2_ws/src/braco_teleop/README.md) | `joystick_teleop` | done |
 | [`braco_camera`](../../ros2_ws/src/braco_camera/README.md) | `camera` (Python) | done |
 | [`braco_bringup`](../../ros2_ws/src/braco_bringup/README.md) | `braco.launch.py`, `braco.yaml`, entrypoint, `zero` / `park` | done |
-| [`braco_description`](../../ros2_ws/src/braco_description/README.md) | Robot model: URDF/xacro, meshes, `controllers.yaml` (no Gazebo, so also on the Jetson) | done |
+| [`braco_description`](../../ros2_ws/src/braco_description/README.md) | Robot model: URDF/xacro, meshes, `controllers.yaml` and `controllers_real.yaml` (no Gazebo, so also on the Jetson) | done |
 | [`braco_simulation`](../../ros2_ws/src/braco_simulation/README.md) | Gazebo launch and the scripts that move the simulated arm (PC only) | done |
 | [`braco_moveit_config`](../../ros2_ws/src/braco_moveit_config/README.md) | MoveIt 2 config (SRDF, kinematics, joint limits, controllers), demo with mock hardware, launches on the Gazebo arm and the real arm | done |
 | [`braco_mission`](../../ros2_ws/src/braco_mission/README.md) | `move_to_pose`: a Cartesian pose goal and straight lines through MoveIt 2 (C++); later the mission state machine | `move_to_pose` done |
@@ -176,6 +188,7 @@ braco_camera braco_hardware braco_description ◄┄ braco_simulation, braco_mov
   All are in the 0–101 range that is safe on Linux
   ([ROS 2 docs, *The ROS_DOMAIN_ID*](https://github.com/ros2/ros2_documentation/blob/rolling/source/ROS-Framework/nodes/About-Domain-ID.rst)).
 - Gazebo transport is kept local (`GZ_IP=127.0.0.1`).
+- The Jetson also hosts a self-hosted CI runner, `jetson-braco` (user `gh-runner`, label `braco-arm`), outside the containers. It runs only the manual `hil` job, which never opens the serial port: [HIL runner](../guides/ci.md#hil-runner).
 
 ---
 
@@ -222,7 +235,7 @@ Real arm (ADR-0004): move_group on the PC, the arm on the Jetson, both on domain
      │                       │         ║  FollowJointTrajectory
      │                       └─────────╫──► arm_controller ──► BracoSystem (braco_hardware)
      │                                 ║                            │ ALL_ANGLES, source "mission",
-     │                                 ║                            ▼ 20 Hz while mission owns the arm
+     │                                 ║                            ▼ 25 Hz while mission owns the arm
      └── /arm/take_control("mission") ─╫───────────────────────► arm_driver ──UART──► myCobot 280
                                        ║                gates: STOP · rest · owner · watchdog 300 ms
 ```
@@ -240,7 +253,9 @@ Real arm (ADR-0004): move_group on the PC, the arm on the Jetson, both on domain
 - The URDF (`braco_description`) uses the joint names of `/joint_states` and the limits of `JOINT_LIMITS`.
 - Sim and real arm share one controller file (`braco_description/config/controllers.yaml`): `arm_controller` on both,
   `joint_state_broadcaster` and `gripper_action_controller` only in simulation. Only the hardware plugin in the URDF
-  differs: `GazeboSimSystem` in simulation, `braco_hardware/BracoSystem` on the real arm (`real_arm:=true`).
+  differs: `GazeboSimSystem` in simulation, `braco_hardware/BracoSystem` on the real arm (`real_arm:=true`). On the
+  real arm the spawner also loads `controllers_real.yaml`, which adds the velocity command to `arm_controller` for
+  the servo speed (the MoveIt mock and Gazebo accept one command interface per joint).
 - A goal the arm does not reach fails: `arm_controller` aborts it when a joint falls more than 0.3 rad behind the trajectory (`PATH_TOLERANCE_VIOLATED`) or is more than 0.07 rad from its last point 0.5 s after its end (`GOAL_TOLERANCE_VIOLATED`), and MoveIt returns `CONTROL_FAILED`, so the mission sees a blocked or stalled arm (`constraints` in `controllers.yaml`).
 - Before `move_group` starts, the domain check runs and a FAIL stops the launch: `--target sim` in simulation, `--target real` on the real arm. A teammate's shell on the wrong domain, or a second arm on 22, never gets a trajectory.
 
@@ -257,7 +272,7 @@ Real arm (ADR-0004): move_group on the PC, the arm on the Jetson, both on domain
 - On the Jetson, `braco.launch.py sim:=false` (`make up`) starts `ros2_control_node` with `BracoSystem` and spawns `arm_controller`. `joint_state_broadcaster` is not spawned: `arm_driver` keeps publishing `/joint_states`.
 - On the PC (the Jetson image has no MoveIt), on the arm's domain: `make moveit` runs `braco_moveit_config`'s `real.launch.py` (domain check, then `move_group` and RViz): [Run on the real arm](../../ros2_ws/src/braco_moveit_config/README.md#run-on-the-real-arm). `move_to_pose.launch.py real:=true` runs the mission with the real arm's model, the system clock and `use_control`: [Run it on the real arm](../../ros2_ws/src/braco_mission/README.md#run-it-on-the-real-arm).
 - **Control:** with `use_control`, `braco_mission` calls `take_control("mission")` without `force` before each goal; refused → nothing is sent, nothing is queued. It releases the control after the result, also on failure. The plugin never takes the control.
-- **Sending:** `BracoSystem` `write()` sends `arm_controller`'s target as `ALL_ANGLES` with `source: "mission"` at 20 Hz, only while `arm_controller` is active and `mission` owns the arm, so trajectories pass the same gates as every client. Once the target stops changing it keeps sending it for 2 s so the arm gets there, then sends nothing: 300 ms later the watchdog stops the arm (already there), and a control `braco_mission` could not release is freed after 5 s. `arm_driver` clamps to `JOINT_LIMITS`; the plugin does not.
+- **Sending:** `BracoSystem` `write()` sends `arm_controller`'s target as `ALL_ANGLES` with `source: "mission"` at 25 Hz, at the servo speed of the fastest joint's planned velocity ([ADR-0006](../decisions/ADR-0006-servo-speed-from-planned-velocity.md), [braco_hardware](../../ros2_ws/src/braco_hardware/README.md#servo-speed)), only while `arm_controller` is active and `mission` owns the arm, so trajectories pass the same gates as every client. Once the target stops changing it keeps sending it for 2 s so the arm gets there, then sends nothing: 300 ms later the watchdog stops the arm (already there), and a control `braco_mission` could not release is freed after 5 s. `arm_driver` clamps to `JOINT_LIMITS`; the plugin does not.
 - **Stopping:** while `arm_controller` is commanding, a STOP from any client (seen on the latched `/arm/stopped`), a forced take (page or joystick) or the park on overheat makes `write()` return `DEACTIVATE`: `arm_controller` stops, the goal is aborted and the plugin goes inactive. After a STOP the latch ([ADR-0005](../decisions/ADR-0005-stop-latch.md)) refuses `take_control("mission")` until `make resume`, so no goal runs before a person releases it. `braco_mission` turns `BracoSystem` and `arm_controller` back on at its next goal, right after taking the control (no new configure). By hand: [braco_hardware](../../ros2_ws/src/braco_hardware/README.md#when-it-sends).
 - **Timing** ([timing-budget.md](timing-budget.md)): setpoints reach the arm at ~14 Hz and motion starts ~200 ms after a command.
 - **Resources** ([resources.md](resources.md)): `move_group` and the mission run on the PC, so the Jetson adds only `robot_state_publisher` and `ros2_control_node` with `arm_controller`. The Jetson figures are still estimates.
@@ -266,7 +281,7 @@ Real arm (ADR-0004): move_group on the PC, the arm on the Jetson, both on domain
 
 ## 10. Status
 
-**Done:** single serial owner · one control owner · STOP latch ([ADR-0005](../decisions/ADR-0005-stop-latch.md)) · one thermal authority · rest on overheat · `braco_*` layout with READMEs · one Makefile (`mk/`) · simulation · validated URDF ([report](../hardware/urdf-sim-to-real.md)) · trajectories through `arm_driver` ([ADR-0004](../decisions/ADR-0004-trajectories-through-arm-driver.md)) · `braco_moveit_config`: MoveIt 2 config, Gazebo and real-arm launches · `braco_mission`: `/move_to_pose` and `/move_cartesian`, control held as `mission` on the real arm · `braco_hardware` `SystemInterface`: `read()` and `write()` · `arm_controller` on the real arm · domain check before MoveIt · timing budget ([timing-budget.md](timing-budget.md)).
+**Done:** single serial owner · one control owner · STOP latch ([ADR-0005](../decisions/ADR-0005-stop-latch.md)) · one thermal authority · rest on overheat · `braco_*` layout with READMEs · one Makefile (`mk/`) · simulation · validated URDF ([report](../hardware/urdf-sim-to-real.md)) · trajectories through `arm_driver` as a lifecycle node ([ADR-0004](../decisions/ADR-0004-trajectories-through-arm-driver.md)) · `braco_moveit_config`: MoveIt 2 config, Gazebo and real-arm launches · `braco_mission`: `/move_to_pose` and `/move_cartesian`, control held as `mission` on the real arm · `braco_hardware` `SystemInterface`: `read()` and `write()` · `arm_controller` on the real arm · domain check before MoveIt · timing budget ([timing-budget.md](timing-budget.md)) · `SCHED_FIFO` measured, not enabled ([timing-budget.md](timing-budget.md#sched_fifo)).
 
 **Differs from the target (accepted):**
 
@@ -276,11 +291,10 @@ Real arm (ADR-0004): move_group on the PC, the arm on the Jetson, both on domain
 | `teleop_logic.hpp` in `braco_teleop` | in `mycobot_cpp` (stays ROS-free) |
 | `braco_moveit` | `braco_moveit_config` (MoveIt convention) |
 | Executables named like their nodes | `zero` / `park` run as `arm_zero` / `arm_park` |
-| Lifecycle motion nodes | plain nodes |
+| Lifecycle motion nodes | `arm_driver` only; the clients are plain nodes |
 | Dedicated e-stop node | software STOP on `/arm/command`, latched in `arm_driver` until `make resume` (gate 1, [ADR-0005](../decisions/ADR-0005-stop-latch.md)); no wired e-stop |
 
 **Pending:**
-- `arm_driver` as a lifecycle node
 - `braco_mission` beyond `move_to_pose` and `move_cartesian`: the mission state machine
 - Measured CPU/RAM on the Jetson ([resources.md](resources.md))
 

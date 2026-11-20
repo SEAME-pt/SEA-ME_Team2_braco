@@ -18,19 +18,24 @@ The launch description of launch/braco.launch.py, built without starting anythin
 The file is loaded from the source tree (the installed copy is not measured by coverage) and
 its generate_launch_description() called. The conditions are evaluated for each sim/moveit
 combination. The included launch files are only named, not loaded: braco_simulation and
-braco_moveit_config exist in the PC image only. The arm_driver exit handler is driven with a
-ProcessExited event.
+braco_moveit_config exist in the PC image only. The arm_driver handlers are driven with
+ProcessExited and StateTransition events.
 """
 
 import importlib.util
 from pathlib import Path
 
 from launch import LaunchContext
-from launch.actions import (DeclareLaunchArgument, IncludeLaunchDescription,
+from launch.actions import (DeclareLaunchArgument, EmitEvent, IncludeLaunchDescription,
                             RegisterEventHandler, Shutdown)
-from launch.events.process import ProcessExited
+from launch.event_handlers import OnProcessExit
+from launch.events.process import ProcessExited, ShutdownProcess
 from launch.utilities import normalize_to_list_of_substitutions, perform_substitutions
-from launch_ros.actions import Node
+from launch.utilities.type_utils import perform_typed_substitution
+from launch_ros.actions import LifecycleNode, Node
+from launch_ros.event_handlers import OnStateTransition
+from launch_ros.events.lifecycle import StateTransition
+from lifecycle_msgs.msg import TransitionEvent
 import pytest
 
 LAUNCH_FILE = Path(__file__).resolve().parents[1] / 'launch' / 'braco.launch.py'
@@ -54,6 +59,18 @@ def configured(sim, moveit):
 def exited(action):
     return ProcessExited(action=action, name='arm_driver', cmd=[], cwd=None, env=None, pid=1,
                          returncode=1)
+
+
+def transition(action, start_state, goal_state):
+    msg = TransitionEvent()
+    msg.start_state.label = start_state
+    msg.goal_state.label = goal_state
+    return StateTransition(action=action, msg=msg)
+
+
+def handlers(ld, cls):
+    return [r for r in of_type(ld.entities, RegisterEventHandler)
+            if isinstance(r.event_handler, cls)]
 
 
 @pytest.fixture(scope='module')
@@ -90,6 +107,9 @@ def test_real_nodes(ld):
     spawner_args = [perform_substitutions(LaunchContext(), part) for part in spawner.cmd[1:]]
     assert spawner_args[0] == 'arm_controller'
     assert 'joint_state_broadcaster' not in spawner_args
+    # The real-arm override last: the last param file wins
+    files = [spawner_args[i + 1] for i, a in enumerate(spawner_args) if a == '--param-file']
+    assert [Path(f).name for f in files] == ['controllers.yaml', 'controllers_real.yaml']
     for node in nodes:
         assert node.condition.evaluate(configured(sim='false', moveit='false'))
         assert not node.condition.evaluate(configured(sim='true', moveit='false'))
@@ -126,10 +146,42 @@ def test_simulation_include_arguments(includes):
 def test_arm_driver_exit_shuts_down(ld):
     """End the whole launch when arm_driver exits, on the real arm only."""
     arm_driver = of_type(ld.entities, Node)[0]
-    (register,) = of_type(ld.entities, RegisterEventHandler)
+    (register,) = handlers(ld, OnProcessExit)
     assert not register.condition.evaluate(configured(sim='true', moveit='false'))
     handler = register.event_handler
     assert handler.matches(exited(arm_driver))
     assert not handler.matches(exited(of_type(ld.entities, Node)[1]))
     (shutdown,) = handler.handle(exited(arm_driver), LaunchContext())
     assert isinstance(shutdown, Shutdown)
+
+
+def test_arm_driver_is_started_as_a_lifecycle_node(ld):
+    """Configure and activate arm_driver at launch (#95)."""
+    arm_driver = of_type(ld.entities, Node)[0]
+    assert isinstance(arm_driver, LifecycleNode)
+    assert perform_typed_substitution(LaunchContext(), arm_driver.node_autostart, bool)
+
+
+@pytest.mark.parametrize('start_state, goal_state, shuts_down', [
+    ('configuring', 'unconfigured', True),     # configure failed: no port
+    ('errorprocessing', 'unconfigured', True),
+    ('shuttingdown', 'finalized', True),
+    ('errorprocessing', 'finalized', True),
+    ('deactivating', 'inactive', False),       # a STOP: monitoring goes on
+    ('cleaningup', 'unconfigured', False),
+    ('configuring', 'inactive', False),
+])
+def test_arm_driver_unusable_ends_its_process(ld, start_state, goal_state, shuts_down):
+    """End arm_driver (so the launch) when left unusable, not on deactivate or cleanup."""
+    arm_driver = of_type(ld.entities, Node)[0]
+    registers = handlers(ld, OnStateTransition)
+    for register in registers:
+        assert not register.condition.evaluate(configured(sim='true', moveit='false'))
+    event = transition(arm_driver, start_state, goal_state)
+    matched = [r.event_handler for r in registers if r.event_handler.matches(event)]
+    assert len(matched) == shuts_down
+    for handler in matched:
+        _, emit = handler.handle(event, LaunchContext())
+        # Not a Shutdown: the exit handler sends the only one
+        assert isinstance(emit, EmitEvent)
+        assert isinstance(emit.event, ShutdownProcess)

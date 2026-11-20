@@ -53,6 +53,7 @@ def main():
     ap.add_argument('--label', default='idle', help='e.g. idle, load')
     ap.add_argument('--duration', type=float, default=60.0)
     ap.add_argument('--out', default='rate.md')
+    ap.add_argument('--raw', help='CSV with one header.stamp (s) per line')
     args = ap.parse_args()
 
     rclpy.init()
@@ -82,6 +83,10 @@ def main():
     if len(stamps) < 2:
         print('fewer than 2 messages on /joint_states: is arm_driver running?')
         return
+    if args.raw:  # every stamp, for the histogram and time series (issue #93)
+        with open(args.raw, 'w') as f:
+            f.write('stamp_s\n')
+            f.writelines(f'{t:.9f}\n' for t in stamps)
     s = interval_stats(stamps, args.requested)
     row = (
         f'| {args.requested:g} | {args.label} | {len(stamps)} '

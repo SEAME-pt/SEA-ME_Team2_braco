@@ -10,6 +10,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(ament_cmake REQUIRED)
 find_package(mycobot_cpp REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(rclcpp_lifecycle REQUIRED)
+find_package(lifecycle_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(std_srvs REQUIRED)
@@ -20,8 +22,8 @@ find_package(braco_interfaces REQUIRED)
 add_library(braco_driver_nodes STATIC src/arm_driver_node.cpp src/temperature_monitor_node.cpp)
 target_include_directories(braco_driver_nodes PUBLIC include)
 target_link_libraries(braco_driver_nodes PUBLIC
-  mycobot_cpp::mycobot_cpp rclcpp::rclcpp
-  ${sensor_msgs_TARGETS} ${std_msgs_TARGETS} ${std_srvs_TARGETS} ${diagnostic_msgs_TARGETS}
+  mycobot_cpp::mycobot_cpp rclcpp::rclcpp rclcpp_lifecycle::rclcpp_lifecycle
+  ${lifecycle_msgs_TARGETS} ${sensor_msgs_TARGETS} ${std_msgs_TARGETS} ${std_srvs_TARGETS} ${diagnostic_msgs_TARGETS}
   ${braco_interfaces_TARGETS})
 
 foreach(program arm_driver temperature_monitor)
