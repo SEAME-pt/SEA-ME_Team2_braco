@@ -54,6 +54,8 @@ loaded after `controllers.yaml`. The MoveIt mock and Gazebo accept one command i
 
 ## Servo speed
 
+Why this rule: [ADR-0006](../../../docs/decisions/ADR-0006-servo-speed-from-planned-velocity.md).
+
 `ALL_ANGLES` has one speed (1..100) for the six joints. Speed 100 is each joint's max velocity, the URDF's
 `<limit velocity>` (measured at speed 100). For each command:
 
