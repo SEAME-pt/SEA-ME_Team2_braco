@@ -102,6 +102,9 @@ def generate_launch_description():
     # spawner
     controllers = PathJoinSubstitution(
         [FindPackageShare('braco_description'), 'config', 'controllers.yaml'])
+    # Loaded after controllers.yaml: adds the velocity command on the real arm
+    controllers_real = PathJoinSubstitution(
+        [FindPackageShare('braco_description'), 'config', 'controllers_real.yaml'])
     return LaunchDescription([
         DeclareLaunchArgument('sim', default_value='false',
                               description='true: simulated arm, false: real arm'),
@@ -137,7 +140,8 @@ def generate_launch_description():
         Node(package='controller_manager', executable='ros2_control_node',
              output='screen', condition=real, parameters=[controllers]),
         Node(package='controller_manager', executable='spawner', output='screen',
-             condition=real, arguments=['arm_controller', '--param-file', controllers]),
+             condition=real, arguments=['arm_controller', '--param-file', controllers,
+                                        '--param-file', controllers_real]),
         Node(package='braco_teleop', executable='joystick_teleop', name='joystick_teleop',
              output='screen', respawn=True, condition=real,
              parameters=[config, {'device': device}]),

@@ -5,17 +5,18 @@
   port. Included by braco.urdf.xacro only with real_arm:=true; the plain model (MoveIt demo,
   tests) and the simulation never see it.
 
-  Same joints and interfaces as braco.gazebo.xacro, so config/controllers.yaml drives both: only
-  this <hardware> plugin differs. BracoSystem::write() sends the position command to arm_driver
-  (#101).
+  Same joints as braco.gazebo.xacro, so config/controllers.yaml drives both. Only here: the
+  <hardware> plugin and a velocity command (config/controllers_real.yaml claims it).
+  BracoSystem::write() sends the position command to arm_driver (#101).
 -->
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
 
-  <!-- One arm joint: position command, position and velocity state (velocity 0: arm_driver
-       publishes positions only). -->
+  <!-- One arm joint: position and velocity command, position and velocity state (velocity
+       state 0: arm_driver publishes positions only). -->
   <xacro:macro name="real_joint" params="n">
     <joint name="joint${n}">
       <command_interface name="position"/>
+      <command_interface name="velocity"/>
       <state_interface name="position"/>
       <state_interface name="velocity"/>
     </joint>

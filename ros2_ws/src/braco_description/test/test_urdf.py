@@ -345,6 +345,9 @@ def test_gazebo_model_controls_the_arm_joints():
     control = robot.find('ros2_control')
     assert control is not None
     assert [j.get('name') for j in control.findall('joint')] == ARM_JOINTS
+    for joint in control.findall('joint'):
+        commands = [c.get('name') for c in joint.findall('command_interface')]
+        assert commands == ['position'], joint.get('name')
     params = robot.find('gazebo/plugin/parameters').text
     assert os.path.isfile(params), params
 
@@ -357,6 +360,8 @@ def test_real_arm_model_reads_the_arm_joints_through_braco_hardware():
     joints = controls[0].findall('joint')
     assert [j.get('name') for j in joints] == ARM_JOINTS
     for joint in joints:
+        commands = [c.get('name') for c in joint.findall('command_interface')]
+        assert commands == ['position', 'velocity'], joint.get('name')
         states = [s.get('name') for s in joint.findall('state_interface')]
         assert states == ['position', 'velocity'], joint.get('name')
     assert robot.find('gazebo') is None
@@ -375,6 +380,17 @@ def test_controllers_drive_the_arm_joints():
     arm = config['arm_controller']['ros__parameters']
     assert arm['joints'] == ARM_JOINTS
     assert arm['command_interfaces'] == ['position']
+
+
+def test_real_arm_override_only_adds_the_velocity_command():
+    # controllers_real.yaml is loaded after controllers.yaml on the real arm only: the mock and
+    # Gazebo accept one command interface per joint.
+    yaml = pytest.importorskip('yaml')
+    path = os.path.join(PACKAGE_DIR, 'config', 'controllers_real.yaml')
+    with open(path, encoding='utf-8') as f:
+        config = yaml.safe_load(f)
+    assert config == {'arm_controller': {'ros__parameters': {
+        'command_interfaces': ['position', 'velocity']}}}
 
 
 def test_arm_controller_fails_a_goal_it_does_not_reach():
