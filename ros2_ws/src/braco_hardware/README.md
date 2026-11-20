@@ -107,7 +107,7 @@ The plugin's steps:
 
 | Step | When | What it does | Fails if |
 |---|---|---|---|
-| `on_init` | once | checks the URDF joints, keeps their max velocities | a joint has no `position` or `velocity` state, or no velocity limit |
+| `on_init` | once | checks the URDF joints, keeps their max velocities | a joint has no `position` or `velocity` state or command, or no velocity limit |
 | `on_configure` | once | starts listening to the three topics, keeps the latest `/joint_states` | |
 | `on_activate` | each time it is turned on | forgets a past STOP, waits up to 2 s for the first message | none arrives: `is arm_driver running?` |
 | `read()` | 100 per second | copies the latest message into the joint states | there is no message yet |
@@ -172,6 +172,7 @@ port: the `arm_driver` it starts talks to `PtyArm`, a fake arm on a pseudo-termi
 | `ReconfigureDropsStaleJointStates` | `on_configure` drops the message kept before it |
 | `ConfigureFailsWithoutNode` | `on_configure` fails without a node from the controller manager |
 | `InitFailsWithoutSixJoints` | `on_init` refuses a URDF without six joints |
+| `InitFailsWithoutVelocityCommand` | `on_init` refuses a joint with no `velocity` command |
 | `InitFailsWithoutVelocityLimit` | `on_init` refuses a joint with no velocity limit, or a limit of 0 |
 | `InitChecksTheParameters` | `on_init` refuses `min_speed` outside 1..100, `publish_rate_hz` ≤ 0 or not numbers |
 | `WriteSendsTheTargetsAsMissionInDegrees` | `write()` sends `ALL_ANGLES`, `source: mission`, in degrees; no velocity yet: speed 5 |

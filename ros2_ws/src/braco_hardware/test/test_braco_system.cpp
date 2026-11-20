@@ -447,6 +447,21 @@ TEST_F(BracoSystemTest, InitFailsWithoutVelocityState)
   EXPECT_EQ(system->init(params(info, nullptr)), CallbackReturn::ERROR);
 }
 
+// write() turns the velocity command into the servo speed: a joint without it is refused.
+TEST_F(BracoSystemTest, InitFailsWithoutVelocityCommand)
+{
+  auto info = bracoSystemInfo();
+  auto & commands = info.joints.at(2).command_interfaces;
+  commands.erase(
+    std::remove_if(
+      commands.begin(), commands.end(),
+      [](const auto & command) {return command.name == hardware_interface::HW_IF_VELOCITY;}),
+    commands.end());
+
+  auto system = loader_.createUniqueInstance("braco_hardware/BracoSystem");
+  EXPECT_EQ(system->init(params(info, nullptr)), CallbackReturn::ERROR);
+}
+
 // /joint_states without joint6: read() must refuse, not leave joint6 at its last value.
 TEST_F(BracoSystemTest, ReadFailsWhenJointMissing)
 {

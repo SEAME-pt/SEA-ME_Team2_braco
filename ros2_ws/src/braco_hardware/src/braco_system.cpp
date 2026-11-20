@@ -75,17 +75,25 @@ hardware_interface::CallbackReturn BracoSystem::on_init(
 
 bool BracoSystem::joints_are_valid()
 {
-  // read() fills position and velocity of every joint: refuse a URDF without them
+  const auto has_both = [](const auto & interfaces) {
+      bool has_position = false;
+      bool has_velocity = false;
+      for (const auto & interface : interfaces) {
+        has_position = has_position || interface.name == hardware_interface::HW_IF_POSITION;
+        has_velocity = has_velocity || interface.name == hardware_interface::HW_IF_VELOCITY;
+      }
+      return has_position && has_velocity;
+    };
   for (const auto & joint : get_hardware_info().joints) {
-    bool has_position = false;
-    bool has_velocity = false;
-    for (const auto & state : joint.state_interfaces) {
-      has_position = has_position || state.name == hardware_interface::HW_IF_POSITION;
-      has_velocity = has_velocity || state.name == hardware_interface::HW_IF_VELOCITY;
-    }
-    if (!has_position || !has_velocity) {
+    if (!has_both(joint.state_interfaces)) {
       RCLCPP_ERROR(
         get_logger(), "joint %s needs position and velocity state interfaces",
+        joint.name.c_str());
+      return false;
+    }
+    if (!has_both(joint.command_interfaces)) {
+      RCLCPP_ERROR(
+        get_logger(), "joint %s needs position and velocity command interfaces",
         joint.name.c_str());
       return false;
     }
