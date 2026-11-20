@@ -122,6 +122,15 @@ error, and for lines `fraction`, planned and executed deviation) and `<out>/<lin
 `<out>` is `bags/goal_set` by default. It stops at the first goal that does not run to the end (refused, partial
 plan, execution error); a goal outside the tolerance is reported and the set goes on. `--set` takes another YAML.
 
+On the real arm:
+- **Start from zero** (`make zero` on the Jetson), not from park: out of the folded park pose MoveIt finds no plan
+  (joint4 rests just past its 149° limit there). The script prints this hint when the first `start` has no plan.
+- **Temperatures:** before every goal it reads `/arm/servo_temperatures` and stops when a servo is at 55 °C or more
+  (`--max-temp`; "warm" in [overheating.md](../../../docs/guides/overheating.md)). The hottest servo before each
+  goal is in `summary.csv` (`max_servo_temp_c`). Gazebo publishes no temperatures, so there the check is skipped.
+- **Control:** the goals need the control free. If the web page holds it (`/arm/control_owner` is `web`), every
+  goal is refused: release it on the page and keep the page open for STOP.
+
 From `start` the tool points down, so the reachable lines go in (toward the base) and down: moving the `tcp` 50 mm
 out (+x) or up plans only 55–73% of the path, and nothing moves.
 
@@ -146,6 +155,31 @@ the `tcp` sits ~0.3 mm below the goal for the whole line, which looks like the s
 On the real arm the error comes from TF, so from the angles the servos report through the URDF: it shows whether the
 joints got there, not errors of the model itself (such as `tcp_length`, still to check with a ruler in
 [urdf-sim-to-real.md](../../../docs/hardware/urdf-sim-to-real.md#open-items-need-the-hardware)).
+
+### On the real arm (2026-11-19)
+
+`line_y` only, from zero, velocity scaling 0.1. Each run went zero → `start` → `line_y`:
+
+| Run | Load | `start` reached | `line_y` end error | Executed deviation max / mean | Hottest servo |
+|---|---|---|---|---|---|
+| 1 | none | 4.9 mm, 1.31° | 11.1 mm, 2.51° | 9.0 / 5.2 mm | not recorded |
+| 2 | gripper + camera (~150 g) | 10.8 mm, 3.37° | 16.4 mm, 4.13° | 12.0 / 7.7 mm | joint4 56 °C after |
+| 3 | gripper + camera, cold | aborted on the way to `start` | — | — | 42 °C before, joint4 48 °C after |
+
+- The plan is the same as in Gazebo (`fraction` 1.0, planned deviation 0.04 mm): the error comes from execution.
+- The `tcp` runs parallel to the line but 5–7 mm below and inside it, dips ~4.5 mm in z as the line starts, and stops
+  ~9 mm short of the end. Read from TF once the arm had stopped, the end pose matched the last sample: the arm does
+  not move on after the result, so the error is not measured too early.
+- The load makes it worse: with the gripper and camera the `tcp` sits lower (z at `start` 106.2 mm vs 110.8 mm,
+  goal 112.6 mm). Against IK of the line's end, joint3 was ~12° short; the others were within ~3.6°, the servos'
+  known dead zone (~3°, [urdf-sim-to-real.md](../../../docs/hardware/urdf-sim-to-real.md)).
+- Run 3: `arm_controller` aborted (path tolerance 0.3 rad) because joint3 moved ~7° the wrong way while it should
+  have gone down ~57°, and stayed cold (35 °C): it looks like joint3 does not hold under load. To check on the
+  hardware before more runs.
+- With the gripper and camera, joint4 warms fast (56 °C after two runs): hence the temperature check above.
+
+None of these runs is within the 5 mm / 2° tolerance. That tolerance was set from Gazebo; for the real arm it is for
+the team to agree on, once joint3 is checked.
 
 ## Run it on the real arm
 
