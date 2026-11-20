@@ -145,3 +145,23 @@ def test_write_summary(tmp_path):
         read = list(csv.DictReader(f))
     assert read[0]['name'] == 'line_y'
     assert list(read[0]) == run_goal_set.SUMMARY_FIELDS
+
+
+def test_too_hot():
+    assert run_goal_set.too_hot(None, 55) is None            # simulation: nothing read
+    assert run_goal_set.too_hot([42, 38, 35, 54, 35, 37], 55) is None
+    why = run_goal_set.too_hot([42, 38, 35, 57, 35, 55], 55)
+    assert 'J4 57 C' in why and 'J6 55 C' in why and 'J1' not in why
+
+
+def test_hint():
+    assert 'make zero' in run_goal_set.hint('no plan: no plan to the pose')
+    assert 'servos' in run_goal_set.hint(
+        'execution failed: arm_controller did not complete the trajectory')
+    assert run_goal_set.hint('control refused: owner web') is None
+
+
+def test_summary_row_keeps_the_temperature():
+    row = run_goal_set.summary_row('line_y', 'line', line_result(), temp=48)
+    assert row['max_servo_temp_c'] == 48
+    assert run_goal_set.summary_row('start', 'pose', line_result())['max_servo_temp_c'] == ''

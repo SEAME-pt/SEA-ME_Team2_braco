@@ -31,7 +31,12 @@ not tracked by git. It stops at the first goal that fails to execute (a refused 
 partial plan or an execution error); a goal outside the tolerance is reported and it goes on.
 
 The arm moves for every goal: on the real arm follow docs/guides/safety.md section 9, with a
-hand near the power. It asks before the first motion; --yes skips the question.
+hand near the power. It asks before the first motion; --yes skips the question. Start from
+the zero pose (make zero), not from park: MoveIt finds no plan out of the folded park pose.
+
+On the real arm it reads /arm/servo_temperatures before every goal and stops when a servo is
+at --max-temp (55 C, "warm" in docs/guides/overheating.md) or more; the hottest servo is in
+summary.csv. The simulation publishes no temperatures, so there the check is skipped.
 """
 
 import argparse
@@ -43,9 +48,12 @@ import sys
 
 SAMPLE_PERIOD_S = 0.02
 QUAT_NORM_TOLERANCE = 1e-3   # as the node (pose_math.hpp): far from unit length is a typo
+HOT_C = 55                   # overheating.md: "warm" from 55 C, park the arm and let it cool
+TEMP_WAIT_S = 3.0            # arm_driver publishes the temperatures every 2 s (temp_period_s)
 SUMMARY_FIELDS = ['name', 'kind', 'success', 'position_error_mm', 'orientation_error_deg',
                   'fraction', 'planned_deviation_mm', 'executed_deviation_max_mm',
-                  'executed_deviation_mean_mm', 'executed_end_error_mm', 'message']
+                  'executed_deviation_mean_mm', 'executed_end_error_mm', 'max_servo_temp_c',
+                  'message']
 
 
 def _load_draw_line():
@@ -123,13 +131,17 @@ def select(goals, only):
     return [g for g in goals if g['name'] in names]
 
 
-def summary_row(name, kind, result, executed=None):
-    """Return a summary.csv row: errors in mm and degrees, empty where they do not apply."""
+def summary_row(name, kind, result, executed=None, temp=''):
+    """
+    Return a summary.csv row: errors in mm and degrees, empty where they do not apply.
+
+    temp: the hottest servo (C) before the goal, '' when unknown (simulation).
+    """
     def mm(m):
         return '' if m is None or math.isnan(m) else '%.3f' % (m * 1000.0)
 
     row = dict.fromkeys(SUMMARY_FIELDS, '')
-    row.update(name=name, kind=kind, success=bool(result.success),
+    row.update(name=name, kind=kind, success=bool(result.success), max_servo_temp_c=temp,
                position_error_mm=mm(result.position_error_m),
                orientation_error_deg=('' if math.isnan(result.orientation_error_rad)
                                       else '%.3f' % math.degrees(result.orientation_error_rad)),
@@ -168,6 +180,27 @@ def moved(result):
     return result.success or result.message.startswith('outside the tolerance')
 
 
+def too_hot(celsius, limit):
+    """Return why the arm is too hot to go on, or None (also when nothing was read)."""
+    if not celsius:
+        return None
+    hot = ['J%d %d C' % (i + 1, c) for i, c in enumerate(celsius) if c >= limit]
+    if not hot:
+        return None
+    return 'servo at %d C or more: %s' % (limit, ', '.join(hot))
+
+
+def hint(message):
+    """Return a tip for a start that did not run, or None."""
+    if message.startswith('no plan'):
+        return ('no plan to the start pose: if the arm is at park, run make zero on the '
+                'Jetson first (MoveIt finds no way out of the folded park pose)')
+    if message.startswith('execution failed'):
+        return ('arm_controller aborted: a joint fell too far behind the plan. Check the '
+                'servos (make temps, a loose cable, a joint that does not hold) before again')
+    return None
+
+
 # ---- ROS ---------------------------------------------------------------------------------
 
 class Runner:
@@ -190,6 +223,32 @@ class Runner:
         self.line_client = ActionClient(self.node, MoveCartesian, 'move_cartesian')
         self.samples = []
         self.t0 = None
+        # arm_driver's servo temperatures (real arm only); None until a valid message arrives
+        from braco_interfaces.msg import ServoTemperatures
+        self.celsius = None
+        self.has_temps = None   # unknown until the first read; False: no publisher (simulation)
+        self.node.create_subscription(
+            ServoTemperatures, 'arm/servo_temperatures', self._on_temps, 10)
+
+    def _on_temps(self, msg):
+        if msg.valid:
+            self.celsius = [int(c) for c in msg.celsius]
+
+    def temperatures(self):
+        """Return a fresh reading of each servo in C, or None when nothing publishes them."""
+        from rclpy.duration import Duration
+
+        if self.has_temps is False:
+            return None
+        self.celsius = None
+        deadline = self.node.get_clock().now() + Duration(seconds=TEMP_WAIT_S)
+        while self.celsius is None and self.node.get_clock().now() < deadline:
+            self.rclpy.spin_once(self.node, timeout_sec=0.1)
+        if self.has_temps is None:
+            self.has_temps = self.celsius is not None
+            if not self.has_temps:
+                print('no /arm/servo_temperatures (simulation?): temperature check skipped')
+        return self.celsius
 
     def wait(self):
         """Return None when both actions and the tcp transform are there, else why not."""
@@ -264,7 +323,7 @@ class Runner:
         self.node.destroy_node()
 
 
-def run_line(runner, goal, out):
+def run_line(runner, goal, out, temp=''):
     """Run one line goal; write its CSV and plot. Return (summary row, it ran to the end)."""
     result, samples = runner.line(goal['line'])
     if result is None:
@@ -280,7 +339,7 @@ def run_line(runner, goal, out):
                        '%s: %.0f mm, fraction %.2f, max deviation %.2f mm (executed, from TF)' % (
                            goal['name'], executed['length_m'] * 1000, result.fraction,
                            executed['max_deviation_m'] * 1000))
-    return summary_row(goal['name'], 'line', result, executed), moved(result)
+    return summary_row(goal['name'], 'line', result, executed, temp), moved(result)
 
 
 def run(args, goal_set):
@@ -305,19 +364,30 @@ def run(args, goal_set):
             print(why, file=sys.stderr)
             return 1
         for goal in goals:
+            celsius = runner.temperatures()
+            why = too_hot(celsius, args.max_temp)
+            if why:
+                print('%s: stopped before %s, park the arm and let it cool (overheating.md)' % (
+                    why, goal['name']), file=sys.stderr)
+                break
+            temp = '' if celsius is None else max(celsius)
             result = runner.pose(goal_set['start'])
             if result is None:
                 print('goal rejected: another goal is running', file=sys.stderr)
                 break
-            rows.append(summary_row('start', 'pose', result))
+            rows.append(summary_row('start', 'pose', result, temp=temp))
             print(format_row(rows[-1]))
             if not moved(result):
+                tip = hint(result.message)
+                if tip:
+                    print(tip, file=sys.stderr)
                 break
             if goal['kind'] == 'line':
-                row, ran = run_line(runner, goal, args.out)
+                row, ran = run_line(runner, goal, args.out, temp)
             else:
                 result = runner.pose(goal['pose'])
-                row = None if result is None else summary_row(goal['name'], 'pose', result)
+                row = None if result is None else summary_row(goal['name'], 'pose', result,
+                                                              temp=temp)
                 ran = result is not None and moved(result)
             if row is None:
                 print('goal rejected: another goal is running', file=sys.stderr)
@@ -359,6 +429,9 @@ def main():
     parser.add_argument('--out', default=os.path.join('bags', 'goal_set'),
                         help='output folder (default bags/goal_set)')
     parser.add_argument('--yes', action='store_true', help='do not ask before moving the arm')
+    parser.add_argument('--max-temp', type=int, default=HOT_C,
+                        help='stop before a goal when a servo is at this many degrees C or more '
+                             '(default %d: "warm" in overheating.md)' % HOT_C)
     args = parser.parse_args(remove_ros_args(sys.argv)[1:])
     args.set = args.set or default_set()
     try:
