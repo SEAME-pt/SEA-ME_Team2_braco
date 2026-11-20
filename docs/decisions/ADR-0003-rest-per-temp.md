@@ -55,7 +55,7 @@ Implemented in `AutoRest` ([auto_rest.hpp](../../ros2_ws/src/braco_driver/includ
 ## Confirmation
 
 - `braco_driver/test/test_control.cpp`: once per episode, 64/65 °C jitter is one episode, new episode only below 60 °C, retry after failure
-- Bench (`make bench`, step 5): simulated hot servo → arm parks, joints released, rest on, LCD warns; `make resume` → motion accepted
+- Bench (`make bench`, step 6): simulated hot servo → arm parks, joints released, rest on, LCD warns; `make resume` → motion accepted
 
 ## Links
 

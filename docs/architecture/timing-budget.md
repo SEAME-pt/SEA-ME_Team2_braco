@@ -181,7 +181,8 @@ docker exec -it timing ros_entrypoint.sh bash                # terminal B, in /o
 
 1. Serial (A, no `arm_driver`): `python3 serial_rtt.py -n 1000` and `--gap-ms 0`.
 2. `arm_driver` (A): `ros2 run braco_driver arm_driver --ros-args -p state_rate_hz:=<F>.0` (a double; read only at
-   start, so restart it for each F). B: `ros2 run braco_bringup zero` once.
+   configure, so restart it, or cleanup and configure again, for each F), then `ros2 lifecycle set /arm_driver
+   configure` and `activate`. B: `ros2 run braco_bringup zero` once.
 3. Rate (B), per F: `js_rate.py --label idle`, then `hold_load.py --rate F` with `js_rate.py --label load` (60 s each).
 4. Latency (B), per F: `latency_step.py --requested F --rate F --n 20`.
 5. `SCHED_FIFO`, F = 20: host `for i in 1 2 3 4; do timeout 720 yes > /dev/null & done`; B

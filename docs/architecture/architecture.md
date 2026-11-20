@@ -18,7 +18,7 @@ Last checked against the code: **2026-11-19**.
 - **One source for each fact.** The thermal level comes from `temperature_monitor` (`/diagnostics`); the control owner from `arm_driver`.
 - **Same interface for real and simulated.** Everything above the hardware abstraction uses the same names and types. Only layer 3 changes with `sim:=true|false`.
 - **Logic without ROS where possible.** Protocol, joystick, LCD and teleop logic live in `mycobot_cpp`. Control owner and auto-rest are plain headers in `braco_driver/include`. All unit-tested without ROS.
-- **Every node that moves the arm is a lifecycle node.** *Target, not implemented yet* ([Status](#10-status)).
+- **Every node that moves the arm is a lifecycle node.** *Partly: `arm_driver` is ([§5](#5-control-of-the-arm)); the clients are not yet* ([Status](#10-status)).
 
 ---
 
@@ -62,6 +62,8 @@ A motion command passes the `arm_driver` gates in order:
 2. **Rest mode** refuses motion.
 3. **Owner:** motion from anyone but the control owner is ignored.
 4. **Watchdog:** 300 ms without commands stops the arm.
+
+An inactive `arm_driver` refuses all motion before gate 2 (lifecycle, [§5](#5-control-of-the-arm)).
 
 ---
 
@@ -113,7 +115,17 @@ Details: [ADR-0002](../decisions/ADR-0002-unique-control.md) (owner), [ADR-0003]
 | Joystick | first input if free; **hold button 8 for 1 s** to force | 5 s after the last move |
 | zero / park | forced | at the end, also on failure |
 
-**Overheat:** at ≥ 65 °C, `temperature_monitor` runs `park` once per episode: the arm folds, the joints are released and rest mode turns on. The episode ends when every joint is below 60 °C. Resuming is manual (`make resume`, [overheating guide](../guides/overheating.md)).
+**Overheat:** at ≥ 65 °C, `temperature_monitor` runs `park` once per episode: the arm folds, the joints are released and rest mode turns on. The episode ends when every joint is below 60 °C. Resuming is manual (`make resume`, [overheating guide](../guides/overheating.md)). While `arm_driver` is inactive, `park` is refused and only rest mode turns on.
+
+**Lifecycle of `arm_driver`**. `braco.launch.py` configures and activates it; a failed configure ends the launch.
+
+| State | Port | Publishes `/joint_states`, temperatures | Motion |
+|---|---|---|---|
+| unconfigured | closed | no | no |
+| inactive | open | yes | refused; STOP, HALT, LED, rest on and `release_stop` still work |
+| active | open | yes | through the gates (§3) |
+
+Deactivate is a STOP: it latches and frees the control. Activate does not release the latch. Cleanup closes the port; the latch survives it.
 
 ---
 
@@ -267,7 +279,7 @@ Real arm (ADR-0004): move_group on the PC, the arm on the Jetson, both on domain
 
 ## 10. Status
 
-**Done:** single serial owner · one control owner · STOP latch ([ADR-0005](../decisions/ADR-0005-stop-latch.md)) · one thermal authority · rest on overheat · `braco_*` layout with READMEs · one Makefile (`mk/`) · simulation · validated URDF ([report](../hardware/urdf-sim-to-real.md)) · trajectories through `arm_driver` ([ADR-0004](../decisions/ADR-0004-trajectories-through-arm-driver.md)) · `braco_moveit_config`: MoveIt 2 config, Gazebo and real-arm launches · `braco_mission`: `/move_to_pose` and `/move_cartesian`, control held as `mission` on the real arm · `braco_hardware` `SystemInterface`: `read()` and `write()` · `arm_controller` on the real arm · domain check before MoveIt · timing budget ([timing-budget.md](timing-budget.md)) · `SCHED_FIFO` measured, not enabled ([timing-budget.md](timing-budget.md#sched_fifo)).
+**Done:** single serial owner · one control owner · STOP latch ([ADR-0005](../decisions/ADR-0005-stop-latch.md)) · one thermal authority · rest on overheat · `braco_*` layout with READMEs · one Makefile (`mk/`) · simulation · validated URDF ([report](../hardware/urdf-sim-to-real.md)) · trajectories through `arm_driver` as a lifecycle node ([ADR-0004](../decisions/ADR-0004-trajectories-through-arm-driver.md)) · `braco_moveit_config`: MoveIt 2 config, Gazebo and real-arm launches · `braco_mission`: `/move_to_pose` and `/move_cartesian`, control held as `mission` on the real arm · `braco_hardware` `SystemInterface`: `read()` and `write()` · `arm_controller` on the real arm · domain check before MoveIt · timing budget ([timing-budget.md](timing-budget.md)) · `SCHED_FIFO` measured, not enabled ([timing-budget.md](timing-budget.md#sched_fifo)).
 
 **Differs from the target (accepted):**
 
@@ -277,11 +289,10 @@ Real arm (ADR-0004): move_group on the PC, the arm on the Jetson, both on domain
 | `teleop_logic.hpp` in `braco_teleop` | in `mycobot_cpp` (stays ROS-free) |
 | `braco_moveit` | `braco_moveit_config` (MoveIt convention) |
 | Executables named like their nodes | `zero` / `park` run as `arm_zero` / `arm_park` |
-| Lifecycle motion nodes | plain nodes |
+| Lifecycle motion nodes | `arm_driver` only; the clients are plain nodes |
 | Dedicated e-stop node | software STOP on `/arm/command`, latched in `arm_driver` until `make resume` (gate 1, [ADR-0005](../decisions/ADR-0005-stop-latch.md)); no wired e-stop |
 
 **Pending:**
-- `arm_driver` as a lifecycle node
 - `braco_mission` beyond `move_to_pose` and `move_cartesian`: the mission state machine
 - Measured CPU/RAM on the Jetson ([resources.md](resources.md))
 
