@@ -90,7 +90,9 @@ ros2 control set_hardware_component_state BracoSystem active
 ros2 control switch_controllers --activate arm_controller
 ```
 
-The plugin does not check the joint limits: `arm_driver` does.
+The plugin does not check the joint limits: `arm_driver` does. ros2_control's command limiter is off on the real arm
+(`controllers_real.yaml`, #157): it walked each command from the previous one, so a goal sent after another client moved
+the arm started from the last goal's pose and aborted.
 
 ## How it works
 
