@@ -37,6 +37,24 @@ constexpr const char * INACTIVE =
   " refused: arm_driver inactive (ros2 lifecycle set /arm_driver activate)";
 constexpr const char * LATCHED = " refused: STOP latched (make resume, or call arm/release_stop)";
 
+// True when every angle of a motion command is a finite number (#142). The library refuses NaN
+// and inf too, but only on the serial thread, after the command has fed the watchdog and the lease
+bool anglesAreFinite(const braco_interfaces::msg::ArmCommand & msg)
+{
+  using braco_interfaces::msg::ArmCommand;
+  if (msg.type == ArmCommand::JOINTS) {
+    return std::all_of(
+      msg.targets.begin(), msg.targets.end(),
+      [](const auto & t) {return std::isfinite(t.angle_deg);});
+  }
+  if (msg.type == ArmCommand::ALL_ANGLES) {
+    return std::all_of(
+      msg.angles_deg.begin(), msg.angles_deg.end(),
+      [](double a) {return std::isfinite(a);});
+  }
+  return true;
+}
+
 }  // namespace
 
 ArmDriver::ArmDriver(const rclcpp::NodeOptions & options)
@@ -465,6 +483,14 @@ void ArmDriver::onCommand(const ArmCommand & msg)
     RCLCPP_WARN_THROTTLE(
       get_logger(), *get_clock(), 2000, "motion from '%s' ignored: control owned by '%s'",
       msg.source.c_str(), control_.owner().c_str());
+    return;
+  }
+  // Before touch() and last_motion_command_: a client streaming bad angles must not keep the
+  // lease, nor the watchdog from stopping the arm. The whole command goes, not half of it
+  if (!anglesAreFinite(msg)) {
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *get_clock(), 2000, "motion from '%s' ignored: an angle is not a finite number",
+      msg.source.c_str());
     return;
   }
   control_.touch(std::chrono::steady_clock::now());

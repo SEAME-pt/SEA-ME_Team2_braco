@@ -18,8 +18,11 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
+#include <limits>
 #include <filesystem>
 #include <functional>
 #include <memory>
@@ -182,6 +185,16 @@ protected:
     ArmCommand msg;
     msg.type = ArmCommand::JOINTS;
     msg.targets = targets;
+    msg.source = source;
+    command_pub_->publish(msg);
+  }
+
+  void sendAll(const std::string & source, const std::array<double, 6> & angles, uint8_t speed = 30)
+  {
+    ArmCommand msg;
+    msg.type = ArmCommand::ALL_ANGLES;
+    std::copy(angles.begin(), angles.end(), msg.angles_deg.begin());
+    msg.speed = speed;
     msg.source = source;
     command_pub_->publish(msg);
   }
@@ -749,4 +762,131 @@ TEST_F(ArmDriverTest, LostPortFailsTheServiceAndKeepsRunning)
   ASSERT_TRUE(r);
   EXPECT_FALSE(r->success);
   EXPECT_EQ(r->message.rfind("power on failed: ", 0), 0u) << r->message;
+}
+
+// ---- Fault injection (#142): bad data and serial loss -----------------------------
+
+TEST_F(ArmDriverTest, NonFiniteAnglesAreDroppedAndDoNotFeedTheWatchdog)
+{
+  start({rclcpp::Parameter("command_timeout_ms", 200)});
+  ASSERT_TRUE(take("web")->success);
+  sendJoints("web", {target(1, 5)});
+  ASSERT_TRUE(waitUntil([this] {return frames(protocol::SEND_ANGLE) == 1;}));
+
+  // A buggy client streams NaN and inf: nothing reaches the port, and the watchdog still stops
+  // the arm, as if the client had gone quiet
+  constexpr double nan = std::numeric_limits<double>::quiet_NaN();
+  constexpr double inf = std::numeric_limits<double>::infinity();
+  for (int i = 0; i < 12; ++i) {
+    sendJoints("web", {target(1, nan)});
+    sendAll("web", {0, inf, 0, 0, 0, 0});
+    std::this_thread::sleep_for(50ms);
+  }
+  EXPECT_GE(frames(protocol::STOP), 1u) << "bad commands kept the watchdog from stopping the arm";
+  EXPECT_EQ(frames(protocol::SEND_ANGLE), 1u);
+  EXPECT_EQ(frames(protocol::SEND_ANGLES), 0u);
+
+  // A whole command is dropped, its good targets too: half a command is not what the client meant
+  sendJoints("web", {target(2, 10), target(3, nan)});
+  std::this_thread::sleep_for(300ms);
+  EXPECT_EQ(frames(protocol::SEND_ANGLE), 1u);
+
+  // The driver keeps serving: the next good command moves, and a STOP latches
+  sendJoints("web", {target(1, 10)});
+  EXPECT_TRUE(waitUntil([this] {return frames(protocol::SEND_ANGLE) == 2;}));
+  const size_t stops = frames(protocol::STOP);
+  sendType("web", ArmCommand::STOP);
+  EXPECT_TRUE(waitUntil([&] {return frames(protocol::STOP) > stops;}));
+  EXPECT_TRUE(waitUntil([this] {return lastStopped() == 1;}));
+}
+
+TEST_F(ArmDriverTest, NonFiniteAnglesDoNotKeepTheControl)
+{
+  start({rclcpp::Parameter("control_idle_s", 0.3)});
+  ASSERT_TRUE(take("web")->success);
+  ASSERT_TRUE(waitUntil([this] {return lastOwner() == "web";}));
+  for (int i = 0; i < 12; ++i) {   // 0.6 s, twice control_idle_s
+    sendJoints("web", {target(1, std::numeric_limits<double>::quiet_NaN())});
+    std::this_thread::sleep_for(50ms);
+  }
+  EXPECT_EQ(lastOwner(), "") << "bad commands kept the lease alive";
+}
+
+TEST_F(ArmDriverTest, AnglesOutOfTheLimitsAreClamped)
+{
+  start({rclcpp::Parameter("command_timeout_ms", 5000)});
+  ASSERT_TRUE(take("web")->success);
+  sendJoints("web", {target(1, 500)});
+  ASSERT_TRUE(waitUntil([this] {return frames(protocol::SEND_ANGLE) == 1;}));
+  EXPECT_EQ(mycobot::fake::readInt16(arm_->received(protocol::SEND_ANGLE)[0].data, 1), 16600);
+
+  sendAll("web", {-500, 0, 0, 0, 0, 0});
+  ASSERT_TRUE(waitUntil([this] {return frames(protocol::SEND_ANGLES) == 1;}));
+  EXPECT_EQ(mycobot::fake::readInt16(arm_->received(protocol::SEND_ANGLES)[0].data, 0), -16600);
+  EXPECT_NEAR(arm_->state().angles[0], -166.0, 1e-9);   // J1's limit, mycobot::JOINT_LIMITS
+}
+
+TEST_F(ArmDriverTest, PoseIntoTheTableIsNotSent)
+{
+  start({rclcpp::Parameter("command_timeout_ms", 5000)});
+  ASSERT_TRUE(take("web")->success);
+  sendAll("web", {0, -130, 0, 0, 0, 0});   // the tool below TABLE_MARGIN_MM
+  std::this_thread::sleep_for(300ms);
+  EXPECT_EQ(frames(protocol::SEND_ANGLES), 0u);
+  EXPECT_EQ(arm_->state().angles, mycobot::ZERO_ANGLES);
+
+  // Not an error: the driver goes on, and a STOP still latches
+  sendAll("web", {10, 0, 0, 0, 0, 0});
+  EXPECT_TRUE(waitUntil([this] {return frames(protocol::SEND_ANGLES) == 1;}));
+  sendType("web", ArmCommand::STOP);
+  EXPECT_TRUE(waitUntil([this] {return lastStopped() == 1;}));
+}
+
+TEST_F(ArmDriverTest, MotionFromAWrongSourceIsIgnored)
+{
+  start({rclcpp::Parameter("command_timeout_ms", 5000)});
+  // Free control: no source moves the arm, not even an empty one
+  sendJoints("", {target(1, 5)});
+  sendJoints("intruder", {target(1, 5)});
+  sendAll("mission", {5, 0, 0, 0, 0, 0});
+  // Owned: only the exact name passes
+  ASSERT_TRUE(take("web")->success);
+  sendJoints("Web", {target(1, 5)});
+  sendJoints("web ", {target(1, 5)});
+  sendJoints("", {target(1, 5)});
+  std::this_thread::sleep_for(300ms);
+  EXPECT_EQ(frames(protocol::SEND_ANGLE), 0u);
+  EXPECT_EQ(frames(protocol::SEND_ANGLES), 0u);
+  EXPECT_EQ(lastOwner(), "web");
+
+  // A STOP from a wrong source still stops: STOP is obeyed from anyone (ADR-0002)
+  sendType("intruder", ArmCommand::STOP);
+  EXPECT_TRUE(waitUntil([this] {return lastStopped() == 1;}));
+  EXPECT_TRUE(waitUntil([this] {return lastOwner() == "";}));
+}
+
+TEST_F(ArmDriverTest, SerialLossDuringAMoveStopsFeedbackAndStopStillLatches)
+{
+  start({rclcpp::Parameter("command_timeout_ms", 5000)});
+  ASSERT_TRUE(take("web")->success);
+  sendJoints("web", {target(1, 5)});
+  ASSERT_TRUE(waitUntil([this] {return frames(protocol::SEND_ANGLE) == 1;}));
+  const auto count = [this] {std::lock_guard<std::mutex> lock(mutex_); return joints_.size();};
+  ASSERT_TRUE(waitUntil([&] {return count() > 0;}));
+
+  arm_.reset();   // the cable is pulled mid-move
+  // No more /joint_states: clients see them go stale (ADR-0004) and stop
+  std::this_thread::sleep_for(300ms);
+  const size_t seen = count();
+  std::this_thread::sleep_for(500ms);
+  EXPECT_EQ(count(), seen);
+
+  // The node still answers, and a STOP latches with nothing to write to: motion stays refused
+  // when the cable comes back, until a person releases it
+  sendType("web", ArmCommand::STOP);
+  EXPECT_TRUE(waitUntil([this] {return lastStopped() == 1;}));
+  EXPECT_TRUE(waitUntil([this] {return lastOwner() == "";}));
+  const auto t = take("web");
+  ASSERT_TRUE(t);
+  EXPECT_FALSE(t->success);
 }
