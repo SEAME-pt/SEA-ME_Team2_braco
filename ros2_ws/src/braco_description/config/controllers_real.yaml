@@ -1,6 +1,19 @@
-# Real arm only, loaded after controllers.yaml. arm_controller also commands the planned
-# velocity: braco_hardware turns it into the servo speed. Not in controllers.yaml because the
-# mock and Gazebo accept one command interface per joint.
+# Real arm only, loaded after controllers.yaml by ros2_control_node and by the arm_controller
+# spawner. The simulation never sees it.
+
+# ros2_control's command limiter off (#157). It moves each command at most max_velocity * dt from
+# the previous command, reset only when a controller is (de)activated. Here other clients (web,
+# joystick, scripts) move the arm while arm_controller stays active: the next goal then started
+# from the last goal's pose and aborted. arm_driver clamps every command to JOINT_LIMITS (the
+# URDF limits) and the servo speed is capped at 100, so arm_driver is the one place that clamps.
+# Read only at start: it must reach ros2_control_node, not the spawner.
+controller_manager:
+  ros__parameters:
+    enforce_command_limits: false
+
+# arm_controller also commands the planned velocity: braco_hardware turns it into the servo
+# speed. Not in controllers.yaml because the mock and Gazebo accept one command interface per
+# joint.
 arm_controller:
   ros__parameters:
     command_interfaces:
