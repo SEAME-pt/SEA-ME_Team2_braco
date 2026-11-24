@@ -102,7 +102,8 @@ def generate_launch_description():
     # spawner
     controllers = PathJoinSubstitution(
         [FindPackageShare('braco_description'), 'config', 'controllers.yaml'])
-    # Loaded after controllers.yaml: adds the velocity command on the real arm
+    # Loaded after controllers.yaml: ros2_control's command limiter off (#157) and the velocity
+    # command on the real arm
     controllers_real = PathJoinSubstitution(
         [FindPackageShare('braco_description'), 'config', 'controllers_real.yaml'])
     return LaunchDescription([
@@ -138,7 +139,7 @@ def generate_launch_description():
              output='screen', condition=real,
              parameters=[{'robot_description': robot_description}]),
         Node(package='controller_manager', executable='ros2_control_node',
-             output='screen', condition=real, parameters=[controllers]),
+             output='screen', condition=real, parameters=[controllers, controllers_real]),
         Node(package='controller_manager', executable='spawner', output='screen',
              condition=real, arguments=['arm_controller', '--param-file', controllers,
                                         '--param-file', controllers_real]),
