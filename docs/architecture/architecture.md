@@ -11,7 +11,7 @@ Last checked against the code: **2026-11-24**.
 ## 1. Principles
 
 - **One owner per device.** Only `arm_driver` opens the arm's serial port (`/dev/ttyTHS1`, 1 Mbaud); only `camera` opens the USB camera. Everyone else uses their topics and services.
-- **The driver never moves the arm by itself.** Zero, park and power on are explicit commands. The one automatic move is the park on overheat ([ADR-0003](../decisions/ADR-0003-rest-per-temp.md)).
+- **The driver never moves the arm by itself.** Zero, park and power on are explicit commands. The one automatic move is the park on overheat ([ADR-0003](../decisions/ADR-0003-rest-per-temp.md)). Commands that stop the system park first (below).
 - **Safety lives next to the hardware.** Joint limits, table margin, watchdog, rest mode and control owner are enforced in `arm_driver`, not in clients.
 - **One client moves the arm at a time.** Clients take the control before moving; STOP is always obeyed ([ADR-0002](../decisions/ADR-0002-unique-control.md)).
 - **Faults are visible.** `arm_driver` is not respawned: if it dies, the container stops. `temperature_monitor`, `joystick_teleop` and `camera` are respawned.
@@ -182,6 +182,7 @@ braco_camera braco_hardware braco_description ◄┄ braco_simulation, braco_mov
 - Same image family (ROS 2 Lyrical, Ubuntu 26.04) and workspace on both machines. `dev` builds; the system container runs what was built.
 - **Heavy work stays on the PC:** MoveIt 2 and the mission run there and reach the arm over DDS.
 - `make up` starts the system container. If the launch ends, the container stops. `make web` starts the page in the running container.
+- **Park before stop (Jetson):** a stopped `arm_driver` only stops the arm, so the servos (own supply) stay on, holding the pose, with no temperature watch. `make down`, `restart`, `re`, `fclean`, `make up` after a rebuild and `braco.service` run `park` before the `real` container stops (`PARK=0` skips it). A failed park (STOP latched) ends the `make` command with the system still running; `braco.service` stops anyway. Not covered: a plain `docker stop` and a crash of `arm_driver`.
 - Each PC uses its teammate's domain (`PC_ROS_DOMAIN_ID`, set by `make setup` from the GitHub login, see the
   [table](../../docker/README.md#ros-domain-per-teammate)) so its `/joint_states` never mix with the real arm's or
   another PC's. To reach the arm from the PC: `ROS_DOMAIN_ID=22 ros2 ...`.
