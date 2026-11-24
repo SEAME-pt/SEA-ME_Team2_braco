@@ -110,6 +110,11 @@ def test_real_nodes(ld):
     # The real-arm override last: the last param file wins
     files = [spawner_args[i + 1] for i, a in enumerate(spawner_args) if a == '--param-file']
     assert [Path(f).name for f in files] == ['controllers.yaml', 'controllers_real.yaml']
+    # The controller manager reads enforce_command_limits at start, from controllers_real.yaml
+    # (#157): the spawner cannot set it
+    (manager,) = [n for n in nodes if n.node_executable == 'ros2_control_node']
+    manager_files = [p.evaluate(LaunchContext()) for p in manager._Node__parameters]
+    assert [Path(f).name for f in manager_files] == ['controllers.yaml', 'controllers_real.yaml']
     for node in nodes:
         assert node.condition.evaluate(configured(sim='false', moveit='false'))
         assert not node.condition.evaluate(configured(sim='true', moveit='false'))
