@@ -65,6 +65,6 @@ MoveIt 2 sends `FollowJointTrajectory` goals to `arm_controller` (`JointTrajecto
 
 ## Links
 
-- Issues [#86](https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/86), [#87](https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/87), [#97](https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/97), [#101](https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/101), [#90](https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/90) (timing), [#95](https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/95) (lifecycle); parent [#5](https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/5)
+- History: decided in sprint 2 (2026-11-03), then built in steps by 2026-11-20: a single `/joint_states` publisher on the real arm, the plugin's `read()` from `arm_driver`, the measured [timing budget](../architecture/timing-budget.md), `write()` with velocity scaling ≤ 0.1, and `arm_driver` as a lifecycle node
 - [ADR-0002](ADR-0002-unique-control.md), [ADR-0003](ADR-0003-rest-per-temp.md), [Architecture §9](../architecture/architecture.md)
 - Revisit if: the extra hop makes trajectories visibly jerky on the bench, or a tool needs `joint_state_broadcaster` on the real arm
