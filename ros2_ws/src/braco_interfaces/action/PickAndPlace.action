@@ -6,7 +6,7 @@
 # Goal
 geometry_msgs/PoseStamped pick     # tcp at the grasp. Empty frame_id: the planning frame (world). Orientation all 0: position only
 geometry_msgs/PoseStamped place    # tcp where the object is let go, same conventions as pick
-float64 approach_height_m          # pre-grasp / pre-place this far above the pose (+z of its frame), the same up on the retreat; 0: the node's default
+float64 approach_height_m          # pre-grasp / pre-place this far above the pose (+z of the planning frame: vertical), the same up on the retreat; 0: the node's default
 ---
 # Result
 bool success                       # every stage ran and the tcp was within the node's tolerances at pick and place
@@ -18,6 +18,8 @@ float64 place_orientation_error_rad
 string message
 ---
 # Feedback
+string STAGE_GOAL = "goal"                # failed_stage only: the goal was refused, nothing moved
+string STAGE_CONTROL = "control"          # real arm: take the control, arm_controller active
 string STAGE_OPEN = "open"
 string STAGE_PRE_GRASP = "pre_grasp"
 string STAGE_APPROACH_PICK = "approach_pick"
