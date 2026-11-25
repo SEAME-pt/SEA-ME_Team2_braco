@@ -42,6 +42,11 @@ time, on either action; cancelling stops the arm.
 | `orientation_tolerance_deg` | `2.0` | success: tcp within 2° |
 | `settle_s` / `tf_timeout_s` | `0.5` / `1.0` | wait before reading the tcp; TF lookup timeout |
 | `eef_step_m` | `0.005` | straight lines: a `tcp` point every 5 mm, when the goal leaves `eef_step_m` at 0 |
+| `gripper` | `sim` | `sim`: `gripper_action_controller` (Gazebo); `real`: `/arm/set_gripper` on `arm_driver`. Anything else: the node does not start. The launch file's `gripper` argument sets it; empty, it follows `real` |
+| `gripper_joint` | `gripper_controller` | sim: the gripper's master joint |
+| `gripper_open_position` / `gripper_closed_position` | `0.15` / `-0.74` | sim: rad of the master joint. On an object the gripper stalls before closed, which counts as done |
+| `gripper_timeout_s` | `5.0` | longest wait for the gripper to answer and to move |
+| `gripper_settle_s` | `1.5` | real: wait after `/arm/set_gripper` answers, the gripper is still moving |
 
 The tolerances are a proposal for the team to agree on (#84 "Done when").
 
@@ -153,6 +158,8 @@ Position only: send the orientation as all zeros. Checked in Gazebo (2026-11-10)
 | `include/braco_mission/cartesian.hpp`, `src/cartesian.cpp` | The steps of a straight-line goal against `CartesianBackend`, the request check and the line deviation, no ROS |
 | `include/braco_mission/control_guard.hpp` | Releases the control on every path of a goal (both actions) |
 | `include/braco_mission/move_to_pose_node.hpp`, `src/move_to_pose_node.cpp` | `MoveToPoseNode`: `CartesianBackend` with a `MotionGroup`, TF, `/arm/take_control` and the controller manager services; both action servers. A library, so tests can run it in-process |
+| `include/braco_mission/gripper.hpp` | `GripperBackend`: open and close the gripper, no ROS, faked in tests |
+| `include/braco_mission/ros_gripper.hpp`, `src/ros_gripper.cpp` | `ActionGripper` (`ParallelGripperCommand`, Gazebo) and `ServiceGripper` (`/arm/set_gripper`, real arm), chosen by `make_gripper` from the `gripper` parameter |
 | `include/braco_mission/motion_group.hpp` | `MotionGroup`: the MoveIt 2 calls of the node, faked in tests |
 | `include/braco_mission/moveit_motion_group.hpp`, `src/moveit_motion_group.cpp` | `MotionGroup` with MoveIt 2 (`MoveGroupInterface`, `computeCartesianPath`, TOTG) |
 | `src/move_to_pose.cpp` | `main()` only |
@@ -164,5 +171,7 @@ Tests (`colcon test --packages-select braco_mission`): `test/test_pose_math.cpp`
 `test/test_draw_line.py` (the script's path geometry, CSV and plot). No ROS graph, no MoveIt.
 `test/test_move_to_pose_node.cpp` runs the node in-process with a fake `MotionGroup`: both actions, cancel, one goal
 at a time, TF frames and `/arm/take_control`. `MoveItMotionGroup` is checked in Gazebo.
+`test/test_ros_gripper.cpp` runs both grippers against a fake `gripper_action_controller` and a fake
+`/arm/set_gripper`: commanded positions, abort, reject, timeout and cancel, a refusal, no server.
 `test/test_launch.py` builds `move_to_pose.launch.py` without starting it: one node for the simulation, one for the
-real arm (`real:=true`: real-arm model, `use_control`).
+real arm (`real:=true`: real-arm model, `use_control`), and the `gripper` each one gets.
