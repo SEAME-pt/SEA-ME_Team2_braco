@@ -16,6 +16,7 @@
 //
 //   action  /move_to_pose     braco_interfaces/action/MoveToPose     point to point
 //   action  /move_cartesian   braco_interfaces/action/MoveCartesian  straight lines
+//   action  /pick_and_place   braco_interfaces/action/PickAndPlace   pick and place (#148)
 //   client  /arm/take_control (only with `use_control`, the real arm: ADR-0004)
 //   clients /controller_manager/{list_hardware_components, set_hardware_component_state,
 //           list_controllers, switch_controller} (only with `use_control`, #101)
@@ -36,7 +37,8 @@
 // Parameters: group (arm), end_effector (tcp), use_control (false: simulation),
 // velocity_scaling / acceleration_scaling (0.1, ADR-0004), planning_time_s (5.0),
 // position_tolerance_m (0.005), orientation_tolerance_deg (2.0), settle_s (0.5),
-// tf_timeout_s (1.0), eef_step_m (0.005: the default of a MoveCartesian goal),
+// tf_timeout_s (1.0), eef_step_m (0.005: the default of a MoveCartesian goal and the lines of
+// pick and place), approach_height_m (0.05: the default of a PickAndPlace goal),
 // gripper (sim | real, anything else: the node does not start), gripper_joint
 // (gripper_controller), gripper_open_position (0.15) / gripper_closed_position (-0.74, rad, sim),
 // gripper_timeout_s (5.0), gripper_settle_s (1.5, real).
@@ -57,10 +59,12 @@
 
 #include "braco_interfaces/action/move_cartesian.hpp"
 #include "braco_interfaces/action/move_to_pose.hpp"
+#include "braco_interfaces/action/pick_and_place.hpp"
 #include "braco_interfaces/srv/take_control.hpp"
 #include "braco_mission/cartesian.hpp"
 #include "braco_mission/mission.hpp"
 #include "braco_mission/motion_group.hpp"
+#include "braco_mission/pick_and_place.hpp"
 #include "braco_mission/ros_gripper.hpp"
 #include "controller_manager_msgs/srv/list_controllers.hpp"
 #include "controller_manager_msgs/srv/list_hardware_components.hpp"
@@ -83,6 +87,8 @@ public:
   using GoalHandle = rclcpp_action::ServerGoalHandle<MoveToPose>;
   using MoveCartesian = braco_interfaces::action::MoveCartesian;
   using CartesianGoalHandle = rclcpp_action::ServerGoalHandle<MoveCartesian>;
+  using PickAndPlace = braco_interfaces::action::PickAndPlace;
+  using PickGoalHandle = rclcpp_action::ServerGoalHandle<PickAndPlace>;
   using TakeControl = braco_interfaces::srv::TakeControl;
   using ListHardware = controller_manager_msgs::srv::ListHardwareComponents;
   using SetHardwareState = controller_manager_msgs::srv::SetHardwareComponentState;
@@ -126,12 +132,16 @@ private:
   // /arm/stopped: a STOP latched while a goal runs stops the arm's trajectory
   void on_stopped(bool latched);
 
-  // Ends a goal of either action: a cancel stops the arm, so the steps report a failed
-  // execution; say why it stopped.
+  // Ends a goal of any action: a cancel or a STOP stops the arm, so the steps report a failed
+  // execution; with `say_why`, the message starts with why it stopped (pick and place says it
+  // itself, at the stage it stopped).
   template<typename Handle, typename Result>
-  void finish(const std::shared_ptr<Handle> & goal, const std::shared_ptr<Result> & result);
+  void finish(
+    const std::shared_ptr<Handle> & goal, const std::shared_ptr<Result> & result,
+    bool say_why = true);
 
   void run_cartesian(const std::shared_ptr<CartesianGoalHandle> & goal);
+  void run_pick_and_place(const std::shared_ptr<PickGoalHandle> & goal);
   void run(const std::shared_ptr<GoalHandle> & goal);
 
   // The goal in the planning frame. An empty frame_id means the planning frame already.
@@ -154,6 +164,7 @@ private:
   double settle_s_ = 0.5;
   double tf_timeout_s_ = 1.0;
   double eef_step_m_ = 0.005;
+  double approach_height_m_ = 0.05;
   GripperConfig gripper_config_;
 
   MotionGroupFactory make_motion_group_;
@@ -168,6 +179,7 @@ private:
   std::unique_ptr<GripperBackend> gripper_;
   rclcpp_action::Server<MoveToPose>::SharedPtr server_;
   rclcpp_action::Server<MoveCartesian>::SharedPtr cartesian_server_;
+  rclcpp_action::Server<PickAndPlace>::SharedPtr pick_server_;
   // Feedback of the goal that runs (one at a time: busy_); set and used on its thread
   std::function<void(const std::string &)> feedback_;
   std::atomic<bool> busy_{false};
