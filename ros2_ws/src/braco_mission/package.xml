@@ -21,6 +21,9 @@
   <depend>braco_interfaces</depend>
   <depend>controller_manager_msgs</depend>
   <depend>lifecycle_msgs</depend>
+  <!-- the gripper: gripper_action_controller (sim), /arm/set_gripper (real), #148 -->
+  <depend>control_msgs</depend>
+  <depend>std_srvs</depend>
 
   <!-- move_to_pose.launch.py: the MoveIt config of the Gazebo arm -->
   <exec_depend>ament_index_python</exec_depend>
