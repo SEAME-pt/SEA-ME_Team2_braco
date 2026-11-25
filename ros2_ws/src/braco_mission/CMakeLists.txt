@@ -62,6 +62,8 @@ if(BUILD_TESTING)
   target_link_libraries(test_mission braco_mission_core)
   ament_add_gtest(test_cartesian test/test_cartesian.cpp)
   target_link_libraries(test_cartesian braco_mission_core)
+  ament_add_gtest(test_pick_and_place test/test_pick_and_place.cpp)
+  target_link_libraries(test_pick_and_place braco_mission_core)
 
   # The node with a fake MotionGroup, TF and /arm/take_control in-process; its own ROS graph
   find_package(ament_cmake_ros REQUIRED)
