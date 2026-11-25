@@ -217,6 +217,8 @@ protected:
   }
 };
 
+}  // namespace
+
 // ---- the request ----------------------------------------------------------------------
 
 TEST(PickAndPlaceRequest, AboveMovesUpAndKeepsTheOrientation)
@@ -428,8 +430,6 @@ TEST_F(PickAndPlaceTest, StepsInsideAStageAreNotReported)
       << s;
   }
 }
-
-}  // namespace
 
 // ---- cancel and STOP ------------------------------------------------------------------
 

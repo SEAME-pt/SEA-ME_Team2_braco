@@ -148,6 +148,8 @@ protected:
   std::vector<bool> requests_;
 };
 
+}  // namespace
+
 // ---- factory ---------------------------------------------------------------------------
 
 TEST_F(RosGripperTest, FactoryBuildsTheNamedGripper)
@@ -271,5 +273,3 @@ TEST_F(RosGripperTest, ServiceGripperWithoutDriverFails)
   EXPECT_FALSE(gripper.close(message));
   EXPECT_TRUE(contains(message, "is not available")) << message;
 }
-
-}  // namespace
