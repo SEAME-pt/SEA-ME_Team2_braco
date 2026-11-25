@@ -33,6 +33,7 @@ deciders: all
 
 - ✅ <good>
 - ❌ <bad>
+- ⚠️ <trade-off to watch>
 
 ## Confirmation
 

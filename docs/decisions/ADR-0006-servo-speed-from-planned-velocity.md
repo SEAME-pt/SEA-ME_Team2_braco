@@ -8,7 +8,7 @@ deciders: all
 
 ## Context
 
-`BracoSystem::write()` ([ADR-0004](ADR-0004-trajectories-through-arm-driver.md)) sent every `ALL_ANGLES` at a fixed servo speed 50, ignoring the velocity MoveIt planned (at most ~0.26 rad/s at scaling 0.1, #101).
+`BracoSystem::write()` ([ADR-0004](ADR-0004-trajectories-through-arm-driver.md)) sent every `ALL_ANGLES` at a fixed servo speed 50, ignoring the velocity MoveIt planned (at most ~0.26 rad/s at scaling 0.1).
 
 **Question:** which servo speed does `write()` send with each trajectory point?
 
@@ -33,7 +33,7 @@ deciders: all
 - `arm_controller` commands `position` and `velocity` on the real arm (`controllers_real.yaml`)
 - Speed = largest `|velocity| / URDF max velocity × 100`, × 1.5, rounded up, clamped to [`min_speed` 5, 100]
 - `on_init` refuses a joint without a velocity command or a velocity limit
-- `write()` publishes at 25 Hz (was 20): faster than `arm_driver` sends, ~14 Hz at `COMMAND_GAP` 50 ms and ~20 Hz at 30 ms (tested by the team, changed in #141), so `arm_driver` always finds a fresh target and never waits; the extra ones are dropped by design (latest wins)
+- `write()` publishes at 25 Hz (was 20): faster than `arm_driver` sends, ~14 Hz at `COMMAND_GAP` 50 ms and ~20 Hz at 30 ms (tested by the team while tuning smooth motion; the code keeps 50 ms), so `arm_driver` always finds a fresh target and never waits; the extra ones are dropped by design (latest wins)
 
 **Why × 1.5, with the scaling ≤ 0.1 of ADR-0004:** the two set different things.
 
@@ -57,5 +57,5 @@ The arm starts moving ~200 ms after a command ([timing budget](../architecture/t
 
 ## Links
 
-- #153, #101, [ADR-0004](ADR-0004-trajectories-through-arm-driver.md), [braco_hardware README](../../ros2_ws/src/braco_hardware/README.md#servo-speed)
+- [ADR-0004](ADR-0004-trajectories-through-arm-driver.md), [braco_hardware README](../../ros2_ws/src/braco_hardware/README.md#servo-speed)
 - Revisit if: the arm falls behind the plan, or `COMMAND_GAP` changes

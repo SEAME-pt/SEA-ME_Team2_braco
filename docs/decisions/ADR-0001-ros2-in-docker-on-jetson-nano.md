@@ -50,7 +50,7 @@ The myCobot 280 is wired to the Nano's UART (`/dev/ttyTHS1`, 1 Mbaud) and the ca
 | Check | Result |
 |---|---|
 | Container opens `/dev/ttyTHS1` and reads the arm via `pymycobot` | Pass |
-| Container reads camera frames (640x480) | Pass |
+| Container reads camera frames (640×480) | Pass |
 | ROS 2 Lyrical Luth on Ubuntu 26.04 runs on the Nano | Pass |
 | The `jetson` image runs the whole `real` system (arm, temperatures, joystick, camera, LCD) | Pass |
 | GPU stack usable from a plain ROS container | Fail (see Consequences) |
@@ -58,5 +58,5 @@ The myCobot 280 is wired to the Nano's UART (`/dev/ttyTHS1`, 1 Mbaud) and the ca
 ## Links
 
 - Setup: [docker/README.md](../../docker/README.md)
-- Follow-ups: GPU/vision strategy; arm driver on Lyrical (port `mycobot_ros2` or own node around `pymycobot`)
+- Follow-up: GPU/vision strategy
 - Revisit if: the driver cannot run in a Lyrical container, Ubuntu 26.04 is unstable on the 4.9 kernel, SD/RAM limits make containers impractical, or a GPU requirement cannot be met

@@ -8,7 +8,7 @@ deciders: all
 
 ## Context
 
-There is no hardwired e-stop, so STOP on `/arm/command` is the emergency stop. `arm_driver` stopped the arm once and dropped pending motion, but the owner kept the control ([ADR-0002](ADR-0002-unique-control.md)): a client that resent its target moved the arm again. On the real arm (PR #124), a STOP from the terminal did not stop a move the page streamed. The same `STOP` was also sent for routine stops (stick released, move timed out).
+There is no hardwired e-stop, so STOP on `/arm/command` is the emergency stop. `arm_driver` stopped the arm once and dropped pending motion, but the owner kept the control ([ADR-0002](ADR-0002-unique-control.md)): a client that resent its target moved the arm again. During the timing-budget measurements on the real arm (2026-11-09), a STOP from the terminal did not stop a move the page streamed. The same `STOP` was also sent for routine stops (stick released, move timed out).
 
 **Question:** how does a STOP from any client keep the arm stopped until a person decides to go on?
 
@@ -27,7 +27,7 @@ There is no hardwired e-stop, so STOP on `/arm/command` is the emergency stop. `
 | **Latch in `arm_driver` with its own release, after a minimum hold** | Holds for every client; one place; zero/park/auto-park cannot undo it | Routine stops need their own command type (`HALT`) |
 | STOP enters rest mode | Reuses existing refusals | zero, park, `temperature_monitor`, the page and scripts all leave rest mode, then move |
 | Timed lockout, then motion accepted again | No release step | A client still streaming moves the arm when the timer ends |
-| Every streaming client stops itself | No driver change | One buggy client breaks it (the failure seen in PR #124) |
+| Every streaming client stops itself | No driver change | One buggy client breaks it (the failure seen on the real arm) |
 
 ## Decision
 
@@ -63,6 +63,5 @@ There is no hardwired e-stop, so STOP on `/arm/command` is the emergency stop. `
 
 ## Links
 
-- Issue [#126](https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/126), found in PR #124
 - [ADR-0002](ADR-0002-unique-control.md), [ADR-0003](ADR-0003-rest-per-temp.md), [ADR-0004](ADR-0004-trajectories-through-arm-driver.md), [safety guide](../guides/safety.md)
 - Revisit if: a hardwired e-stop is added, or the 3 s hold gets in the way on the bench

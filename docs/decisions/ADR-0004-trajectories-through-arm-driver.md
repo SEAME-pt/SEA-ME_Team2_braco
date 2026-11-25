@@ -8,7 +8,7 @@ deciders: all
 
 ## Context
 
-MoveIt 2 sends `FollowJointTrajectory` goals to `arm_controller` (`JointTrajectoryController`, 100 Hz). In simulation, `gz_ros2_control` moves the joints. On the real arm, `arm_driver` is the only process that opens the serial port, and it holds every safety rule: the STOP, rest, owner and watchdog gates, the control lease (ADR-0002) and rest on overheat (ADR-0003). It also publishes `/joint_states` at 20 Hz (18.7 Hz measured idle, ~14 Hz under continuous commands, [timing budget](../architecture/timing-budget.md)) and stops publishing when angle feedback fails, which clients read as "stale".
+MoveIt 2 sends `FollowJointTrajectory` goals to `arm_controller` (`JointTrajectoryController`, 100 Hz). In simulation, `gz_ros2_control` moves the joints. On the real arm, `arm_driver` is the only process that opens the serial port, and it holds every safety rule: the STOP, rest, owner and watchdog gates, the control lease ([ADR-0002](ADR-0002-unique-control.md)) and rest on overheat ([ADR-0003](ADR-0003-rest-per-temp.md)). It also publishes `/joint_states` at 20 Hz nominal ([timing budget](../architecture/timing-budget.md)) and stops publishing when angle feedback fails, which clients read as "stale".
 
 **Question:** how does a trajectory from `arm_controller` reach the real arm without bypassing `arm_driver`'s safety rules, and who holds the control, publishes `/joint_states` and stops the trajectory?
 
@@ -18,7 +18,7 @@ MoveIt 2 sends `FollowJointTrajectory` goals to `arm_controller` (`JointTrajecto
 - Trajectories pass the same gates as every other client (STOP, rest, owner, watchdog, `JOINT_LIMITS`)
 - STOP on `/arm/command` halts a running trajectory
 - An overheating servo still parks the arm (ADR-0003)
-- Exactly one `/joint_states` publisher (#97)
+- Exactly one `/joint_states` publisher
 - Sim and real use the same controllers; only the hardware plugin changes
 - The web page and joystick keep working
 
@@ -38,13 +38,13 @@ MoveIt 2 sends `FollowJointTrajectory` goals to `arm_controller` (`JointTrajecto
 |---|---|
 | Serial port | `arm_driver` only. The plugin never opens it |
 | `read()` | Positions from the latest `/joint_states` (radians), velocities from it or 0. No message yet → `ERROR` |
-| `write()` | Publishes `ALL_ANGLES` on `/arm/command` with `source: "mission"` at `publish_rate_hz` (20 Hz, the plugin's own `<param>`; `arm_driver` sends at most ~14 of them per second, the rest are overwritten, [measured](../architecture/timing-budget.md)) while the controller is active and the owner is `mission`. In order: (1) while the target changes, it sends it; (2) once the target stops changing, it **keeps sending the same target for 2 s** (`HOLD_S`), so the arm reaches the last point; (3) **then it sends nothing**; (4) `command_timeout_ms` (300 ms) later the watchdog stops the arm, which is already there and holds the point by itself; (5) if `braco_mission` could not release the control, `arm_driver` frees it after `control_idle_s` (5 s) without motion. Without (2), the watchdog would stop the arm short of the last point. Angles are clamped by `arm_driver` (`JOINT_LIMITS`) |
-| Control | `braco_mission` calls `take_control("mission")` **without `force`** before each goal and releases it after the result, also on failure (like zero / park). Refused → the goal is not sent; nothing is queued. After taking the control, it turns the hardware component and `arm_controller` back on if a STOP or a lost control turned them off (#101): only a new goal, asked on purpose, moves the arm again. The plugin never calls `/arm/take_control` |
-| Lost control or STOP | The plugin reads `/arm/control_owner` and the STOP latch `/arm/stopped` ([ADR-0005](ADR-0005-stop-latch.md)). During a goal, a STOP (which also frees the control) or another client taking the control from `mission` makes `write()` return `DEACTIVATE`, so ros2_control stops `arm_controller` and the goal is aborted. The plugin goes to inactive, not unconfigured: it is not broken, keeps its subscriptions and only needs to be activated again. Covers a STOP from any client, a forced take by the page or joystick, `park` on overheat, and a lifecycle deactivate of `arm_driver` (#95: it latches a STOP; `/joint_states` keeps flowing). While the owner is free or another client, `write()` sends nothing and returns `OK`: nothing went wrong |
+| `write()` | Publishes `ALL_ANGLES` on `/arm/command` with `source: "mission"` at `publish_rate_hz` (20 Hz; 25 Hz since [ADR-0006](ADR-0006-servo-speed-from-planned-velocity.md); the plugin's own `<param>`; `arm_driver` sends at most ~14 of them per second, the rest are overwritten, [measured](../architecture/timing-budget.md)) while the controller is active and the owner is `mission`. In order: (1) while the target changes, it sends it; (2) once the target stops changing, it **keeps sending the same target for 2 s** (`HOLD_S`), so the arm reaches the last point; (3) **then it sends nothing**; (4) `command_timeout_ms` (300 ms) later the watchdog stops the arm, which is already there and holds the point by itself; (5) if `braco_mission` could not release the control, `arm_driver` frees it after `control_idle_s` (5 s) without motion. Without (2), the watchdog would stop the arm short of the last point. Angles are clamped by `arm_driver` (`JOINT_LIMITS`) |
+| Control | `braco_mission` calls `take_control("mission")` **without `force`** before each goal and releases it after the result, also on failure (like zero / park). Refused → the goal is not sent; nothing is queued. After taking the control, it turns the hardware component and `arm_controller` back on if a STOP or a lost control turned them off: only a new goal, asked on purpose, moves the arm again. The plugin never calls `/arm/take_control` |
+| Lost control or STOP | The plugin reads `/arm/control_owner` and the STOP latch `/arm/stopped` ([ADR-0005](ADR-0005-stop-latch.md)). During a goal, a STOP (which also frees the control) or another client taking the control from `mission` makes `write()` return `DEACTIVATE`, so ros2_control stops `arm_controller` and the goal is aborted. The plugin goes to inactive, not unconfigured: it is not broken, keeps its subscriptions and only needs to be activated again. Covers a STOP from any client, a forced take by the page or joystick, `park` on overheat, and a lifecycle deactivate of `arm_driver` (it latches a STOP; `/joint_states` keeps flowing). While the owner is free or another client, `write()` sends nothing and returns `OK`: nothing went wrong |
 | Safety commands | STOP and entering rest need no control: `mission` may send them at any time. To end its own trajectory it cancels the goal. `mission` never leaves rest mode (ADR-0003) |
 | Other services | `power_on`, `set_gripper`, `release_servos`: only while `mission` holds the control (ADR-0002) |
-| `/joint_states` | `arm_driver` stays the only publisher. `joint_state_broadcaster` is not spawned with `sim:=false` (#97) |
-| Speed | MoveIt velocity and acceleration scaling ≤ 0.1 on the real arm (#101) |
+| `/joint_states` | `arm_driver` stays the only publisher. `joint_state_broadcaster` is not spawned with `sim:=false` |
+| Speed | MoveIt velocity and acceleration scaling ≤ 0.1 on the real arm |
 
 ## Consequences
 
@@ -52,15 +52,15 @@ MoveIt 2 sends `FollowJointTrajectory` goals to `arm_controller` (`JointTrajecto
 - ✅ STOP, a forced take and `park` on overheat all stop a running trajectory
 - ✅ `/joint_states` keeps its rate, its consumers and its stale-state signal
 - ✅ Sim and real share `arm_controller`; MoveIt and the mission do not know which arm they drive
-- ❌ One extra hop (plugin → topic → `arm_driver` → serial); 100 Hz controller setpoints are thinned to ~14 Hz measured (20 Hz nominal: `COMMAND_GAP` bounds the serial loop), and motion starts ~200 ms after a command ([timing budget](../architecture/timing-budget.md), #90)
-- ❌ After a STOP or a lost control, the hardware component and `arm_controller` must be activated again before the next goal (#101). From inactive, no new configure; after an `ERROR` (no `/joint_states`), the component is configured again too
+- ❌ One extra hop (plugin → topic → `arm_driver` → serial); 100 Hz controller setpoints are thinned to ~14 Hz measured (20 Hz nominal: `COMMAND_GAP` bounds the serial loop), and motion starts ~200 ms after a command ([timing budget](../architecture/timing-budget.md))
+- ❌ After a STOP or a lost control, the hardware component and `arm_controller` must be activated again before the next goal. From inactive, no new configure; after an `ERROR` (no `/joint_states`), the component is configured again too
 - ❌ A goal sent straight to `/arm_controller/follow_joint_trajectory` (e.g. from RViz) needs `take_control("mission")` first, as a bare `ros2 topic pub` does today
 - ⚠️ `joint_state_broadcaster` runs in sim but not on the real arm, so the controller sets differ by one
 
 ## Confirmation
 
-- gtest of the plugin (`braco_hardware/test/test_braco_system.cpp`): `read()` maps `/joint_states` of `arm_driver` on the fake arm (`PtyArm`); against `arm_driver`'s topics, faked, `write()` publishes `ALL_ANGLES` with `source: mission`, and returns `DEACTIVATE` on the STOP latch (also when the owner is freed first, ADR-0005) and when another client takes the control from `mission` (#87, #101, #132)
-- `ros2 topic info /joint_states` with `sim:=false`: publisher count 1 (#97)
+- gtest of the plugin (`braco_hardware/test/test_braco_system.cpp`): `read()` maps `/joint_states` of `arm_driver` on the fake arm (`PtyArm`); against `arm_driver`'s topics, faked, `write()` publishes `ALL_ANGLES` with `source: mission`, and returns `DEACTIVATE` on the STOP latch (also when the owner is freed first, ADR-0005) and when another client takes the control from `mission`
+- `ros2 topic info /joint_states` with `sim:=false`: publisher count 1
 - Bench (`make bench`), velocity scaling ≤ 0.1: a trajectory moves the arm; STOP from the page halts it; forcing from the joystick halts it; `take_control("mission")` is refused while the page owns the arm
 
 ## Links
