@@ -125,6 +125,12 @@ void MoveToPoseNode::start()
     [this](std::shared_ptr<CartesianGoalHandle> goal) {
       std::thread([this, goal]() {run_cartesian(goal);}).detach();
     });
+  if (settings_.use_control) {
+    // Latched by arm_driver: the state at subscription time arrives at once
+    stopped_sub_ = create_subscription<std_msgs::msg::Bool>(
+      "/arm/stopped", rclcpp::QoS(1).transient_local(),
+      [this](const std_msgs::msg::Bool & msg) {on_stopped(msg.data);});
+  }
   RCLCPP_INFO(
     get_logger(),
     "ready: /move_to_pose and /move_cartesian, group %s, link %s, planning frame %s, control %s, "
@@ -217,7 +223,19 @@ rclcpp_action::GoalResponse MoveToPoseNode::accept()
     RCLCPP_WARN(get_logger(), "goal rejected: another goal is running");
     return rclcpp_action::GoalResponse::REJECT;
   }
+  stop_in_goal_ = false;
   return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
+}
+
+void MoveToPoseNode::on_stopped(bool latched)
+{
+  const bool was = stopped_.exchange(latched);
+  if (!latched || was || !busy_) {return;}
+  // arm_driver already stopped the arm and drops its commands; stop the trajectory too, so
+  // the goal ends now instead of when arm_controller gives up
+  stop_in_goal_ = true;
+  RCLCPP_WARN(get_logger(), "STOP latched in arm_driver: stopping the goal");
+  motion_group_->stop();
 }
 
 rclcpp_action::CancelResponse MoveToPoseNode::cancel()
@@ -233,6 +251,9 @@ void MoveToPoseNode::finish(
   if (goal->is_canceling()) {
     result->success = false;
     result->message = "cancelled: " + result->message;
+  } else if (stop_in_goal_) {
+    result->success = false;
+    result->message = "STOP latched in arm_driver: " + result->message;
   }
   RCLCPP_INFO(get_logger(), "%s", result->message.c_str());
   if (goal->is_canceling()) {

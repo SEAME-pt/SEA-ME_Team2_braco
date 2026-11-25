@@ -24,6 +24,8 @@
   <!-- the gripper: gripper_action_controller (sim), /arm/set_gripper (real), #148 -->
   <depend>control_msgs</depend>
   <depend>std_srvs</depend>
+  <!-- /arm/stopped: a STOP latched in arm_driver ends the goal (#148) -->
+  <depend>std_msgs</depend>
 
   <!-- move_to_pose.launch.py: the MoveIt config of the Gazebo arm -->
   <exec_depend>ament_index_python</exec_depend>

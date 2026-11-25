@@ -19,6 +19,8 @@
 //   client  /arm/take_control (only with `use_control`, the real arm: ADR-0004)
 //   clients /controller_manager/{list_hardware_components, set_hardware_component_state,
 //           list_controllers, switch_controller} (only with `use_control`, #101)
+//   sub     /arm/stopped (only with `use_control`): a STOP latched in arm_driver while a goal
+//           runs stops MoveIt at once, like a cancel, and the goal fails (ADR-0005, #148)
 //   gripper gripper:=sim  /gripper_action_controller/gripper_cmd (ParallelGripperCommand)
 //           gripper:=real /arm/set_gripper (SetBool), see ros_gripper.hpp (#148)
 //
@@ -67,6 +69,7 @@
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"
+#include "std_msgs/msg/bool.hpp"
 #include "tf2_ros/buffer.hpp"
 #include "tf2_ros/transform_listener.hpp"
 
@@ -120,6 +123,8 @@ public:
 private:
   rclcpp_action::GoalResponse accept();
   rclcpp_action::CancelResponse cancel();
+  // /arm/stopped: a STOP latched while a goal runs stops the arm's trajectory
+  void on_stopped(bool latched);
 
   // Ends a goal of either action: a cancel stops the arm, so the steps report a failed
   // execution; say why it stopped.
@@ -166,6 +171,9 @@ private:
   // Feedback of the goal that runs (one at a time: busy_); set and used on its thread
   std::function<void(const std::string &)> feedback_;
   std::atomic<bool> busy_{false};
+  rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr stopped_sub_;
+  std::atomic<bool> stopped_{false};      // arm/stopped: STOP latched in arm_driver (ADR-0005)
+  std::atomic<bool> stop_in_goal_{false};   // a STOP came while the goal ran
 };
 
 }  // namespace braco_mission
