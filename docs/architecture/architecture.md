@@ -76,7 +76,7 @@ An inactive `arm_driver` refuses all motion before gate 2 (lifecycle, [§5](#5-c
 | `/tf`, `/tf_static` | `tf2_msgs/TFMessage` | `robot_state_publisher` | MoveIt, RViz, Foxglove |
 | `/arm/command` | `braco_interfaces/ArmCommand` (`STOP`, `JOINTS`, `ALL_ANGLES`, `HALT`, `source`) | clients, `braco_hardware` | `arm_driver` |
 | `/arm/led` | `std_msgs/ColorRGBA` | teleop, page | `arm_driver` |
-| `/arm/servo_temperatures` | `braco_interfaces/ServoTemperatures`, 2 s | `arm_driver` | `temperature_monitor`, page |
+| `/arm/servo_temperatures` | `braco_interfaces/ServoTemperatures`, 2 s | `arm_driver` | `temperature_monitor`, page, `run_goal_set.py` |
 | `/arm/servo_voltages` | `braco_interfaces/ServoVoltages`, 2 s | `arm_driver` | page |
 | `/arm/read_only` | `std_msgs/Bool`, latched | `arm_driver` | page |
 | `/arm/control_owner` | `std_msgs/String`, latched (`""` = free) | `arm_driver` | teleop, page, `braco_hardware` |
@@ -88,8 +88,8 @@ An inactive `arm_driver` refuses all motion before gate 2 (lifecycle, [§5](#5-c
 | `/arm/release_servos` | `std_srvs/Trigger` | `arm_driver` | page, zero/park |
 | `/arm/release_stop` | `std_srvs/Trigger` | `arm_driver` | page, `make resume` |
 | `/arm/set_gripper`, `/arm/set_read_only` | `std_srvs/SetBool` | `arm_driver` | clients, `temperature_monitor` |
-| `/move_to_pose` (action) | `braco_interfaces/MoveToPose` (`PoseStamped` goal; result: pose error from TF) | `move_to_pose` (`braco_mission`) | command line |
-| `/move_cartesian` (action) | `braco_interfaces/MoveCartesian` (waypoints; result: planned `fraction`, line deviation, error at the last waypoint) | `move_to_pose` (`braco_mission`) | command line, `draw_line.py`; later pen drawing |
+| `/move_to_pose` (action) | `braco_interfaces/MoveToPose` (`PoseStamped` goal; result: pose error from TF) | `move_to_pose` (`braco_mission`) | command line, `run_goal_set.py` |
+| `/move_cartesian` (action) | `braco_interfaces/MoveCartesian` (waypoints; result: planned `fraction`, line deviation, error at the last waypoint) | `move_to_pose` (`braco_mission`) | command line, `draw_line.py`, `run_goal_set.py`; later pen drawing |
 
 - **Latest wins:** a new command replaces the pending one, so commands never queue up. Clients stream short moves only while `/joint_states` is fresh.
 - **Limits:** angles are clamped to `JOINT_LIMITS` (`mycobot.hpp`). Poses below the table margin are refused.
