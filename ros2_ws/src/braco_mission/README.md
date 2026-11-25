@@ -132,7 +132,8 @@ On the real arm:
   goal is refused: release it on the page and keep the page open for STOP.
 
 From `start` the tool points down, so the reachable lines go in (toward the base) and down: moving the `tcp` 50 mm
-out (+x) or up plans only 55–73% of the path, and nothing moves.
+out (+x) or up plans only 55–73% of the path, and nothing moves. `line_z_up` (30 mm up) is at that edge: it plans
+fully in Gazebo but only 87.5% on the real arm, where the line starts from the measured `tcp`, several mm off `start`.
 
 Checked in Gazebo (2026-11-19), `run_goal_set.py` with the default set:
 
@@ -156,30 +157,38 @@ On the real arm the error comes from TF, so from the angles the servos report th
 joints got there, not errors of the model itself (such as `tcp_length`, still to check with a ruler in
 [urdf-sim-to-real.md](../../../docs/hardware/urdf-sim-to-real.md#open-items-need-the-hardware)).
 
-### On the real arm (2026-11-19)
+### On the real arm (2026-11-25)
 
-`line_y` only, from zero, velocity scaling 0.1. Each run went zero → `start` → `line_y`:
+The default set, no load, velocity scaling 0.1, from zero, in three parts so the servos stay cool (hottest 42 °C):
 
-| Run | Load | `start` reached | `line_y` end error | Executed deviation max / mean | Hottest servo |
+| Goal | Kind | Length | Reached (position, orientation) | Planned deviation | Executed deviation max / mean |
 |---|---|---|---|---|---|
-| 1 | none | 4.9 mm, 1.31° | 11.1 mm, 2.51° | 9.0 / 5.2 mm | not recorded |
-| 2 | gripper + camera (~150 g) | 10.8 mm, 3.37° | 16.4 mm, 4.13° | 12.0 / 7.7 mm | joint4 56 °C after |
-| 3 | gripper + camera, cold | aborted on the way to `start` | — | — | 42 °C before, joint4 48 °C after |
+| `start` (8 returns) | pose | | 4.2–10.1 mm, 1.05–2.70° | | |
+| `line_y` | line | 130 mm along +y | 12.4 mm, 2.73° | 0.04 mm | 8.8 / 5.5 mm |
+| `line_x_in` | line | 50 mm along −x | 6.3 mm, 2.13° | 0.03 mm | 6.8 / 4.4 mm |
+| `line_z_down` | line | 40 mm down | 8.4 mm, 2.82° | 0.03 mm | 8.4 / 4.2 mm |
+| `line_z_up` | line | 30 mm up | not run: `fraction` 0.875 | 0.11 mm | |
+| `line_xy` | line | 89 mm, x-y diagonal | 8.2 mm, 2.10° | 0.04 mm | 9.3 / 5.8 mm |
+| `line_xyz` | line | 78 mm, x-y-z diagonal | 7.8 mm, 1.98° | 0.04 mm | 9.7 / 6.6 mm |
+| `pose_turn` | pose | | 7.5 mm, 2.69° | | |
+| `pose_tilted` | pose | | 12.4 mm, 3.79° | | |
 
-- The plan is the same as in Gazebo (`fraction` 1.0, planned deviation 0.04 mm): the error comes from execution.
-- The `tcp` runs parallel to the line but 5–7 mm below and inside it, dips ~4.5 mm in z as the line starts, and stops
-  ~9 mm short of the end. Read from TF once the arm had stopped, the end pose matched the last sample: the arm does
-  not move on after the result, so the error is not measured too early.
-- The load makes it worse: with the gripper and camera the `tcp` sits lower (z at `start` 106.2 mm vs 110.8 mm,
-  goal 112.6 mm). Against IK of the line's end, joint3 was ~12° short; the others were within ~3.6°, the servos'
-  known dead zone (~3°, [urdf-sim-to-real.md](../../../docs/hardware/urdf-sim-to-real.md)).
-- Run 3: `arm_controller` aborted (path tolerance 0.3 rad) because joint3 moved ~7° the wrong way while it should
-  have gone down ~57°, and stayed cold (35 °C): it looks like joint3 does not hold under load. To check on the
-  hardware before more runs.
-- With the gripper and camera, joint4 warms fast (56 °C after two runs): hence the temperature check above.
+- The plans are the same as in Gazebo (`fraction` 1.0, planned deviation ≤ 0.04 mm): the error comes from execution.
+- The lines stay straight, diagonals included: the `tcp` runs parallel to the ideal line, 7–10 mm off it. The offset
+  builds up in the first ~8 mm and then stays flat; on `line_xyz` the `tcp` goes down in a straight line ~4 mm below
+  the ideal one. That is joints stopping short of their targets, as the servos' dead zone (~3°,
+  [urdf-sim-to-real.md](../../../docs/hardware/urdf-sim-to-real.md)) does, not a bent path.
+- Repeatable: part A (`line_y`, `line_x_in`, `line_xy`, `line_xyz`) run twice differed by at most 0.8 mm.
+- `pose_tilted`, the highest pose (z = 149 mm) with the tool tilted, has the largest error.
 
-None of these runs is within the 5 mm / 2° tolerance. That tolerance was set from Gazebo; for the real arm it is for
-the team to agree on, once joint3 is checked.
+Earlier, on 2026-11-19, `line_y` alone gave 11.1 mm, 2.51° without load and 16.4 mm, 4.13° with the gripper and
+camera (~150 g): the load lowers the `tcp` (z at `start` 106.2 mm vs 110.8 mm, goal 112.6 mm), and joint4 warmed to
+56 °C after two runs, hence the temperature check above. A third run aborted on the way to `start` with joint3 moving
+the wrong way: that was ros2_control's command limiter starting from the previous goal's command, fixed in #157, not
+joint3.
+
+Only the first `start` is within the 5 mm / 2° tolerance. That tolerance was set from Gazebo; for the real arm it is
+for the team to agree on.
 
 ## Run it on the real arm
 
