@@ -169,8 +169,13 @@ PickPlaceOutcome pick_and_place(
     if (!stop.empty()) {return failed(o, s.name, stop);}
     arm.report(s.name);
     if (!s.run(why)) {
-      const std::string after = reason();   // a cancel or a STOP stopped the move
-      return failed(o, s.name, after.empty() ? why : after + " (" + why + ")");
+      std::string message = reason();   // a cancel or a STOP stopped the move
+      if (message.empty()) {
+        message = why;
+      } else {
+        message.append(" (").append(why).append(")");
+      }
+      return failed(o, s.name, message);
     }
   }
 

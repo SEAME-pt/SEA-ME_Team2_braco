@@ -89,7 +89,7 @@ bool ActionGripper::command(double position, const std::string & what, std::stri
     message = what + ": not done in " + std::to_string(config_.timeout_s) + " s";
     return false;
   }
-  const auto result = done.get();
+  const auto & result = done.get();
   if (result.code != rclcpp_action::ResultCode::SUCCEEDED) {
     message = what + ": " + code_name(result.code) + " by gripper_action_controller";
     return false;
