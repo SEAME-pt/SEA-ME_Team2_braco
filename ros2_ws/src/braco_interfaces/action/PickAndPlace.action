@@ -1,0 +1,30 @@
+# Pick an object at a known pose and place it at another one (braco_mission, issue #148).
+# The sequence: open -> pre-grasp above the pick pose -> straight line down -> close -> straight
+# line up -> pre-place above the place pose -> straight line down -> open -> straight line up.
+# A stage that fails ends the goal there: nothing moves after it.
+
+# Goal
+geometry_msgs/PoseStamped pick     # tcp at the grasp. Empty frame_id: the planning frame (world). Orientation all 0: position only
+geometry_msgs/PoseStamped place    # tcp where the object is let go, same conventions as pick
+float64 approach_height_m          # pre-grasp / pre-place this far above the pose (+z of its frame), the same up on the retreat; 0: the node's default
+---
+# Result
+bool success                       # every stage ran and the tcp was within the node's tolerances at pick and place
+string failed_stage                # the stage that failed (one of the stages below); empty on success
+float64 pick_position_error_m      # pick pose vs. the tcp measured from TF at the grasp; NaN if not reached
+float64 pick_orientation_error_rad # NaN if not reached or only the position was planned
+float64 place_position_error_m     # place pose vs. the tcp measured from TF at the release; NaN if not reached
+float64 place_orientation_error_rad
+string message
+---
+# Feedback
+string STAGE_OPEN = "open"
+string STAGE_PRE_GRASP = "pre_grasp"
+string STAGE_APPROACH_PICK = "approach_pick"
+string STAGE_CLOSE = "close"
+string STAGE_RETREAT_PICK = "retreat_pick"
+string STAGE_PRE_PLACE = "pre_place"
+string STAGE_APPROACH_PLACE = "approach_place"
+string STAGE_RELEASE = "release"
+string STAGE_RETREAT_PLACE = "retreat_place"
+string stage                       # the stage the goal is in, one of the STAGE_* above
