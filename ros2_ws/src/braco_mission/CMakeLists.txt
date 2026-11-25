@@ -23,8 +23,9 @@ find_package(lifecycle_msgs REQUIRED)
 find_package(control_msgs REQUIRED)
 find_package(std_srvs REQUIRED)
 
-# The steps of a goal, no ROS (mission.cpp, cartesian.cpp): the node and the tests link it
-add_library(braco_mission_core STATIC src/mission.cpp src/cartesian.cpp)
+# The steps of a goal, no ROS (mission.cpp, cartesian.cpp, pick_and_place.cpp): the node and
+# the tests link it
+add_library(braco_mission_core STATIC src/mission.cpp src/cartesian.cpp src/pick_and_place.cpp)
 target_include_directories(braco_mission_core PUBLIC include)
 
 # The node in a library, so the tests can run it in-process; the program only holds main()
