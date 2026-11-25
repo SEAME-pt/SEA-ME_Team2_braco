@@ -156,6 +156,7 @@ Position only: send the orientation as all zeros. Checked in Gazebo (2026-11-10)
 | `include/braco_mission/pose_math.hpp` | Goal check and pose error, no ROS |
 | `include/braco_mission/mission.hpp`, `src/mission.cpp` | The steps of a goal against `ArmBackend`, no ROS |
 | `include/braco_mission/cartesian.hpp`, `src/cartesian.cpp` | The steps of a straight-line goal against `CartesianBackend`, the request check and the line deviation, no ROS |
+| `include/braco_mission/pick_and_place.hpp`, `src/pick_and_place.cpp` | The stages of a pick-and-place goal on top of `move_to_pose` and `move_cartesian`, the control held for the whole sequence, no ROS |
 | `include/braco_mission/control_guard.hpp` | Releases the control on every path of a goal (both actions) |
 | `include/braco_mission/move_to_pose_node.hpp`, `src/move_to_pose_node.cpp` | `MoveToPoseNode`: `CartesianBackend` with a `MotionGroup`, TF, `/arm/take_control` and the controller manager services; both action servers. A library, so tests can run it in-process |
 | `include/braco_mission/gripper.hpp` | `GripperBackend`: open and close the gripper, no ROS, faked in tests |
@@ -168,7 +169,10 @@ Position only: send the orientation as all zeros. Checked in Gazebo (2026-11-10)
 
 Tests (`colcon test --packages-select braco_mission`): `test/test_pose_math.cpp`, `test/test_mission.cpp` and
 `test/test_cartesian.cpp` (every step against a fake arm: control, fallback, fraction, failures, tolerances), and
-`test/test_draw_line.py` (the script's path geometry, CSV and plot). No ROS graph, no MoveIt.
+`test/test_draw_line.py` (the script's path geometry, CSV and plot). `test/test_pick_and_place.cpp` runs the
+sequence against a fake arm that moves where it was planned and a fake gripper: stage order, straight lines above
+each pose, the control held once, a failure at every stage, a pick or place outside the tolerance. No ROS graph, no
+MoveIt.
 `test/test_move_to_pose_node.cpp` runs the node in-process with a fake `MotionGroup`: both actions, cancel, one goal
 at a time, TF frames and `/arm/take_control`. `MoveItMotionGroup` is checked in Gazebo.
 `test/test_ros_gripper.cpp` runs both grippers against a fake `gripper_action_controller` and a fake
