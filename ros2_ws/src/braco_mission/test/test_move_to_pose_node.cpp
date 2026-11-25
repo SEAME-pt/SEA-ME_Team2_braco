@@ -359,15 +359,21 @@ TEST_F(MoveToPoseNodeTest, DeclaresTheDefaultParameters)
   EXPECT_FALSE(node->get_parameter("use_control").as_bool());
   EXPECT_DOUBLE_EQ(node->get_parameter("velocity_scaling").as_double(), 0.1);
   EXPECT_DOUBLE_EQ(node->get_parameter("acceleration_scaling").as_double(), 0.1);
+  EXPECT_EQ(node->get_parameter("gripper").as_string(), "sim");
+  EXPECT_EQ(node->get_parameter("gripper_joint").as_string(), "gripper_controller");
+  EXPECT_DOUBLE_EQ(node->get_parameter("gripper_open_position").as_double(), 0.15);
+  EXPECT_DOUBLE_EQ(node->get_parameter("gripper_closed_position").as_double(), -0.74);
 }
 
 TEST_F(MoveToPoseNodeTest, ProgramExitsOnABadParameter)
 {
-  const std::string command = std::string(MOVE_TO_POSE_EXE) +
-    " --ros-args -p settle_s:=oops > /dev/null 2>&1";
-  const int status = std::system(command.c_str());
-  ASSERT_TRUE(WIFEXITED(status));
-  EXPECT_EQ(WEXITSTATUS(status), 1);
+  for (const char * bad : {"settle_s:=oops", "gripper:=magnet"}) {
+    const std::string command = std::string(MOVE_TO_POSE_EXE) +
+      " --ros-args -p " + bad + " > /dev/null 2>&1";
+    const int status = std::system(command.c_str());
+    ASSERT_TRUE(WIFEXITED(status)) << bad;
+    EXPECT_EQ(WEXITSTATUS(status), 1) << bad;
+  }
 }
 
 // ---- /move_to_pose ---------------------------------------------------------------------

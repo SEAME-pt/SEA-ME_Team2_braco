@@ -70,6 +70,9 @@ if(BUILD_TESTING)
   target_compile_definitions(test_move_to_pose_node PRIVATE
     MOVE_TO_POSE_EXE="$<TARGET_FILE:move_to_pose>")
   add_dependencies(test_move_to_pose_node move_to_pose)
+  # The two grippers against a fake gripper_action_controller and a fake /arm/set_gripper
+  ament_add_ros_isolated_gtest(test_ros_gripper test/test_ros_gripper.cpp TIMEOUT 60)
+  target_link_libraries(test_ros_gripper braco_mission_node)
 
   find_package(ament_cmake_pytest REQUIRED)
   # move_to_pose.launch.py's description and node parameters, without starting anything
