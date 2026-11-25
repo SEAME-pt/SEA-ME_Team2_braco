@@ -17,6 +17,7 @@ other nodes that move the arm.
 | action | `/move_cartesian` | `braco_interfaces/action/MoveCartesian` ([straight lines](#straight-lines-move_cartesian)) |
 | client | `/arm/take_control` | `braco_interfaces/srv/TakeControl` (only with `use_control`) |
 | clients | `/controller_manager/list_hardware_components`, `set_hardware_component_state`, `list_controllers`, `switch_controller` | `controller_manager_msgs/srv/*` (only with `use_control`) |
+| sub | `/arm/stopped` | `std_msgs/Bool`, latched (only with `use_control`): a STOP while a goal runs ends it |
 
 A goal is a `geometry_msgs/PoseStamped` of the `tcp`:
 1. A pose that is not finite, or whose orientation is not a rotation, is refused.
@@ -30,7 +31,9 @@ A goal is a `geometry_msgs/PoseStamped` of the `tcp`:
 
 The result has `success` (within both tolerances), the position and orientation error, `position_only` and a
 `message`. The feedback names the stage: `control`, `activating`, `planning`, `executing`, `measuring`. One goal at a
-time, on either action; cancelling stops the arm.
+time, on either action; cancelling stops the arm. On the real arm a STOP latched in `arm_driver` while a goal runs
+([ADR-0005](../../../docs/decisions/ADR-0005-stop-latch.md)) stops the trajectory at once, like a cancel: the goal
+aborts with a message that starts with `STOP latched in arm_driver`.
 
 | Parameter | Default | |
 |---|---|---|
