@@ -35,6 +35,7 @@
 #include "braco_mission/move_to_pose_node.hpp"
 #include "geometry_msgs/msg/transform_stamped.hpp"
 #include "lifecycle_msgs/msg/state.hpp"
+#include "std_msgs/msg/bool.hpp"
 #include "tf2_ros/static_transform_broadcaster.hpp"
 
 using namespace std::chrono_literals;
@@ -332,7 +333,20 @@ protected:
     return control_requests_;
   }
 
+  // /arm/stopped as arm_driver publishes it: latched
+  void publish_stopped(bool latched)
+  {
+    if (!stopped_pub_) {
+      stopped_pub_ = helper_->create_publisher<std_msgs::msg::Bool>(
+        "/arm/stopped", rclcpp::QoS(1).transient_local());
+    }
+    std_msgs::msg::Bool msg;
+    msg.data = latched;
+    stopped_pub_->publish(msg);
+  }
+
   FakeMotionGroup * fake_ = nullptr;   // owned by node_
+  rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr stopped_pub_;
   std::shared_ptr<MoveToPoseNode> node_;
   rclcpp::Node::SharedPtr helper_;
   std::shared_ptr<tf2_ros::StaticTransformBroadcaster> tf_;
@@ -465,6 +479,43 @@ TEST_F(MoveToPoseNodeTest, CancelStopsTheArm)
   EXPECT_FALSE(r.result->success);
   EXPECT_EQ(r.result->message.rfind("cancelled: ", 0), 0u);
   EXPECT_EQ(fake_->stops, 1);
+}
+
+TEST_F(MoveToPoseNodeTest, StopLatchedDuringAGoalStopsTheArm)
+{
+  start({rclcpp::Parameter("use_control", true)}, true);
+  publish_stopped(false);
+  fake_->hold = true;
+  const auto handle = send<MoveCartesian>(line_client_, line_goal(""));
+  ASSERT_TRUE(handle);
+  ASSERT_TRUE(fake_->wait_for_execute());
+  publish_stopped(true);
+  const auto r = result<MoveCartesian>(line_client_, handle);
+  EXPECT_EQ(r.code, ResultCode::ABORTED);
+  EXPECT_EQ(r.result->message.rfind("STOP latched in arm_driver: ", 0), 0u) << r.result->message;
+  EXPECT_EQ(fake_->stops, 1);
+}
+
+TEST_F(MoveToPoseNodeTest, StopWithoutAGoalStopsNothing)
+{
+  start({rclcpp::Parameter("use_control", true)}, true);
+  publish_stopped(true);
+  std::this_thread::sleep_for(200ms);
+  EXPECT_EQ(fake_->stops, 0);
+}
+
+TEST_F(MoveToPoseNodeTest, SimulationIgnoresTheStopTopic)
+{
+  start();
+  fake_->hold = true;
+  const auto handle = send<MoveToPose>(pose_client_, pose_goal("", TCP));
+  ASSERT_TRUE(handle);
+  ASSERT_TRUE(fake_->wait_for_execute());
+  publish_stopped(true);
+  std::this_thread::sleep_for(200ms);
+  EXPECT_EQ(fake_->stops, 0);
+  fake_->release();
+  EXPECT_EQ(result<MoveToPose>(pose_client_, handle).code, ResultCode::SUCCEEDED);
 }
 
 TEST_F(MoveToPoseNodeTest, OneGoalAtATimeOnEitherAction)

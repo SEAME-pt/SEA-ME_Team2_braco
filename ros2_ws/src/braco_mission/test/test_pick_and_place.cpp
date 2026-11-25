@@ -430,3 +430,42 @@ TEST_F(PickAndPlaceTest, StepsInsideAStageAreNotReported)
 }
 
 }  // namespace
+
+// ---- cancel and STOP ------------------------------------------------------------------
+
+TEST_F(PickAndPlaceTest, CancelBetweenStagesStartsNothingMore)
+{
+  // Cancelled during the line down to the pick (control, open, pre_grasp, approach_pick)
+  const auto cancelled = [this]() {
+      return arm_.stages.size() >= 4 ? std::string("cancelled") : std::string();
+    };
+  const PickPlaceOutcome o = pick_and_place(arm_, gripper_, request(), real_arm(), cancelled);
+  EXPECT_FALSE(o.success);
+  EXPECT_EQ(o.failed_stage, stage::CLOSE);
+  EXPECT_EQ(o.message, "close: cancelled");
+  EXPECT_EQ(log_.count("close"), 0);
+  EXPECT_EQ(log_.calls.back(), "release_control");
+}
+
+TEST_F(PickAndPlaceTest, InterruptedBeforeTheFirstStageMovesNothing)
+{
+  const auto stopped = []() {return std::string("STOP latched");};
+  const PickPlaceOutcome o = pick_and_place(arm_, gripper_, request(), Settings(), stopped);
+  EXPECT_EQ(o.failed_stage, stage::OPEN);
+  EXPECT_TRUE(log_.calls.empty());
+}
+
+TEST_F(PickAndPlaceTest, StopDuringAMoveGivesTheReasonFirst)
+{
+  // A STOP while the arm goes down to the pick: the node stops MoveIt, the execution fails
+  log_.fail = "execute";
+  log_.fail_nth = 2;
+  const auto stopped = [this]() {
+      return log_.count("execute") >= 2 ? std::string("STOP latched") : std::string();
+    };
+  const PickPlaceOutcome o = pick_and_place(arm_, gripper_, request(), real_arm(), stopped);
+  EXPECT_EQ(o.failed_stage, stage::APPROACH_PICK);
+  EXPECT_EQ(o.message, "approach_pick: STOP latched (execution failed: aborted)");
+  EXPECT_EQ(log_.count("close"), 0);
+  EXPECT_EQ(log_.calls.back(), "release_control");
+}
