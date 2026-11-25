@@ -19,6 +19,8 @@
 //   client  /arm/take_control (only with `use_control`, the real arm: ADR-0004)
 //   clients /controller_manager/{list_hardware_components, set_hardware_component_state,
 //           list_controllers, switch_controller} (only with `use_control`, #101)
+//   gripper gripper:=sim  /gripper_action_controller/gripper_cmd (ParallelGripperCommand)
+//           gripper:=real /arm/set_gripper (SetBool), see ros_gripper.hpp (#148)
 //
 // A goal is planned with MoveIt 2 (group `arm`, link `tcp`) and executed on arm_controller;
 // then the tcp is read from TF and the error reported. The steps and their order are in
@@ -32,7 +34,10 @@
 // Parameters: group (arm), end_effector (tcp), use_control (false: simulation),
 // velocity_scaling / acceleration_scaling (0.1, ADR-0004), planning_time_s (5.0),
 // position_tolerance_m (0.005), orientation_tolerance_deg (2.0), settle_s (0.5),
-// tf_timeout_s (1.0), eef_step_m (0.005: the default of a MoveCartesian goal).
+// tf_timeout_s (1.0), eef_step_m (0.005: the default of a MoveCartesian goal),
+// gripper (sim | real, anything else: the node does not start), gripper_joint
+// (gripper_controller), gripper_open_position (0.15) / gripper_closed_position (-0.74, rad, sim),
+// gripper_timeout_s (5.0), gripper_settle_s (1.5, real).
 //
 // In a library, so tests can run it in-process; src/move_to_pose.cpp only holds main().
 // MoveIt 2 is behind MotionGroup: tests pass a fake through the factory.
@@ -54,6 +59,7 @@
 #include "braco_mission/cartesian.hpp"
 #include "braco_mission/mission.hpp"
 #include "braco_mission/motion_group.hpp"
+#include "braco_mission/ros_gripper.hpp"
 #include "controller_manager_msgs/srv/list_controllers.hpp"
 #include "controller_manager_msgs/srv/list_hardware_components.hpp"
 #include "controller_manager_msgs/srv/set_hardware_component_state.hpp"
@@ -143,6 +149,7 @@ private:
   double settle_s_ = 0.5;
   double tf_timeout_s_ = 1.0;
   double eef_step_m_ = 0.005;
+  GripperConfig gripper_config_;
 
   MotionGroupFactory make_motion_group_;
   std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
@@ -153,6 +160,7 @@ private:
   rclcpp::Client<ListControllers>::SharedPtr list_controllers_client_;
   rclcpp::Client<SwitchController>::SharedPtr switch_client_;
   std::unique_ptr<MotionGroup> motion_group_;
+  std::unique_ptr<GripperBackend> gripper_;
   rclcpp_action::Server<MoveToPose>::SharedPtr server_;
   rclcpp_action::Server<MoveCartesian>::SharedPtr cartesian_server_;
   // Feedback of the goal that runs (one at a time: busy_); set and used on its thread

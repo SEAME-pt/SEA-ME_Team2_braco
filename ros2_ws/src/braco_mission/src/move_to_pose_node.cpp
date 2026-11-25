@@ -75,6 +75,16 @@ MoveToPoseNode::MoveToPoseNode(
   tf_timeout_s_ = declare_parameter<double>("tf_timeout_s", 1.0);
   motion_config_.state_timeout_s = tf_timeout_s_;
   eef_step_m_ = declare_parameter<double>("eef_step_m", 0.005);
+  gripper_config_.kind = declare_parameter<std::string>("gripper", gripper_config_.kind);
+  gripper_config_.joint = declare_parameter<std::string>("gripper_joint", gripper_config_.joint);
+  gripper_config_.open_position =
+    declare_parameter<double>("gripper_open_position", gripper_config_.open_position);
+  gripper_config_.closed_position =
+    declare_parameter<double>("gripper_closed_position", gripper_config_.closed_position);
+  gripper_config_.timeout_s =
+    declare_parameter<double>("gripper_timeout_s", gripper_config_.timeout_s);
+  gripper_config_.settle_s =
+    declare_parameter<double>("gripper_settle_s", gripper_config_.settle_s);
 
   if (!make_motion_group_) {
     make_motion_group_ = [](const rclcpp::Node::SharedPtr & node, const MotionConfig & config) {
@@ -91,6 +101,7 @@ MoveToPoseNode::MoveToPoseNode(
   list_controllers_client_ =
     create_client<ListControllers>("/controller_manager/list_controllers");
   switch_client_ = create_client<SwitchController>("/controller_manager/switch_controller");
+  gripper_ = make_gripper(*this, gripper_config_);   // throws on an unknown kind
 }
 
 void MoveToPoseNode::start()
@@ -116,10 +127,10 @@ void MoveToPoseNode::start()
     });
   RCLCPP_INFO(
     get_logger(),
-    "ready: /move_to_pose and /move_cartesian, group %s, link %s, planning frame %s, control %s",
-    motion_config_.group.c_str(), motion_config_.end_effector.c_str(),
+    "ready: /move_to_pose and /move_cartesian, group %s, link %s, planning frame %s, control %s, "
+    "gripper %s", motion_config_.group.c_str(), motion_config_.end_effector.c_str(),
     motion_group_->planning_frame().c_str(),
-    settings_.use_control ? "on (real arm)" : "off (simulation)");
+    settings_.use_control ? "on (real arm)" : "off (simulation)", gripper_config_.kind.c_str());
 }
 
 void MoveToPoseNode::stop()

@@ -29,6 +29,9 @@ The node gets the same robot model and MoveIt config as move_group (sim.launch.p
 real.launch.py), so the plans match. real:=true also sets use_control (ADR-0004: take the control
 as "mission" before each goal) and the system clock; the simulation has no arm_driver and runs
 on simulated time.
+
+The gripper (#148) follows real: the simulation drives gripper_action_controller, the real arm
+/arm/set_gripper on arm_driver. gripper:=sim or gripper:=real chooses it by hand.
 """
 
 import os
@@ -37,7 +40,7 @@ from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.conditions import IfCondition, UnlessCondition
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 from moveit_configs_utils import MoveItConfigsBuilder
@@ -66,6 +69,12 @@ def scaled(name):
     return ParameterValue(LaunchConfiguration(name), value_type=float)
 
 
+def gripper(real):
+    """Return the gripper launch argument, or the gripper of the arm (`real`) when it is empty."""
+    return PythonExpression(["'", LaunchConfiguration('gripper'), "' or '",
+                             'real' if real else 'sim', "'"])
+
+
 def move_to_pose_node(config, real, condition):
     """Return the move_to_pose node: the real arm (`real`) or the simulation."""
     return Node(
@@ -82,6 +91,7 @@ def move_to_pose_node(config, real, condition):
                 'velocity_scaling': scaled('velocity_scaling'),
                 'position_tolerance_m': scaled('position_tolerance_m'),
                 'orientation_tolerance_deg': scaled('orientation_tolerance_deg'),
+                'gripper': gripper(real),
             },
         ])
 
@@ -102,6 +112,9 @@ def generate_launch_description():
                               description='success: tcp within this distance of the goal'),
         DeclareLaunchArgument('orientation_tolerance_deg', default_value='2.0',
                               description='success: tcp within this angle of the goal'),
+        DeclareLaunchArgument('gripper', default_value='',
+                              description='sim (gripper_action_controller) or real '
+                                          '(/arm/set_gripper); empty: follows real'),
         move_to_pose_node(sim_config, False, UnlessCondition(real)),
         move_to_pose_node(real_config, True, IfCondition(real)),
     ])
