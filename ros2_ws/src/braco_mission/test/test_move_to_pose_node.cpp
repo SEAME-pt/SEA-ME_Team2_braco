@@ -20,6 +20,7 @@
 
 #include <optional>   // cpplint takes it for a C header: it must come first
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cmath>
@@ -47,6 +48,9 @@ using braco_mission::MoveToPoseNode;
 using braco_mission::Pose;
 using MoveToPose = braco_interfaces::action::MoveToPose;
 using MoveCartesian = braco_interfaces::action::MoveCartesian;
+using PickAndPlace = braco_interfaces::action::PickAndPlace;
+using GripperCommand = braco_mission::ActionGripper::Command;
+namespace stage = braco_mission::stage;
 using rclcpp_action::ResultCode;
 
 namespace
@@ -194,6 +198,18 @@ MoveToPose::Goal pose_goal(const std::string & frame, const Pose & pose)
   return goal;
 }
 
+// Pick in front of the tcp, place beside it; tcp orientation
+PickAndPlace::Goal pick_goal(const std::string & frame, double approach_height = 0.0)
+{
+  PickAndPlace::Goal goal;
+  goal.pick.header.frame_id = frame;
+  goal.pick.pose = to_msg({{0.18, -0.08, 0.03}, TCP.orientation});
+  goal.place.header.frame_id = frame;
+  goal.place.pose = to_msg({{0.18, 0.08, 0.03}, TCP.orientation});
+  goal.approach_height_m = approach_height;
+  return goal;
+}
+
 MoveCartesian::Goal line_goal(const std::string & frame, double eef_step = 0.0)
 {
   MoveCartesian::Goal goal;
@@ -262,8 +278,28 @@ protected:
           response->controller[0].state = "active";
         });
     }
+    // gripper_action_controller of the Gazebo arm (the node's default gripper:=sim)
+    gripper_server_ = rclcpp_action::create_server<GripperCommand>(
+      helper_, braco_mission::ActionGripper::ACTION,
+      [this](const rclcpp_action::GoalUUID &, std::shared_ptr<const GripperCommand::Goal> goal) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        gripper_positions_.push_back(goal->command.position.at(0));
+        return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
+      },
+      [](std::shared_ptr<rclcpp_action::ServerGoalHandle<GripperCommand>>) {
+        return rclcpp_action::CancelResponse::ACCEPT;
+      },
+      [this](std::shared_ptr<rclcpp_action::ServerGoalHandle<GripperCommand>> goal) {
+        auto result = std::make_shared<GripperCommand::Result>();
+        if (gripper_works_) {
+          goal->succeed(result);
+        } else {
+          goal->abort(result);
+        }
+      });
     pose_client_ = rclcpp_action::create_client<MoveToPose>(helper_, "move_to_pose");
     line_client_ = rclcpp_action::create_client<MoveCartesian>(helper_, "move_cartesian");
+    pick_client_ = rclcpp_action::create_client<PickAndPlace>(helper_, "pick_and_place");
 
     std::vector<rclcpp::Parameter> params = {
       rclcpp::Parameter("settle_s", 0.0), rclcpp::Parameter("tf_timeout_s", 0.5)};
@@ -283,6 +319,7 @@ protected:
     spinner_ = std::thread([this] {executor_->spin();});
     ASSERT_TRUE(pose_client_->wait_for_action_server(5s));
     ASSERT_TRUE(line_client_->wait_for_action_server(5s));
+    ASSERT_TRUE(pick_client_->wait_for_action_server(5s));
     std::this_thread::sleep_for(200ms);   // the node's TF listener gets the static frames
   }
 
@@ -321,6 +358,40 @@ protected:
     return result<MoveToPose>(pose_client_, send<MoveToPose>(pose_client_, goal));
   }
 
+  // A pick-and-place goal; `stages` gets its feedback
+  rclcpp_action::ClientGoalHandle<PickAndPlace>::SharedPtr send_pick(
+    const PickAndPlace::Goal & goal)
+  {
+    rclcpp_action::Client<PickAndPlace>::SendGoalOptions options;
+    options.feedback_callback = [this](
+      rclcpp_action::ClientGoalHandle<PickAndPlace>::SharedPtr,
+      const std::shared_ptr<const PickAndPlace::Feedback> feedback) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        stages_.push_back(feedback->stage);
+      };
+    auto future = pick_client_->async_send_goal(goal, options);
+    if (future.wait_for(5s) != std::future_status::ready) {return nullptr;}
+    return future.get();
+  }
+
+  rclcpp_action::ClientGoalHandle<PickAndPlace>::WrappedResult pick(
+    const PickAndPlace::Goal & goal)
+  {
+    return result<PickAndPlace>(pick_client_, send_pick(goal));
+  }
+
+  std::vector<std::string> stages()
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return stages_;
+  }
+
+  std::vector<double> gripper_positions()
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return gripper_positions_;
+  }
+
   rclcpp_action::ClientGoalHandle<MoveCartesian>::WrappedResult line(
     const MoveCartesian::Goal & goal)
   {
@@ -355,6 +426,11 @@ protected:
   rclcpp::Service<MoveToPoseNode::ListControllers>::SharedPtr list_controllers_;
   rclcpp_action::Client<MoveToPose>::SharedPtr pose_client_;
   rclcpp_action::Client<MoveCartesian>::SharedPtr line_client_;
+  rclcpp_action::Client<PickAndPlace>::SharedPtr pick_client_;
+  rclcpp_action::Server<GripperCommand>::SharedPtr gripper_server_;
+  std::atomic<bool> gripper_works_{true};
+  std::vector<double> gripper_positions_;
+  std::vector<std::string> stages_;
   std::shared_ptr<rclcpp::executors::SingleThreadedExecutor> executor_;
   std::thread spinner_;
   std::mutex mutex_;
@@ -609,4 +685,142 @@ TEST_F(MoveToPoseNodeTest, LineInAnUnknownFrameIsRefused)
   EXPECT_TRUE(contains(r.result->message, "goal refused: no transform"));
   EXPECT_TRUE(std::isnan(r.result->fraction));
   EXPECT_TRUE(fake_->planned().empty());
+}
+
+// ---- /pick_and_place -------------------------------------------------------------------
+
+// The fake arm never moves (the tcp stays where TF says): wide tolerances let every stage
+// succeed, and the errors reported are the distances from that tcp.
+const std::vector<rclcpp::Parameter> WIDE = {
+  rclcpp::Parameter("position_tolerance_m", 10.0),
+  rclcpp::Parameter("orientation_tolerance_deg", 180.0)};
+
+TEST_F(MoveToPoseNodeTest, PickAndPlaceStagesAreTheActionConstants)
+{
+  EXPECT_EQ(stage::GOAL, PickAndPlace::Feedback::STAGE_GOAL);
+  EXPECT_EQ(stage::CONTROL, PickAndPlace::Feedback::STAGE_CONTROL);
+  EXPECT_EQ(stage::OPEN, PickAndPlace::Feedback::STAGE_OPEN);
+  EXPECT_EQ(stage::PRE_GRASP, PickAndPlace::Feedback::STAGE_PRE_GRASP);
+  EXPECT_EQ(stage::APPROACH_PICK, PickAndPlace::Feedback::STAGE_APPROACH_PICK);
+  EXPECT_EQ(stage::CLOSE, PickAndPlace::Feedback::STAGE_CLOSE);
+  EXPECT_EQ(stage::RETREAT_PICK, PickAndPlace::Feedback::STAGE_RETREAT_PICK);
+  EXPECT_EQ(stage::PRE_PLACE, PickAndPlace::Feedback::STAGE_PRE_PLACE);
+  EXPECT_EQ(stage::APPROACH_PLACE, PickAndPlace::Feedback::STAGE_APPROACH_PLACE);
+  EXPECT_EQ(stage::RELEASE, PickAndPlace::Feedback::STAGE_RELEASE);
+  EXPECT_EQ(stage::RETREAT_PLACE, PickAndPlace::Feedback::STAGE_RETREAT_PLACE);
+}
+
+TEST_F(MoveToPoseNodeTest, PickAndPlaceRunsEveryStage)
+{
+  start(WIDE);
+  const auto r = pick(pick_goal(""));
+  EXPECT_EQ(r.code, ResultCode::SUCCEEDED) << r.result->message;
+  EXPECT_TRUE(r.result->success);
+  EXPECT_EQ(r.result->failed_stage, "");
+  // Every stage, in order. A feedback sent before the client has the goal handle is lost
+  // (rclcpp): the first stage may be missing, the gripper calls below show it ran.
+  const std::vector<std::string> all = {
+    stage::OPEN, stage::PRE_GRASP, stage::APPROACH_PICK, stage::CLOSE, stage::RETREAT_PICK,
+    stage::PRE_PLACE, stage::APPROACH_PLACE, stage::RELEASE, stage::RETREAT_PLACE};
+  const auto got = stages();
+  ASSERT_GE(got.size(), all.size() - 1);
+  EXPECT_TRUE(std::equal(got.begin(), got.end(), all.end() - got.size()));
+  // open, close, open with the default positions of the Gazebo gripper
+  EXPECT_EQ(gripper_positions(), (std::vector<double>{0.15, -0.74, 0.15}));
+  EXPECT_EQ(fake_->executions(), 6);
+  // The errors are measured from TF: the fake tcp did not move
+  const double pick_error = std::hypot(0.18 - TCP.position.x, -0.08, 0.03 - TCP.position.z);
+  EXPECT_NEAR(r.result->pick_position_error_m, pick_error, 1e-6);
+  EXPECT_NEAR(r.result->place_position_error_m, pick_error, 1e-6);   // mirrored in y
+}
+
+TEST_F(MoveToPoseNodeTest, PickAndPlaceUsesTheDefaultApproachHeight)
+{
+  start({WIDE[0], WIDE[1], rclcpp::Parameter("approach_height_m", 0.07)});
+  pick(pick_goal(""));
+  const auto planned = fake_->planned();
+  ASSERT_FALSE(planned.empty());
+  EXPECT_NEAR(planned[0].position.z, 0.03 + 0.07, 1e-9);   // the pre-grasp
+}
+
+TEST_F(MoveToPoseNodeTest, PickAndPlaceTransformsBothPoses)
+{
+  start(WIDE);
+  pick(pick_goal("table", 0.05));
+  const auto planned = fake_->planned();
+  ASSERT_FALSE(planned.empty());
+  EXPECT_NEAR(planned[0].position.x, TABLE_X + 0.18, 1e-9);
+}
+
+TEST_F(MoveToPoseNodeTest, PickAndPlaceInAnUnknownFrameMovesNothing)
+{
+  start(WIDE);
+  const auto r = pick(pick_goal("nowhere"));
+  EXPECT_EQ(r.code, ResultCode::ABORTED);
+  EXPECT_EQ(r.result->failed_stage, stage::GOAL);
+  EXPECT_TRUE(contains(r.result->message, "no transform from nowhere")) << r.result->message;
+  EXPECT_TRUE(std::isnan(r.result->pick_position_error_m));
+  EXPECT_TRUE(gripper_positions().empty());
+  EXPECT_TRUE(fake_->planned().empty());
+}
+
+TEST_F(MoveToPoseNodeTest, PickAndPlaceGripperFailureStopsIt)
+{
+  start(WIDE);
+  gripper_works_ = false;
+  const auto r = pick(pick_goal(""));
+  EXPECT_EQ(r.code, ResultCode::ABORTED);
+  EXPECT_EQ(r.result->failed_stage, stage::OPEN);
+  EXPECT_EQ(r.result->message, "open: open gripper: aborted by gripper_action_controller");
+  EXPECT_TRUE(fake_->planned().empty());
+}
+
+TEST_F(MoveToPoseNodeTest, PickAndPlaceCancelStopsTheArmAtTheStage)
+{
+  start(WIDE);
+  fake_->hold = true;
+  const auto handle = send_pick(pick_goal(""));
+  ASSERT_TRUE(handle);
+  ASSERT_TRUE(fake_->wait_for_execute());   // the pre-grasp
+  auto cancel = pick_client_->async_cancel_goal(handle);
+  ASSERT_EQ(cancel.wait_for(5s), std::future_status::ready);
+  const auto r = result<PickAndPlace>(pick_client_, handle);
+  EXPECT_EQ(r.code, ResultCode::CANCELED);
+  EXPECT_EQ(r.result->failed_stage, stage::PRE_GRASP);
+  EXPECT_EQ(r.result->message.rfind("pre_grasp: cancelled (", 0), 0u) << r.result->message;
+  EXPECT_EQ(fake_->stops, 1);
+  EXPECT_EQ(fake_->executions(), 1);
+  EXPECT_EQ(gripper_positions().size(), 1u);   // opened, never closed
+}
+
+TEST_F(MoveToPoseNodeTest, PickAndPlaceStopHoldsTheControlThenReleasesIt)
+{
+  start({WIDE[0], WIDE[1], rclcpp::Parameter("use_control", true)}, true);
+  publish_stopped(false);
+  fake_->hold = true;
+  const auto handle = send_pick(pick_goal(""));
+  ASSERT_TRUE(handle);
+  ASSERT_TRUE(fake_->wait_for_execute());
+  publish_stopped(true);
+  const auto r = result<PickAndPlace>(pick_client_, handle);
+  EXPECT_EQ(r.code, ResultCode::ABORTED);
+  EXPECT_EQ(r.result->failed_stage, stage::PRE_GRASP);
+  EXPECT_EQ(r.result->message.rfind("pre_grasp: STOP latched in arm_driver (", 0), 0u)
+    << r.result->message;
+  const auto calls = control_requests();   // taken once, released once
+  ASSERT_EQ(calls.size(), 2u);
+  EXPECT_FALSE(calls[0].release);
+  EXPECT_TRUE(calls[1].release);
+}
+
+TEST_F(MoveToPoseNodeTest, PickAndPlaceIsOneGoalAtATimeToo)
+{
+  start(WIDE);
+  fake_->hold = true;
+  const auto first = send<MoveToPose>(pose_client_, pose_goal("", TCP));
+  ASSERT_TRUE(first);
+  ASSERT_TRUE(fake_->wait_for_execute());
+  EXPECT_FALSE(send_pick(pick_goal("")));
+  fake_->release();
+  EXPECT_EQ(result<MoveToPose>(pose_client_, first).code, ResultCode::SUCCEEDED);
 }
