@@ -6,6 +6,9 @@ command → motion latency and the effect of `SCHED_FIFO`. Input for the ros2_co
 
 Architecture: [architecture.md](architecture.md).
 
+**Contents:** [Summary](#summary) · [Serial loop of `arm_driver`](#serial-loop-of-arm_driver) · [Results](#results) ·
+[What it means](#what-it-means) · [What would change it](#what-would-change-it) · [Method](#method)
+
 Real arm, Jetson Nano, no desktop (`multi-user.target`), `arm_driver` alone in a `real` container (no
 `temperature_monitor`, joystick, camera or page). Results 1–3 measured on **2026-11-09**, result 4 on **2026-11-17**.
 
