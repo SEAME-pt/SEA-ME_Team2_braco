@@ -34,12 +34,18 @@
 // the stage. A straight line keeps the tcp orientation it starts with, so a position-only pick
 // or place goes down and up with the orientation the planner chose above it.
 //
+// Cancel and STOP: `interrupted` says why the goal must end (a cancel, a STOP latched in
+// arm_driver), empty while it may go on. It is asked before every stage: the stage it would
+// start is `failed_stage` and nothing more moves. A stage already moving is stopped by the node
+// (MoveIt stop on a cancel or a STOP), so it fails, and its message gives the reason first.
+//
 // No ROS: the arm is a CartesianBackend, the gripper a GripperBackend, both faked in
 // test/test_pick_and_place.cpp; MoveToPoseNode implements them.
 
 #ifndef BRACO_MISSION__PICK_AND_PLACE_HPP_
 #define BRACO_MISSION__PICK_AND_PLACE_HPP_
 
+#include <functional>
 #include <limits>
 #include <string>
 
@@ -95,9 +101,13 @@ std::string check_request(const PickPlaceRequest & request);
 // `pose` moved `height` up along +z, its orientation kept.
 Pose above(const Pose & pose, double height);
 
+// Why the goal must end now (cancelled, STOP latched); empty while it may go on.
+using Interrupted = std::function<std::string()>;
+
+// An empty `interrupted` never interrupts.
 PickPlaceOutcome pick_and_place(
   CartesianBackend & arm, GripperBackend & gripper, const PickPlaceRequest & request,
-  const Settings & settings);
+  const Settings & settings, const Interrupted & interrupted = nullptr);
 
 }  // namespace braco_mission
 

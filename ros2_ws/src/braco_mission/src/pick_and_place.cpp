@@ -18,6 +18,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <functional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -101,7 +102,7 @@ Pose above(const Pose & pose, double height)
 
 PickPlaceOutcome pick_and_place(
   CartesianBackend & arm, GripperBackend & gripper, const PickPlaceRequest & request,
-  const Settings & settings)
+  const Settings & settings, const Interrupted & interrupted)
 {
   PickPlaceOutcome o;
   const std::string invalid = check_request(request);
@@ -126,50 +127,52 @@ PickPlaceOutcome pick_and_place(
       if (classify(goal) == GoalKind::PositionOnly) {out.orientation_rad = std::nan("");}
       return out;
     };
-  // A straight line to `to`, keeping the orientation the tcp has
-  const auto line = [&](const Pose & to) {
+  // Point to point to `to`
+  const auto pose = [&](const Pose & to, std::string & message) {
+      const Outcome m = move_to_pose(quiet, to, false, steps);
+      message = m.message;
+      return m.success;
+    };
+  // A straight line to `to`, keeping the orientation the tcp has; `error` gets its pose error
+  const auto line = [&](const Pose & to, std::string & message, PoseError * error) {
       CartesianRequest r;
       r.waypoints = {Pose{to.position, {0.0, 0.0, 0.0, 0.0}}};
       r.eef_step_m = request.eef_step_m;
-      return move_cartesian(quiet, r, steps);
+      const CartesianOutcome m = move_cartesian(quiet, r, steps);
+      if (error) {*error = error_of(to, m.error);}
+      message = m.message;
+      return m.success;
     };
+  const Pose over_pick = above(request.pick, request.approach_height_m);
+  const Pose over_place = above(request.place, request.approach_height_m);
 
-  arm.report(stage::OPEN);
-  if (!gripper.open(why)) {return failed(o, stage::OPEN, why);}
+  struct Stage
+  {
+    const char * name;
+    std::function<bool(std::string &)> run;   // false: the message says why
+  };
+  const std::vector<Stage> sequence = {
+    {stage::OPEN, [&](std::string & m) {return gripper.open(m);}},
+    {stage::PRE_GRASP, [&](std::string & m) {return pose(over_pick, m);}},
+    {stage::APPROACH_PICK, [&](std::string & m) {return line(request.pick, m, &o.pick_error);}},
+    {stage::CLOSE, [&](std::string & m) {return gripper.close(m);}},
+    {stage::RETREAT_PICK, [&](std::string & m) {return line(over_pick, m, nullptr);}},
+    {stage::PRE_PLACE, [&](std::string & m) {return pose(over_place, m);}},
+    {stage::APPROACH_PLACE, [&](std::string & m) {return line(request.place, m, &o.place_error);}},
+    {stage::RELEASE, [&](std::string & m) {return gripper.open(m);}},
+    {stage::RETREAT_PLACE, [&](std::string & m) {return line(over_place, m, nullptr);}},
+  };
+  const auto reason = [&interrupted]() {return interrupted ? interrupted() : std::string();};
 
-  arm.report(stage::PRE_GRASP);
-  const Outcome pre_grasp =
-    move_to_pose(quiet, above(request.pick, request.approach_height_m), false, steps);
-  if (!pre_grasp.success) {return failed(o, stage::PRE_GRASP, pre_grasp.message);}
-
-  arm.report(stage::APPROACH_PICK);
-  const CartesianOutcome down_pick = line(request.pick);
-  o.pick_error = error_of(request.pick, down_pick.error);
-  if (!down_pick.success) {return failed(o, stage::APPROACH_PICK, down_pick.message);}
-
-  arm.report(stage::CLOSE);
-  if (!gripper.close(why)) {return failed(o, stage::CLOSE, why);}
-
-  arm.report(stage::RETREAT_PICK);
-  const CartesianOutcome up_pick = line(above(request.pick, request.approach_height_m));
-  if (!up_pick.success) {return failed(o, stage::RETREAT_PICK, up_pick.message);}
-
-  arm.report(stage::PRE_PLACE);
-  const Outcome pre_place =
-    move_to_pose(quiet, above(request.place, request.approach_height_m), false, steps);
-  if (!pre_place.success) {return failed(o, stage::PRE_PLACE, pre_place.message);}
-
-  arm.report(stage::APPROACH_PLACE);
-  const CartesianOutcome down_place = line(request.place);
-  o.place_error = error_of(request.place, down_place.error);
-  if (!down_place.success) {return failed(o, stage::APPROACH_PLACE, down_place.message);}
-
-  arm.report(stage::RELEASE);
-  if (!gripper.open(why)) {return failed(o, stage::RELEASE, why);}
-
-  arm.report(stage::RETREAT_PLACE);
-  const CartesianOutcome up_place = line(above(request.place, request.approach_height_m));
-  if (!up_place.success) {return failed(o, stage::RETREAT_PLACE, up_place.message);}
+  for (const Stage & s : sequence) {
+    const std::string stop = reason();
+    if (!stop.empty()) {return failed(o, s.name, stop);}
+    arm.report(s.name);
+    if (!s.run(why)) {
+      const std::string after = reason();   // a cancel or a STOP stopped the move
+      return failed(o, s.name, after.empty() ? why : after + " (" + why + ")");
+    }
+  }
 
   o.success = true;
   o.message = "placed: pick error " + millimetres(o.pick_error) + ", place error " +
