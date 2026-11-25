@@ -2,7 +2,8 @@
 
 Mission layer of the braco arm: tasks such as pick-and-place and drawing with a pen, asking MoveIt 2 for motions.
 Its first node, `move_to_pose`, moves the tool centre point (`tcp`) to a Cartesian pose goal (#84) and in straight
-lines through waypoints (#85), a first step toward drawing with a pen.
+lines through waypoints (#85), a first step toward drawing with a pen, and picks and places an object at poses given in
+the goal (#148).
 
 The mission never talks to the serial port: it plans and executes through MoveIt 2 (`braco_moveit_config`), so the
 same code runs in simulation and on the real arm (`real:=true`). On the real arm it also holds the control as `mission`
@@ -15,6 +16,7 @@ other nodes that move the arm.
 |---|---|---|
 | action | `/move_to_pose` | `braco_interfaces/action/MoveToPose` |
 | action | `/move_cartesian` | `braco_interfaces/action/MoveCartesian` ([straight lines](#straight-lines-move_cartesian)) |
+| action | `/pick_and_place` | `braco_interfaces/action/PickAndPlace` ([pick and place](#pick-and-place)) |
 | client | `/arm/take_control` | `braco_interfaces/srv/TakeControl` (only with `use_control`) |
 | clients | `/controller_manager/list_hardware_components`, `set_hardware_component_state`, `list_controllers`, `switch_controller` | `controller_manager_msgs/srv/*` (only with `use_control`) |
 | sub | `/arm/stopped` | `std_msgs/Bool`, latched (only with `use_control`): a STOP while a goal runs ends it |
@@ -44,7 +46,8 @@ aborts with a message that starts with `STOP latched in arm_driver`.
 | `position_tolerance_m` | `0.005` | success: tcp within 5 mm |
 | `orientation_tolerance_deg` | `2.0` | success: tcp within 2° |
 | `settle_s` / `tf_timeout_s` | `0.5` / `1.0` | wait before reading the tcp; TF lookup timeout |
-| `eef_step_m` | `0.005` | straight lines: a `tcp` point every 5 mm, when the goal leaves `eef_step_m` at 0 |
+| `eef_step_m` | `0.005` | straight lines: a `tcp` point every 5 mm, when the goal leaves `eef_step_m` at 0; the lines of pick and place |
+| `approach_height_m` | `0.05` | pick and place: pre-grasp and pre-place this far above the pose, when the goal leaves it at 0 |
 | `gripper` | `sim` | `sim`: `gripper_action_controller` (Gazebo); `real`: `/arm/set_gripper` on `arm_driver`. Anything else: the node does not start. The launch file's `gripper` argument sets it; empty, it follows `real` |
 | `gripper_joint` | `gripper_controller` | sim: the gripper's master joint |
 | `gripper_open_position` / `gripper_closed_position` | `0.15` / `-0.74` | sim: rad of the master joint. On an object the gripper stalls before closed, which counts as done |
@@ -112,6 +115,42 @@ The executed deviation is about three times the planned one: `arm_controller` la
 moves (it rises while accelerating, holds ~0.1 mm at cruise speed, and falls back as the arm stops). The real arm's
 servos will add far more.
 
+## Pick and place
+
+`/pick_and_place` (#148) picks an object at one pose and places it at another, on the same node and with the same
+tolerances. The poses are `PoseStamped`, transformed into the planning frame like a `/move_to_pose` goal. The stages,
+also the feedback:
+
+| Stage | |
+|---|---|
+| `control` | Real arm: take the control once, for the whole sequence, and turn `arm_controller` on |
+| `open` | Open the gripper |
+| `pre_grasp` | `move_to_pose` to `approach_height_m` above the pick pose (+z of the planning frame) |
+| `approach_pick` | Straight line down to the pick pose: its error is the pick error of the result |
+| `close` | Close the gripper; stalling on the object counts as closed |
+| `retreat_pick` | Straight line up |
+| `pre_place` | `move_to_pose` above the place pose |
+| `approach_place` | Straight line down to the place pose: its error is the place error of the result |
+| `release` | Open the gripper |
+| `retreat_place` | Straight line up |
+
+The first stage that fails (no plan, an aborted execution, a pose outside the tolerances, the gripper) ends the goal:
+nothing moves after it, the result names it in `failed_stage` and the control is released. A cancel or a STOP stops
+the move in progress, and no other stage starts; the message starts with the stage and the reason, such as
+`pre_grasp: cancelled (...)`. A goal that cannot run is refused with `failed_stage: goal`. The sequence is in
+`pick_and_place.cpp`, without ROS; the gripper is `gripper_action_controller` in Gazebo and `/arm/set_gripper` on the
+real arm (`gripper` parameter).
+
+```bash
+ros2 action send_goal --feedback /pick_and_place braco_interfaces/action/PickAndPlace \
+  "{pick: {header: {frame_id: world}, pose: {position: {x: 0.18, y: -0.08, z: 0.03},
+           orientation: {x: 1.0, y: 0.0, z: 0.0, w: 0.0}}},
+    place: {header: {frame_id: world}, pose: {position: {x: 0.18, y: 0.08, z: 0.03},
+            orientation: {x: 1.0, y: 0.0, z: 0.0, w: 0.0}}}}"
+```
+
+The poses above are an example of the syntax, not yet checked on the bench: the Gazebo and real-arm demos set them.
+
 ## Run it on the real arm
 
 Follow [safety.md §9](../../../docs/guides/safety.md#9-first-moveit-2-motion-on-the-real-arm). The Jetson runs the arm
@@ -161,7 +200,7 @@ Position only: send the orientation as all zeros. Checked in Gazebo (2026-11-10)
 | `include/braco_mission/cartesian.hpp`, `src/cartesian.cpp` | The steps of a straight-line goal against `CartesianBackend`, the request check and the line deviation, no ROS |
 | `include/braco_mission/pick_and_place.hpp`, `src/pick_and_place.cpp` | The stages of a pick-and-place goal on top of `move_to_pose` and `move_cartesian`, the control held for the whole sequence, no ROS |
 | `include/braco_mission/control_guard.hpp` | Releases the control on every path of a goal (both actions) |
-| `include/braco_mission/move_to_pose_node.hpp`, `src/move_to_pose_node.cpp` | `MoveToPoseNode`: `CartesianBackend` with a `MotionGroup`, TF, `/arm/take_control` and the controller manager services; both action servers. A library, so tests can run it in-process |
+| `include/braco_mission/move_to_pose_node.hpp`, `src/move_to_pose_node.cpp` | `MoveToPoseNode`: `CartesianBackend` with a `MotionGroup`, TF, `/arm/take_control` and the controller manager services, `/arm/stopped`; the three action servers. A library, so tests can run it in-process |
 | `include/braco_mission/gripper.hpp` | `GripperBackend`: open and close the gripper, no ROS, faked in tests |
 | `include/braco_mission/ros_gripper.hpp`, `src/ros_gripper.cpp` | `ActionGripper` (`ParallelGripperCommand`, Gazebo) and `ServiceGripper` (`/arm/set_gripper`, real arm), chosen by `make_gripper` from the `gripper` parameter |
 | `include/braco_mission/motion_group.hpp` | `MotionGroup`: the MoveIt 2 calls of the node, faked in tests |
@@ -177,7 +216,9 @@ sequence against a fake arm that moves where it was planned and a fake gripper: 
 each pose, the control held once, a failure at every stage, a pick or place outside the tolerance. No ROS graph, no
 MoveIt.
 `test/test_move_to_pose_node.cpp` runs the node in-process with a fake `MotionGroup`: both actions, cancel, one goal
-at a time, TF frames and `/arm/take_control`. `MoveItMotionGroup` is checked in Gazebo.
+at a time, TF frames and `/arm/take_control`, and `/pick_and_place` with a fake `gripper_action_controller`: every
+stage, default height, frames, cancel and STOP at a stage, the gripper failing. `MoveItMotionGroup` is checked in
+Gazebo.
 `test/test_ros_gripper.cpp` runs both grippers against a fake `gripper_action_controller` and a fake
 `/arm/set_gripper`: commanded positions, abort, reject, timeout and cancel, a refusal, no server.
 `test/test_launch.py` builds `move_to_pose.launch.py` without starting it: one node for the simulation, one for the
