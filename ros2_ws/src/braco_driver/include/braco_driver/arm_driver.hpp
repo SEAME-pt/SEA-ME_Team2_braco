@@ -187,6 +187,9 @@ private:
   void publishTemps();
   void publishVoltages();
   void checkWatchdog();
+  // No valid angles for feedback_timeout_s: the serial link is taken as lost and a STOP latches
+  // (ADR-0007). Runs on every pass of the serial loop, also after a serial error
+  void checkFeedback();
 
   std::unique_ptr<mycobot::MyCobot280> mc_;
   std::mutex serial_mutex_;   // every mc_ call
@@ -195,7 +198,7 @@ private:
   std::atomic<bool> running_{true};
   std::atomic<bool> active_{false};    // lifecycle state active: motion allowed
   std::atomic<bool> read_only_{false};
-  std::atomic<bool> stopped_{false};   // STOP latch; the executor thread writes it
+  std::atomic<bool> stopped_{false};   // STOP latch; written under state_mutex_ (ADR-0005, 0007)
 
   bool stop_requested_ = false;
   std::map<int, Target> pending_joints_;
@@ -211,6 +214,15 @@ private:
   std::chrono::steady_clock::duration control_idle_{};
   std::chrono::steady_clock::duration stop_hold_{};   // release refused this long after a STOP
   std::chrono::steady_clock::time_point last_stop_{};  // the last STOP while latched
+  std::chrono::steady_clock::duration feedback_timeout_{};   // 0: feedback loss is not checked
+  std::chrono::steady_clock::time_point last_feedback_{};    // last valid angles (state_mutex_)
+  bool feedback_lost_ = false;   // under state_mutex_: release_stop is refused while it holds
+  // Serial thread only: false after two angle reads in a row or one temperature/voltage read the
+  // arm did not answer, true again with valid angles. While false, temperatures and voltages are
+  // published invalid without a read: on a dead link each read waits ~2 s for its timeout, which
+  // would delay the feedback check (ADR-0007). One missed angle reply is normal: it keeps reading
+  bool link_ok_ = true;
+  int angle_misses_ = 0;   // angle reads in a row without a valid reply
   int gripper_speed_ = 50;
 
   ControlLease control_;      // under state_mutex_

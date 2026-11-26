@@ -749,7 +749,8 @@ TEST_F(ArmDriverTest, GripperReleaseAndLed)
 
 TEST_F(ArmDriverTest, LostPortFailsTheServiceAndKeepsRunning)
 {
-  start();
+  // Without the feedback latch (ADR-0007), so power_on reaches the dead port
+  start({rclcpp::Parameter("feedback_timeout_s", 0.0)});
   ASSERT_TRUE(
     waitUntil(
       [this] {
@@ -889,4 +890,112 @@ TEST_F(ArmDriverTest, SerialLossDuringAMoveStopsFeedbackAndStopStillLatches)
   const auto t = take("web");
   ASSERT_TRUE(t);
   EXPECT_FALSE(t->success);
+}
+
+// ---- Feedback loss latches a STOP (#142, ADR-0007) ------------------------------------
+
+TEST_F(ArmDriverTest, FeedbackLossLatchesAStopUntilTheLinkIsBackAndAPersonReleases)
+{
+  start({
+    rclcpp::Parameter("command_timeout_ms", 30000),
+    rclcpp::Parameter("feedback_timeout_s", 0.5),
+    rclcpp::Parameter("stop_hold_s", 0.0)});
+  ASSERT_TRUE(take("web")->success);
+  sendJoints("web", {target(1, 5)});
+  ASSERT_TRUE(waitUntil([this] {return frames(protocol::SEND_ANGLE) == 1;}));
+  ASSERT_TRUE(waitUntil([this] {return lastStopped() == 0;}));   // the latched false at configure
+
+  // The link goes dead mid-move: the arm hears nothing back
+  arm_->update([](auto & s) {s.silent = true;});
+  ASSERT_TRUE(waitUntil([this] {return lastStopped() == 1;}, 10s)) << "no latch on feedback loss";
+  EXPECT_TRUE(waitUntil([this] {return lastOwner() == "";}));
+  EXPECT_TRUE(waitUntil([this] {return frames(protocol::STOP) >= 1;}, 10s));
+
+  // While it is lost, nobody can release the latch, and the client stream is ignored
+  const auto refused = trigger(release_stop_client_);
+  ASSERT_TRUE(refused);
+  EXPECT_FALSE(refused->success);
+  EXPECT_NE(refused->message.find("feedback"), std::string::npos) << refused->message;
+  sendJoints("web", {target(1, 20)});
+
+  // The link comes back: the stop is sent again, the latch holds and nothing moves
+  const size_t stops = frames(protocol::STOP);
+  arm_->update([](auto & s) {s.silent = false;});
+  EXPECT_TRUE(waitUntil([&] {return frames(protocol::STOP) > stops;}, 10s));
+  sendJoints("web", {target(1, 20)});
+  std::this_thread::sleep_for(300ms);
+  EXPECT_EQ(frames(protocol::SEND_ANGLE), 1u);
+  EXPECT_EQ(lastStopped(), 1);
+
+  // A person releases it: it moves only after a new take and a new command
+  const auto released = trigger(release_stop_client_);
+  ASSERT_TRUE(released);
+  EXPECT_TRUE(released->success) << released->message;
+  std::this_thread::sleep_for(300ms);
+  EXPECT_EQ(frames(protocol::SEND_ANGLE), 1u);
+  ASSERT_TRUE(take("web")->success);
+  sendJoints("web", {target(1, 20)});
+  EXPECT_TRUE(waitUntil([this] {return frames(protocol::SEND_ANGLE) == 2;}));
+}
+
+TEST_F(ArmDriverTest, ClosedPortLatchesAStopOnItsOwn)
+{
+  start({rclcpp::Parameter("feedback_timeout_s", 0.5)});
+  ASSERT_TRUE(take("web")->success);
+  ASSERT_TRUE(
+    waitUntil(
+      [this] {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return !joints_.empty();
+      }));
+  arm_.reset();   // every write fails with EIO: publishAngles is never reached
+  EXPECT_TRUE(waitUntil([this] {return lastStopped() == 1;}, 5s));
+  EXPECT_TRUE(waitUntil([this] {return lastOwner() == "";}));
+  const auto t = take("web");
+  ASSERT_TRUE(t);
+  EXPECT_FALSE(t->success);
+}
+
+TEST_F(ArmDriverTest, FeedbackTimeoutZeroLeavesTheLatchOff)
+{
+  arm_->update([](auto & s) {s.silent = true;});
+  start({rclcpp::Parameter("feedback_timeout_s", 0.0)});
+  ASSERT_TRUE(waitUntil([this] {return lastStopped() == 0;}));
+  std::this_thread::sleep_for(2s);
+  EXPECT_EQ(lastStopped(), 0);
+}
+
+TEST_F(ArmDriverTest, DeadLinkLatchesWithinAboutASecondOfTheTimeout)
+{
+  // Temperatures every 0.2 s (the fixture): the worst case, a slow read in every pass
+  start({rclcpp::Parameter("feedback_timeout_s", 1.0)});
+  ASSERT_TRUE(waitUntil([this] {return lastStopped() == 0;}));
+  ASSERT_TRUE(
+    waitUntil(
+      [this] {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return !joints_.empty();
+      }));
+  const auto lost = std::chrono::steady_clock::now();
+  arm_->update([](auto & s) {s.silent = true;});
+  ASSERT_TRUE(waitUntil([this] {return lastStopped() == 1;}, 8s));
+  // Each read of a dead link waits ~0.6 s (angles) or ~2 s (temperatures, voltages): without
+  // skipping them the latch came ~4.4 s after the loss
+  EXPECT_LT(std::chrono::steady_clock::now() - lost, 2500ms);
+
+  // Temperatures and voltages are still published, invalid, without waiting on the port
+  size_t temps = 0;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    temps = temps_.size();
+  }
+  ASSERT_TRUE(
+    waitUntil(
+      [&] {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return temps_.size() >= temps + 2;
+      }));
+  std::lock_guard<std::mutex> lock(mutex_);
+  EXPECT_FALSE(temps_.back().valid);
+  EXPECT_FALSE(volts_.back().valid);
 }

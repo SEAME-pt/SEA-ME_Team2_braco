@@ -69,6 +69,7 @@ ArmDriver::ArmDriver(const rclcpp::NodeOptions & options)
   declare_parameter<int>("gripper_speed", 50);
   declare_parameter<double>("control_idle_s", 5.0);
   declare_parameter<double>("stop_hold_s", 3.0);
+  declare_parameter<double>("feedback_timeout_s", 1.0);
   declare_parameter<bool>("read_only", false);
 }
 
@@ -85,6 +86,9 @@ ArmDriver::CallbackReturn ArmDriver::on_configure(const rclcpp_lifecycle::State 
     std::chrono::duration<double>(get_parameter("control_idle_s").as_double()));
   stop_hold_ = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
     std::chrono::duration<double>(std::max(0.0, get_parameter("stop_hold_s").as_double())));
+  feedback_timeout_ = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+    std::chrono::duration<double>(
+      std::max(0.0, get_parameter("feedback_timeout_s").as_double())));
 
   try {
     mc_ = std::make_unique<mycobot::MyCobot280>(port, static_cast<int>(baud));
@@ -168,6 +172,13 @@ ArmDriver::CallbackReturn ArmDriver::on_configure(const rclcpp_lifecycle::State 
         [this, state]() {mc_->setGripperState(state, gripper_speed_);});
     });
 
+  {
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    last_feedback_ = std::chrono::steady_clock::now();   // the timeout counts from the port open
+    feedback_lost_ = false;
+  }
+  link_ok_ = true;   // before the serial thread starts: it is the only one to touch them after
+  angle_misses_ = 0;
   running_ = true;
   serial_thread_ = std::thread([this]() {serialLoop();});   // monitoring starts here
   return CallbackReturn::SUCCESS;
@@ -318,10 +329,14 @@ void ArmDriver::publishStopped(bool on)
 
 void ArmDriver::latchStop(const std::string & source)
 {
-  const bool was_stopped = stopped_.exchange(true);
+  bool was_stopped = false;
   std::string dropped;
   {
+    // Under the lock, like releaseStop: the serial thread latches too (feedback loss, ADR-0007),
+    // so a release cannot clear a latch that came in between its check and its clear
     std::lock_guard<std::mutex> lock(state_mutex_);
+    was_stopped = stopped_.exchange(true);
+    if (!was_stopped) {publishStopped(true);}
     stop_requested_ = true;
     pending_joints_.clear();
     pending_all_.reset();
@@ -334,7 +349,6 @@ void ArmDriver::latchStop(const std::string & source)
   }
   const char * who = source.empty() ? "?" : source.c_str();
   if (!was_stopped) {
-    publishStopped(true);
     RCLCPP_WARN(
       get_logger(), "STOP from '%s': latched, motion refused (make resume, after %.1f s)", who,
       std::chrono::duration<double>(stop_hold_).count());
@@ -346,31 +360,37 @@ void ArmDriver::latchStop(const std::string & source)
   }
 }
 
-// Check-then-clear is safe only because rclcpp::spin is single-threaded: no STOP in between.
+// Check and clear under state_mutex_: the serial thread may latch a STOP at any time (ADR-0007).
 void ArmDriver::releaseStop(bool & success, std::string & message)
 {
   success = true;
-  if (!stopped_) {
-    message = "not stopped";
-    return;
-  }
-  std::chrono::steady_clock::duration left{};
   {
     std::lock_guard<std::mutex> lock(state_mutex_);
-    left = last_stop_ + stop_hold_ - std::chrono::steady_clock::now();
+    if (!stopped_) {
+      message = "not stopped";
+      return;
+    }
+    const auto left = last_stop_ + stop_hold_ - std::chrono::steady_clock::now();
+    if (feedback_lost_) {
+      // Released now, the arm would take commands the moment the link comes back
+      success = false;
+      message = "release refused: no angle feedback from the arm (serial link lost?)";
+    } else if (left > std::chrono::steady_clock::duration::zero()) {
+      success = false;
+      char buf[96];
+      std::snprintf(
+        buf, sizeof(buf), "release refused: %.1f s left of the hold after the last STOP",
+        std::chrono::duration<double>(left).count());
+      message = buf;
+    } else {
+      stopped_ = false;
+      publishStopped(false);
+    }
   }
-  if (left > std::chrono::steady_clock::duration::zero()) {
-    success = false;
-    char buf[96];
-    std::snprintf(
-      buf, sizeof(buf), "release refused: %.1f s left of the hold after the last STOP",
-      std::chrono::duration<double>(left).count());
-    message = buf;
+  if (!success) {
     RCLCPP_WARN(get_logger(), "%s", message.c_str());
     return;
   }
-  stopped_ = false;
-  publishStopped(false);
   message = "stop released (the arm stays still: take the control and send a new command)";
   RCLCPP_WARN(get_logger(), "%s", message.c_str());
 }
@@ -568,12 +588,15 @@ void ArmDriver::serialLoop()
 
       if (now >= next_state) {
         publishAngles();
+        checkFeedback();   // after each read, not once per pass: a pass can hold several reads
         next_state = now + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
           state_period_);
       }
       if (now >= next_temp) {
         publishTemps();
+        checkFeedback();
         publishVoltages();
+        checkFeedback();
         next_temp = now + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
           temp_period_);
       }
@@ -586,6 +609,8 @@ void ArmDriver::serialLoop()
       RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 2000, "serial error: %s", e.what());
       std::this_thread::sleep_for(100ms);
     }
+    // Outside the try: a port that fails every write never reaches publishAngles
+    checkFeedback();
   }
 }
 
@@ -641,10 +666,28 @@ void ArmDriver::publishAngles()
     std::lock_guard<std::mutex> lock(serial_mutex_);
     angles = mc_->getAngles(ANGLE_READ_RETRIES);
   }
+  if (angles) {
+    angle_misses_ = 0;
+    link_ok_ = true;
+  } else if (++angle_misses_ >= 2) {
+    link_ok_ = false;
+  }
   if (!angles) {
     // No message at all: clients see the state go stale and stop.
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000, "no valid angle feedback");
     return;
+  }
+  bool recovered = false;
+  {
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    last_feedback_ = std::chrono::steady_clock::now();
+    recovered = std::exchange(feedback_lost_, false);
+    // The latch's stop may have gone into a dead link: send it again now that the arm answers
+    if (recovered) {stop_requested_ = true;}
+  }
+  if (recovered) {
+    RCLCPP_WARN(
+      get_logger(), "angle feedback is back: stop sent again, STOP still latched (make resume)");
   }
   sensor_msgs::msg::JointState msg;
   msg.header.stamp = now();
@@ -658,9 +701,10 @@ void ArmDriver::publishAngles()
 void ArmDriver::publishTemps()
 {
   std::optional<mycobot::ServoTemps> temps;
-  {
+  if (link_ok_) {   // else invalid at once: the arm did not answer the last read (ADR-0007)
     std::lock_guard<std::mutex> lock(serial_mutex_);
     temps = mc_->getTemps();
+    link_ok_ = temps.has_value();
   }
   ServoTemperatures msg;
   msg.header.stamp = now();
@@ -676,9 +720,10 @@ void ArmDriver::publishTemps()
 void ArmDriver::publishVoltages()
 {
   std::optional<mycobot::ServoVolts> volts;
-  {
+  if (link_ok_) {
     std::lock_guard<std::mutex> lock(serial_mutex_);
     volts = mc_->getVoltages();
+    link_ok_ = volts.has_value();
   }
   ServoVoltages msg;
   msg.header.stamp = now();
@@ -708,6 +753,24 @@ void ArmDriver::checkWatchdog()
     moving_ = false;
     std::this_thread::sleep_for(COMMAND_GAP);
   }
+}
+
+void ArmDriver::checkFeedback()
+{
+  if (feedback_timeout_ <= std::chrono::steady_clock::duration::zero()) {return;}
+  {
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    if (feedback_lost_ ||
+      std::chrono::steady_clock::now() - last_feedback_ <= feedback_timeout_)
+    {
+      return;
+    }
+    feedback_lost_ = true;
+  }
+  RCLCPP_ERROR(
+    get_logger(), "no angle feedback for %.1f s (serial link lost?): STOP latched",
+    std::chrono::duration<double>(feedback_timeout_).count());
+  latchStop("feedback");
 }
 
 }  // namespace braco_driver

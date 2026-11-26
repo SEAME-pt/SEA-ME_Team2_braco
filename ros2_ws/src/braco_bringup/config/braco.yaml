@@ -12,6 +12,7 @@ arm_driver:
     read_only: false          # start in rest mode
     control_idle_s: 5.0       # the control owner loses it after this long without motion
     stop_hold_s: 3.0          # a STOP latches; arm/release_stop (make resume) is refused this long after it
+    feedback_timeout_s: 1.0   # no valid angles for this long: serial link lost, a STOP latches (ADR-0007); 0 = off
 
 temperature_monitor:
   ros__parameters:

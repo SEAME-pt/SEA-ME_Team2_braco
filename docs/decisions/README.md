@@ -10,5 +10,6 @@ Architecture Decision Records (ADRs). Each one covers a single decision: its con
 | [ADR-0004](ADR-0004-trajectories-through-arm-driver.md) | MoveIt trajectories reach the real arm through `arm_driver` |
 | [ADR-0005](ADR-0005-stop-latch.md) | A STOP latches in `arm_driver` until a person releases it |
 | [ADR-0006](ADR-0006-servo-speed-from-planned-velocity.md) | The servo speed on the real arm comes from the planned velocity |
+| [ADR-0007](ADR-0007-serial-loss-latches-stop.md) | A lost serial link latches a STOP in `arm_driver` |
 
 New ADR: copy [ADR-TEMPLATE.md](ADR-TEMPLATE.md), use the next number, `ADR-NNNN-short-title.md`.

@@ -37,6 +37,11 @@ and latches: motion, `take_control` (even `force`), `power_on`, `set_gripper`, `
 `set_read_only false` are refused until `/arm/release_stop` (`make resume`), which is refused for `stop_hold_s` (3 s)
 after the last STOP. The release moves nothing. Routine stops (stick released, a move that timed out) send `HALT`:
 the arm stops, nothing latches, the owner keeps the control.
+**Serial link lost** ([ADR-0007](../../../docs/decisions/ADR-0007-serial-loss-latches-stop.md)): no valid angles for
+`feedback_timeout_s` (1 s; 0 turns it off) latches a STOP from `feedback`. `/arm/release_stop` is refused until the
+angles come back; when they do, the stop is sent again and the latch holds until a person releases it. It is seen
+about 1.3 s after the loss (2.5 s at most): while the arm does not answer, temperatures and voltages are published
+invalid without waiting on the port.
 `power_on`, `set_gripper` and `release_servos` carry no source: clients call them only while they own the
 control. The rule is `ControlLease` (`include/braco_driver/control.hpp`), tested by `test/test_control.cpp`.
 
