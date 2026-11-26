@@ -382,15 +382,26 @@ def test_controllers_drive_the_arm_joints():
     assert arm['command_interfaces'] == ['position']
 
 
-def test_real_arm_override_only_adds_the_velocity_command():
+def test_real_arm_override_turns_off_the_limiter_and_adds_the_velocity_command():
     # controllers_real.yaml is loaded after controllers.yaml on the real arm only: the mock and
-    # Gazebo accept one command interface per joint.
+    # Gazebo accept one command interface per joint. ros2_control's limiter walked from the last
+    # goal's command after another client moved the arm (#157): arm_driver clamps instead.
     yaml = pytest.importorskip('yaml')
     path = os.path.join(PACKAGE_DIR, 'config', 'controllers_real.yaml')
     with open(path, encoding='utf-8') as f:
         config = yaml.safe_load(f)
-    assert config == {'arm_controller': {'ros__parameters': {
-        'command_interfaces': ['position', 'velocity']}}}
+    assert config == {
+        'controller_manager': {'ros__parameters': {'enforce_command_limits': False}},
+        'arm_controller': {'ros__parameters': {'command_interfaces': ['position', 'velocity']}},
+    }
+
+
+def test_simulation_keeps_the_limiter():
+    # Only the real arm has arm_driver to clamp: controllers.yaml keeps ros2_control's default
+    yaml = pytest.importorskip('yaml')
+    with open(os.path.join(PACKAGE_DIR, 'config', 'controllers.yaml'), encoding='utf-8') as f:
+        config = yaml.safe_load(f)
+    assert 'enforce_command_limits' not in config['controller_manager']['ros__parameters']
 
 
 def test_arm_controller_fails_a_goal_it_does_not_reach():

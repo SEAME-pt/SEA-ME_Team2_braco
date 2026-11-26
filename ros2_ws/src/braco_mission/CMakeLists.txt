@@ -42,6 +42,9 @@ install(TARGETS move_to_pose DESTINATION lib/${PROJECT_NAME})
 install(DIRECTORY launch DESTINATION share/${PROJECT_NAME})
 # draw_line.py: the straight-line demo, the executed tcp path from TF in a CSV and a plot (#85)
 install(PROGRAMS scripts/draw_line.py DESTINATION lib/${PROJECT_NAME})
+# run_goal_set.py: the fixed goal set of the real arm, pose error of every goal (#140)
+install(PROGRAMS scripts/run_goal_set.py DESTINATION lib/${PROJECT_NAME})
+install(DIRECTORY config DESTINATION share/${PROJECT_NAME})
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
@@ -72,6 +75,8 @@ if(BUILD_TESTING)
   ament_add_pytest_test(test_launch test/test_launch.py)
   # draw_line.py's path geometry and outputs, no ROS graph
   ament_add_pytest_test(test_draw_line test/test_draw_line.py)
+  # run_goal_set.py's goal set checks and summary, no ROS graph
+  ament_add_pytest_test(test_run_goal_set test/test_run_goal_set.py)
 endif()
 
 ament_package()
