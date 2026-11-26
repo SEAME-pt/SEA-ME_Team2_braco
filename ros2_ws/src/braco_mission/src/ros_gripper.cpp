@@ -50,7 +50,7 @@ const char * code_name(rclcpp_action::ResultCode code)
 // ---- ActionGripper ---------------------------------------------------------------------
 
 ActionGripper::ActionGripper(rclcpp::Node & node, const GripperConfig & config)
-: config_(config), client_(rclcpp_action::create_client<Command>(&node, ACTION))
+: config_(config), client_(rclcpp_action::create_client<Command>(&node, config.action))
 {
 }
 
@@ -67,7 +67,7 @@ bool ActionGripper::close(std::string & message)
 bool ActionGripper::command(double position, const std::string & what, std::string & message)
 {
   if (!client_->wait_for_action_server(2s)) {
-    message = what + ": " + ACTION + " is not available";
+    message = what + ": " + config_.action + " is not available";
     return false;
   }
   Command::Goal goal;
@@ -100,7 +100,7 @@ bool ActionGripper::command(double position, const std::string & what, std::stri
 // ---- ServiceGripper --------------------------------------------------------------------
 
 ServiceGripper::ServiceGripper(rclcpp::Node & node, const GripperConfig & config)
-: config_(config), client_(node.create_client<SetBool>(SERVICE))
+: config_(config), client_(node.create_client<SetBool>(config.service))
 {
 }
 
@@ -117,7 +117,7 @@ bool ServiceGripper::close(std::string & message)
 bool ServiceGripper::set(bool closed, const std::string & what, std::string & message)
 {
   if (!client_->wait_for_service(2s)) {
-    message = what + ": " + SERVICE + " is not available";
+    message = what + ": " + config_.service + " is not available";
     return false;
   }
   auto request = std::make_shared<SetBool::Request>();

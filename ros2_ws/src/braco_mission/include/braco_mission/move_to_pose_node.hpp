@@ -41,7 +41,7 @@
 // pick and place), approach_height_m (0.05: the default of a PickAndPlace goal),
 // gripper (sim | real, anything else: the node does not start), gripper_joint
 // (gripper_controller), gripper_open_position (0.15) / gripper_closed_position (-0.74, rad, sim),
-// gripper_timeout_s (5.0), gripper_settle_s (1.5, real).
+// gripper_timeout_s (15.0), gripper_settle_s (1.5, real).
 //
 // In a library, so tests can run it in-process; src/move_to_pose.cpp only holds main().
 // MoveIt 2 is behind MotionGroup: tests pass a fake through the factory.

@@ -43,10 +43,14 @@ namespace braco_mission
 struct GripperConfig
 {
   std::string kind = "sim";                 // sim: gripper_action_controller; real: arm_driver
+  std::string action = "/gripper_action_controller/gripper_cmd";   // sim
+  std::string service = "/arm/set_gripper";                        // real
   std::string joint = "gripper_controller";   // sim: the master joint (controllers.yaml)
   double open_position = 0.15;              // sim: rad of the master joint, fully open
   double closed_position = -0.74;           // sim: fully closed; on an object it stalls before
-  double timeout_s = 5.0;                   // longest wait for an answer and for the motion
+  // Longest wait for an answer and for the motion. The Gazebo gripper moves at ~0.1 rad/s: a
+  // close on an object takes ~4 s, an empty one (0.89 rad) ~9 s (#148)
+  double timeout_s = 15.0;
   double settle_s = 1.5;                    // real: the gripper moves after set_gripper answers
 };
 
@@ -54,8 +58,6 @@ class ActionGripper : public GripperBackend
 {
 public:
   using Command = control_msgs::action::ParallelGripperCommand;
-  static constexpr const char * ACTION = "/gripper_action_controller/gripper_cmd";
-
   ActionGripper(rclcpp::Node & node, const GripperConfig & config);
 
   bool open(std::string & message) override;
@@ -72,8 +74,6 @@ class ServiceGripper : public GripperBackend
 {
 public:
   using SetBool = std_srvs::srv::SetBool;
-  static constexpr const char * SERVICE = "/arm/set_gripper";
-
   ServiceGripper(rclcpp::Node & node, const GripperConfig & config);
 
   bool open(std::string & message) override;
