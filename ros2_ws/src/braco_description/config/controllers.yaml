@@ -83,3 +83,6 @@ gripper_action_controller:
     goal_tolerance: 0.01
     allow_stalling: true
     stall_timeout: 1.0
+    # Squeezing an object, Bullet's contact keeps the joint jittering at ~0.002-0.007 rad/s: at
+    # the default 0.001 it never counts as stalled and the goal never ends (#148).
+    stall_velocity_threshold: 0.02
