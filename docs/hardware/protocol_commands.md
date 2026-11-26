@@ -75,7 +75,7 @@ Codes from `pymycobot`'s `ProtocolCode`. The column "arm_driver" marks what the 
 
   - The firmware's limits minus 1-2°, so a joint never rests on its end stop. `braco_description`'s URDF uses the
     same values (a test checks it).
-- **Table clearance:** a pose whose lowest point (wrist or tool tip) is under 20 mm above the table is **not sent**
+- **Table clearance:** a pose whose lowest point (wrist or tool tip) is under 5 mm above the table (`TABLE_MARGIN_MM`) is **not sent**
   (`minHeightMm()`).
 - **Bad angles** (NaN, infinite) or a joint outside 1..6 throw an error.
 - **PID writes** are bounded: P and D at most 1.5 × factory, I at most 8, and every value is read back.
