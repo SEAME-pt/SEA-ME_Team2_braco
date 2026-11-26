@@ -1,6 +1,8 @@
-# braco Inventory
+# Inventory
 
-## MyCobot 280 Jetson-nano
+The parts braco received, with photos, the arm's serial number and its firmware version.
+
+## myCobot 280 Jetson Nano
 - 1 Cardboard box with padding: <br><img src="https://drive.google.com/thumbnail?id=16vurCTHgQpsPLDOAS7dbnxGbP2ZXcXWX&sz=w1000" width="260"></br>
 - 1 Robotic Arm unit: <br><img src="https://drive.google.com/thumbnail?id=1trKOdIMkrspjVGJwaZh9nFzGusg-YsQJ&sz=w1000" width="260"> <img src="https://drive.google.com/thumbnail?id=1xzTaoOZEmXgdh0tIkLOG0_vpjtOjnMg2&sz=w1000" width="260"> <img src="https://drive.google.com/thumbnail?id=13Z4zkXH80H_ybpFMriGG55Xq8me65wOl&sz=w1000" width="260"> <img src="https://drive.google.com/thumbnail?id=1OoPaQyWft7bIkDuhMqU_LvqMIwUNGO2B&sz=w1000" width="260"> <img src="https://drive.google.com/thumbnail?id=1rrfdYiZyhsauz1v1bTr_UEaV5ydAKybf&sz=w1000" width="260"> <img src="https://drive.google.com/thumbnail?id=1JSZHP88eQ0GvLIBS7vdftaYw2vD1cRva&sz=w1000" width="260"> <img src="https://drive.google.com/thumbnail?id=1LgtESw_CzTIBjZjK8igQTr6Zx_MDf3AT&sz=w1000" width="260"> <img src="https://drive.google.com/thumbnail?id=1Y09hLWkFLtBRi2j-5yk4QkohHxDHdPaP&sz=w1000" width="260"></br>
 - 1 Camera flange: <br><img src="https://drive.google.com/thumbnail?id=1nDt41-vblepoHf1OvF0_uunUJxhDgK7x&sz=w1000" width="260"> <img src="https://drive.google.com/thumbnail?id=1CRcUtLQQIP5U4hoanuhdZY5_ZgtZrx7d&sz=w1000" width="260"></br>

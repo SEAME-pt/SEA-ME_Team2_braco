@@ -6,6 +6,9 @@ command → motion latency and the effect of `SCHED_FIFO`. Input for the ros2_co
 
 Architecture: [architecture.md](architecture.md).
 
+**Contents:** [Summary](#summary) · [Serial loop of `arm_driver`](#serial-loop-of-arm_driver) · [Results](#results) ·
+[What it means](#what-it-means) · [What would change it](#what-would-change-it) · [Method](#method)
+
 Real arm, Jetson Nano, no desktop (`multi-user.target`), `arm_driver` alone in a `real` container (no
 `temperature_monitor`, joystick, camera or page). Results 1–3 measured on **2026-11-09**, result 4 on **2026-11-17**.
 
@@ -122,8 +125,8 @@ loop is saturated by commands at every rate tested. With 20 steps p99 equals the
 ### 4. SCHED_FIFO under CPU load
 
 `js_rate.py` under two loads at once: commands (`hold_load.py --rate 20`) and all four cores busy (`yes` × 4 on the
-host), 660 s per run, `state_rate_hz` 20. The two runs differ only in the scheduler. Summary and plots:
-[timing/sched-fifo/](timing/sched-fifo/); the raw CSVs are not kept (step 5 of [Method](#method) makes them again).
+host), 660 s per run, `state_rate_hz` 20. The two runs differ only in the scheduler. The raw CSVs are not kept
+(step 5 of [Method](#method) makes them again).
 
 | Run | Msgs | Hz | Mean ms | p50 ms | p99 ms | Max ms | > 75 ms |
 |---|---|---|---|---|---|---|---|
@@ -192,5 +195,5 @@ docker exec -it timing ros_entrypoint.sh bash                # terminal B, in /o
    `plot_jitter.py --requested 20 --run default=<csv> --run fifo=<csv> --out <folder>`.
 6. B: `ros2 run braco_bringup park`; host: `make up`.
 
-Results are written to `ros2_ws/bags/timing/` (git-ignored); only the `SCHED_FIFO` summary (`rate.md`) and
-plots are kept in [timing/sched-fifo/](timing/sched-fifo/).
+Results are written to `ros2_ws/bags/timing/` (git-ignored); only the `SCHED_FIFO` plots are kept, in
+[timing/sched-fifo/](timing/sched-fifo/).

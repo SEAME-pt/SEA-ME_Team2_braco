@@ -1,8 +1,8 @@
 # braco_mission
 
 Mission layer of the braco arm: tasks such as pick-and-place and drawing with a pen, asking MoveIt 2 for motions.
-Its first node, `move_to_pose`, moves the tool centre point (`tcp`) to a Cartesian pose goal (#84) and in straight
-lines through waypoints (#85), a first step toward drawing with a pen.
+Its first node, `move_to_pose`, moves the tool centre point (`tcp`) to a Cartesian pose goal and in straight lines
+through waypoints, a first step toward drawing with a pen.
 
 The mission never talks to the serial port: it plans and executes through MoveIt 2 (`braco_moveit_config`), so the
 same code runs in simulation and on the real arm (`real:=true`). On the real arm it also holds the control as `mission`
@@ -43,7 +43,7 @@ time, on either action; cancelling stops the arm.
 | `settle_s` / `tf_timeout_s` | `0.5` / `1.0` | wait before reading the tcp; TF lookup timeout |
 | `eef_step_m` | `0.005` | straight lines: a `tcp` point every 5 mm, when the goal leaves `eef_step_m` at 0 |
 
-The tolerances are a proposal for the team to agree on (#84 "Done when").
+The tolerances are a proposal: the team has not agreed on them yet.
 
 ## Straight lines: move_cartesian
 
@@ -107,7 +107,7 @@ servos will add far more.
 ## The goal set: run_goal_set.py
 
 `scripts/run_goal_set.py` runs a fixed set of goals, the same in Gazebo and on the real arm, and reports the pose
-error of each one (#140). The set is [`config/goal_set.yaml`](config/goal_set.yaml): a `start` pose and goals that
+error of each one. The set is [`config/goal_set.yaml`](config/goal_set.yaml): a `start` pose and goals that
 are either a `line` (an end point for `/move_cartesian`, keeping the start orientation) or a full `pose` (for
 `/move_to_pose`, from `/compute_fk`). Before every goal the arm goes back to `start`, and that return is reported as
 a `start` goal too.
@@ -132,8 +132,8 @@ On the real arm:
   goal is refused: release it on the page and keep the page open for STOP.
 
 From `start` the tool points down, so the reachable lines go in (toward the base) and down: moving the `tcp` 50 mm
-out (+x) or up plans only 55–73% of the path, and nothing moves. `line_z_up` (30 mm up) is at that edge: it plans
-fully in Gazebo but only 87.5% on the real arm, where the line starts from the measured `tcp`, several mm off `start`.
+out (+x) or up plans only 55–73 % of the path, and nothing moves. `line_z_up` (30 mm up) is at that edge: it plans
+fully in Gazebo but only 87.5 % on the real arm, where the line starts from the measured `tcp`, several mm off `start`.
 
 Checked in Gazebo (2026-11-19), `run_goal_set.py` with the default set:
 
@@ -184,8 +184,8 @@ The default set, no load, velocity scaling 0.1, from zero, in three parts so the
 Earlier, on 2026-11-19, `line_y` alone gave 11.1 mm, 2.51° without load and 16.4 mm, 4.13° with the gripper and
 camera (~150 g): the load lowers the `tcp` (z at `start` 106.2 mm vs 110.8 mm, goal 112.6 mm), and joint4 warmed to
 56 °C after two runs, hence the temperature check above. A third run aborted on the way to `start` with joint3 moving
-the wrong way: that was ros2_control's command limiter starting from the previous goal's command, fixed in #157, not
-joint3.
+the wrong way: that was ros2_control's command limiter starting from the previous goal's command, now off on the real
+arm, not joint3.
 
 Only the first `start` is within the 5 mm / 2° tolerance. That tolerance was set from Gazebo; for the real arm it is
 for the team to agree on.

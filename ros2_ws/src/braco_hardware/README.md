@@ -36,7 +36,7 @@ Sending:  arm_driver ◄──/arm/command─── BracoSystem ◄──write()
 |---|---|---|
 | Listens to | `/joint_states` | where the arm is, for `read()` |
 | Listens to | `/arm/control_owner` | who controls the arm: `write()` sends only when it is `mission` |
-| Listens to | `/arm/stopped` | the STOP latch (ADR-0005): a STOP aborts the goal |
+| Listens to | `/arm/stopped` | the STOP latch ([ADR-0005](../../../docs/decisions/ADR-0005-stop-latch.md)): a STOP aborts the goal |
 | Publishes | `/arm/command` | where the arm must go (`ALL_ANGLES`, `source: mission`) |
 | Parameters | `publish_rate_hz`, `min_speed` | optional, in the URDF: 25 per second, minimum servo speed 5 |
 
@@ -61,7 +61,9 @@ Why this rule: [ADR-0006](../../../docs/decisions/ADR-0006-servo-speed-from-plan
 
 1. Each joint: `|velocity| / max velocity × 100`.
 2. Keep the largest: the fastest joint sets the speed, so no joint falls behind.
-3. × 1.5, rounded up: the arm starts ~200 ms after a command and must catch up with the trajectory.
+3. × 1.5, rounded up: the arm starts ~200 ms after a command
+   ([timing budget](../../../docs/architecture/timing-budget.md#3-command--motion-latency)) and must catch up with the
+   trajectory.
 4. Never below `min_speed` (5), never above 100. A velocity not written yet (NaN) gives `min_speed`.
 
 Example: joint2 at 0.5 rad/s of its 2.44: 20.5, × 1.5 = 30.7, speed **31**.
@@ -91,7 +93,7 @@ ros2 control switch_controllers --activate arm_controller
 ```
 
 The plugin does not check the joint limits: `arm_driver` does. ros2_control's command limiter is off on the real arm
-(`controllers_real.yaml`, #157): it walked each command from the previous one, so a goal sent after another client moved
+(`controllers_real.yaml`): it walked each command from the previous one, so a goal sent after another client moved
 the arm started from the last goal's pose and aborted.
 
 ## How it works
@@ -160,6 +162,14 @@ ros2 control list_hardware_components -v
 | running | `BracoSystem` is `active` |
 | stopped | after 2 s, `BracoSystem` is `unconfigured`, and terminal 3 shows `is arm_driver running?` |
 
+## Files
+
+| File | What it is |
+|---|---|
+| `include/braco_hardware/braco_system.hpp`, `src/braco_system.cpp` | `BracoSystem`, the plugin, and the [Servo speed](#servo-speed) rule |
+| `braco_hardware.xml` | Registers `braco_hardware/BracoSystem` with pluginlib |
+| `test/test_braco_system.cpp`, `test/test_speed_for_velocity.cpp` | The tests, [below](#tests) |
+
 ## Tests
 
 `test/test_braco_system.cpp`, run alone with `colcon test --packages-select braco_hardware`. It loads `BracoSystem`
@@ -191,7 +201,7 @@ port: the `arm_driver` it starts talks to `PtyArm`, a fake arm on a pseudo-termi
 | `WriteSendsAgainAtTheNextGoalAfterAStop` | after a STOP and its release, the next claim sends again |
 
 The `write()` tests fake `arm_driver`'s topics (`/arm/control_owner`, `/arm/stopped`, `/arm/command`) and drive
-the manager's clock themselves, so the 2 s hold takes no real time (#132).
+the manager's clock themselves, so the 2 s hold takes no real time.
 
 `test/test_speed_for_velocity.cpp`: the [Servo speed](#servo-speed) rule alone, no ROS.
 
