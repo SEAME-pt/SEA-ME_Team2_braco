@@ -4,7 +4,12 @@ When to cut a release, what number to give it, and how to publish it. A release 
 GitHub Release with notes. Nothing is pushed to a registry: users build from the tagged source with `make setup` and
 `make up` (and `make jetson-image` on the Jetson).
 
-Team decisions (2026-11-04, [#108](https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/108)):
+**Contents:** [Why release](#1-why-release-at-all) · [Deciding](#2-deciding-to-release) · [Timing](#3-timing) ·
+[Version numbers](#4-version-numbers) · [Checklist](#5-pre-release-checklist) · [Cutting](#6-cutting-a-release) ·
+[Notes](#7-release-notes) · [Broken release](#8-when-a-release-is-broken) ·
+[Practices](#9-industry-practices-behind-this-guide)
+
+Team decisions (2026-11-04):
 
 - braco is at **`v0.1.0`**: `v1.0.0` was renumbered and deleted. A clone from before 2026-11-04 has to run
   `git tag -d v1.0.0`, see [§4.4](#44-the-v100--v010-rollback).
@@ -107,7 +112,6 @@ Rules:
 - **`package.xml`**: every package in `ros2_ws/src` has the same `<version>`, without the `v`: `0.2.0`.
   [REP 149](https://ros.org/reps/rep-0149.html) only allows three integers, so a release candidate keeps the final
   number there (`0.3.0` for `v0.3.0-rc.1`).
-- Today all packages still say `0.0.0`. The sprint 2 release (`v0.2.0`) brings them in line.
 
 ### 4.4 The `v1.0.0` → `v0.1.0` rollback
 
@@ -119,8 +123,8 @@ written down here. It was accepted because `v1.0.0` had existed for one day and 
 would also break version ordering: `v1.0.0` sorts above every later `v0.N.0`.
 
 **Done on 2026-11-04**: [`v0.1.0`](https://github.com/SEAME-pt/SEA-ME_Team2_braco/releases/tag/v0.1.0) is an
-annotated tag on `1957c67` (the merge of PR #105, where `v1.0.0` was), published with the `v1.0.0` notes. The
-`v1.0.0` release and tag are deleted from GitHub.
+annotated tag on `1957c67` (the CODEOWNERS merge of 2026-11-03, where `v1.0.0` was), published with the `v1.0.0`
+notes. The `v1.0.0` release and tag are deleted from GitHub.
 
 **Every clone made before that date** still has the old tag, because `git fetch` never deletes a tag that is gone
 from the remote. Remove it once:
@@ -212,7 +216,7 @@ curated part above it, following [Keep a Changelog](https://keepachangelog.com):
 - Driver no longer hangs when the serial port drops.
 
 ## Known issues
-- MoveIt 2 planning is slow on the Jetson (#123).
+- MoveIt 2 planning is slow on the Jetson.
 ```
 
 - Write for the person running the arm, not for the reviewer of the PR: what changed for them, and what they have

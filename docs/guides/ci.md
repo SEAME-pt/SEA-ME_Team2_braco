@@ -24,7 +24,7 @@ folder.
   until it is `git add`ed. Add it first, or a check that passes locally can fail once the file is on the PR.
 - A small `changes` job decides from `git diff` what a change needs (a PR: its base to its head; a push: from the old
   `main` to the new one, so a docs-only merge does not rebuild). A skipped job or step counts as passed for the
-  required checks. `host` always runs (under a minute).
+  required checks. `host` always runs (42 s to 45 s on `ubuntu-24.04`, green `main` runs 2026-11-20 to 2026-11-25).
   - `ros` and `coverage` run only when a file they read changed: `ros2_ws/` (except `.md`), `docker/Dockerfile`,
     `docker/config/`, `docker/scripts/`, `scripts/`, `Makefile`, `mk/` or `.github/workflows/`. Docs, compose files,
     `docker/tests/`, `web/`, templates and the like are checked by `host` alone. A folder that `ros` or `coverage`
@@ -53,8 +53,8 @@ folder.
 
 ## HIL runner
 
-A self-hosted GitHub Actions runner on the Jetson, next to the real arm (#94), for the manual `hil` job. The real HIL
-checks (serial, safe state, logs) come in #143.
+A self-hosted GitHub Actions runner on the Jetson, next to the real arm, for the manual `hil` job. The real HIL checks
+(serial, safe state, logs) are not written yet (planned).
 
 - **Runner:** `jetson-braco`, labels `self-hosted`, `Linux`, `ARM64` and `braco-arm` (the job's
   `runs-on: [self-hosted, braco-arm]`). It runs as its own user `gh-runner`, in `docker` but not in `dialout`, as a
@@ -72,14 +72,15 @@ checks (serial, safe state, logs) come in #143.
   - never `docker compose up`/`down` from the job's checkout: `docker/compose.yml` sets `name: braco`, so it would act
     on the live `real` container. Use `docker exec` or another project name (`-p`);
   - the Jetson is shared: agree a slot with the team first. `concurrency` only keeps CI runs apart, not people.
-- Recovery (runner offline, re-register, update): #144.
+- Recovery (runner offline, re-register, update): not written yet.
 
 ## MoveIt test
 
-`braco_moveit_config/test/test_plan_execute.launch.py` (#88) runs `demo.launch.py` headless (mock hardware, no RViz
+`braco_moveit_config/test/test_plan_execute.launch.py` runs `demo.launch.py` headless (mock hardware, no RViz
 or Gazebo), plans and executes to `park`, and checks the result and the final `/joint_states`.
 
-- A hang fails after 120 s (`add_launch_test ... TIMEOUT 120`); a run takes about 6 s.
+- A hang fails after 120 s (`add_launch_test ... TIMEOUT 120`); a run took 7.7 s in the `ros` job (`ubuntu-24.04`,
+  2026-11-25).
 - It runs on `ROS_DOMAIN_ID` 29, kept free for it (`make lint` refuses it in `team-domains.tsv`), and discovers only
   on localhost, so it never meets a teammate's `sim`, `dev` or the real arm.
 - `move_group`'s exit code is not checked: it segfaults on Ctrl+C/SIGINT (MoveIt 2.15), after the test.
@@ -88,7 +89,7 @@ or Gazebo), plans and executes to `park`, and checks the result and the final `/
 
 ## braco_hardware test
 
-`braco_hardware/test/test_braco_system.cpp` (#125) loads the `BracoSystem` plugin from the real-arm URDF and reads a
+`braco_hardware/test/test_braco_system.cpp` loads the `BracoSystem` plugin from the real-arm URDF and reads a
 spawned `arm_driver` that talks to a fake arm on a pseudo-terminal (`PtyArm`), never a real serial port.
 
 - It runs on `ROS_DOMAIN_ID` 28, kept free for it (`make lint` refuses it in `team-domains.tsv`), and discovers only
@@ -100,10 +101,10 @@ spawned `arm_driver` that talks to a fake arm on a pseudo-terminal (`PtyArm`), n
 
 ## Coverage
 
-- Floors: `COV_MIN_CXX`, `COV_MIN_PY` and `COV_MIN_WEB` in [`mk/ci.mk`](../../mk/ci.mk), 80% for every component. A PR
+- Floors: `COV_MIN_CXX`, `COV_MIN_PY` and `COV_MIN_WEB` in [`mk/ci.mk`](../../mk/ci.mk), 80 % for every component. A PR
   below a floor adds tests; the floors are not lowered to make it pass.
 - The ROS Python in scope is every `.py` of `ros2_ws/src` that git tracks outside `script/`, `scripts/` and `test/`,
-  launch files included (today the 8 launch files). A file no test loads still counts, at 0%
+  launch files included. A file no test loads still counts, at 0 %
   (`scripts/coverage_touch.py`), so a new launch file without a test lowers the total. A new file counts once git
   tracks it. The helper's own test (`scripts/test_coverage_touch.py`) runs in the same job, on the coverage.py of
   the `ci` image; if it fails, the job fails.
