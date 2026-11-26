@@ -5,9 +5,11 @@ imports are replaced by small fakes, so its STOP logic runs on the host.
 """
 
 import importlib
+import math
 import sys
 import types
 
+import fault_probe
 import pytest
 import serial_rtt
 from stats import interval_stats, intervals_ms, load_stamps, percentile
@@ -215,3 +217,88 @@ def test_release_control_never_raises(hold_load, monkeypatch, capsys):
     monkeypatch.setattr(hold_load, 'take_control', gone)
     hold_load.release_control(FakeNode())
     assert 'could not release the control' in capsys.readouterr().out
+
+
+# ---- fault_probe's stop-time analysis (#142) --------------------------------------------------
+
+
+def record(times_and_j1):
+    """watch record lines: joint 1 at each (t, deg), the other joints at 0."""
+    return [f'{t:.6f} {math.radians(d):.6f} 0 0 0 0 0' for t, d in times_and_j1]
+
+
+def test_stop_ms_from_the_last_moving_sample():
+    # Moves 1 deg per 50 ms until t=10.20, then holds
+    lines = record([(10.0 + 0.05 * i, min(i, 4)) for i in range(12)])
+    samples, _ = fault_probe.load_record(lines)
+    assert fault_probe.moving_at(samples, 10.10)
+    assert fault_probe.stop_ms(samples, 10.10) == pytest.approx(100.0)
+
+
+def test_stop_ms_already_still_is_zero():
+    samples, _ = fault_probe.load_record(record([(1.0 + 0.05 * i, 3) for i in range(12)]))
+    assert not fault_probe.moving_at(samples, 1.2)
+    assert fault_probe.stop_ms(samples, 1.2) == 0.0
+
+
+def test_stop_ms_never_still_is_none():
+    samples, _ = fault_probe.load_record(record([(0.05 * i, i) for i in range(20)]))
+    assert fault_probe.stop_ms(samples, 0.1) is None
+
+
+def test_slow_motion_is_not_still():
+    # 5 deg/s at 20 Hz: 0.25 deg per message, below STILL_DEG, still moving
+    samples, _ = fault_probe.load_record(record([(0.05 * i, 0.25 * i) for i in range(40)]))
+    assert fault_probe.moving_at(samples, 1.0)
+    assert fault_probe.stop_ms(samples, 1.0) is None
+
+
+def test_stop_ms_needs_the_whole_window_in_the_record():
+    samples, _ = fault_probe.load_record(record([(0.0, 0), (0.05, 1), (0.10, 1), (0.15, 1)]))
+    assert fault_probe.stop_ms(samples, 0.0) is None
+
+
+def test_noise_below_the_threshold_is_still():
+    samples, _ = fault_probe.load_record(record([(0.05 * i, 0.1 * (i % 2)) for i in range(10)]))
+    assert fault_probe.stop_ms(samples, 0.0) == 0.0
+
+
+def test_load_record_reads_marks_and_skips_log_lines():
+    lines = ['# ready 5.0', '[INFO] [1.0] [x]: hi', '5.0 0 0 0 0 0 0', '# action 5.5', '']
+    samples, marks = fault_probe.load_record(lines)
+    assert marks == {'ready': 5.0, 'action': 5.5}
+    assert samples == [(5.0, [0.0] * 6)]
+
+
+def test_analyse_uses_the_action_mark_and_the_latch():
+    lines = record([(10.0 + 0.05 * i, min(i, 4)) for i in range(12)])
+    lines += ['# action 10.10', '# stopped 10.13']
+    assert fault_probe.analyse(lines) == 'moving=yes stop_ms=100 latched_ms=30 travel_deg=2.0'
+
+
+def test_analyse_since_overrides_and_without_samples():
+    lines = record([(10.0 + 0.05 * i, 2) for i in range(8)])
+    assert fault_probe.analyse(lines, since=10.0) == (
+        'moving=no stop_ms=0 latched_ms=none travel_deg=0.0'
+    )
+    assert fault_probe.analyse(['# ready 1.0']) == (
+        'moving=no stop_ms=none latched_ms=none travel_deg=0.0'
+    )
+
+
+def test_analyse_without_a_time_starts_at_the_record():
+    # A bad stream that moved the arm 5 deg: the travel shows it
+    lines = record([(1.0 + 0.05 * i, min(i, 5)) for i in range(12)])
+    assert fault_probe.analyse(lines).endswith('travel_deg=5.0')
+
+
+def test_travel_from_the_pose_before_the_fault():
+    samples, _ = fault_probe.load_record(record([(0.0, 1), (1.0, 1), (2.0, -2), (3.0, 0)]))
+    assert fault_probe.travel_deg(samples, 1.5) == pytest.approx(3.0, abs=1e-3)
+
+
+def test_analyse_command_line(tmp_path, capsys):
+    f = tmp_path / 'rec.txt'
+    f.write_text('\n'.join(record([(1.0 + 0.05 * i, 2) for i in range(8)])))
+    assert fault_probe.main(['analyse', str(f), '--since', '1.0']) == 0
+    assert capsys.readouterr().out.strip() == 'moving=no stop_ms=0 latched_ms=none travel_deg=0.0'

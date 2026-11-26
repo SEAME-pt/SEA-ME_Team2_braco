@@ -1,9 +1,9 @@
-# mk/arm.mk - the real arm, through the running `real` container (Jetson): zero park rest resume temps bench.
+# mk/arm.mk - the real arm, through the running `real` container (Jetson): zero park rest resume temps bench fault.
 #
 # These run inside the system container (ROS sourced, workspace mounted), so nothing has to be stopped and the
 # serial port keeps its single owner, arm_driver.
 
-.PHONY: zero park rest resume temps bench _system_up
+.PHONY: zero park rest resume temps bench fault _system_up
 
 ##@ Arm (Jetson, with the system up)
 
@@ -26,6 +26,12 @@ temps: _jetson _system_up ## Print the servo temperatures once (works in rest mo
 
 bench: _jetson _system_up ## Bench test of control and auto-rest (scripts/bench.sh; asks before moving the arm)
 	BENCH_EXEC="env $(SYS_EXEC)" scripts/bench.sh
+
+# The faults of #142, injected one by one; the results table goes to ros2_ws/bags/fault/results.md (safety.md §10)
+fault: _jetson _system_up ## Fault rehearsal: kill nodes, cut the network, bad data, STOP during each (scripts/fault.sh; asks before moving)
+	FAULT_EXEC="env $(SYS_EXEC)" FAULT_WEB_PORT=$(WEB_PORT) \
+	  FAULT_WEB_RESTART="env $(COMPOSE) exec -T -e ARM_SOURCE=$(WEB_SOURCE) $(WEB_CONTAINER) ros_entrypoint.sh bash /opt/braco/web/restart.sh" \
+	  scripts/fault.sh
 
 _system_up: _role
 	@[ -n "$$($(COMPOSE) ps -q --status running $(SYSTEM) 2>/dev/null)" ] || { echo "the system is not running: make up" >&2; exit 1; }

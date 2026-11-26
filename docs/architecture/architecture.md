@@ -2,7 +2,7 @@
 
 How the braco software is built today: layers, nodes, topics, packages and deployment. If the code and this document disagree, the code wins. CPU and memory: [resources.md](resources.md). Timing: [timing-budget.md](timing-budget.md).
 
-Last checked against the code: **2026-11-20**.
+Last checked against the code: **2026-11-25**.
 
 **Contents:** [Principles](#1-principles) · [Layers](#2-layers) · [Nodes and devices](#3-nodes-and-devices) · [Topics and services](#4-topics-and-services) · [Control of the arm](#5-control-of-the-arm) · [Packages](#6-packages) · [Deployment](#7-deployment) · [Launch and parameters](#8-launch-and-parameters) · [MoveIt 2, simulation and the real arm](#9-moveit-2-simulation-and-the-real-arm) · [Status](#10-status) · [Changing the architecture](#11-changing-the-architecture)
 
@@ -98,7 +98,7 @@ An inactive `arm_driver` refuses all motion before gate 2 (lifecycle, [§5](#5-c
 
 ## 5. Control of the arm
 
-Details: [ADR-0002](../decisions/ADR-0002-unique-control.md) (owner), [ADR-0003](../decisions/ADR-0003-rest-per-temp.md) (overheat), [ADR-0005](../decisions/ADR-0005-stop-latch.md) (STOP latch).
+Details: [ADR-0002](../decisions/ADR-0002-unique-control.md) (owner), [ADR-0003](../decisions/ADR-0003-rest-per-temp.md) (overheat), [ADR-0005](../decisions/ADR-0005-stop-latch.md) (STOP latch), [ADR-0007](../decisions/ADR-0007-serial-loss-latches-stop.md) (serial link lost).
 
 | Rule | |
 |---|---|
@@ -107,6 +107,7 @@ Details: [ADR-0002](../decisions/ADR-0002-unique-control.md) (owner), [ADR-0003]
 | Motion | only from the owner |
 | STOP | always, from anyone; latches and frees the control until `/arm/release_stop` (from 3 s after it) |
 | HALT | routine stop, from anyone; no latch, the owner keeps the control |
+| Serial link lost | no valid angles for 1 s latches a STOP; `/arm/release_stop` refused until they are back |
 | Lose | `release`, forced away, 5 s without motion, or a STOP |
 
 | Client | Takes | Releases |
@@ -175,7 +176,7 @@ braco_camera braco_hardware braco_description ◄┄ braco_simulation, braco_mov
 |---|---|---|
 | Image | `braco-image/pc` | `braco-image/jetson` |
 | `dev` | stays up: shell, build, test, RViz2, PlotJuggler, web page, `make moveit` (`move_group` for the real arm) | throw-away (`run --rm`): build, shell |
-| System | `sim` (optional, `SIM=1`): Gazebo + controllers + `move_group` (`SIM_MOVEIT=true`, the default) | `real`: `arm_driver`, `temperature_monitor`, `joystick_teleop`, `camera`, `robot_state_publisher`, `ros2_control_node`; `make zero` / `park` / `resume` run in it |
+| System | `sim` (optional, `SIM=1`): Gazebo + controllers + `move_group` (`SIM_MOVEIT=true`, the default) | `real`: `arm_driver`, `temperature_monitor`, `joystick_teleop`, `camera`, `robot_state_publisher`, `ros2_control_node`; `make zero` / `park` / `resume` / `bench` / `fault` run in it |
 | ROS domain | per teammate, 20–29 (27 if unlisted; 28 the `braco_hardware` test, 29 the MoveIt launch test) | 22 |
 | Page source | `ARM_SOURCE=gazebo` | `ARM_SOURCE=ros` |
 
@@ -210,7 +211,7 @@ Devices come from launch arguments (filled from `docker/.env`); tuning comes fro
 | `device` (joystick) | `/dev/input/js0` |
 | `camera` | `/dev/video0` |
 
-Key parameters: `command_timeout_ms` 300 (watchdog), `control_idle_s` 5.0, `state_rate_hz` 20, `auto_rest_on_hot` / `park_on_hot` true, `force_button` 8 / `force_hold_s` 1.0.
+Key parameters: `command_timeout_ms` 300 (watchdog), `feedback_timeout_s` 1.0 (serial link lost, ADR-0007), `control_idle_s` 5.0, `state_rate_hz` 20, `auto_rest_on_hot` / `park_on_hot` true, `force_button` 8 / `force_hold_s` 1.0.
 
 ---
 
@@ -281,7 +282,7 @@ Real arm (ADR-0004): move_group on the PC, the arm on the Jetson, both on domain
 
 ## 10. Status
 
-**Done:** single serial owner · one control owner · STOP latch ([ADR-0005](../decisions/ADR-0005-stop-latch.md)) · one thermal authority · rest on overheat · `braco_*` layout with READMEs · one Makefile (`mk/`) · simulation · validated URDF ([report](../hardware/urdf-sim-to-real.md)) · trajectories through `arm_driver` as a lifecycle node ([ADR-0004](../decisions/ADR-0004-trajectories-through-arm-driver.md)) · `braco_moveit_config`: MoveIt 2 config, Gazebo and real-arm launches · `braco_mission`: `/move_to_pose` and `/move_cartesian`, control held as `mission` on the real arm · `braco_hardware` `SystemInterface`: `read()` and `write()` · `arm_controller` on the real arm · domain check before MoveIt · timing budget ([timing-budget.md](timing-budget.md)) · `SCHED_FIFO` measured, not enabled ([timing-budget.md](timing-budget.md#sched_fifo)).
+**Done:** single serial owner · one control owner · STOP latch ([ADR-0005](../decisions/ADR-0005-stop-latch.md)) · STOP on serial link loss ([ADR-0007](../decisions/ADR-0007-serial-loss-latches-stop.md)) · fault rehearsal script (`make fault`, [safety.md §10](../guides/safety.md#10-faults-rehearsed)) · one thermal authority · rest on overheat · `braco_*` layout with READMEs · one Makefile (`mk/`) · simulation · validated URDF ([report](../hardware/urdf-sim-to-real.md)) · trajectories through `arm_driver` as a lifecycle node ([ADR-0004](../decisions/ADR-0004-trajectories-through-arm-driver.md)) · `braco_moveit_config`: MoveIt 2 config, Gazebo and real-arm launches · `braco_mission`: `/move_to_pose` and `/move_cartesian`, control held as `mission` on the real arm · `braco_hardware` `SystemInterface`: `read()` and `write()` · `arm_controller` on the real arm · domain check before MoveIt · timing budget ([timing-budget.md](timing-budget.md)) · `SCHED_FIFO` measured, not enabled ([timing-budget.md](timing-budget.md#sched_fifo)).
 
 **Differs from the target (accepted):**
 

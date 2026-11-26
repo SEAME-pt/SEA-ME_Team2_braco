@@ -76,7 +76,12 @@ Safety rules for the arm, its gripper and its camera.
   - Who is in control: see the web page, or `ros2 topic echo /arm/control_owner`.
   - The joystick takes control from the page only if you hold **button 8 for about 1 s**.
 - **If `arm_driver` crashes or cannot open the serial port,** the whole system stops. Check with `make status` and
-  `make logs`.
+  `make logs`. A crash sends no stop: the arm finishes the last target it got and holds it, motors on.
+- **If the serial link to the arm is lost** ([ADR-0007](../decisions/ADR-0007-serial-loss-latches-stop.md)), a STOP
+  latches after 1 s without angle feedback, seen within about 2.5 s. `make resume` is refused until the angles come back. The move in progress
+  when the link died still ends on the arm.
+- **A client that dies or goes quiet** (page, joystick, script, mission) stops sending: the watchdog stops the arm
+  300 ms after the last command. Results of each fault: section 10.
 
 ### 6.3 Turning off the motors (free the joints)
 
@@ -148,3 +153,32 @@ Go/no-go checklist. If any box is not ticked, do not move the arm.
   hits something or loses communication, or for any reason in section 6.1.
 - **Who decides:** anyone can call STOP. Only the test lead, named before the test, decides whether to continue.
   After an abort, follow section 8.
+
+## 10. Faults rehearsed
+
+`make fault` on the Jetson injects each fault while joint 1 moves at speed 10, measures the time to stop on
+`/joint_states`, and sends a STOP during each fault ([#142](https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/142)).
+It asks before every move, and its last two sections stop the system (`make up` after it). It writes the measured
+table to `ros2_ws/bags/fault/results.md`: copy it into the last column below after each rehearsal on the real arm.
+
+Before running it: section 9.1 (area, induction, arm at zero), one person on the power switch (section 6.1).
+
+| Fault | Expected result | Bound on the time to stop | Covered by | Real arm |
+|---|---|---|---|---|
+| Client killed mid-move (`web` stream, page server) | Watchdog stops the arm | 400 ms (300 ms watchdog, one serial pass, one sample) | `make fault` §1-2, gtest `WatchdogStopsOnceWhenCommandsStop` | pending |
+| Mission client (`move_group`) killed mid-trajectory | The goal runs to its end in `arm_controller` on the Jetson, then the arm holds | end of the goal | `make fault` §5 | pending |
+| `ros2_control_node` killed mid-trajectory | `write()` stops, the arm stops at its last setpoint, the watchdog stops it | 400 ms | `make fault` §7 | pending |
+| Network PC-Jetson cut mid-move | Page moves and goals run on the Jetson: the move ends there. A STOP from a terminal on the Jetson works | end of the move | `make fault` §6 (by hand) | pending |
+| `arm_driver` killed (SIGKILL) | No stop sent: the arm finishes its last target and holds; the launch and the container stop | last target | `make fault` §8 (by eye: no feedback) | pending |
+| Serial link lost (cable inside the base) | STOP latched after 1 s without feedback (seen in ~1.3 s, 2.5 s at most), release refused until the link is back, stop sent again then | move in progress ends on the arm | gtests `FeedbackLoss…`, `DeadLink…`, `ClosedPort…`, `SerialLoss…` (ADR-0007) | not rehearsed: the cable is inside the base |
+| NaN angles from the owner | Dropped whole: no motion; the lease and the watchdog are not fed | no motion | `make fault` §3, gtests `NonFiniteAngles…` | pending |
+| Angle out of the joint limits | Clamped to the limit: the arm goes to the limit, not past it | n/a | gtest `AnglesOutOfTheLimitsAreClamped` (not on the arm: it moves it to the limit) | n/a |
+| Pose below the table | Refused: no motion | no motion | `make fault` §3, gtest `PoseIntoTheTableIsNotSent` | pending |
+| Motion from a wrong `source` | Ignored: no motion | no motion | `make fault` §3, gtest `MotionFromAWrongSourceIsIgnored` | pending |
+| `ros2 lifecycle set /arm_driver deactivate` mid-move | Stops and latches (#95) | 300 ms | `make fault` §4, `make bench` §4, gtest `DeactivateStopsTheArm` | pending |
+| STOP during each fault above | Latches; the arm stops | 300 ms | `make fault` (a STOP in each section) | pending |
+
+- **STOP when the network is cut:** a STOP from the PC (page in its browser, MoveIt) cannot reach the arm. Send the
+  STOP of section 9.2 from a shell on the Jetson, or use the power switch (section 6.1). The joystick has no STOP.
+- **After `arm_driver` dies:** nothing stops the arm in software. The page streams targets at most 15° ahead and the
+  mission's targets follow the trajectory, so the last target is close. A single far target from a script is not.

@@ -78,7 +78,7 @@ docker compose exec dev bash            # ROS ready
 |---|---|
 | System | `up` (`SIM=1` on the PC), `down` (`PARK=1`), `restart`, `status`, `logs` (`S=web`, `S=arm_driver`, any word) |
 | Web page | `web` (`MOCK=1`: fake arm data), `web-stop` |
-| Arm (Jetson) | `zero`, `park`, `rest`, `resume`, `temps`, `bench` |
+| Arm (Jetson) | `zero`, `park`, `rest`, `resume`, `temps`, `bench`, `fault` |
 | Development | `shell`, `run CMD='...'`, `build` (`COLCON_ARGS=...`), `test`, `sim-gui`, `gaze-gui`, `rviz-gui`, `moveit` (real arm; `RVIZ=false`, `WAIT=<s>`), `clean` |
 | Setup | `setup` (on the PC also your ROS domain, [section 6](#ros-domain-per-teammate)), `role`, `doctor`, `image` (`IMAGE_ARGS='--no-cache --pull'`), `boot-on`, `boot-off`, `jetson-image` (`NANO=user@host`), `re`, `fclean` |
 | Network | `net-test`, `net-talk`, `net-listen`, `domain-check` (before MoveIt; `TARGET=sim`, `WAIT=<s>`) |
