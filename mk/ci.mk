@@ -153,6 +153,8 @@ SHELLCHECK_FLAGS := -x -e SC1091
 SHELLCHECK_FILES = $(shell git ls-files '*.sh') $(addprefix .githooks/,commit-msg pre-push)
 HADOLINT_IMAGE   := hadolint/hadolint:v2.12.0
 HADOLINT_FLAGS   := $(addprefix --ignore ,DL3008 DL3013 DL3059 DL3006 DL3042 DL3045 SC1091 SC2086 SC2016)
+# No issue or PR numbers in the tracked .md files (docs/guides/docs-rules.md, section 3): prints file:line per hit.
+DOC_REFS_CHECK   := scripts/check-doc-refs.sh
 
 # format / format-check: clang-format (C++) and ruff (Python, .ruff.toml) on the files git tracks. The ROS 2
 # packages in $(WS_SRC) are left to ament_uncrustify and ament_flake8 (make test), except $(CPP_PKG), which has no
@@ -206,7 +208,7 @@ tidy: ## clang-tidy on the C++ packages of ros2_ws/src (ros2_ws/.clang-tidy), fr
 	@docker image inspect $(CI_IMAGE) >/dev/null 2>&1 || $(MAKE) --no-print-directory ci-image
 	$(CI_RUN) bash -c '$(CI_TIDY_SH)'
 
-lint: $(ENV_FILE) $(VENV)/.installed ## Compose files, the team's ROS domains, ruff check, shellcheck and hadolint (binaries or their docker images)
+lint: $(ENV_FILE) $(VENV)/.installed ## Compose files, the team's ROS domains, ruff check, issue refs in the docs, shellcheck and hadolint (binaries or their docker images)
 	@echo "== compose =="
 	@for r in pc jetson; do COMPOSE_PROFILES=$$r $(DC) config -q && echo "  $(COMPOSE_BASE) ($$r): ok"; done
 	@COMPOSE_PROFILES=jetson I2C_GID= INPUT_GID= $(DC) config -q && echo "  $(COMPOSE_BASE) (jetson): ok without i2c/input groups"
@@ -216,6 +218,8 @@ lint: $(ENV_FILE) $(VENV)/.installed ## Compose files, the team's ROS domains, r
 	@bash $(TESTS_DIR)/team-domain-test.sh
 	@echo "== Python =="
 	@$(VENV)/bin/ruff check -q $(PY_FILES) && echo "  ruff check: clean"
+	@echo "== docs =="
+	@bash $(DOC_REFS_CHECK) && echo "  issue/PR references: none"
 	@echo "== shell scripts =="
 	@if command -v shellcheck >/dev/null 2>&1; then shellcheck $(SHELLCHECK_FLAGS) $(SHELLCHECK_FILES) && echo "  shellcheck: clean"; \
 	else \
