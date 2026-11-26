@@ -2,43 +2,49 @@
 
 What braco costs on the Jetson Nano, and how the project keeps it within limits. Architecture: [architecture.md](architecture.md).
 
-> **Estimates, not measurements.** Assumes a 4 GB Nano (4 Cortex-A57 cores, RAM shared with the GPU), no desktop, 10 W mode. Replace with real numbers from `make status` ([pending](#measure)).
+> **Measured 2026-11-26**: 4 GB Nano, MAXN (10 W), `multi-user.target`, no camera connected. Method: [Measure](#measure).
 
 ## Summary
 
 | | Value |
 |---|---|
-| RAM, system running | ~0.3 GB |
-| CPU, in operation | ~0.2 core (~5% of the Nano); ~0.4 with the page's ROS tab open |
-| RAM peak, `colcon build` (2 × g++) | ~1.6 GB: the main out-of-memory risk |
+| RAM, braco container | 0.54 GB idle, 0.61 GB during a trajectory, 0.67 GB with the page's ROS tab open |
+| RAM, whole system | 2.6–2.7 GB of 3.96 GB; ~2.1 GB is L4T + Docker + other host processes (not itemized) |
+| CPU, braco container | ~0.5 core idle, ~0.7 core during a trajectory or with the ROS tab open (13–17% of the Nano) |
+| RAM peak, `colcon build` (2 × g++) | ~1.6 GB (estimate): the main out-of-memory risk |
 
 ```
                          0         1 GB      2 GB      3 GB      4 GB
-Operation      ~0.95 GB  ███████▓▓▓·······························   free ~3.1 GB
-During a build ~2.55 GB  ███████▓▓▓░░░░░░░░░░░░░░░░···············   free ~1.5 GB
-                                             ↑ limit of a 2 GB Nano
-█ L4T + Docker   ▓ braco   ░ colcon build   · free   (1 char ≈ 100 MB)
+Idle           ~2.61 GB  █████████████████████▓▓▓▓▓··············   free ~1.35 GB
+ROS tab open   ~2.74 GB  █████████████████████▓▓▓▓▓▓▓············   free ~1.2 GB
+During a build ~4.2 GB   █████████████████████▓▓▓▓▓░░░░░░░░░░░░░░░░ → swap
+█ L4T + Docker + other   ▓ braco   ░ colcon build (estimate)   · free   (1 char ≈ 100 MB)
 ```
 
-Running, braco is light. **The risk is the build:** on a 2 GB Nano or with the desktop on, it triggers the OOM killer or swaps to the SD card.
+Running, braco fits. **The risk is the build:** on top of the running system it does not fit in RAM and swaps. Build on the PC (`make jetson-image`) or stop the system first.
 
 ## Per process
 
-| Process | RAM | CPU (1 core = 100%) |
-|---|---|---|
-| `arm_driver` | 15–25 MB | **5–8% idle, 11–19% under continuous commands** (measured, [timing-budget.md](timing-budget.md)) |
-| `temperature_monitor` | 10–20 MB | <1% |
-| `joystick_teleop` | 10–20 MB | 1–3% |
-| `camera` (Python + OpenCV) | 60–90 MB | 3–8% |
-| `ros2 launch` | 50–70 MB | <1% |
-| Web page (uvicorn + rclpy) | 100–150 MB | 5–15% (20–40% with the ROS tab open) |
-| Docker + containerd | 80–120 MB | 1–2% |
-| `robot_state_publisher` | to measure (#96) | to measure (#96) |
-| `ros2_control_node` + `arm_controller` (100 Hz) | to measure (#96) | to measure (#96) |
-| **Total** (without the two rows above) | **~330–490 MB** | **~15–38%** |
-| `colcon build` | 0.6–1 GB per g++ | 100% per job; 10–25 min from scratch, 1–3 min incremental |
+Second `top` sample over 5 s; CPU as % of one core. RAM is RES, idle → trajectory.
 
-MoveIt 2 (`move_group`, 300–600 MB, a full core while planning) and `braco_mission` run on the PC, not the Jetson.
+| Process | RAM (MB) | Idle | Joystick | Trajectory | ROS tab |
+|---|---|---|---|---|---|
+| `ros2_control_node` (`controller_manager` + `arm_controller`, 100 Hz) | 95 → 103 | 38% | 36% | 48% | 28% |
+| `arm_driver` | 67 → 75 | 4% | 11% | 7% | 3% |
+| `joystick_teleop` | 66 → 71 | 6% | 12% | 5% | 5% |
+| `robot_state_publisher` | 63 → 71 | 4% | 3% | 4% | 3% |
+| `temperature_monitor` | 65 → 70 | <1% | <1% | <1% | <1% |
+| `camera` (no device: not streaming) | 203 → 208 | <1% | <1% | <1% | <1% |
+| `ros2 launch` | 133 → 137 | 1% | 1% | 1% | 1% |
+| `ros2-daemon` | 100 → 105 | <1% | 1% | 1% | <1% |
+| Web page (uvicorn + rclpy) | 167 | – | – | – | 23% |
+| **Container** (`docker stats`) | **539 → 605** (666 with the page) | **52%** | **61%** | **67%** | **67%** |
+| Docker + containerd (host) | 80–120 (estimate) | 1–2% | | | |
+| `colcon build` (estimate) | 0.6–1 GB per g++ | 100% per job; 10–25 min from scratch, 1–3 min incremental | | | |
+
+The RES column sums to more than the container: shared libraries are counted in every process. `arm_driver` timing: [timing-budget.md](timing-budget.md).
+
+MoveIt 2 (`move_group`) and `braco_mission` run on the PC, not the Jetson (checked: no `move_group` in the container). `move_group` on the PC: ~220 MB, ≤6% of one core (1 s samples) while planning the `run_goal_set.py` goals.
 
 ## Mitigations
 
@@ -48,7 +54,14 @@ MoveIt 2 (`move_group`, 300–600 MB, a full core while planning) and `braco_mis
 | Desktop wastes 0.5–1 GB | `make doctor` warns; disable it: `sudo systemctl set-default multi-user.target` | `mk/setup.mk` |
 | 5 W mode halves the CPU | `make doctor` warns; switch: `sudo nvpmodel -m 0` | `mk/setup.mk` |
 | SD card fills up | `CCACHE_MAXSIZE=1G`; `make clean` also deletes `~/.ros/log` | `docker/compose.yml`, `mk/dev.mk` |
+| CPU: `ros2_control_node` is the largest user | None needed yet; if CPU gets short, look at its 100 Hz loop first | `braco_description/config/controllers*.yaml` |
 
 ## Measure
 
-*Pending.* Run `make status` (`docker stats` per container + `tegrastats`) in three situations: arm idle, joystick in use, page's ROS tab open. Replace the estimates above with the results.
+System up, arm at zero. Four cases, each held for ~5 s: idle, joystick moved continuously, trajectory (`run_goal_set.py --yes` from the PC), page's ROS tab open. For each, at the same time:
+
+- `docker compose exec -T real top -b -c -w 512 -d 5 -n 2 -o %CPU`, keeping the second sample
+- `docker stats --no-stream`
+- `tegrastats --interval 1000`
+
+On the PC, during the trajectory case: `top -b -d 1 -n 30 -p <move_group pid>`. The cores ran at 204–518 MHz (DVFS), so CPU % is relative to a slowed core.
