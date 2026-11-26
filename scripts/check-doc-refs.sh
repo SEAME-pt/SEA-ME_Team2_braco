@@ -6,11 +6,12 @@
 # Prints file:line:text for each hit and exits 1 if there is any, 0 otherwise.
 #
 # `#12`, `PR #12`, `issues/12` and `pull/12` are hits, also inside code spans. Section anchors such as
-# `#1-set-up` are not: a number followed by a word character or `-` is part of an anchor.
+# `#1-set-up` are not: a number followed by a word character or `-` is part of an anchor. Nor are HTML
+# entities such as `&#39;`.
 
 set -euo pipefail
 
-PATTERN='(?<![\w/])#\d+(?![\w-])|issues/\d+|pull/\d+'
+PATTERN='(?<![\w/&])#\d+(?![\w-])|issues/\d+|pull/\d+'
 
 if [ "$#" -eq 0 ]; then
     cd "$(git rev-parse --show-toplevel)"
