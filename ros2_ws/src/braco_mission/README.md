@@ -42,6 +42,7 @@ aborts with a message that starts with `STOP latched in arm_driver`.
 | `use_control` | `false` | `true` on the real arm (ADR-0004); simulation has no `arm_driver` |
 | `velocity_scaling` / `acceleration_scaling` | `0.1` / `0.1` | ADR-0004: ≤ 0.1 on the real arm |
 | `planning_time_s` | `5.0` | |
+| `elbow_max_deg` | `20.0` | point-to-point plans keep `joint3` (the elbow) at or below this along the whole path, so MoveIt never takes the solution folded over the arm (`joint3` near +100°): from it the lines of pick and place cannot go down, and the real arm lags on the long move there. Start with the elbow under it (`make zero`). `180`: no limit |
 | `position_tolerance_m` | `0.005` | success: tcp within 5 mm |
 | `orientation_tolerance_deg` | `2.0` | success: tcp within 2° |
 | `settle_s` / `tf_timeout_s` | `0.5` / `1.0` | wait before reading the tcp; TF lookup timeout |
