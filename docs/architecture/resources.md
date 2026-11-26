@@ -2,7 +2,7 @@
 
 What braco costs on the Jetson Nano, and how the project keeps it within limits. Architecture: [architecture.md](architecture.md).
 
-> **Measured 2026-11-26** (#96): 4 GB Nano, MAXN (10 W), `multi-user.target`, no camera connected. Method: [Measure](#measure).
+> **Measured 2026-11-26**: 4 GB Nano, MAXN (10 W), `multi-user.target`, no camera connected. Method: [Measure](#measure).
 
 ## Summary
 
