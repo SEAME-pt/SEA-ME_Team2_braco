@@ -51,7 +51,7 @@ aborts with a message that starts with `STOP latched in arm_driver`.
 | `gripper` | `sim` | `sim`: `gripper_action_controller` (Gazebo); `real`: `/arm/set_gripper` on `arm_driver`. Anything else: the node does not start. The launch file's `gripper` argument sets it; empty, it follows `real` |
 | `gripper_joint` | `gripper_controller` | sim: the gripper's master joint |
 | `gripper_open_position` / `gripper_closed_position` | `0.15` / `-0.74` | sim: rad of the master joint. On an object the gripper stalls before closed, which counts as done |
-| `gripper_timeout_s` | `5.0` | longest wait for the gripper to answer and to move |
+| `gripper_timeout_s` | `15.0` | longest wait for the gripper to answer and to move: the Gazebo gripper takes ~4 s to close on an object, ~9 s empty |
 | `gripper_settle_s` | `1.5` | real: wait after `/arm/set_gripper` answers, the gripper is still moving |
 
 The tolerances are a proposal for the team to agree on (#84 "Done when").
@@ -141,15 +141,32 @@ the move in progress, and no other stage starts; the message starts with the sta
 `pick_and_place.cpp`, without ROS; the gripper is `gripper_action_controller` in Gazebo and `/arm/set_gripper` on the
 real arm (`gripper` parameter).
 
+### Demo in Gazebo
+
+A 20 x 20 x 40 mm block (`braco_simulation`'s `models/pick_block`) is spawned at the pick pose, then one goal moves it
+120 mm along y. Tested five times in a row: every stage succeeded with the `tcp` within 1 mm of both poses, and the
+block ended upright 5 to 12 mm from the place pose (it slides a little between the fingers).
+
 ```bash
-ros2 action send_goal --feedback /pick_and_place braco_interfaces/action/PickAndPlace \
-  "{pick: {header: {frame_id: world}, pose: {position: {x: 0.18, y: -0.08, z: 0.03},
-           orientation: {x: 1.0, y: 0.0, z: 0.0, w: 0.0}}},
-    place: {header: {frame_id: world}, pose: {position: {x: 0.18, y: 0.08, z: 0.03},
-            orientation: {x: 1.0, y: 0.0, z: 0.0, w: 0.0}}}}"
+make up SIM=1                                   # Gazebo + move_group, headless
+make shell                                      # then, in it: ros2 launch braco_mission move_to_pose.launch.py
+# The block at the pick pose: the robot's world frame is Gazebo's (0.07, 0.085, 0.75), the block's centre 20 mm up
+make run CMD='GZ_PARTITION=braco-sim ros2 run ros_gz_sim create -world lab_bench -name pick_block -x 0.27 -y 0.045 -z 0.77 \
+  -file /ws/install/braco_simulation/share/braco_simulation/models/pick_block/model.sdf'
+make run CMD='ros2 action send_goal --feedback /pick_and_place braco_interfaces/action/PickAndPlace "{
+  pick:  {header: {frame_id: world}, pose: {position: {x: 0.20, y: -0.04, z: 0.025}, orientation: {x: 1.0, w: 0.0}}},
+  place: {header: {frame_id: world}, pose: {position: {x: 0.20, y: 0.08, z: 0.025}, orientation: {x: 1.0, w: 0.0}}}}"'
+make run CMD='GZ_PARTITION=braco-sim gz model -m pick_block -p'   # the block now: about (0.27, 0.165, 0.77)
 ```
 
-The poses above are an example of the syntax, not yet checked on the bench: the Gazebo and real-arm demos set them.
+`make gaze-gui` shows it. What the poses need:
+
+- The orientation `{x: 1, w: 0}` points the `tcp` down; the fingers then close along x.
+- The `tcp` at 25 mm above the table, the block's middle. The open fingertips reach about 15 mm below the `tcp` and
+  the table is in MoveIt's planning scene, so a line lower than that stops short (`only 90% of the path planned`).
+- Both poses away from the gap between the two tables (robot y = -0.085).
+- In Gazebo the gripper closes at about 0.1 rad/s and its controller ends a squeeze when the joint stops (stall), so
+  `gripper_timeout_s` is 15 s and `stall_velocity_threshold` is 0.02 in `braco_description`'s `controllers.yaml`.
 
 ## Run it on the real arm
 

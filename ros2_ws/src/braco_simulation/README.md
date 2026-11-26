@@ -17,6 +17,7 @@ The braco arm in Gazebo, on the PC, standing on a copy of the lab bench. It uses
 | `config/gazebo_gui.config` | The Gazebo window's first view, close to the arm |
 | `worlds/lab_bench.sdf` | The scene: floor, light, the two tables of the real bench; Bullet physics and the camera's Sensors system |
 | `models/lab_table/` | One table of the bench (static, the top collides) |
+| `models/pick_block/` | The pick-and-place demo's object: a 20 x 20 x 40 mm block of 20 g, high friction, spawned by hand at the pick pose ([braco_mission](../braco_mission/README.md#demo-in-gazebo)) |
 | `scripts/move_joint.py` | Moves one joint (`move_joint.py 2 30`: joint2 to 30°) |
 | `scripts/move_arm_example.py` | A few poses, written once: copy it to make your own |
 | `scripts/park.py` | The park pose |
