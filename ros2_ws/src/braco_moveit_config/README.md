@@ -4,8 +4,9 @@ MoveIt 2 configuration of the braco arm: MoveIt loads the model of `braco_descri
 (joint1..joint6, for the tool tip `tcp`) within the same joint limits as the rest of the stack, and sends the plans
 to `arm_controller`.
 
-`move_group` is too heavy for the Jetson Nano ([resources.md](../../../docs/architecture/resources.md#per-process)):
-run it on the PC; it reaches the arm on the Jetson through DDS.
+`move_group` runs on the PC and reaches the arm on the Jetson through DDS: the Jetson builds only what the real arm
+needs, without MoveIt 2 ([architecture.md](../../../docs/architecture/architecture.md#6-packages)). On the PC it uses
+~220 MB ([resources.md](../../../docs/architecture/resources.md#per-process)).
 
 ## Contents
 
