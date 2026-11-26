@@ -60,6 +60,9 @@ protected:
     helper_ = std::make_shared<rclcpp::Node>("gripper_test");
     config_.timeout_s = 0.5;
     config_.settle_s = 0.0;
+    // Names of their own: a simulation running on the same domain serves the default ones
+    config_.action = "/gripper_test/gripper_cmd";
+    config_.service = "/gripper_test/set_gripper";
   }
 
   void TearDown() override
@@ -80,7 +83,7 @@ protected:
   void serve_action()
   {
     server_ = rclcpp_action::create_server<Command>(
-      helper_, ActionGripper::ACTION,
+      helper_, config_.action,
       [this](const rclcpp_action::GoalUUID &, std::shared_ptr<const Command::Goal> goal) {
         std::lock_guard<std::mutex> lock(mutex_);
         names_ = goal->command.name;
@@ -109,7 +112,7 @@ protected:
   void serve_service()
   {
     service_ = helper_->create_service<SetBool>(
-      ServiceGripper::SERVICE,
+      config_.service,
       [this](const SetBool::Request::SharedPtr request, SetBool::Response::SharedPtr response) {
         std::lock_guard<std::mutex> lock(mutex_);
         requests_.push_back(request->data);

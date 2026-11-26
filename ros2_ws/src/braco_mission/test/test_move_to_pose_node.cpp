@@ -280,7 +280,7 @@ protected:
     }
     // gripper_action_controller of the Gazebo arm (the node's default gripper:=sim)
     gripper_server_ = rclcpp_action::create_server<GripperCommand>(
-      helper_, braco_mission::ActionGripper::ACTION,
+      helper_, braco_mission::GripperConfig().action,
       [this](const rclcpp_action::GoalUUID &, std::shared_ptr<const GripperCommand::Goal> goal) {
         std::lock_guard<std::mutex> lock(mutex_);
         gripper_positions_.push_back(goal->command.position.at(0));
