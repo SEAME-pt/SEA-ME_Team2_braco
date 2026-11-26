@@ -306,7 +306,8 @@ protected:
     params.insert(params.end(), extra.begin(), extra.end());
     node_ = std::make_shared<MoveToPoseNode>(
       rclcpp::NodeOptions().parameter_overrides(params),
-      [this](const rclcpp::Node::SharedPtr &, const MotionConfig &) {
+      [this](const rclcpp::Node::SharedPtr &, const MotionConfig & config) {
+        config_ = config;
         auto fake = std::make_unique<FakeMotionGroup>();
         fake_ = fake.get();
         return fake;
@@ -427,6 +428,7 @@ protected:
   rclcpp_action::Client<MoveToPose>::SharedPtr pose_client_;
   rclcpp_action::Client<MoveCartesian>::SharedPtr line_client_;
   rclcpp_action::Client<PickAndPlace>::SharedPtr pick_client_;
+  MotionConfig config_;   // what the node gave its motion group
   rclcpp_action::Server<GripperCommand>::SharedPtr gripper_server_;
   std::atomic<bool> gripper_works_{true};
   std::vector<double> gripper_positions_;
@@ -453,6 +455,19 @@ TEST_F(MoveToPoseNodeTest, DeclaresTheDefaultParameters)
   EXPECT_EQ(node->get_parameter("gripper_joint").as_string(), "gripper_controller");
   EXPECT_DOUBLE_EQ(node->get_parameter("gripper_open_position").as_double(), 0.15);
   EXPECT_DOUBLE_EQ(node->get_parameter("gripper_closed_position").as_double(), -0.74);
+}
+
+TEST_F(MoveToPoseNodeTest, KeepsTheElbowUpByDefault)
+{
+  start();
+  EXPECT_EQ(config_.elbow_joint, "joint3");
+  EXPECT_NEAR(config_.elbow_max_rad, 20.0 * M_PI / 180.0, 1e-3);
+}
+
+TEST_F(MoveToPoseNodeTest, ElbowLimitIsAParameter)
+{
+  start({rclcpp::Parameter("elbow_max_deg", 180.0)});   // past joint3's limit: no constraint
+  EXPECT_NEAR(config_.elbow_max_rad, M_PI, 1e-9);
 }
 
 TEST_F(MoveToPoseNodeTest, ProgramExitsOnABadParameter)

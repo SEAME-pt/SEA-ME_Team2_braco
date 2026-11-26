@@ -68,6 +68,8 @@ MoveToPoseNode::MoveToPoseNode(
   motion_config_.velocity_scaling = declare_parameter<double>("velocity_scaling", 0.1);
   motion_config_.acceleration_scaling = declare_parameter<double>("acceleration_scaling", 0.1);
   motion_config_.planning_time_s = declare_parameter<double>("planning_time_s", 5.0);
+  motion_config_.elbow_max_rad = declare_parameter<double>(
+    "elbow_max_deg", motion_config_.elbow_max_rad * 180.0 / M_PI) * M_PI / 180.0;
   settings_.position_tolerance_m = declare_parameter<double>("position_tolerance_m", 0.005);
   settings_.orientation_tolerance_rad =
     declare_parameter<double>("orientation_tolerance_deg", 2.0) * M_PI / 180.0;

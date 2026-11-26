@@ -14,6 +14,7 @@
 
 #include "braco_mission/moveit_motion_group.hpp"
 
+#include <cmath>
 #include <cstddef>
 #include <string>
 #include <vector>
@@ -22,6 +23,8 @@
 #include "moveit/robot_state/robot_state.hpp"
 #include "moveit/robot_trajectory/robot_trajectory.hpp"
 #include "moveit/trajectory_processing/time_optimal_trajectory_generation.hpp"
+#include "moveit_msgs/msg/constraints.hpp"
+#include "moveit_msgs/msg/joint_constraint.hpp"
 #include "moveit_msgs/msg/move_it_error_codes.hpp"
 #include "moveit_msgs/msg/robot_state.hpp"
 #include "moveit_msgs/msg/robot_trajectory.hpp"
@@ -43,6 +46,22 @@ geometry_msgs::msg::Pose to_msg(const Pose & p)
   m.orientation.z = p.orientation.z;
   m.orientation.w = p.orientation.w;
   return m;
+}
+
+// `config.elbow_joint` in [-pi, elbow_max_rad]: below -pi is past any joint limit of the arm
+moveit_msgs::msg::Constraints elbow_constraint(const MotionConfig & config)
+{
+  moveit_msgs::msg::JointConstraint joint;
+  joint.joint_name = config.elbow_joint;
+  const double half = (config.elbow_max_rad + M_PI) / 2.0;
+  joint.position = config.elbow_max_rad - half;
+  joint.tolerance_above = half;
+  joint.tolerance_below = half;
+  joint.weight = 1.0;
+  moveit_msgs::msg::Constraints out;
+  out.name = "elbow";
+  out.joint_constraints.push_back(joint);
+  return out;
 }
 
 }  // namespace
@@ -72,7 +91,10 @@ bool MoveItMotionGroup::plan(const Pose & goal, bool position_only)
   } else {
     group_.setPoseTarget(to_msg(goal), config_.end_effector);
   }
-  return static_cast<bool>(group_.plan(plan_));
+  group_.setPathConstraints(elbow_constraint(config_));
+  const bool ok = static_cast<bool>(group_.plan(plan_));
+  group_.clearPathConstraints();
+  return ok;
 }
 
 CartesianPlan MoveItMotionGroup::plan_cartesian(

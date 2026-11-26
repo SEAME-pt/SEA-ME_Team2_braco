@@ -35,6 +35,14 @@ struct MotionConfig
   double acceleration_scaling = 0.1;   // ADR-0004
   double planning_time_s = 5.0;
   double state_timeout_s = 1.0;        // wait for the current robot state
+  // Point-to-point plans keep `elbow_joint` at or below `elbow_max_rad` along the whole path
+  // (a path constraint). Most poses on the bench have two IK solutions: elbow up (joint3 near
+  // -100 deg) and folded over the arm (joint3 near +100 deg). KDL picks one at random; from the
+  // folded one the straight lines of pick and place cannot go down, and getting there is a
+  // long move the real arm lags on (#148). Straight lines are not constrained: they keep the
+  // solution they start from.
+  std::string elbow_joint = "joint3";
+  double elbow_max_rad = 0.35;         // 20 deg: zero (0) passes, the folded solution does not
 };
 
 class MotionGroup

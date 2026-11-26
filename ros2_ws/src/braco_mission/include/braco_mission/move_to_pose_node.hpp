@@ -36,6 +36,7 @@
 //
 // Parameters: group (arm), end_effector (tcp), use_control (false: simulation),
 // velocity_scaling / acceleration_scaling (0.1, ADR-0004), planning_time_s (5.0),
+// elbow_max_deg (20: joint3 at most this along point-to-point plans, MotionConfig),
 // position_tolerance_m (0.005), orientation_tolerance_deg (2.0), settle_s (0.5),
 // tf_timeout_s (1.0), eef_step_m (0.005: the default of a MoveCartesian goal and the lines of
 // pick and place), approach_height_m (0.05: the default of a PickAndPlace goal),
