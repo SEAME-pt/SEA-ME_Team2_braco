@@ -20,7 +20,7 @@ are in [`docs/hardware/urdf-sim-to-real.md`](../../../docs/hardware/urdf-sim-to-
 | `urdf/braco.gazebo.xacro` | The simulation's hardware (`GazeboSimSystem`) on `joint1..joint6` and the wrist camera sensor, only with `gazebo:=true` |
 | `urdf/braco.real.xacro` | The real arm's hardware (`braco_hardware`) on `joint1..joint6`, only with `real_arm:=true` |
 | `config/controllers.yaml` | The controllers: `arm_controller` (sim and real arm), `joint_state_broadcaster` (sim and MoveIt demo only), `gripper_action_controller` (sim only) |
-| `config/controllers_real.yaml` | Real arm only, loaded after `controllers.yaml`: adds the velocity command to `arm_controller` (the MoveIt mock and Gazebo accept one command interface per joint) |
+| `config/controllers_real.yaml` | Real arm only, loaded after `controllers.yaml` by `ros2_control_node` and the spawner: turns off ros2_control's command limiter (`enforce_command_limits: false`, #157: `arm_driver` clamps) and adds the velocity command to `arm_controller` (the MoveIt mock and Gazebo accept one command interface per joint) |
 | `meshes/` | Visual and collision meshes of Elephant Robotics (`LICENSE.elephantrobotics`) |
 | `test/test_urdf.py` | Keeps the URDF and the code in sync (`colcon test --packages-select braco_description`) |
 

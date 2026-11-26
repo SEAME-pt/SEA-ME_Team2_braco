@@ -52,7 +52,7 @@ Ubuntu 26.04 + ROS 2 Lyrical for the myCobot 280 Jetson Nano, in Docker.
 make up          # creates .env if missing, checks the host, builds the image and the code if needed, starts
 make status      # containers, CPU/RAM, what the page sees
 make shell       # a shell in dev, ROS ready
-make down        # stops everything (Jetson: make down PARK=1 parks the arm first)
+make down        # stops everything (Jetson: parks the arm first; PARK=0 skips it)
 ```
 
 - **`make up` is safe to run again:** it skips what is already done.
@@ -80,7 +80,7 @@ docker compose exec dev bash            # ROS ready
 
 | Group | Commands |
 |---|---|
-| System | `up` (`SIM=1` on the PC), `down` (`PARK=1`), `restart`, `status`, `logs` (`S=web`, `S=arm_driver`, any word) |
+| System | `up` (`SIM=1` on the PC), `down` (`PARK=0`), `restart` (`PARK=0`), `status`, `logs` (`S=web`, `S=arm_driver`, any word) |
 | Web page | `web` (`MOCK=1`: fake arm data), `web-stop` |
 | Arm (Jetson) | `zero`, `park`, `rest`, `resume`, `temps`, `bench` |
 | Development | `shell`, `run CMD='...'`, `build` (`COLCON_ARGS=...`), `test`, `sim-gui`, `gaze-gui`, `rviz-gui`, `moveit` (real arm; `RVIZ=false`, `WAIT=<s>`), `clean` |
@@ -121,7 +121,11 @@ docker compose exec dev bash            # ROS ready
 
 - **Runs** `arm_routine.sh` → `ros2 launch braco_bringup braco.launch.py sim:=false`. The nodes:
   [architecture §3 and §4](../docs/architecture/architecture.md#3-nodes-and-devices).
-- **Never moves the arm** when it starts or stops. Park before turning off (`make down PARK=1`), or the arm drops.
+- **Never moves the arm by itself** when it starts or stops. Stopped, `arm_driver` only stops the arm: the servos
+  (own supply) stay on, holding the pose, and the temperature watch stops too. So `make down`, `restart`, `re`,
+  `fclean`, `make up` after a rebuild and `braco.service` (`systemctl stop braco`, shutdown) **park the arm first**.
+  `PARK=0` skips it. A failed park (STOP latched: `make resume`) stops the `make` command and leaves the system
+  running; `braco.service` stops anyway. A plain `docker stop` or a crash of `arm_driver` does not park.
 - **Stops when the launch ends** (for example if `arm_driver` loses the port). `arm_driver` is not restarted on
   purpose: a driver fault must be seen.
 - **Settings from `.env`:**

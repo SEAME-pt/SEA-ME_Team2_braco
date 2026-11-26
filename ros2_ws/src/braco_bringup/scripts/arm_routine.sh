@@ -9,8 +9,9 @@
 #
 # The braco web page is not started here: `make web` adds it to the running container (web_routine.sh).
 #
-# The arm is NOT moved when the container starts or stops: zero and park are manual
-# (make zero / make park, or make down PARK=1).
+# This script never moves the arm when the container starts or stops: zero is manual (make zero).
+# Before the container stops, make down / restart / re / fclean and braco.service run the park
+# (PARK=0 skips it); a plain docker stop does not.
 #
 # "Stops" means docker stop / make down / systemctl stop braco / a normal shutdown of
 # the Jetson: Docker sends SIGTERM and the trap below stops the launch.

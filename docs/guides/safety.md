@@ -82,7 +82,10 @@ Safety rules for the arm, its gripper and its camera.
 
 - **System running:** `make park`. It folds the arm, turns off the motors and puts it in rest mode.
 - **Never open the serial port yourself while the system runs:** only `arm_driver` may use it.
-- **System off** (`make down`): you can free the joints with pymycobot:
+- **Turning the system off:** `make down` (also `restart`, `re`, `fclean` and `systemctl stop braco`) parks the arm
+  first. Stopped without a park (`PARK=0`, `docker stop`, a crash of `arm_driver`), the motors stay on, holding the
+  pose, and nothing watches their temperature.
+- **System off without a park:** you can free the joints with pymycobot (hold the arm: it drops):
 
   ```python
   import time
