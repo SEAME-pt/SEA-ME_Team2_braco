@@ -1,8 +1,8 @@
 # braco_mission
 
 Mission layer of the braco arm: tasks such as pick-and-place and drawing with a pen, asking MoveIt 2 for motions.
-Its first node, `move_to_pose`, moves the tool centre point (`tcp`) to a Cartesian pose goal (#84) and in straight
-lines through waypoints (#85), a first step toward drawing with a pen.
+Its first node, `move_to_pose`, moves the tool centre point (`tcp`) to a Cartesian pose goal and in straight lines
+through waypoints, a first step toward drawing with a pen.
 
 The mission never talks to the serial port: it plans and executes through MoveIt 2 (`braco_moveit_config`), so the
 same code runs in simulation and on the real arm (`real:=true`). On the real arm it also holds the control as `mission`
@@ -43,7 +43,7 @@ time, on either action; cancelling stops the arm.
 | `settle_s` / `tf_timeout_s` | `0.5` / `1.0` | wait before reading the tcp; TF lookup timeout |
 | `eef_step_m` | `0.005` | straight lines: a `tcp` point every 5 mm, when the goal leaves `eef_step_m` at 0 |
 
-The tolerances are a proposal for the team to agree on (#84 "Done when").
+The tolerances are a proposal: the team has not agreed on them yet.
 
 ## Straight lines: move_cartesian
 

@@ -1,7 +1,7 @@
 # braco_description
 
 The robot model of the braco arm: the myCobot 280 with the adaptive gripper and a camera mount. It holds the
-links, joints, limits, meshes and the TF frames the rest of the system uses (issue **#25**).
+links, joints, limits, meshes and the TF frames the rest of the system uses.
 
 - It is only files (URDF/xacro, meshes, `controllers.yaml`): no nodes, no launch
 - The simulation, the real arm and MoveIt all use this one model
@@ -22,7 +22,7 @@ are in [`docs/hardware/urdf-sim-to-real.md`](../../../docs/hardware/urdf-sim-to-
 | `config/controllers.yaml` | The controllers: `arm_controller` (sim and real arm), `joint_state_broadcaster` (sim and MoveIt demo only), `gripper_action_controller` (sim only) |
 | `config/controllers_real.yaml` | Real arm only, loaded after `controllers.yaml`: adds the velocity command to `arm_controller` (the MoveIt mock and Gazebo accept one command interface per joint) |
 | `meshes/` | Visual and collision meshes of Elephant Robotics (`LICENSE.elephantrobotics`) |
-| `test/test_urdf.py` | Keeps the URDF and the code in sync |
+| `test/test_urdf.py` | Keeps the URDF and the code in sync (`colcon test --packages-select braco_description`) |
 
 ## Who uses it
 
@@ -51,12 +51,13 @@ xacro urdf/braco.urdf.xacro gripper_actuated:=true > /tmp/braco.urdf   # fingers
 
 - **Joint names** are `joint1..joint6`, the ones `arm_driver` publishes in `/joint_states`. If they differ,
   `robot_state_publisher` ignores the states without any error and the model stays frozen.
-- **Limits** (`<limit>`) are `JOINT_LIMITS` of `ros2_ws/src/mycobot_cpp/includes/mycobot.hpp`, converted to radians. Change them
-  there first: `test_urdf.py` fails if the two disagree (`braco_moveit_config`'s `test_joint_limits.py` checks
-  `joint_limits.yaml`). The URDF limits only inform tools (MoveIt, Gazebo);
-  the arm itself is limited by `mycobot::MyCobot280::sendAngles`.
-- **Frames**: `world` is the table; `g_base` is the G-shape base plate the arm stands on; `tool0` is the flange (z out of it, REP-103); `tcp` is between the fingertips;
-  `camera_optical_frame` has z forward, x right, y down (REP-103).
+- **Limits** (`<limit>`) are `JOINT_LIMITS` of `ros2_ws/src/mycobot_cpp/includes/mycobot.hpp`, converted to
+  radians. Change them there first: `test_urdf.py` fails if the two disagree (`braco_moveit_config`'s
+  `test_joint_limits.py` checks `joint_limits.yaml`). The URDF limits only inform tools (MoveIt, Gazebo); the arm
+  itself is limited by `mycobot::MyCobot280::sendAngles`.
+- **Frames**: `world` is the table; `g_base` is the G-shape base plate the arm stands on; `tool0` is the flange (z
+  out of it, REP-103); `tcp` is between the fingertips; `camera_optical_frame` has z forward, x right, y down
+  (REP-103).
 - **Mesh units**: every `.dae` declares `<unit meter="1">`; the ones drawn in millimetres (`base_link`, `link4`,
   `g_base`, `camera_flange`, the gripper) get `scale="0.001 0.001 0.001"` in the xacro. MoveIt's mesh loader ignores
   the COLLADA unit (Gazebo and RViz apply it): with `<unit meter="0.001">` those meshes looked right but collided
@@ -68,9 +69,9 @@ xacro urdf/braco.urdf.xacro gripper_actuated:=true > /tmp/braco.urdf   # fingers
 
 Adapted from Elephant Robotics' [mycobot_ros2](https://github.com/elephantrobotics/mycobot_ros2) (branch `humble`,
 BSD-2-Clause): `mycobot_description/urdf/mycobot_280_jn` and `adaptive_gripper` for the links, joints and meshes.
-Changes: joint and link names,
-the vendor's invalid XML fixed, limits from `JOINT_LIMITS`, inertials, collision, gripper options, TF frames,
-the G-base (`mycobot_280_pi/G_base.dae` -> `meshes/arm/g_base.dae`), and `meshes/arm/link4.dae` rewritten from COLLADA `<polygons>` to `<triangles>` (same geometry): Gazebo loads
-`<polygons>` as an empty mesh and its physics crashes on the empty collision. Its 8 material bindings also pointed at a
-material that does not exist (`#a0000000-...`), so Gazebo and RViz drew it with a plain default material:
-they now point at its textured `Material_001-material`.
+Changes: joint and link names, the vendor's invalid XML fixed, limits from `JOINT_LIMITS`, inertials, collision,
+gripper options, TF frames, the G-base (`mycobot_280_pi/G_base.dae` -> `meshes/arm/g_base.dae`), and
+`meshes/arm/link4.dae` rewritten from COLLADA `<polygons>` to `<triangles>` (same geometry): Gazebo loads
+`<polygons>` as an empty mesh and its physics crashes on the empty collision. Its 8 material bindings also pointed at
+a material that does not exist (`#a0000000-...`), so Gazebo and RViz drew it with a plain default material: they now
+point at its textured `Material_001-material`.
