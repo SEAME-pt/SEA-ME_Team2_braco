@@ -10,6 +10,20 @@ def percentile(sorted_values, p):
     return sorted_values[max(0, math.ceil(p * len(sorted_values)) - 1)]
 
 
+def load_stamps(path):
+    """Stamps (seconds) from a js_rate.py --raw CSV: a 'stamp_s' header, one stamp per line."""
+    with open(path) as f:
+        lines = f.read().split()
+    if not lines or lines[0] != 'stamp_s':
+        raise ValueError(f'{path}: not a js_rate.py --raw CSV (no stamp_s header)')
+    return [float(x) for x in lines[1:]]
+
+
+def intervals_ms(stamps_s):
+    """Intervals between consecutive stamps in ms, in time order (for a time series)."""
+    return [(b - a) * 1000.0 for a, b in zip(stamps_s, stamps_s[1:])]
+
+
 def interval_stats(stamps_s, requested_hz):
     """Statistics of the intervals between consecutive stamps (seconds), in ms and Hz.
 
@@ -17,7 +31,7 @@ def interval_stats(stamps_s, requested_hz):
     """
     if len(stamps_s) < 2:
         raise ValueError('need at least two stamps')
-    iv = sorted((b - a) * 1000.0 for a, b in zip(stamps_s, stamps_s[1:]))
+    iv = sorted(intervals_ms(stamps_s))
     total = sum(iv)
     if total <= 0:
         raise ValueError('the stamps do not advance')

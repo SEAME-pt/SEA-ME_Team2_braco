@@ -10,7 +10,14 @@ import types
 
 import pytest
 import serial_rtt
-from stats import interval_stats, percentile, settle_time, windowed_speeds
+from stats import (
+    interval_stats,
+    intervals_ms,
+    load_stamps,
+    percentile,
+    settle_time,
+    windowed_speeds,
+)
 
 FRAME = serial_rtt.REPLY_HEAD + bytes(range(12)) + b'\xfa'  # a complete getAngles reply
 
@@ -107,6 +114,34 @@ def test_interval_stats_counts_late_intervals():
 def test_interval_stats_needs_advancing_stamps(stamps):
     with pytest.raises(ValueError):
         interval_stats(stamps, 20)
+
+
+def test_load_stamps_skips_the_header(tmp_path):
+    f = tmp_path / 'run.csv'
+    f.write_text('stamp_s\n1.000000000\n1.050000000\n')
+    assert load_stamps(f) == [1.0, 1.05]
+
+
+def test_load_stamps_header_only_is_empty(tmp_path):
+    f = tmp_path / 'run.csv'
+    f.write_text('stamp_s\n')
+    assert load_stamps(f) == []
+
+
+@pytest.mark.parametrize('text', ['', '1.0\n2.0\n', '| requested Hz | load |\n'])
+def test_load_stamps_refuses_other_files(tmp_path, text):
+    f = tmp_path / 'other.csv'
+    f.write_text(text)
+    with pytest.raises(ValueError):
+        load_stamps(f)
+
+
+def test_intervals_ms_keeps_time_order():
+    assert intervals_ms([0.0, 0.10, 0.15]) == pytest.approx([100.0, 50.0])  # not sorted
+
+
+def test_intervals_ms_needs_two_stamps():
+    assert intervals_ms([1.0]) == []
 
 
 # ---- hold_load's STOP handling, with fake ROS modules -----------------------------------------

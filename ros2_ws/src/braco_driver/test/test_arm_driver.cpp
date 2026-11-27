@@ -20,6 +20,7 @@
 
 #include <chrono>
 #include <cmath>
+#include <filesystem>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -28,6 +29,7 @@
 #include <vector>
 
 #include "braco_driver/arm_driver.hpp"
+#include "lifecycle_msgs/msg/state.hpp"
 #include "pty_arm.hpp"
 
 using namespace std::chrono_literals;
@@ -36,6 +38,7 @@ using braco_interfaces::msg::JointTarget;
 using braco_interfaces::msg::ServoTemperatures;
 using braco_interfaces::msg::ServoVoltages;
 using braco_interfaces::srv::TakeControl;
+using lifecycle_msgs::msg::State;
 using mycobot::fake::PtyArm;
 using std_srvs::srv::SetBool;
 using std_srvs::srv::Trigger;
@@ -88,6 +91,8 @@ protected:
     params.insert(params.end(), extra.begin(), extra.end());
     driver_ = std::make_shared<braco_driver::ArmDriver>(
       rclcpp::NodeOptions().parameter_overrides(params));
+    ASSERT_EQ(driver_->configure().id(), State::PRIMARY_STATE_INACTIVE);
+    ASSERT_EQ(driver_->activate().id(), State::PRIMARY_STATE_ACTIVE);
 
     client_ = std::make_shared<rclcpp::Node>("arm_driver_test_client");
     const auto latched = rclcpp::QoS(1).transient_local();
@@ -131,7 +136,7 @@ protected:
     rest_client_ = client_->create_client<SetBool>("arm/set_read_only");
 
     executor_ = std::make_shared<rclcpp::executors::SingleThreadedExecutor>();
-    executor_->add_node(driver_);
+    executor_->add_node(driver_->get_node_base_interface());
     executor_->add_node(client_);
     spinner_ = std::thread([this] {executor_->spin();});
     // A message published before the subscription is matched would be lost
@@ -200,6 +205,17 @@ protected:
 
   size_t frames(uint8_t cmd) const {return arm_->received(cmd).size();}
 
+  // Descriptors of this process open on the fake arm's port (PtyArm's own included)
+  size_t portOpenCount() const
+  {
+    size_t n = 0;
+    for (const auto & fd : std::filesystem::directory_iterator("/proc/self/fd")) {
+      std::error_code ec;
+      if (std::filesystem::read_symlink(fd.path(), ec) == arm_->path()) {++n;}
+    }
+    return n;
+  }
+
   std::string lastOwner()
   {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -247,11 +263,11 @@ protected:
 
 // ---- Start and feedback -----------------------------------------------------------
 
-TEST_F(ArmDriverTest, MissingPortThrows)
+TEST_F(ArmDriverTest, ConfigureFailsOnMissingPort)
 {
-  const auto options = rclcpp::NodeOptions().parameter_overrides(
-    {rclcpp::Parameter("port", "/dev/does-not-exist")});
-  EXPECT_THROW(braco_driver::ArmDriver{options}, std::exception);
+  auto driver = std::make_shared<braco_driver::ArmDriver>(
+    rclcpp::NodeOptions().parameter_overrides({rclcpp::Parameter("port", "/dev/does-not-exist")}));
+  EXPECT_EQ(driver->configure().id(), State::PRIMARY_STATE_UNCONFIGURED);
 }
 
 TEST_F(ArmDriverTest, PublishesAnglesTemperaturesAndVoltages)
@@ -508,6 +524,124 @@ TEST_F(ArmDriverTest, HaltStopsWithoutLatching)
 
   sendJoints("joystick", {target(1, 10)});   // and jogs again at once
   EXPECT_TRUE(waitUntil([this] {return frames(protocol::SEND_ANGLE) == 2;}));
+}
+
+TEST_F(ArmDriverTest, DeactivateStopsTheArm)
+{
+  start({rclcpp::Parameter("command_timeout_ms", 60000)});   // no watchdog stop
+  ASSERT_TRUE(waitUntil([this] {return lastStopped() == 0;}));
+  ASSERT_TRUE(take("web")->success);
+  sendJoints("web", {target(1, 5)});
+  ASSERT_TRUE(waitUntil([this] {return frames(protocol::SEND_ANGLE) == 1;}));
+
+  const size_t stops = frames(protocol::STOP);
+  ASSERT_EQ(driver_->deactivate().id(), State::PRIMARY_STATE_INACTIVE);
+  // Two: the deactivate's own, and the one latchStop asks the serial thread for
+  EXPECT_TRUE(waitUntil([&] {return frames(protocol::STOP) == stops + 2;}));
+  std::this_thread::sleep_for(300ms);
+  EXPECT_EQ(frames(protocol::STOP), stops + 2);
+  EXPECT_TRUE(waitUntil([this] {return lastStopped() == 1;}));   // latched, like a STOP
+  EXPECT_TRUE(waitUntil([this] {return lastOwner() == "";}));
+
+  // Monitoring goes on
+  const auto count = [this] {std::lock_guard<std::mutex> lock(mutex_); return joints_.size();};
+  const size_t seen = count();
+  EXPECT_TRUE(waitUntil([&] {return count() > seen;}));
+  EXPECT_EQ(frames(protocol::SEND_ANGLE), 1u);
+}
+
+TEST_F(ArmDriverTest, InactiveRefusesMotionButObeysStop)
+{
+  start({rclcpp::Parameter("stop_hold_s", 0.0)});
+  ASSERT_EQ(driver_->deactivate().id(), State::PRIMARY_STATE_INACTIVE);
+  ASSERT_TRUE(waitUntil([this] {return lastStopped() == 1;}));
+  ASSERT_TRUE(trigger(release_stop_client_)->success);   // allowed while inactive
+  ASSERT_TRUE(waitUntil([this] {return lastStopped() == 0;}));
+
+  // Latch released: only the inactive state refuses now
+  const std::string inactive =
+    " refused: arm_driver inactive (ros2 lifecycle set /arm_driver activate)";
+  auto t = take("web", true);
+  ASSERT_TRUE(t);
+  EXPECT_FALSE(t->success);
+  EXPECT_EQ(t->message, "take control" + inactive);
+  EXPECT_EQ(trigger(power_client_)->message, "power on" + inactive);
+  EXPECT_EQ(trigger(release_client_)->message, "release servos" + inactive);
+  EXPECT_EQ(setBool(gripper_client_, true)->message, "set gripper" + inactive);
+  EXPECT_EQ(setBool(rest_client_, false)->message, "rest mode off" + inactive);
+  EXPECT_TRUE(setBool(rest_client_, true)->success);   // entering rest is fine
+  // The control gate refuses it too (free control): onCommand's inactive check is a backstop
+  sendJoints("web", {target(1, 5)});
+
+  std_msgs::msg::ColorRGBA led;
+  led.g = 1.0f;
+  led_pub_->publish(led);
+  EXPECT_TRUE(waitUntil([this] {return frames(protocol::SET_COLOR) == 1;}));
+  size_t stops = frames(protocol::STOP);
+  sendType("web", ArmCommand::HALT);
+  EXPECT_TRUE(waitUntil([&] {return frames(protocol::STOP) > stops;}));
+  stops = frames(protocol::STOP);
+  sendType("web", ArmCommand::STOP);
+  EXPECT_TRUE(waitUntil([&] {return frames(protocol::STOP) > stops;}));
+  EXPECT_TRUE(waitUntil([this] {return lastStopped() == 1;}));
+
+  EXPECT_EQ(frames(protocol::SEND_ANGLE), 0u);
+  EXPECT_EQ(frames(protocol::POWER_ON), 0u);
+  EXPECT_EQ(frames(protocol::RELEASE_ALL_SERVOS), 0u);
+  EXPECT_EQ(frames(protocol::SET_GRIPPER_STATE), 0u);
+
+  // Active again (latch and rest released): it moves
+  ASSERT_EQ(driver_->activate().id(), State::PRIMARY_STATE_ACTIVE);
+  ASSERT_TRUE(trigger(release_stop_client_)->success);
+  ASSERT_TRUE(setBool(rest_client_, false)->success);
+  ASSERT_TRUE(take("web")->success);
+  sendJoints("web", {target(1, 5)});
+  EXPECT_TRUE(waitUntil([this] {return frames(protocol::SEND_ANGLE) == 1;}));
+}
+
+TEST_F(ArmDriverTest, CleanupClosesPortAndReconfigures)
+{
+  const size_t closed = portOpenCount();
+  start({rclcpp::Parameter("stop_hold_s", 0.0)});
+  EXPECT_EQ(portOpenCount(), closed + 1);
+  const auto count = [this] {std::lock_guard<std::mutex> lock(mutex_); return joints_.size();};
+  ASSERT_TRUE(waitUntil([&] {return count() > 0;}));
+  ASSERT_EQ(driver_->deactivate().id(), State::PRIMARY_STATE_INACTIVE);
+  ASSERT_EQ(driver_->cleanup().id(), State::PRIMARY_STATE_UNCONFIGURED);
+  EXPECT_EQ(portOpenCount(), closed);   // the port is closed
+
+  // Monitoring stopped
+  std::this_thread::sleep_for(300ms);
+  const size_t seen = count();
+  std::this_thread::sleep_for(300ms);
+  EXPECT_EQ(count(), seen);
+
+  // The port opens again; the new configure publishes the latch from the deactivate
+  const auto stopped = [this] {std::lock_guard<std::mutex> lock(mutex_); return stopped_.size();};
+  const size_t published = stopped();
+  arm_->unlock();   // PtyArm keeps the port open, so TIOCEXCL outlives the close
+  ASSERT_EQ(driver_->configure().id(), State::PRIMARY_STATE_INACTIVE);
+  EXPECT_TRUE(waitUntil([&] {return count() > seen;}));
+  ASSERT_TRUE(waitUntil([&] {return stopped() > published;}));
+  EXPECT_EQ(lastStopped(), 1);
+  ASSERT_EQ(driver_->activate().id(), State::PRIMARY_STATE_ACTIVE);
+  ASSERT_TRUE(trigger(release_stop_client_)->success);
+  ASSERT_TRUE(take("web")->success);
+  sendJoints("web", {target(1, 5)});
+  EXPECT_TRUE(waitUntil([this] {return frames(protocol::SEND_ANGLE) == 1;}));
+}
+
+TEST_F(ArmDriverTest, ShutdownFromActiveStops)
+{
+  start({rclcpp::Parameter("command_timeout_ms", 60000)});   // no watchdog stop
+  ASSERT_TRUE(take("web")->success);
+  sendJoints("web", {target(1, 5)});
+  ASSERT_TRUE(waitUntil([this] {return frames(protocol::SEND_ANGLE) == 1;}));
+
+  const size_t stops = frames(protocol::STOP);
+  ASSERT_EQ(driver_->shutdown().id(), State::PRIMARY_STATE_FINALIZED);
+  EXPECT_TRUE(waitUntil([&] {return frames(protocol::STOP) > stops;}));
+  EXPECT_TRUE(waitUntil([this] {return lastStopped() == 1;}));
 }
 
 TEST_F(ArmDriverTest, StopHoldDefaultsToThreeSeconds)

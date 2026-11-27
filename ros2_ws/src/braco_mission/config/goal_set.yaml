@@ -1,0 +1,39 @@
+# The fixed goal set of the real arm (issue #140): run it with scripts/run_goal_set.py.
+#
+# Every goal starts from `start` (a /move_to_pose goal, measured too), so each run is the same
+# motion in simulation and on the real arm. Checked in Gazebo: every goal below plans fully
+# (fraction 1.0). From `start` the tool points down; lines that move the tcp out (+x) or up
+# more than ~3 cm leave the reachable space and are refused, so the set goes in and down.
+#
+# Units: metres, world frame. Orientations are quaternions [x, y, z, w].
+
+frame: world
+
+start:   # FK of joints [0, -0.5, -1.0, -0.1, 0, 0], 11 cm above the table
+  position: [0.2167, -0.0646, 0.1126]
+  orientation: [0.9238, -0.3826, -0.0135, 0.0056]
+
+goals:
+  # /move_cartesian: a straight line from `start` to `line`, keeping the start orientation
+  - name: line_y
+    line: [0.2167, 0.0654, 0.1126]      # 130 mm along +y
+  - name: line_x_in
+    line: [0.1667, -0.0646, 0.1126]     # 50 mm along -x, toward the base
+  - name: line_z_down
+    line: [0.2167, -0.0646, 0.0726]     # 40 mm down: check where the table is first
+  - name: line_z_up
+    line: [0.2167, -0.0646, 0.1426]     # 30 mm up
+  - name: line_xy
+    line: [0.1767, 0.0154, 0.1126]      # 89 mm diagonal in x-y
+  - name: line_xyz
+    line: [0.1767, -0.0046, 0.0826]     # 78 mm diagonal in x-y-z
+
+  # /move_to_pose: a full pose (joint-space plan), each from /compute_fk
+  - name: pose_turn
+    pose:   # FK of joints [0.3, -0.5, -1.0, -0.1, 0, 0]: start turned 0.3 rad on joint1
+      position: [0.2261, 0.0023, 0.1126]
+      orientation: [0.9706, -0.2403, -0.0125, 0.0075]
+  - name: pose_tilted
+    pose:   # FK of joints [-0.3, -0.3, -1.2, 0.2, 0, 0.3]: tool tilted
+      position: [0.2158, -0.1344, 0.1492]
+      orientation: [0.7625, -0.6328, 0.1247, -0.0517]

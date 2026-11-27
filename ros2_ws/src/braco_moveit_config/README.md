@@ -4,8 +4,9 @@ MoveIt 2 configuration of the braco arm: MoveIt loads the model of `braco_descri
 (joint1..joint6, for the tool tip `tcp`) within the same joint limits as the rest of the stack, and sends the plans
 to `arm_controller`.
 
-On the Jetson Nano, `move_group` needs 300 to 600 MB and a full core while planning: run it on the PC; it reaches
-the arm on the Jetson through DDS.
+`move_group` runs on the PC and reaches the arm on the Jetson through DDS: the Jetson builds only what the real arm
+needs, without MoveIt 2 ([architecture.md](../../../docs/architecture/architecture.md#6-packages)). On the PC it uses
+~220 MB ([resources.md](../../../docs/architecture/resources.md#per-process)).
 
 ## Contents
 
@@ -77,7 +78,7 @@ Run it with `sim` stopped (`make down`, then `make up`) or on another domain (`e
 
 `move_group` and RViz start only once the `arm_controller` spawner has succeeded, because nothing can execute without
 the controller. If it fails, the launch shuts down, so RViz never opens: look for that spawner's error in the log.
-Then `docker/tests/domain-check.sh --target sim` runs (#103): not the real arm's domain, one simulation on it. On
+Then `docker/tests/domain-check.sh --target sim` runs: not the real arm's domain, one simulation on it. On
 FAIL the launch shuts down before `move_group` starts.
 
 ## Run on the real arm
@@ -130,4 +131,4 @@ static test misses (e.g. a joint with `max_velocity: 0`, or the SRDF's disabled 
 `test/test_joint_limits.py`: the positions of `joint_limits.yaml` equal `JOINT_LIMITS` and the URDF `<limit>`, and its
 velocities are not above the measured URDF ones.
 `test/test_launch.py` builds the launch files without starting them and checks the order: `arm_controller` spawner,
-domain check (#103), then `move_group` and RViz; a failure at either step shuts the launch down.
+domain check, then `move_group` and RViz; a failure at either step shuts the launch down.

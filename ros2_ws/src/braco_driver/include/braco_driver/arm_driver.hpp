@@ -64,6 +64,11 @@
 //      told to move -> stop once. Together with the step-ahead targets of the
 //      teleop node this bounds how far the arm coasts if a client dies.
 // The driver never powers the arm on or moves it by itself.
+//
+// Lifecycle (#95): configure opens the port and starts monitoring; only an active driver
+// moves. While inactive, motion, take_control, power_on, set_gripper, release_servos and
+// set_read_only false are refused; STOP, HALT, LED, rest on and release_stop still work.
+// Deactivate is a STOP.
 
 #ifndef BRACO_DRIVER__ARM_DRIVER_HPP_
 #define BRACO_DRIVER__ARM_DRIVER_HPP_
@@ -87,6 +92,7 @@
 #include "braco_interfaces/srv/take_control.hpp"
 #include "mycobot.hpp"
 #include "rclcpp/rclcpp.hpp"
+#include "rclcpp_lifecycle/lifecycle_node.hpp"
 #include "sensor_msgs/msg/joint_state.hpp"
 #include "std_msgs/msg/bool.hpp"
 #include "std_msgs/msg/color_rgba.hpp"
@@ -97,12 +103,28 @@
 namespace braco_driver
 {
 
-class ArmDriver : public rclcpp::Node
+// A lifecycle node (#95). Its publishers are plain, not lifecycle: monitoring never stops.
+class ArmDriver : public rclcpp_lifecycle::LifecycleNode
 {
 public:
-  // Throws if the port cannot be opened.
+  using CallbackReturn = rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn;
+
+  // Declares the parameters only
   explicit ArmDriver(const rclcpp::NodeOptions & options = rclcpp::NodeOptions());
   ~ArmDriver() override;
+
+  // Opens the port (FAILURE if it cannot), creates the interfaces, starts the serial thread
+  CallbackReturn on_configure(const rclcpp_lifecycle::State & state) override;
+  // Allows motion. A latched STOP stays latched (ADR-0005)
+  CallbackReturn on_activate(const rclcpp_lifecycle::State & state) override;
+  // A STOP (latched): stops the arm before returning. Monitoring goes on
+  CallbackReturn on_deactivate(const rclcpp_lifecycle::State & state) override;
+  // Stops monitoring and closes the port. A STOP latch survives it
+  CallbackReturn on_cleanup(const rclcpp_lifecycle::State & state) override;
+  // Deactivate and cleanup, as far as the current state needs
+  CallbackReturn on_shutdown(const rclcpp_lifecycle::State & state) override;
+  // Stops the arm, closes the port: back to unconfigured
+  CallbackReturn on_error(const rclcpp_lifecycle::State & state) override;
 
 private:
   using ArmCommand = braco_interfaces::msg::ArmCommand;
@@ -122,13 +144,21 @@ private:
     int speed;
   };
 
+  // A plain rclcpp::Publisher: LifecycleNode::create_publisher would make a lifecycle one
+  template<typename T>
+  typename rclcpp::Publisher<T>::SharedPtr plainPublisher(
+    const std::string & topic, const rclcpp::QoS & qos)
+  {
+    return rclcpp::create_publisher<T>(*this, topic, qos);
+  }
+
   // ---- Callbacks (executor thread): only record what was asked -------------
 
   // Rest mode: only monitoring. Entering it drops whatever motion was pending.
   void setReadOnly(bool on);
   // True (and the response filled in) when the STOP latch or rest mode refuses `what`.
   bool refuseInRest(bool & success, std::string & message, const char * what);
-  // True (and the response filled in) when the STOP latch refuses `what`.
+  // True (and the response filled in) when the inactive state or the STOP latch refuses `what`.
   bool refuseWhileStopped(bool & success, std::string & message, const char * what);
   // A STOP from anyone: stop, drop pending motion, free the control, latch.
   void latchStop(const std::string & source);
@@ -145,6 +175,10 @@ private:
   template<typename F>
   void runSerial(bool & success, std::string & message, const char * what, F action);
 
+  void stopSerialThread();
+  // Sends a stop now, if the port is open; logs a failure
+  void stopArm();
+
   // ---- Serial thread -------------------------------------------------------
 
   void serialLoop();
@@ -160,6 +194,7 @@ private:
   std::mutex state_mutex_;    // everything below that callbacks write
   std::thread serial_thread_;
   std::atomic<bool> running_{true};
+  std::atomic<bool> active_{false};    // lifecycle state active: motion allowed
   std::atomic<bool> read_only_{false};
   std::atomic<bool> stopped_{false};   // STOP latch; the executor thread writes it
 

@@ -1,11 +1,16 @@
 # Timing budget of the real arm
 
 Measured timing of the path from ROS 2 to the myCobot 280 on the Jetson Nano: serial round trip, `/joint_states` rate,
-and command → motion latency. Input for the ros2_control `update_rate` ([controllers.yaml](../../ros2_ws/src/braco_description/config/controllers.yaml)),
-[ADR-0004](../decisions/ADR-0004-trajectories-through-arm-driver.md), #101 and #93. Architecture: [architecture.md](architecture.md).
+command → motion latency and the effect of `SCHED_FIFO`. Input for the ros2_control `update_rate`
+([controllers.yaml](../../ros2_ws/src/braco_description/config/controllers.yaml)) and [ADR-0004](../decisions/ADR-0004-trajectories-through-arm-driver.md).
 
-Measured on **2026-11-09** (#90), real arm, Jetson Nano, no desktop (`multi-user.target`), `arm_driver` alone in a
-`real` container (no `temperature_monitor`, joystick, camera or page).
+Architecture: [architecture.md](architecture.md).
+
+**Contents:** [Summary](#summary) · [Serial loop of `arm_driver`](#serial-loop-of-arm_driver) · [Results](#results) ·
+[What it means](#what-it-means) · [What would change it](#what-would-change-it) · [Method](#method)
+
+Real arm, Jetson Nano, no desktop (`multi-user.target`), `arm_driver` alone in a `real` container (no
+`temperature_monitor`, joystick, camera or page). Results 1–3 measured on **2026-11-09**, result 4 on **2026-11-17**.
 
 ## Summary
 
@@ -13,8 +18,9 @@ Measured on **2026-11-09** (#90), real arm, Jetson Nano, no desktop (`multi-user
 |---|---|---|
 | Serial round trip, one joint read (`getAngles`) | **9.3 ms** mean, 11.8 ms p99, 13.9 ms max, 0 failures / 2000 | Atom firmware (the wire is 0.22 ms) |
 | `/joint_states`, arm idle | **18.7 Hz** at `state_rate_hz` 20; ceiling **~45 Hz** from 60 Hz up | `sleep(10ms)` + read in the serial loop |
-| `/joint_states`, continuous commands (the plugin's `write()`, #101) | **~14 Hz** (70 ms) at any `state_rate_hz` from 20 to 100 | `COMMAND_GAP` (50 ms) after every motion command |
+| `/joint_states`, continuous commands (the plugin's `write()`) | **~14 Hz** (70 ms) at any `state_rate_hz` from 20 to 100 | `COMMAND_GAP` (50 ms) after every motion command |
 | Command → first joint motion (J6, 5°, speed 30) | **~205 ms** p50, 140 ms min, 268 ms max | Atom and servos starting the move |
+| `/joint_states` under CPU load, default vs `SCHED_FIFO` | p50 72 ms, p99 **96 ms** in both; max 108 → 100 ms | Temperature read every 2 s (p99); waiting for a core (max) |
 
 **Conclusion:** during a trajectory the real arm takes a new command and gives a new position about every **70 ms
 (~14 Hz)**, and starts moving **~200 ms** after a command. Neither depends on `state_rate_hz` or on the controller's
@@ -55,8 +61,8 @@ every pass:  [motion command pending?] ── yes ──► sendAngles ─► sl
 ### 2. `/joint_states` rate
 
 `scripts/timing/js_rate.py`: 60 s per point, intervals from `header.stamp`. *Load* = `scripts/timing/hold_load.py`
-sending `ALL_ANGLES` of the current pose at the same rate as `state_rate_hz`, as the plugin's `write()` does (#101, ADR-0004); the arm
-holds still. CPU: `arm_driver`, % of one core.
+sending `ALL_ANGLES` of the current pose at the same rate as `state_rate_hz`, as the plugin's `write()` does
+(ADR-0004); the arm holds still. CPU: `arm_driver`, % of one core.
 
 | `state_rate_hz` | Load | Achieved Hz | Achieved / requested | Mean ms | p50 ms | p99 ms | Max ms | CPU % |
 |---|---|---|---|---|---|---|---|---|
@@ -82,10 +88,10 @@ holds still. CPU: `arm_driver`, % of one core.
 - Idle: the rate follows the request up to ~50 Hz, then stays at ~45 Hz.
 - Commands: ~14 Hz whatever the request. Commands above that rate are overwritten before they are sent (latest wins)
   and only cost CPU (11 → 19 %).
-- p99 / max idle (~40 / ~48 ms at the ceiling): the temperature and voltage reads every 2 s. This is the "before"
-  jitter for #93.
+- p99 / max idle (~40 / ~48 ms at the ceiling): the temperature and voltage reads every 2 s.
 - Read failures: one `no valid angle feedback` right after each `power on`, none during the runs.
-- *Commands* is a stand-in for the plugin's `write()` (#101, now merged), not re-run with it yet: re-run `js_rate.py` and `latency_step.py` with the real plugin.
+- *Commands* is a stand-in for the plugin's `write()`, not re-run with it yet: re-run `js_rate.py` and
+  `latency_step.py` with the real plugin.
 
 ### 3. Command → motion latency
 
@@ -116,21 +122,53 @@ step's first command.
 Both columns give the same servo reaction (~75–80 ms), so the model fits. The rate does not change the latency: the
 loop is saturated by commands at every rate tested. With 20 steps p99 equals the max.
 
+### 4. SCHED_FIFO under CPU load
+
+`js_rate.py` under two loads at once: commands (`hold_load.py --rate 20`) and all four cores busy (`yes` × 4 on the
+host), 660 s per run, `state_rate_hz` 20. The two runs differ only in the scheduler. The raw CSVs are not kept
+(step 5 of [Method](#method) makes them again).
+
+| Run | Msgs | Hz | Mean ms | p50 ms | p99 ms | Max ms | > 75 ms |
+|---|---|---|---|---|---|---|---|
+| default (CFS) | 9019 | 13.7 | 73.2 | 72.0 | 96.1 | 108.0 | 15.8 % |
+| `SCHED_FIFO` 80 | 9049 | 13.7 | 73.0 | 72.0 | 96.0 | 100.0 | 5.7 % |
+
+![Histogram of the periods](timing/sched-fifo/histogram.png)
+![Periods over the run](timing/sched-fifo/timeseries.png)
+
+- Same rate, mean and p99: the period is set by `COMMAND_GAP` and the Atom's reply.
+- Without FIFO, 18 % of the periods leave the normal 72 ms, mostly by one 4 ms step (76 ms); with FIFO, 6 %. The waits
+  for a core are frequent but small, so the mean and the p99 do not change.
+- The ~96 ms band in both runs is the temperature and voltage read every 2 s. FIFO cannot remove it; it sets the p99.
+
 ## What it means
 
 | For | Consequence |
 |---|---|
-| `update_rate` (#101) | 100 Hz stays. The controller runs at any rate; the arm gets a new setpoint and gives a new position every ~70 ms, so `read()` sees fresh data about one cycle in seven. Lowering it would not change the arm, only the controller's CPU (not measured here) |
-| `JointTrajectoryController` on the real arm (#101) | Tolerances must allow ~200 ms of lag and 70 ms steps: no tight `path_tolerance`, `goal_time` ≥ 0.5 s |
+| `update_rate` | 100 Hz stays. The controller runs at any rate; the arm gets a new setpoint and gives a new position every ~70 ms, so `read()` sees fresh data about one cycle in seven. Lowering it would not change the arm, only the controller's CPU (not measured here) |
+| `JointTrajectoryController` on the real arm | Tolerances must allow ~200 ms of lag and 70 ms steps: no tight `path_tolerance`, `goal_time` ≥ 0.5 s |
 | ADR-0004 | Setpoints are thinned to **~14 Hz**, not 20 Hz |
 | Watchdog | `command_timeout_ms` 300 vs 70 ms between commands under load: 4× margin |
 | `state_rate_hz` | 20 stays. Higher helps only while idle, where no client needs it |
 | Joystick `state_timeout_ms` 150 | Under commands `/joint_states` comes every ~70 ms, max ~101 ms: jogging keeps working, with 1.5× margin |
-| #93 (SCHED_FIFO) | Baseline jitter above (idle p99 / max). The loop is bound by sleeps and the firmware, not by scheduling: expect the max to improve, not the rate |
+| `SCHED_FIFO` | Not enabled: it removes the small waits for a core, not the 2 s temperature read ([below](#sched_fifo)) |
+
+### SCHED_FIFO
+
+**Not enabled.** The worst case without it (108 ms) is far below the watchdog (300 ms) and the joystick's state
+timeout (150 ms), and a real-time process that stops sleeping can starve the Jetson. Revisit if the Jetson gets more
+load or the worst case nears 150 ms.
+
+To enable it: the containers already have `cap_add: SYS_NICE` and `ulimits: rtprio`
+([docker/compose.yml](../../docker/compose.yml)); start `arm_driver` with `chrt -f 80` and check that
+`ps -eLo tid,cls,rtprio,comm` shows `FF 80`.
+
+Limits of the measurement: one run each; the period is the `/joint_states` stamp interval, a proxy for the loop;
+`js_rate.py` reported 1 % CPU for `arm_driver` under load, not explained.
 
 ### What would change it
 
-Inside `arm_driver`, for a follow-up issue (measure again with the same scripts):
+Inside `arm_driver` (measure again with the same scripts):
 
 1. **`COMMAND_GAP` 50 ms**: the main cost under commands. Find the smallest gap the Atom accepts.
 2. **`sleep(10ms)`** when no command was sent: half of the idle ceiling.
@@ -146,9 +184,16 @@ docker exec -it timing ros_entrypoint.sh bash                # terminal B, in /o
 
 1. Serial (A, no `arm_driver`): `python3 serial_rtt.py -n 1000` and `--gap-ms 0`.
 2. `arm_driver` (A): `ros2 run braco_driver arm_driver --ros-args -p state_rate_hz:=<F>.0` (a double; read only at
-   start, so restart it for each F). B: `ros2 run braco_bringup zero` once.
+   configure, so restart it, or cleanup and configure again, for each F), then `ros2 lifecycle set /arm_driver
+   configure` and `activate`. B: `ros2 run braco_bringup zero` once.
 3. Rate (B), per F: `js_rate.py --label idle`, then `hold_load.py --rate F` with `js_rate.py --label load` (60 s each).
 4. Latency (B), per F: `latency_step.py --requested F --rate F --n 20`.
-5. B: `ros2 run braco_bringup park`; host: `make up`.
+5. `SCHED_FIFO`, F = 20: host `for i in 1 2 3 4; do timeout 720 yes > /dev/null & done`; B
+   `hold_load.py --rate 20 --duration 690` and, 10 s later,
+   `js_rate.py --requested 20 --label <run> --duration 660 --raw /ws/bags/timing/<run>.csv`. Once with the plain
+   `arm_driver`, once with it started as `chrt -f 80 ros2 run braco_driver arm_driver …`. Plots:
+   `plot_jitter.py --requested 20 --run default=<csv> --run fifo=<csv> --out <folder>`.
+6. B: `ros2 run braco_bringup park`; host: `make up`.
 
-Results are written to `ros2_ws/bags/timing/` (git-ignored).
+Results are written to `ros2_ws/bags/timing/` (git-ignored); only the `SCHED_FIFO` plots are kept, in
+[timing/sched-fifo/](timing/sched-fifo/).

@@ -71,5 +71,9 @@ Parameters are in `braco_bringup/config/braco.yaml`. By hand, in the dev contain
 
 ```bash
 ros2 run braco_driver arm_driver --ros-args -p port:=/dev/ttyTHS1
+ros2 lifecycle set /arm_driver configure && ros2 lifecycle set /arm_driver activate
 ros2 run braco_driver temperature_monitor
 ```
+
+`arm_driver` is a lifecycle node: configure opens the port and starts monitoring, activate allows
+motion, deactivate is a STOP, cleanup closes the port.

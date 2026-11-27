@@ -41,14 +41,19 @@ if(BUILD_TESTING)
   # Isolated: its own ROS graph, never the real arm's.
   find_package(ament_cmake_ros REQUIRED)
   find_package(ament_index_cpp REQUIRED)
+  find_package(lifecycle_msgs REQUIRED)
   find_package(mycobot_cpp REQUIRED)
   ament_add_ros_isolated_gtest(test_braco_system test/test_braco_system.cpp TIMEOUT 180)
-  # The header only, for speed_for_velocity(): the plugin itself comes through pluginlib
-  target_include_directories(test_braco_system PRIVATE include)
   target_link_libraries(test_braco_system
     hardware_interface::hardware_interface pluginlib::pluginlib rclcpp::rclcpp
     ament_index_cpp::ament_index_cpp mycobot_cpp::mycobot_cpp ${sensor_msgs_TARGETS}
-    ${braco_interfaces_TARGETS} ${std_msgs_TARGETS} util)
+    ${braco_interfaces_TARGETS} ${std_msgs_TARGETS} ${lifecycle_msgs_TARGETS} util)
+
+  # speed_for_velocity() alone, no ROS graph
+  find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(test_speed_for_velocity test/test_speed_for_velocity.cpp)
+  target_include_directories(test_speed_for_velocity PRIVATE include)
+  target_link_libraries(test_speed_for_velocity braco_hardware)
 endif()
 
 ament_package()
