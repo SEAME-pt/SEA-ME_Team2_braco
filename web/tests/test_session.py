@@ -341,3 +341,109 @@ def test_tick_survives_an_unreachable_driver(ruled, control):
     control.take_control = gone
     ruled.tick()
     assert ruled.lease()['holder']['id'] == 'a'  # a restart is not a lost control
+
+
+# ---- lending arm_driver's control to braco_mission (pick and place) ----------------------
+
+
+class Borrowing(FakeControl):
+    """arm_driver while braco_mission borrows the control: `mission` holds it for `hold` takes."""
+
+    def __init__(self, hold=0):
+        super().__init__()
+        self.hold = hold
+
+    def take_control(self):
+        if self.owner == 'mission' and self.hold > 0:
+            self.hold -= 1
+            if self.hold == 0:
+                self.owner = ''  # braco_mission's ControlGuard released it
+        super().take_control()
+
+
+@pytest.fixture
+def lending(clock):
+    control = Borrowing()
+    hub = Hub(idle_timeout=60, grace=5, clock=clock, control=control)
+    hub.sleep = lambda _s: None
+    join(hub, 'a', 'Ana')
+    hub.take('a')
+    return hub, control
+
+
+def test_lend_needs_the_lease_and_hands_the_control_over(lending):
+    hub, control = lending
+    join(hub, 'b', 'Bruno')
+    with pytest.raises(LockedError):
+        hub.lend('b', 'mission')
+    hub.lend('a', 'mission')
+    assert hub.lent == 'mission' and hub.lease()['lent'] == 'mission'
+    assert control.owner == '' and control.calls[-1] == 'release'
+    with pytest.raises(BusyError):
+        hub.lend('a', 'mission')
+
+
+def test_while_lent_commands_are_busy_but_stop_and_cancel_run(lending):
+    hub, _control = lending
+    hub.lend('a', 'mission')
+    with pytest.raises(BusyError, match='lent to the mission'):
+        hub.run('a', 'J1', lambda: None)
+    assert hub.run('b', 'STOP', lambda: 'stopped', operator=False) == 'stopped'
+    assert hub.run('a', 'cancel', lambda: True, while_lent=True) is True
+    with pytest.raises(LockedError):  # still the operator's only
+        hub.run('b', 'cancel', lambda: True, while_lent=True)
+
+
+def test_while_lent_the_lease_neither_expires_nor_renews_the_control(lending, clock):
+    hub, control = lending
+    hub.lend('a', 'mission')
+    control.owner = 'mission'  # braco_mission took it
+    hub.control_lost('mission')  # /arm/control_owner: the borrower, expected
+    calls = len(control.calls)
+    for _ in range(3):
+        clock.now += 50
+        hub.tick()
+    assert hub.lease()['holder']['id'] == 'a'
+    assert len(control.calls) == calls  # no take_control while lent
+
+
+def test_another_owner_while_lent_ends_the_lease_and_the_mission(lending):
+    hub, control = lending
+    ended = []
+    hub.on_lease_end = lambda: ended.append(True)
+    hub.lend('a', 'mission')
+    control.owner = 'joystick'
+    hub.control_lost('joystick')
+    assert hub.lease()['holder'] is None and hub.lent is None
+    assert ended == [True]
+
+
+def test_releasing_while_lent_cancels_and_leaves_the_control_alone(lending):
+    hub, control = lending
+    ended = []
+    hub.on_lease_end = lambda: ended.append(True)
+    hub.lend('a', 'mission')
+    control.owner = 'mission'
+    calls = len(control.calls)
+    hub.release('a')
+    assert ended == [True]
+    assert len(control.calls) == calls and control.owner == 'mission'  # not the page's to free
+
+
+def test_give_back_takes_the_control_again_once_the_mission_frees_it(lending):
+    hub, control = lending
+    hub.lend('a', 'mission')
+    control.owner, control.hold = 'mission', 3  # freed on the third try
+    hub.give_back()
+    assert hub.lent is None and control.owner == 'web'
+    assert hub.lease()['holder']['id'] == 'a'
+    hub.run('a', 'J1', lambda: None)  # commands again
+
+
+def test_give_back_ends_the_lease_when_the_control_stays_away(lending):
+    hub, control = lending
+    hub.lend('a', 'mission')
+    control.owner = 'joystick'  # or a STOP latched: arm_driver refuses the take
+    hub.give_back()
+    assert hub.lease()['holder'] is None
+    assert 'joystick' in hub.activity()[-1]['action']

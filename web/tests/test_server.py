@@ -17,7 +17,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 from starlette.websockets import WebSocketDisconnect  # noqa: E402
 
 from web.server import app as app_module  # noqa: E402
-from web.server import arm, camera, docs, github, role, ros  # noqa: E402
+from web.server import arm, camera, docs, github, mission, role, ros  # noqa: E402
 from web.server.app import app  # noqa: E402
 from web.server.session import ControlError  # noqa: E402
 
@@ -32,6 +32,9 @@ STATIC_FILES = [
     'js/camera.js',
     'js/views/home.js',
     'js/views/arm.js',
+    'js/views/control.js',
+    'js/views/pick.js',
+    'js/kinematics.js',
     'js/views/ros.js',
     'js/views/docs.js',
     'js/views/sprints.js',
@@ -811,4 +814,98 @@ def test_operator_only_extras(client):
             assert client.post('/api/wake', headers=A).status_code == 200
             assert client.get('/api/status').json()['resting'] is False
         finally:
+            client.post('/api/control/release', headers=A)
+
+
+# ---- pick and place -----------------------------------------------------------------------
+
+GOAL = {
+    'pick': {'x': 0.20, 'y': -0.04, 'z': 0.025},
+    'place': {'x': 0.20, 'y': 0.08, 'z': 0.025},
+    'approach_m': 0.05,
+}
+
+
+def test_pick_and_place_lends_the_arm_and_reports_every_stage(client, monkeypatch):
+    monkeypatch.setattr(mission, 'MOCK_STAGE_S', 0.05)
+    A, B = {'X-Client-Id': 't-hugo'}, {'X-Client-Id': 't-iris'}
+    with client.websocket_connect('/ws') as wa, client.websocket_connect('/ws') as wb:
+        hello(wa, 't-hugo', 'Hugo')
+        hello(wb, 't-iris', 'Iris')
+        assert next_of(wb, 'mission')['data']['available'] is True
+        assert client.get('/api/pick_place').json()['stages'][0] == 'control'
+        # the lease first
+        assert client.post('/api/pick_place', json=GOAL, headers=A).status_code == 423
+        client.post('/api/control/take', headers=A)
+        try:
+            bad = dict(GOAL, place={'x': 0.2, 'y': -0.04, 'z': 0.025})
+            r = client.post('/api/pick_place', json=bad, headers=A)
+            assert r.status_code == 422 and 'same point' in r.json()['detail']
+            assert client.post('/api/pick_place', json=GOAL, headers=B).status_code == 423
+
+            r = client.post('/api/pick_place', json=GOAL, headers=A)
+            assert r.status_code == 200 and r.json()['running'] is True
+            assert r.json()['goal']['pick'] == [0.2, -0.04, 0.025]
+            assert client.get('/api/session').json()['lease']['lent'] == 'mission'
+            # the arm is the mission's: other commands are busy, a second goal too
+            assert client.post('/api/pose/zero', headers=A).status_code == 409
+            assert client.post('/api/pick_place', json=GOAL, headers=A).status_code == 409
+
+            # everybody sees the stages, and who sent it
+            stage = next_of(wb, 'mission', lambda m: m['data']['stage'] == 'close')['data']
+            assert stage['by'] == 'Hugo'
+            done = next_of(wb, 'mission', lambda m: m['data']['result'] is not None, limit=400)
+            assert done['data']['result']['success'] is True
+            entry = next_of(
+                wb,
+                'activity',
+                lambda m: 'entry' in m and m['entry']['action'] == 'pick and place done',
+            )['entry']
+            assert entry['who'] == 'Hugo' and entry['by'] == 't-hugo'
+
+            # the control is back with the operator
+            assert wait_for(lambda: client.get('/api/session').json()['lease']['lent'] is None)
+            assert client.get('/api/session').json()['lease']['holder']['id'] == 't-hugo'
+            assert client.post('/api/pose/zero', headers=A).status_code == 200
+        finally:
+            client.post('/api/control/release', headers=A)
+
+
+def test_pick_and_place_cancel_and_lease_end(client, monkeypatch):
+    monkeypatch.setattr(mission, 'MOCK_STAGE_S', 0.5)
+    A, B = {'X-Client-Id': 't-joao'}, {'X-Client-Id': 't-kai'}
+    with client.websocket_connect('/ws') as wa, client.websocket_connect('/ws') as wb:
+        hello(wa, 't-joao', 'Joao')
+        hello(wb, 't-kai', 'Kai')
+        client.post('/api/control/take', headers=A)
+        try:
+            assert client.post('/api/pick_place', json=GOAL, headers=A).status_code == 200
+            assert client.post('/api/pick_place/cancel', headers=B).status_code == 423
+            assert client.post('/api/pick_place/cancel', headers=A).json()['cancelled'] is True
+            result = client.get('/api/pick_place').json()['result']
+            assert result['cancelled'] is True and not result['success']
+            assert client.get('/api/session').json()['lease']['lent'] is None
+
+            # releasing the lease while the arm is lent cancels the goal
+            assert client.post('/api/pick_place', json=GOAL, headers=A).status_code == 200
+            client.post('/api/control/release', headers=A)
+            state = client.get('/api/pick_place').json()
+            assert state['running'] is False and state['result']['cancelled'] is True
+        finally:
+            client.post('/api/control/release', headers=A)
+
+
+def test_pick_and_place_refused_while_stopped(client, monkeypatch):
+    A = {'X-Client-Id': 't-lia'}
+    with client.websocket_connect('/ws') as ws:
+        hello(ws, 't-lia', 'Lia')
+        client.post('/api/control/take', headers=A)
+        try:
+            client.post('/api/stop', headers=A)
+            r = client.post('/api/pick_place', json=GOAL, headers=A)
+            assert r.status_code == 409 and 'STOP' in r.json()['detail']
+            assert client.get('/api/session').json()['lease']['lent'] is None
+        finally:
+            monkeypatch.setattr(arm, 'MOCK_STOP_HOLD_S', 0)
+            client.post('/api/release_stop', headers=A)
             client.post('/api/control/release', headers=A)
