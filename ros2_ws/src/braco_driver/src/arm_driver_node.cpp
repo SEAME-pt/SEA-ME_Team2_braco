@@ -48,7 +48,7 @@ ArmDriver::ArmDriver(const rclcpp::NodeOptions & options)
   declare_parameter<double>("temp_period_s", 2.0);
   declare_parameter<int>("command_timeout_ms", 300);
   declare_parameter<int>("gripper_speed", 50);
-  declare_parameter<int>("command_gap_ms", 30);
+  declare_parameter<int>("command_gap_ms", 25);
   declare_parameter<double>("control_idle_s", 5.0);
   declare_parameter<double>("stop_hold_s", 3.0);
   declare_parameter<bool>("read_only", false);
@@ -63,8 +63,7 @@ ArmDriver::CallbackReturn ArmDriver::on_configure(const rclcpp_lifecycle::State 
   temp_period_ = std::chrono::duration<double>(get_parameter("temp_period_s").as_double());
   command_timeout_ = std::chrono::milliseconds(get_parameter("command_timeout_ms").as_int());
   gripper_speed_ = static_cast<int>(get_parameter("gripper_speed").as_int());
-  // Pause after each serial command (motion, stop, LED). It bounds the loop under commands: 50 ms
-  // gives ~14 commands and /joint_states per second (docs/architecture/timing-budget.md, #93)
+  // Pause after each serial command (motion, stop, LED).
   command_gap_ = std::chrono::milliseconds(
     std::max<int64_t>(0, get_parameter("command_gap_ms").as_int()));
   control_idle_ = std::chrono::duration_cast<std::chrono::steady_clock::duration>(

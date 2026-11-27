@@ -211,7 +211,7 @@ Devices come from launch arguments (filled from `docker/.env`); tuning comes fro
 | `device` (joystick) | `/dev/input/js0` |
 | `camera` | `/dev/video0` |
 
-Key parameters: `command_timeout_ms` 300 (watchdog), `control_idle_s` 5.0, `state_rate_hz` 20, `auto_rest_on_hot` / `park_on_hot` true, `force_button` 8 / `force_hold_s` 1.0.
+Key parameters: `command_timeout_ms` 300 (watchdog), `control_idle_s` 5.0, `state_rate_hz` 20, `command_gap_ms` 25, `auto_rest_on_hot` / `park_on_hot` true, `force_button` 8 / `force_hold_s` 1.0.
 
 ---
 
