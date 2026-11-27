@@ -90,6 +90,7 @@ An inactive `arm_driver` refuses all motion before gate 2 (lifecycle, [§5](#5-c
 | `/arm/set_gripper`, `/arm/set_read_only` | `std_srvs/SetBool` | `arm_driver` | clients, `temperature_monitor` |
 | `/move_to_pose` (action) | `braco_interfaces/MoveToPose` (`PoseStamped` goal; result: pose error from TF) | `move_to_pose` (`braco_mission`) | command line, `run_goal_set.py` |
 | `/move_cartesian` (action) | `braco_interfaces/MoveCartesian` (waypoints; result: planned `fraction`, line deviation, error at the last waypoint) | `move_to_pose` (`braco_mission`) | command line, `draw_line.py`, `run_goal_set.py`; later pen drawing |
+| `/pick_and_place` (action) | `braco_interfaces/PickAndPlace` (pick and place `PoseStamped`; feedback: the stage; result: failed stage, pose errors) | `move_to_pose` (`braco_mission`) | command line |
 
 - **Latest wins:** a new command replaces the pending one, so commands never queue up. Clients stream short moves only while `/joint_states` is fresh.
 - **Limits:** angles are clamped to `JOINT_LIMITS` (`mycobot.hpp`). Poses below the table margin are refused.
@@ -112,6 +113,7 @@ Details: [ADR-0002](../decisions/ADR-0002-unique-control.md) (owner), [ADR-0003]
 | Client | Takes | Releases |
 |---|---|---|
 | Web page | with its lease; **409** while another client owns the arm | when the lease ends |
+| `move_to_pose` (`real:=true`) | `mission`, not forced, for each goal | at the end of the goal, also on failure |
 | Joystick | first input if free; **hold button 8 for 1 s** to force | 5 s after the last move |
 | zero / park | forced | at the end, also on failure |
 
