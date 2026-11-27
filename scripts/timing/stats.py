@@ -1,4 +1,4 @@
-"""Statistics shared by the timing scripts (issue #90). No ROS, no serial: unit tested."""
+"""Statistics shared by the timing scripts. No ROS, no serial: unit tested."""
 
 import math
 
@@ -44,3 +44,43 @@ def interval_stats(stamps_s, requested_hz):
         'max_ms': iv[-1],
         'late_pct': 100.0 * sum(1 for x in iv if x > 1.5 * period_ms) / len(iv),
     }
+
+
+def windowed_speeds(points, window_s):
+    """|velocity| over a window instead of between two samples (deg/s): one value per sample,
+    from it to the first sample at least window_s later. points: (time s, angle deg), ascending.
+
+    Between two /joint_states 20-60 ms apart a slow joint moves only a few encoder steps, so a
+    one-step error looks like jitter; over ~200 ms it is small.
+    """
+    speeds = []
+    k = 0
+    for i, (ta, aa) in enumerate(points):
+        k = max(k, i + 1)
+        while k < len(points) and points[k][0] - ta < window_s:
+            k += 1
+        if k == len(points):
+            break
+        tb, ab = points[k]
+        speeds.append(abs(ab - aa) / (tb - ta))
+    return speeds
+
+
+def settle_time(samples, t0, tol_deg, consecutive=3, rest_s=0.3):
+    """Seconds after t0 until every joint stays within tol_deg of where it comes to rest.
+
+    samples: (time s, [angle deg per joint]), ascending. The rest pose is the mean of the last
+    rest_s seconds. Settled = `consecutive` samples in a row inside the tolerance; 0.0 if it
+    already was at t0, None if it never settles (wait for this before the gripper acts).
+    """
+    after = [(t, a) for t, a in samples if t >= t0]
+    tail = [a for t, a in after if t >= after[-1][0] - rest_s] if after else []
+    if len(after) < consecutive or not tail:
+        return None
+    rest = [sum(col) / len(col) for col in zip(*tail)]
+    run = 0
+    for i, (_, a) in enumerate(after):
+        run = run + 1 if all(abs(x - r) <= tol_deg for x, r in zip(a, rest)) else 0
+        if run == consecutive:
+            return max(0.0, after[i - consecutive + 1][0] - t0)
+    return None

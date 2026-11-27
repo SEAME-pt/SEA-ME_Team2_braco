@@ -10,7 +10,14 @@ import types
 
 import pytest
 import serial_rtt
-from stats import interval_stats, intervals_ms, load_stamps, percentile
+from stats import (
+    interval_stats,
+    intervals_ms,
+    load_stamps,
+    percentile,
+    settle_time,
+    windowed_speeds,
+)
 
 FRAME = serial_rtt.REPLY_HEAD + bytes(range(12)) + b'\xfa'  # a complete getAngles reply
 
@@ -215,3 +222,53 @@ def test_release_control_never_raises(hold_load, monkeypatch, capsys):
     monkeypatch.setattr(hold_load, 'take_control', gone)
     hold_load.release_control(FakeNode())
     assert 'could not release the control' in capsys.readouterr().out
+
+
+def test_windowed_speeds_steady_motion():
+    # 10 deg/s sampled every 20 ms: every window of 10 samples reads 10 deg/s
+    pts = [(i * 0.02, i * 0.2) for i in range(50)]
+    speeds = windowed_speeds(pts, 0.19)
+    assert len(speeds) == 40
+    assert all(v == pytest.approx(10.0) for v in speeds)
+
+
+def test_windowed_speeds_smooth_out_one_step_quantization():
+    # the same motion read through a 0.088 deg encoder: two-sample speeds jump, windowed ones don't
+    step = 0.088
+    pts = [(i * 0.02, round(i * 0.18 / step) * step) for i in range(100)]
+    pair = windowed_speeds(pts, 0.0)
+    window = windowed_speeds(pts, 0.2)
+
+    def spread(v):
+        return (max(v) - min(v)) / (sum(v) / len(v))
+
+    assert spread(pair) > 0.4
+    assert spread(window) < 0.1
+
+
+def test_windowed_speeds_shorter_than_the_window():
+    assert windowed_speeds([(0.0, 0.0), (0.1, 1.0)], 0.2) == []
+
+
+def _settling(oscillate_until):
+    # 50 Hz, one joint swinging +-0.5 deg around 10 until oscillate_until, then still at 10
+    return [
+        (i * 0.02, [10.0 + (0.5 if i % 2 else -0.5) * (i * 0.02 < oscillate_until), 0.0])
+        for i in range(100)
+    ]
+
+
+def test_settle_time_waits_for_the_swing_to_end():
+    assert settle_time(_settling(0.5), 0.0, 0.1) == pytest.approx(0.5)
+
+
+def test_settle_time_is_zero_when_already_still():
+    assert settle_time(_settling(0.0), 0.0, 0.1) == 0.0
+
+
+def test_settle_time_none_when_it_never_settles():
+    assert settle_time(_settling(10.0), 0.0, 0.1) is None
+
+
+def test_settle_time_tolerance_wider_than_the_swing():
+    assert settle_time(_settling(0.5), 0.0, 0.6) == 0.0

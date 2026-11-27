@@ -2,7 +2,7 @@
 
 How the braco software is built today: layers, nodes, topics, packages and deployment. If the code and this document disagree, the code wins. CPU and memory: [resources.md](resources.md). Timing: [timing-budget.md](timing-budget.md).
 
-Last checked against the code: **2026-11-26**.
+Last checked against the code: **2026-11-27**.
 
 **Contents:** [Principles](#1-principles) · [Layers](#2-layers) · [Nodes and devices](#3-nodes-and-devices) · [Topics and services](#4-topics-and-services) · [Control of the arm](#5-control-of-the-arm) · [Packages](#6-packages) · [Deployment](#7-deployment) · [Launch and parameters](#8-launch-and-parameters) · [MoveIt 2, simulation and the real arm](#9-moveit-2-simulation-and-the-real-arm) · [Status](#10-status) · [Changing the architecture](#11-changing-the-architecture)
 
@@ -211,7 +211,7 @@ Devices come from launch arguments (filled from `docker/.env`); tuning comes fro
 | `device` (joystick) | `/dev/input/js0` |
 | `camera` | `/dev/video0` |
 
-Key parameters: `command_timeout_ms` 300 (watchdog), `control_idle_s` 5.0, `state_rate_hz` 20, `auto_rest_on_hot` / `park_on_hot` true, `force_button` 8 / `force_hold_s` 1.0.
+Key parameters: `command_timeout_ms` 300 (watchdog), `control_idle_s` 5.0, `state_rate_hz` 20 (idle; after every command under commands), `command_gap_ms` 25, `auto_rest_on_hot` / `park_on_hot` true, `force_button` 8 / `force_hold_s` 1.0.
 
 ---
 
@@ -236,7 +236,7 @@ Real arm (ADR-0004): move_group on the PC, the arm on the Jetson, both on domain
      │                       │         ║  FollowJointTrajectory
      │                       └─────────╫──► arm_controller ──► BracoSystem (braco_hardware)
      │                                 ║                            │ ALL_ANGLES, source "mission",
-     │                                 ║                            ▼ 25 Hz while mission owns the arm
+     │                                 ║                            ▼ 100 Hz while mission owns the arm
      └── /arm/take_control("mission") ─╫───────────────────────► arm_driver ──UART──► myCobot 280
                                        ║                gates: STOP · rest · owner · watchdog 300 ms
 ```
@@ -274,9 +274,9 @@ Real arm (ADR-0004): move_group on the PC, the arm on the Jetson, both on domain
 - On the Jetson, `braco.launch.py sim:=false` (`make up`) starts `ros2_control_node` with `BracoSystem` and spawns `arm_controller`. `joint_state_broadcaster` is not spawned: `arm_driver` keeps publishing `/joint_states`.
 - On the PC (the Jetson image has no MoveIt), on the arm's domain: `make moveit` runs `braco_moveit_config`'s `real.launch.py` (domain check, then `move_group` and RViz): [Run on the real arm](../../ros2_ws/src/braco_moveit_config/README.md#run-on-the-real-arm). `move_to_pose.launch.py real:=true` runs the mission with the real arm's model, the system clock and `use_control`: [Run it on the real arm](../../ros2_ws/src/braco_mission/README.md#run-it-on-the-real-arm).
 - **Control:** with `use_control`, `braco_mission` calls `take_control("mission")` without `force` before each goal; refused → nothing is sent, nothing is queued. It releases the control after the result, also on failure. The plugin never takes the control.
-- **Sending:** `BracoSystem` `write()` sends `arm_controller`'s target as `ALL_ANGLES` with `source: "mission"` at 25 Hz, at the servo speed of the fastest joint's planned velocity ([ADR-0006](../decisions/ADR-0006-servo-speed-from-planned-velocity.md), [braco_hardware](../../ros2_ws/src/braco_hardware/README.md#servo-speed)), only while `arm_controller` is active and `mission` owns the arm, so trajectories pass the same gates as every client. Once the target stops changing it keeps sending it for 2 s so the arm gets there, then sends nothing: 300 ms later the watchdog stops the arm (already there), and a control `braco_mission` could not release is freed after 5 s. `arm_driver` clamps to `JOINT_LIMITS`; the plugin and ros2_control do not. ros2_control's command limiter is off on the real arm: it moves each command at most `max_velocity * dt` from the previous command and resets only when a controller is (de)activated, so after another client moved the arm the next goal started from the last goal's pose and aborted. The servo speed stays capped at 100.
+- **Sending:** `BracoSystem` `write()` sends `arm_controller`'s target as `ALL_ANGLES` with `source: "mission"` on every controller cycle (100 Hz, no rate limit), at the servo speed of the fastest joint's planned velocity ([ADR-0006](../decisions/ADR-0006-servo-speed-from-planned-velocity.md), [braco_hardware](../../ros2_ws/src/braco_hardware/README.md#servo-speed)), only while `arm_controller` is active and `mission` owns the arm, so trajectories pass the same gates as every client. Once the target stops changing it keeps sending it for 2 s so the arm gets there, then sends nothing: 300 ms later the watchdog stops the arm (already there), and a control `braco_mission` could not release is freed after 5 s. `arm_driver` clamps to `JOINT_LIMITS`; the plugin and ros2_control do not. ros2_control's command limiter is off on the real arm: it moves each command at most `max_velocity * dt` from the previous command and resets only when a controller is (de)activated, so after another client moved the arm the next goal started from the last goal's pose and aborted. The servo speed stays capped at 100.
 - **Stopping:** while `arm_controller` is commanding, a STOP from any client (seen on the latched `/arm/stopped`), a forced take (page or joystick) or the park on overheat makes `write()` return `DEACTIVATE`: `arm_controller` stops, the goal is aborted and the plugin goes inactive. After a STOP the latch ([ADR-0005](../decisions/ADR-0005-stop-latch.md)) refuses `take_control("mission")` until `make resume`, so no goal runs before a person releases it. `braco_mission` turns `BracoSystem` and `arm_controller` back on at its next goal, right after taking the control (no new configure). By hand: [braco_hardware](../../ros2_ws/src/braco_hardware/README.md#when-it-sends).
-- **Timing** ([timing-budget.md](timing-budget.md)): setpoints reach the arm at ~14 Hz and motion starts ~200 ms after a command.
+- **Timing** ([timing-budget.md](timing-budget.md)): setpoints reach the arm at ~27 Hz and motion starts ~150 ms after a command.
 - **Resources** ([resources.md](resources.md)): `move_group` and the mission run on the PC, so the Jetson adds only `robot_state_publisher` and `ros2_control_node` with `arm_controller` (measured: 160–175 MB, 0.3–0.5 core).
 
 ---

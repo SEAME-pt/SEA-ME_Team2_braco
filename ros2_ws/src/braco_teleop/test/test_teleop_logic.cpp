@@ -14,6 +14,8 @@
 
 #include <gtest/gtest.h>
 
+#include <optional>   // cpplint takes it for a C header: it must come first
+
 #include <map>
 #include <set>
 
@@ -32,6 +34,55 @@ TEST(StickRatio, FullDeflectionIsOne)
 {
   EXPECT_DOUBLE_EQ(tl::stickRatio(32767), 1.0);
   EXPECT_DOUBLE_EQ(tl::stickRatio(-32767), 1.0);
+}
+
+// ---- Open-loop jog target -------------------------------------------------------
+
+// Blue mode, full stick: speed 15 (22.8 deg/s), lead 5. Bound: 5 + 22.8 * 0.2 = 9.56 deg.
+constexpr int SPEED = 15;
+constexpr double LEAD = 5.0;
+constexpr double FAR = 100.0;   // degrees to the limit: never the bound here
+constexpr double TICK = 0.02;
+const double VELOCITY = SPEED * tl::DEG_PER_S_PER_SPEED;
+const double REACH = LEAD + VELOCITY * tl::FEEDBACK_LAG_S;
+
+// The first target jumps BREAKAWAY_DEG ahead, to break static friction.
+TEST(AdvanceJogTarget, StartsWithTheBreakawayStep)
+{
+  EXPECT_DOUBLE_EQ(
+    tl::advanceJogTarget(std::nullopt, 10.0, 1, SPEED, LEAD, FAR, 0.0), 10.0 + tl::BREAKAWAY_DEG);
+  EXPECT_DOUBLE_EQ(
+    tl::advanceJogTarget(std::nullopt, 10.0, -1, SPEED, LEAD, FAR, 0.0), 10.0 - tl::BREAKAWAY_DEG);
+}
+
+// The point: a stale measured angle (not moving) does not stall the target. It keeps
+// moving at the jog velocity, the same step every tick, until the bound.
+TEST(AdvanceJogTarget, AdvancesAtTheJogVelocityWhileFeedbackIsStale)
+{
+  std::optional<double> target;
+  double previous = 0.0;
+  for (int i = 0; i < 10; ++i) {
+    target = tl::advanceJogTarget(target, 0.0, 1, SPEED, LEAD, FAR, TICK);
+    if (i > 0) {EXPECT_NEAR(*target - previous, VELOCITY * TICK, 1e-9) << "tick " << i;}
+    previous = *target;
+  }
+  EXPECT_LE(*target, REACH);
+}
+
+// Never more than lead + velocity * FEEDBACK_LAG_S ahead of the measured angle (about `lead`
+// ahead of the real arm), and never behind it.
+TEST(AdvanceJogTarget, StaysBetweenTheMeasuredAngleAndTheBound)
+{
+  EXPECT_DOUBLE_EQ(tl::advanceJogTarget(50.0, 0.0, 1, SPEED, LEAD, FAR, TICK), REACH);
+  EXPECT_DOUBLE_EQ(tl::advanceJogTarget(-50.0, 0.0, -1, SPEED, LEAD, FAR, TICK), -REACH);
+  EXPECT_DOUBLE_EQ(tl::advanceJogTarget(-3.0, 0.0, 1, SPEED, LEAD, FAR, 0.0), 0.0);
+}
+
+// Near the limit the remaining degrees win, also for the breakaway step.
+TEST(AdvanceJogTarget, NeverPastTheLimit)
+{
+  EXPECT_DOUBLE_EQ(tl::advanceJogTarget(std::nullopt, 0.0, 1, SPEED, LEAD, 1.5, 0.0), 1.5);
+  EXPECT_DOUBLE_EQ(tl::advanceJogTarget(1.4, 0.0, 1, SPEED, LEAD, 1.5, TICK), 1.5);
 }
 
 TEST(ShapeNearLimit, FarFromLimitKeepsLead)

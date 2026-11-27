@@ -154,6 +154,13 @@ private:
   std::map<int, double> hold_;              // idle joint -> latched angle
   std::map<int, double> last_hold_send_;    // joint -> time of last hold command
   std::set<int> limit_reported_;            // joints whose "at limit" was printed
+  struct JogTarget
+  {
+    double target;   // degrees, open loop (tl::advanceJogTarget)
+    int direction;
+    double time_s;   // when it was sent
+  };
+  std::map<int, JogTarget> jog_;            // moving joint -> its last jog target
   bool homing_ = false;
   int bad_reads_ = 0;
   std::map<int, int64_t> axis_changed_ms_;  // axis -> joystick time of last event

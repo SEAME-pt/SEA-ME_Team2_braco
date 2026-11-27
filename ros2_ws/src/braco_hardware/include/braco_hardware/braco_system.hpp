@@ -84,10 +84,8 @@ private:
 
   // write(): ALL_ANGLES to arm_driver's /arm/command as "mission" (ADR-0004)
   rclcpp::Publisher<braco_interfaces::msg::ArmCommand>::SharedPtr command_pub_;
-  int64_t last_publish_ns_{0};    // last publish, on the controller manager's clock (ns)
   decltype(braco_interfaces::msg::ArmCommand::angles_deg) last_target_deg_{};
   int64_t target_changed_ns_{0};  // when last_target_deg_ last changed (0: none yet)
-  double publish_rate_hz_{25.0};  // <param> publish_rate_hz of the URDF
   uint8_t min_speed_{5};          // <param> min_speed of the URDF, 1..100
   JointValues max_velocity_{};    // rad/s at speed 100: the URDF's <limit velocity>, per joint
   std::atomic<bool> commanding_{false};  // a controller holds our position commands

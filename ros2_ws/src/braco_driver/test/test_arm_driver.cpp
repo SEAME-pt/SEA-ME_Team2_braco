@@ -420,6 +420,56 @@ TEST_F(ArmDriverTest, MotionOnlyFromTheOwner)
   EXPECT_TRUE(waitUntil([&] {return frames(protocol::STOP) > stops;}));
 }
 
+// command_gap_ms is the pause after each serial command: with three joints pending, one frame
+// goes out per gap (round robin), not all three at once.
+TEST_F(ArmDriverTest, CommandGapPacesTheSerialCommands)
+{
+  start({rclcpp::Parameter("command_timeout_ms", 5000), rclcpp::Parameter("command_gap_ms", 400)});
+  ASSERT_TRUE(take("web")->success);
+  sendJoints("web", {target(1, 5), target(2, 5), target(3, 5)});
+  ASSERT_TRUE(waitUntil([this] {return frames(protocol::SEND_ANGLE) >= 1;}));
+  std::this_thread::sleep_for(250ms);
+  EXPECT_EQ(frames(protocol::SEND_ANGLE), 1u) << "the next joint did not wait for the gap";
+  EXPECT_TRUE(waitUntil([this] {return frames(protocol::SEND_ANGLE) == 3;}));
+}
+
+// With a 10 s state period, each motion command is still followed by an angle read.
+TEST_F(ArmDriverTest, AnglesAreReadAfterEveryCommand)
+{
+  start({rclcpp::Parameter("command_timeout_ms", 5000), rclcpp::Parameter("command_gap_ms", 50),
+      rclcpp::Parameter("state_rate_hz", 0.1)});
+  ASSERT_TRUE(take("web")->success);
+  std::this_thread::sleep_for(300ms);   // the first read, at start, is done
+  const size_t reads = frames(protocol::GET_ANGLES);
+  sendJoints("web", {target(1, 5), target(2, 5), target(3, 5)});
+  ASSERT_TRUE(waitUntil([this] {return frames(protocol::SEND_ANGLE) == 3;}));
+  EXPECT_TRUE(waitUntil([&] {return frames(protocol::GET_ANGLES) >= reads + 3;}))
+    << "a command was not followed by an angle read";
+}
+
+// An angle read with no reply is skipped after a short timeout: the next command still goes out
+// fast, the loop does not stall for the default reply timeout.
+TEST_F(ArmDriverTest, LostReadDoesNotStallTheLoop)
+{
+  start({rclcpp::Parameter("command_timeout_ms", 5000)});
+  ASSERT_TRUE(take("web")->success);
+  arm_->update([](auto & s) {s.silent = true;});
+  auto all_angles = [this](double j1) {
+      ArmCommand all;
+      all.type = ArmCommand::ALL_ANGLES;
+      all.angles_deg = {j1, 0, 0, 0, 0, 0};
+      all.speed = 25;
+      all.source = "web";
+      command_pub_->publish(all);
+    };
+  all_angles(10);
+  ASSERT_TRUE(waitUntil([this] {return frames(protocol::SEND_ANGLES) == 1;}));
+  const auto t0 = std::chrono::steady_clock::now();
+  all_angles(20);
+  ASSERT_TRUE(waitUntil([this] {return frames(protocol::SEND_ANGLES) == 2;}));
+  EXPECT_LT(std::chrono::steady_clock::now() - t0, 300ms) << "a lost read stalled the loop";
+}
+
 // ---- STOP latch (ADR-0005) --------------------------------------------------------
 
 TEST_F(ArmDriverTest, StopLatchesUntilReleasedAfterTheHold)

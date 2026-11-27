@@ -10,7 +10,7 @@ Architecture: [architecture.md](architecture.md).
 [What it means](#what-it-means) · [What would change it](#what-would-change-it) · [Method](#method)
 
 Real arm, Jetson Nano, no desktop (`multi-user.target`), `arm_driver` alone in a `real` container (no
-`temperature_monitor`, joystick, camera or page). Results 1–3 measured on **2026-11-09**, result 4 on **2026-11-17**.
+`temperature_monitor`, joystick, camera or page). Results 1–3 measured on **2026-11-09**, result 4 on **2026-11-17**, result 5 on **2026-11-27**.
 
 ## Summary
 
@@ -18,12 +18,12 @@ Real arm, Jetson Nano, no desktop (`multi-user.target`), `arm_driver` alone in a
 |---|---|---|
 | Serial round trip, one joint read (`getAngles`) | **9.3 ms** mean, 11.8 ms p99, 13.9 ms max, 0 failures / 2000 | Atom firmware (the wire is 0.22 ms) |
 | `/joint_states`, arm idle | **18.7 Hz** at `state_rate_hz` 20; ceiling **~45 Hz** from 60 Hz up | `sleep(10ms)` + read in the serial loop |
-| `/joint_states`, continuous commands (the plugin's `write()`) | **~14 Hz** (70 ms) at any `state_rate_hz` from 20 to 100 | `COMMAND_GAP` (50 ms) after every motion command |
-| Command → first joint motion (J6, 5°, speed 30) | **~205 ms** p50, 140 ms min, 268 ms max | Atom and servos starting the move |
+| `/joint_states`, continuous commands (the plugin's `write()`) | **~27 Hz** (37 ms) since 2026-11-27 ([result 5](#5-after-the-serial-loop-change)); was ~14 Hz (70 ms) | `command_gap_ms` 25 ms + angle read ~11 ms after every motion command |
+| Command → first joint motion (J6, 5°, speed 30) | **~150 ms** p50, 117 ms min, 181 ms max since 2026-11-27; was ~205 ms p50, 140 ms min, 268 ms max | Atom and servos starting the move |
 | `/joint_states` under CPU load, default vs `SCHED_FIFO` | p50 72 ms, p99 **96 ms** in both; max 108 → 100 ms | Temperature read every 2 s (p99); waiting for a core (max) |
 
-**Conclusion:** during a trajectory the real arm takes a new command and gives a new position about every **70 ms
-(~14 Hz)**, and starts moving **~200 ms** after a command. Neither depends on `state_rate_hz` or on the controller's
+**Conclusion:** during a trajectory the real arm takes a new command and gives a new position about every **37 ms
+(~27 Hz)**, and starts moving **~150 ms** after a command (2026-11-27; before: 70 ms and ~200 ms). Neither depends on `state_rate_hz` or on the controller's
 `update_rate`. Keep `update_rate: 100` and `state_rate_hz: 20`; the levers are inside `arm_driver` ([below](#what-would-change-it)).
 
 ## Serial loop of `arm_driver`
@@ -31,18 +31,23 @@ Real arm, Jetson Nano, no desktop (`multi-user.target`), `arm_driver` alone in a
 One thread does all serial work ([arm_driver_node.cpp](../../ros2_ws/src/braco_driver/src/arm_driver_node.cpp), `serialLoop()`):
 
 ```
-every pass:  [motion command pending?] ── yes ──► sendAngles ─► sleep COMMAND_GAP 50 ms ─┐
-                      │ no                                                                │
-                      ▼                                                                   ▼
-             [state due?] ── yes ──► getAngles (~9 ms) ─► publish /joint_states ─► [no command sent?] ─► sleep 10 ms
-             [every 2 s]  ──────────► getTemps + getVoltages (~2 × 9 ms)
+every pass:  [motion command pending?] ── yes ──► sendAngles ─► sleep command_gap_ms (25 ms) ─┐
+                      │ no                                                                     │
+                      ▼                                                                        ▼
+             [state due?] ── yes ──► getAngles ◄──────────── always right after a command ─────┘
+                                        │ no reply within 30 ms: skipped
+                                        ▼
+                                 publish /joint_states ─► [no command sent?] ─► sleep 10 ms
+             [every 2 s]  ──────────► getTemps, and half a period later getVoltages (one per pass)
 ```
+
+While idle, "state due" is every `1 / state_rate_hz` (20 Hz).
 
 | Case | Period of `/joint_states` | Measured |
 |---|---|---|
 | Idle, `state_rate_hz` low | T + ~5 ms (the loop checks the clock every ~10 ms; the next period counts from the read) | 20 Hz → 18.7 Hz |
 | Idle, ceiling | read ~9.3 ms + sleep 10 ms + overhead ≈ 22 ms | ~45 Hz |
-| Continuous commands | send + 50 ms gap + read ≈ 60 ms predicted | **70 ms**: the read after a motion command seems slower (~10 ms more); not confirmed |
+| Continuous commands | send + 25 ms gap + read ≈ 35 ms predicted | **37 ms** (2026-11-27). 70 ms with the 50 ms gap: the extra ~10 ms was `tcdrain` after the send, not the read |
 
 ## Results
 
@@ -141,16 +146,51 @@ host), 660 s per run, `state_rate_hz` 20. The two runs differ only in the schedu
   for a core are frequent but small, so the mean and the p99 do not change.
 - The ~96 ms band in both runs is the temperature and voltage read every 2 s. FIFO cannot remove it; it sets the p99.
 
+### 5. After the serial loop change
+
+2026-11-27, real arm, Jetson Nano, `arm_driver` alone in a `timing` container (`make down` first), `state_rate_hz` 20,
+`command_gap_ms` 25, angles read right after every motion command, a read with no reply skipped after 30 ms.
+*Load* = `hold_load.py` at the given rate. One run each.
+
+`/joint_states` rate (`js_rate.py`, 60 s):
+
+| Case | Hz | Mean ms | p50 ms | p99 ms | Max ms |
+|---|---|---|---|---|---|
+| Idle | 18.4 | 54.3 | 54.0 | 61.7 | 64.8 |
+| Load 100/s, `tcdrain` after every send | 20.8 | 48.0 | 48.0 | 60.1 | 114.3 |
+| Load 100/s, no `tcdrain` after a motion command | **26.8** | 37.3 | 36.0 | 52.1 | 111.5 |
+| Same, second run | **26.8** | 37.2 | 36.0 | 52.0 | 229.7 |
+
+Latency (`latency_step.py`, 20 steps):
+
+| Load | `tcdrain` after a motion command | Min ms | p50 ms | p99 ms | Max ms | Not seen |
+|---|---|---|---|---|---|---|
+| 20/s | yes | 146 | 157 | 187 | 187 | 0 |
+| 100/s | yes | 138 | 162 | 185 | 185 | 0 |
+| 100/s | **no** | 117 | **150** | 181 | 181 | 0 |
+
+Where the time goes, under load 100/s:
+
+| Part | Mean ms | How it was measured |
+|---|---|---|
+| `getAngles` alone, arm still | 8.6 (p99 11.3) | serial script, 300 reads, no `arm_driver` |
+| `getAngles` right after a `sendAngles` | 8.4 (p99 9.9) | same, J6 ±5° |
+| `sendAngles` + `tcdrain` | p50 1.2, p99 13.2 | same: `tcdrain` sometimes waits ~13 ms for 0.2 ms of data |
+| `arm_driver`: send + gap / read + publish / rest | 25.4 / ~11 / 0.4 | timers in `serialLoop()`, without `tcdrain` after the send |
+
+- The Atom answers as fast right after a command as when still: the extra time under load was `tcdrain`, not the Atom.
+- The read inside `arm_driver` (~11 ms) is ~2.5 ms slower than the script's: likely the `tcdrain` after the request.
+
 ## What it means
 
 | For | Consequence |
 |---|---|
-| `update_rate` | 100 Hz stays. The controller runs at any rate; the arm gets a new setpoint and gives a new position every ~70 ms, so `read()` sees fresh data about one cycle in seven. Lowering it would not change the arm, only the controller's CPU (not measured here) |
+| `update_rate` | 100 Hz stays. The controller runs at any rate; the arm gets a new setpoint and gives a new position every ~37 ms, so `read()` sees fresh data about one cycle in four. Lowering it would not change the arm, only the controller's CPU (not measured here) |
 | `JointTrajectoryController` on the real arm | Tolerances must allow ~200 ms of lag and 70 ms steps: no tight `path_tolerance`, `goal_time` ≥ 0.5 s |
-| ADR-0004 | Setpoints are thinned to **~14 Hz**, not 20 Hz |
-| Watchdog | `command_timeout_ms` 300 vs 70 ms between commands under load: 4× margin |
+| ADR-0004 | Setpoints are thinned to **~27 Hz** (was ~14 Hz) |
+| Watchdog | `command_timeout_ms` 300 vs 37 ms between commands under load: 8× margin |
 | `state_rate_hz` | 20 stays. Higher helps only while idle, where no client needs it |
-| Joystick `state_timeout_ms` 150 | Under commands `/joint_states` comes every ~70 ms, max ~101 ms: jogging keeps working, with 1.5× margin |
+| Joystick `state_timeout_ms` 150 | Under commands `/joint_states` comes every ~37 ms, but one run had a 230 ms gap: above 150 ms a jog can pause once. Cause not confirmed (likely a lost read plus a temperature read in one pass) |
 | `SCHED_FIFO` | Not enabled: it removes the small waits for a core, not the 2 s temperature read ([below](#sched_fifo)) |
 
 ### SCHED_FIFO
@@ -170,9 +210,12 @@ Limits of the measurement: one run each; the period is the `/joint_states` stamp
 
 Inside `arm_driver` (measure again with the same scripts):
 
-1. **`COMMAND_GAP` 50 ms**: the main cost under commands. Find the smallest gap the Atom accepts.
-2. **`sleep(10ms)`** when no command was sent: half of the idle ceiling.
-3. Temperature and voltage reads every 2 s: the idle p99 / max.
+1. **The command gap**, the main cost under commands. Changed on 2026-11-27: `command_gap_ms` 25 ms (was 50), angles
+   read right after every motion command, a read with no reply skipped after 30 ms, no `tcdrain` after a motion
+   command ([result 5](#5-after-the-serial-loop-change)).
+2. **`tcdrain` after the angle request**: likely ~2.5 ms of the ~11 ms read. Not changed yet.
+3. **`sleep(10ms)`** when no command was sent: half of the idle ceiling.
+4. Temperature and voltage reads every 2 s: the idle p99 / max.
 
 ## Method
 

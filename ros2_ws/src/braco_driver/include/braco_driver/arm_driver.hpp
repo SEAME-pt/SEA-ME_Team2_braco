@@ -56,9 +56,11 @@
 //
 // One serial thread does all the work, in this order on every pass:
 //   1. a requested stop (drops everything pending)
-//   2. one pending motion command, then COMMAND_GAP (as the C++ programs do)
-//   3. read the angles and publish /joint_states
-//   4. every temp_period_s read the servo temperatures and voltages and publish them
+//   2. one pending motion command, then command_gap_ms (25 by default)
+//   3. read the angles and publish /joint_states: right after a motion command, or at
+//      state_rate_hz while idle
+//   4. every temp_period_s read the servo temperatures, and half a period later the voltages
+//      (never both in one pass: that stalled the loop ~20 ms during a trajectory)
 //   5. watchdog: no new motion command for command_timeout_ms after the arm was
 //      told to move -> stop once. Together with the step-ahead targets of the
 //      teleop node this bounds how far the arm coasts if a client dies.
@@ -208,6 +210,7 @@ private:
   std::chrono::duration<double> state_period_{};
   std::chrono::duration<double> temp_period_{};
   std::chrono::milliseconds command_timeout_{};
+  std::chrono::milliseconds command_gap_{};   // pause after each serial command
   std::chrono::steady_clock::duration control_idle_{};
   std::chrono::steady_clock::duration stop_hold_{};   // release refused this long after a STOP
   std::chrono::steady_clock::time_point last_stop_{};  // the last STOP while latched

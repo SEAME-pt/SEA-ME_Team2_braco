@@ -30,8 +30,8 @@ namespace braco_driver
 namespace
 {
 
-constexpr auto COMMAND_GAP = 50ms;   // pause after each motion command
 constexpr int ANGLE_READ_RETRIES = 1;
+constexpr auto ANGLE_READ_TIMEOUT = 30ms;  // no reply by then: skip this read
 constexpr double DEG_TO_RAD = M_PI / 180.0;
 constexpr const char * INACTIVE =
   " refused: arm_driver inactive (ros2 lifecycle set /arm_driver activate)";
@@ -42,13 +42,14 @@ constexpr const char * LATCHED = " refused: STOP latched (make resume, or call a
 ArmDriver::ArmDriver(const rclcpp::NodeOptions & options)
 : LifecycleNode("arm_driver", options)
 {
-  // Declared here, read below: settable before configure (#95)
+  // Declared here, read below: settable before configure
   declare_parameter<std::string>("port", mycobot::MyCobot280::DEFAULT_PORT);
   declare_parameter<int>("baud", mycobot::MyCobot280::DEFAULT_BAUD);
   declare_parameter<double>("state_rate_hz", 20.0);
   declare_parameter<double>("temp_period_s", 2.0);
   declare_parameter<int>("command_timeout_ms", 300);
   declare_parameter<int>("gripper_speed", 50);
+  declare_parameter<int>("command_gap_ms", 25);
   declare_parameter<double>("control_idle_s", 5.0);
   declare_parameter<double>("stop_hold_s", 3.0);
   declare_parameter<bool>("read_only", false);
@@ -63,6 +64,9 @@ ArmDriver::CallbackReturn ArmDriver::on_configure(const rclcpp_lifecycle::State 
   temp_period_ = std::chrono::duration<double>(get_parameter("temp_period_s").as_double());
   command_timeout_ = std::chrono::milliseconds(get_parameter("command_timeout_ms").as_int());
   gripper_speed_ = static_cast<int>(get_parameter("gripper_speed").as_int());
+  // Pause after each serial command (motion, stop, LED).
+  command_gap_ = std::chrono::milliseconds(
+    std::max<int64_t>(0, get_parameter("command_gap_ms").as_int()));
   control_idle_ = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
     std::chrono::duration<double>(get_parameter("control_idle_s").as_double()));
   stop_hold_ = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
@@ -74,7 +78,9 @@ ArmDriver::CallbackReturn ArmDriver::on_configure(const rclcpp_lifecycle::State 
     RCLCPP_ERROR(get_logger(), "cannot open %s: %s", port.c_str(), e.what());
     return CallbackReturn::FAILURE;   // stays unconfigured
   }
-  RCLCPP_INFO(get_logger(), "serial port %s open at %ld baud", port.c_str(), baud);
+  RCLCPP_INFO(
+    get_logger(), "serial port %s open at %ld baud, command gap %d ms", port.c_str(), baud,
+    static_cast<int>(command_gap_.count()));
 
   joint_pub_ = plainPublisher<sensor_msgs::msg::JointState>("joint_states", 10);
   temp_pub_ = plainPublisher<ServoTemperatures>("arm/servo_temperatures", 10);
@@ -534,22 +540,32 @@ void ArmDriver::serialLoop()
 {
   auto next_state = std::chrono::steady_clock::now();
   auto next_temp = next_state;
+  // Voltages half a period after the temperatures: two reads in one pass stall the arm ~20 ms.
+  const auto temp_period = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+    temp_period_);
+  auto next_volt = next_state + temp_period / 2;
 
   while (running_ && rclcpp::ok()) {
     try {
       const bool sent = serviceCommands();
       const auto now = std::chrono::steady_clock::now();
 
-      if (now >= next_state) {
+      // Right after a motion command, or every state period while idle.
+      if (sent || now >= next_state) {
         publishAngles();
         next_state = now + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
           state_period_);
       }
-      if (now >= next_temp) {
-        publishTemps();
+      // At most one of the two per pass, the more overdue first: when reads are slow (a silent
+      // arm times out) both are always due, and neither may starve the other
+      const bool temp_due = now >= next_temp;
+      const bool volt_due = now >= next_volt;
+      if (volt_due && (!temp_due || next_volt < next_temp)) {
         publishVoltages();
-        next_temp = now + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-          temp_period_);
+        next_volt = now + temp_period;
+      } else if (temp_due) {
+        publishTemps();
+        next_temp = now + temp_period;
       }
       checkWatchdog();
       expireControl();
@@ -589,11 +605,11 @@ bool ArmDriver::serviceCommands()
   if (stop) {
     mc_->stop();
     moving_ = false;
-    std::this_thread::sleep_for(COMMAND_GAP);
+    std::this_thread::sleep_for(command_gap_);
   }
   if (led) {
     mc_->setColor((*led)[0], (*led)[1], (*led)[2]);
-    std::this_thread::sleep_for(COMMAND_GAP);
+    std::this_thread::sleep_for(command_gap_);
   }
   // Checked under serial_mutex_: a target taken before a deactivate never follows its stop
   if (!active_) {return false;}
@@ -604,7 +620,7 @@ bool ArmDriver::serviceCommands()
     mc_->sendAngle(joint->first, joint->second.angle, joint->second.speed);
   }
   moving_ = true;
-  std::this_thread::sleep_for(COMMAND_GAP);
+  std::this_thread::sleep_for(command_gap_);
   return true;
 }
 
@@ -613,7 +629,7 @@ void ArmDriver::publishAngles()
   std::optional<mycobot::Angles> angles;
   {
     std::lock_guard<std::mutex> lock(serial_mutex_);
-    angles = mc_->getAngles(ANGLE_READ_RETRIES);
+    angles = mc_->getAngles(ANGLE_READ_RETRIES, ANGLE_READ_TIMEOUT);
   }
   if (!angles) {
     // No message at all: clients see the state go stale and stop.
@@ -680,7 +696,7 @@ void ArmDriver::checkWatchdog()
     std::lock_guard<std::mutex> lock(serial_mutex_);
     mc_->stop();
     moving_ = false;
-    std::this_thread::sleep_for(COMMAND_GAP);
+    std::this_thread::sleep_for(command_gap_);
   }
 }
 

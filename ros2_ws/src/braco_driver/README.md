@@ -14,7 +14,7 @@ crash independently while the port keeps a single owner. It never powers the arm
 
 | | Name | Type |
 |---|---|---|
-| pub | `/joint_states` | `sensor_msgs/JointState` (radians, `joint1..joint6`, `state_rate_hz` 20: 18.7 Hz measured idle, ~14 Hz under continuous commands, [timing](../../../docs/architecture/timing-budget.md)) |
+| pub | `/joint_states` | `sensor_msgs/JointState` (radians, `joint1..joint6`): at `state_rate_hz` while idle, right after every motion command under commands, [timing](../../../docs/architecture/timing-budget.md)) |
 | pub | `/arm/servo_temperatures` | `braco_interfaces/ServoTemperatures` (every 2 s, also in rest mode) |
 | pub | `/arm/servo_voltages` | `braco_interfaces/ServoVoltages` (every 2 s, also in rest mode) |
 | pub | `/arm/read_only` | `std_msgs/Bool`, latched: rest mode on/off |
@@ -45,6 +45,10 @@ ros2 topic echo /arm/control_owner
 ros2 service call /arm/take_control braco_interfaces/srv/TakeControl "{source: script, force: true}"
 ros2 service call /arm/take_control braco_interfaces/srv/TakeControl "{source: script, release: true}"
 ```
+
+**Serial loop:** one thread owns the port. Each serial command is followed by a `command_gap_ms` (25 ms) pause.
+Under commands the angles are read right after each one (send → 25 ms → read); while idle at `state_rate_hz` (20 Hz).
+An angle read with no reply within 30 ms is skipped and the loop goes on.
 
 Safety: angles are clamped to `JOINT_LIMITS` of `mycobot.hpp` and poses that put the wrist or tool below the table margin are refused; a **watchdog** stops the arm when motion commands
 stop for `command_timeout_ms` (300 ms); in **rest mode** motion, gripper and power on are refused while angles and

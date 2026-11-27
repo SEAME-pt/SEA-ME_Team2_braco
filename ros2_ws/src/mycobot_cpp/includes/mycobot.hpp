@@ -175,6 +175,7 @@ class MyCobot280 {
 public:
     static constexpr const char* DEFAULT_PORT = "/dev/ttyTHS1";
     static constexpr int DEFAULT_BAUD = 1000000;
+    static constexpr std::chrono::milliseconds REPLY_TIMEOUT{500};  // default wait for one reply
 
     // Opens and configures the serial port. Throws std::runtime_error on failure.
     explicit MyCobot280(const std::string& port = DEFAULT_PORT, int baud = DEFAULT_BAUD);
@@ -204,7 +205,9 @@ public:
     std::optional<bool> isMoving();  // nullopt if no valid reply
 
     // ---- Feedback (nullopt if no valid reply after all retries) ------------
-    std::optional<Angles> getAngles(int retries = 5);
+    // `timeout`: the most it waits for each reply.
+    std::optional<Angles> getAngles(int retries = 5,
+                                    std::chrono::milliseconds timeout = REPLY_TIMEOUT);
     std::optional<Coords> getCoords(int retries = 5);
 
     // ---- Gripper and Atom LED ----------------------------------------------
@@ -254,15 +257,16 @@ private:
     // Clamp one angle to JOINT_LIMITS of `joint` (1..6); sets `clamped`.
     static double limitAngle(int joint, double angle, bool& clamped);
 
-    // Build a frame and write it to the port.
-    void sendCommand(uint8_t cmd, const std::vector<uint8_t>& data = {});
+    // Build a frame and write it to the port; `drain`: wait until it has left the UART.
+    void sendCommand(uint8_t cmd, const std::vector<uint8_t>& data = {}, bool drain = true);
 
     // Read until a complete frame for `cmd` arrives; return its data bytes.
     std::optional<std::vector<uint8_t>> readReply(uint8_t cmd, std::chrono::milliseconds timeout);
 
     // Send a request and wait for a reply with exactly `expected_size` data
     // bytes, retrying up to `retries` times.
-    std::optional<std::vector<uint8_t>> query(uint8_t cmd, size_t expected_size, int retries = 5);
+    std::optional<std::vector<uint8_t>> query(uint8_t cmd, size_t expected_size, int retries = 5,
+                                              std::chrono::milliseconds timeout = REPLY_TIMEOUT);
 
     // Send a request with data and return the reply's data bytes, any size.
     std::optional<std::vector<uint8_t>> queryWithData(uint8_t cmd, const std::vector<uint8_t>& data,

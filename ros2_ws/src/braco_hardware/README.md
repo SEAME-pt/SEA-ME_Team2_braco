@@ -38,7 +38,7 @@ Sending:  arm_driver ◄──/arm/command─── BracoSystem ◄──write()
 | Listens to | `/arm/control_owner` | who controls the arm: `write()` sends only when it is `mission` |
 | Listens to | `/arm/stopped` | the STOP latch ([ADR-0005](../../../docs/decisions/ADR-0005-stop-latch.md)): a STOP aborts the goal |
 | Publishes | `/arm/command` | where the arm must go (`ALL_ANGLES`, `source: mission`) |
-| Parameters | `publish_rate_hz`, `min_speed` | optional, in the URDF: 25 per second, minimum servo speed 5 |
+| Parameters | `min_speed` | optional, in the URDF: minimum servo speed 5 |
 
 For each joint, `joint1` to `joint6`:
 
@@ -77,7 +77,7 @@ trajectory's made the servo reach each target early and wait for the next one, s
 ## When it sends
 
 1. The plugin sends only while `mission` controls the arm and `arm_controller` is on. Otherwise it sends nothing.
-2. While the target moves, the plugin sends it 25 times per second.
+2. While the target moves, the plugin sends it on every controller cycle (100 times per second); `arm_driver` keeps only the latest.
 3. When the target stops, it sends the same target for 2 more seconds, so the arm gets there.
 4. Then it stops sending. 300 ms later `arm_driver` stops the arm (its watchdog): the arm is already there.
 5. If `mission` forgot to give the control back, `arm_driver` takes it back after 5 s.
@@ -188,9 +188,10 @@ port: the `arm_driver` it starts talks to `PtyArm`, a fake arm on a pseudo-termi
 | `InitFailsWithoutSixJoints` | `on_init` refuses a URDF without six joints |
 | `InitFailsWithoutVelocityCommand` | `on_init` refuses a joint with no `velocity` command |
 | `InitFailsWithoutVelocityLimit` | `on_init` refuses a joint with no velocity limit, or a limit of 0 |
-| `InitChecksTheParameters` | `on_init` refuses `min_speed` outside 1..100, `publish_rate_hz` ≤ 0 or not numbers |
+| `InitChecksTheParameters` | `on_init` refuses `min_speed` outside 1..100 or not a number |
 | `WriteSendsTheTargetsAsMissionInDegrees` | `write()` sends `ALL_ANGLES`, `source: mission`, in degrees; no velocity yet: speed 5 |
 | `WriteSendsTheSpeedOfTheFastestJoint` | the velocity commands set the speed: joint2 at 0.5 rad/s gives 31 |
+| `WriteSendsOnEveryCycle` | `write()` publishes a new target on every cycle, even 10 ms apart: no rate limit |
 | `WriteSendsNothingWhileAnotherClientOwnsTheArm` | another owner: nothing sent, `OK` |
 | `WriteSendsNothingWithoutAController` | no controller, or after it released the commands: nothing sent |
 | `WriteHoldsAStillTargetForTwoSeconds` | a still target is resent for 2 s, then not; a new one is sent |
