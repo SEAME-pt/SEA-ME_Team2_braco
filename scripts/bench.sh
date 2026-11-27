@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Bench test of issue #55 (docs/decisions/ADR-0002-unique-control.md, docs/decisions/ADR-0003-rest-per-temp.md).
+# Bench test of issue #55 (docs/decisions/ADR-0002-unique-control.md, docs/decisions/ADR-0003-rest-per-temp.md),
+# and of the arm_driver lifecycle (#95, section 4).
 #
 # Run it with `make bench` on the Jetson with the system up and the arm powered. Checks that can be read from
 # ROS (owner, rest mode) are automatic; the ones that need eyes or hands (the arm moving, the stick, killing the
@@ -60,11 +61,13 @@ expect_owner() {  # expect_owner WANTED "what"
 }
 
 cleanup() {
+  # An abort in section 4 must not leave arm_driver inactive
+  [[ $(lifecycle_state) == inactive ]] && ros lifecycle set /arm_driver activate >/dev/null 2>&1
   # HALT, not STOP: the bench ending is no emergency and must not leave the arm latched
   ros topic pub --once /arm/command braco_interfaces/msg/ArmCommand "{type: 3, source: 'script'}" >/dev/null 2>&1
   take script release >/dev/null 2>&1
   ros service call /arm/set_read_only std_srvs/srv/SetBool "{data: false}" >/dev/null 2>&1
-  [[ -n ${FAKE_PID:-} ]] && kill "$FAKE_PID" 2>/dev/null
+  stop_fake
   stop_stream
   [[ $(stopped) == true ]] && echo "bench: STOP is still latched: make resume" >&2
 }
@@ -74,6 +77,16 @@ stop_stream() {  # killing docker exec leaves the publisher running in the conta
   [[ -n ${STREAM_PID:-} ]] && kill "$STREAM_PID" 2>/dev/null
   [[ -n ${KEEPALIVE_PID:-} ]] && kill "$KEEPALIVE_PID" 2>/dev/null
   unset STREAM_PID KEEPALIVE_PID
+}
+stop_fake() {  # the fake HOT temperatures (section 6); same docker exec caveat
+  [[ -n ${FAKE_PID:-} ]] && kill "$FAKE_PID" 2>/dev/null
+  $EXEC pkill -f '[t]opic pub -r 10 /arm/servo_temperatures' 2>/dev/null
+  unset FAKE_PID
+}
+
+hottest() {  # hottest joint of the next /arm/servo_temperatures, in C
+  ros topic echo --once /arm/servo_temperatures braco_interfaces/msg/ServoTemperatures 2>/dev/null |
+    tr -d '\r' | awk '/^celsius:/ {on = 1; next} on && /^- / {if ($2 > max) max = $2; next} on {exit} END {print max + 0}'
 }
 trap cleanup EXIT
 
@@ -86,8 +99,13 @@ stopped() {
     /arm/stopped std_msgs/msg/Bool 2>/dev/null | sed -n 's/^data: *//p' | tr -d '\r'
 }
 
+lifecycle_state() {  # unconfigured, inactive, active... ('active [3]' from the CLI)
+  ros lifecycle get /arm_driver 2>/dev/null | tr -d '\r' | awk '{print $1}'
+}
+
 printf '\n# bench %s on %s\n' "$(date -Iseconds)" "$(hostname)" >>"$REPORT"
 ros service list 2>/dev/null | grep -q /arm/take_control || { echo "arm_driver is not running: make up" >&2; exit 1; }
+if [[ $(lifecycle_state) != active ]]; then echo "arm_driver is not active: ros2 lifecycle set /arm_driver activate" >&2; exit 1; fi
 
 if [[ $(stopped) == true ]]; then echo "STOP is latched: make resume first" >&2; exit 1; fi
 if [[ $(read_only) == true ]]; then echo "rest mode is on: make resume first (then make zero)" >&2; exit 1; fi
@@ -175,7 +193,59 @@ else
 fi
 take web release >/dev/null
 
-say "4. Hand tests"
+say "4. Deactivating arm_driver is a STOP; inactive keeps monitoring (#95)"
+if ask "Joint 1 will move slowly toward 0 deg, and arm_driver is deactivated mid-move. Is the area clear?"; then
+  # Long timeout: this section makes ~10 slow CLI calls on the Nano
+  $EXEC timeout 150 ros2 topic pub -r 10 /arm/command braco_interfaces/msg/ArmCommand \
+    "{type: 1, targets: [{joint: 1, angle_deg: 0.0, speed: 10}], source: 'web'}" >/dev/null 2>&1 &
+  STREAM_PID=$!
+  wait_publisher
+  out=$(take web force)
+  if ! grep -q "success=True" <<<"$out"; then
+    record FAIL "the page could not take the control for the move: $out"
+    exit 1
+  fi
+  sleep 1
+  out=$(ros lifecycle set /arm_driver deactivate 2>&1 | tr -d '\r')
+  if grep -q "successful" <<<"$out"; then record PASS "deactivate accepted"; else record FAIL "deactivate: $out"; fi
+  if ask "Did the arm stop, and does it stay still while 'web' keeps streaming?"; then
+    record PASS "deactivate stops the arm"
+  else
+    record FAIL "deactivate did not stop the arm"
+  fi
+  state=$(lifecycle_state)
+  if [[ $state == inactive ]]; then record PASS "arm_driver inactive"; else record FAIL "arm_driver is '$state', wanted inactive"; fi
+  if [[ $(stopped) == true ]]; then record PASS "deactivate latched a STOP"; else record FAIL "deactivate did not latch a STOP"; fi
+  expect_owner "" "deactivate freed the control"
+  rate=$($EXEC timeout 20 ros2 topic hz /joint_states 2>/dev/null | tr -d '\r' | grep -m1 'average rate')
+  if [[ -n $rate ]]; then record PASS "inactive: /joint_states still published ($rate)"; else record FAIL "inactive: no /joint_states"; fi
+  out=$(take web force)
+  if grep -q "inactive" <<<"$out"; then record PASS "inactive: take_control refused"; else record FAIL "inactive: take_control not refused: $out"; fi
+
+  out=$(ros lifecycle set /arm_driver activate 2>&1 | tr -d '\r')
+  if grep -q "successful" <<<"$out"; then record PASS "activate accepted"; else record FAIL "activate: $out"; fi
+  if [[ $(stopped) == true ]]; then record PASS "activate keeps the STOP latch"; else record FAIL "activate released the STOP latch"; fi
+  if ask "After activate, with 'web' still streaming, does the arm stay still?"; then
+    record PASS "activate moves nothing"
+  else
+    record FAIL "the arm moved after activate"
+  fi
+  # make resume: the hold is long over by now
+  out=$(ros service call /arm/release_stop std_srvs/srv/Trigger 2>&1 | tr -d '\r')
+  if grep -q "success=True" <<<"$out"; then record PASS "release after activate"; else record FAIL "release after activate: $out"; fi
+  out=$(take web force)
+  if grep -q "success=True" <<<"$out" && ask "After the release and a new take, does joint 1 move toward 0 again?"; then
+    record PASS "active again: it moves"
+  else
+    record FAIL "active again: it does not move ($out)"
+  fi
+  stop_stream
+else
+  record SKIP "deactivate mid-move (operator did not confirm the area)"
+fi
+take web release >/dev/null
+
+say "5. Hand tests"
 if ask "Page moving a joint: does the stick do nothing meanwhile?"; then
   record PASS "page moving, stick ignored"
 else
@@ -218,7 +288,7 @@ else
   record FAIL "page killed mid-move: watchdog stops the arm"
 fi
 
-say "5. Simulated HOT servo (${HOT_C} C): the arm parks, releases the joints and rests"
+say "6. Simulated HOT servo (${HOT_C} C): the arm parks, releases the joints and rests"
 if ask "The arm will fold to the park pose by itself. Is the area clear?"; then
   ros service call /arm/set_read_only std_srvs/srv/SetBool "{data: false}" >/dev/null
   $EXEC timeout 45 ros2 topic pub -r 10 /arm/servo_temperatures braco_interfaces/msg/ServoTemperatures \
@@ -236,17 +306,29 @@ if ask "The arm will fold to the park pose by itself. Is the area clear?"; then
   else
     record FAIL "HOT: arm parked and joints released"
   fi
-  kill "$FAKE_PID" 2>/dev/null
-  unset FAKE_PID
-  sleep 5
+  stop_fake
+  # A fake still publishing next to arm_driver's real readings ends and restarts the hot episode:
+  # park again, rest back on. Section 7 needs a real reading below 60 C first.
+  cool=""
+  for _ in $(seq 1 5); do
+    t=$(hottest)
+    if ((t > 0 && t < 60)); then cool=$t; break; fi
+    sleep 1
+  done
+  if [[ -n $cool ]]; then record PASS "HOT: fake stopped, real reading ${cool} C"; else record FAIL "HOT: no real reading below 60 C (fake still publishing?)"; fi
 else
   record SKIP "HOT: park and rest (operator did not confirm the area)"
 fi
 
-say "6. make resume leaves rest mode, motion accepted again"
-ros service call /arm/set_read_only std_srvs/srv/SetBool "{data: false}" >/dev/null
+say "7. make resume leaves rest mode, motion accepted again"
+out=$(ros service call /arm/set_read_only std_srvs/srv/SetBool "{data: false}" 2>&1 | tr -d '\r')
 sleep 1
-if [[ $(read_only) == false ]]; then record PASS "resume: rest mode off"; else record FAIL "resume: rest mode off"; fi
+if [[ $(read_only) == false ]]; then
+  record PASS "resume: rest mode off"
+else
+  # Refused (STOP latched, arm_driver inactive) or overruled afterwards (a new park)
+  record FAIL "resume: rest mode off ($(grep -o "message='[^']*'" <<<"$out"))"
+fi
 sleep 5
 if [[ $(read_only) == false ]]; then
   record PASS "resume on a cooled arm is not overruled (once per episode)"

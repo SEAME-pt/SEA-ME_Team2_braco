@@ -46,8 +46,9 @@ jetson-image: _role ## On a PC: build the Jetson image (arm64 via QEMU, slow); N
 	else echo "built $(IMAGE_PREFIX)/jetson:$(JETSON_TAG). Copy it with: make jetson-image NANO=user@host"; fi
 
 # Only this machine's image and containers (its COMPOSE_PROFILES): the PC never touches the Jetson's, and back.
-re: _role ## Rebuild from zero: remove containers, cache volumes, image and build output, then make up (FORCE=1: no prompt)
+re: _role ## Rebuild from zero: remove containers, cache volumes, image and build output, then make up (FORCE=1: no prompt; Jetson: parks first, PARK=0 skips)
 	$(call confirm,Remove the containers, volumes, image and build output of ROLE=$(ROLE) and rebuild them?)
+	@$(MAKE) --no-print-directory _park
 	$(COMPOSE) down -v --remove-orphans --rmi all
 	rm -rf $(WS_DIR)/build $(WS_DIR)/install $(WS_DIR)/log $(HOME)/.ros/log
 	@$(MAKE) --no-print-directory up
@@ -58,8 +59,9 @@ re: _role ## Rebuild from zero: remove containers, cache volumes, image and buil
 # "removal already in progress"). rm -f stops and removes in one step; then wait until none is left, and fail with
 # the list only if some really cannot be removed. prune skips what cannot be removed (the default networks bridge,
 # host, none; images shared by several tags) instead of failing on it. --all: named volumes too, not only anonymous.
-fclean: ## Remove ALL Docker containers, images, volumes and networks of this machine (not only braco's) and docker/.env (FORCE=1: no prompt)
+fclean: ## Remove ALL Docker containers, images, volumes and networks of this machine (not only braco's) and docker/.env (FORCE=1: no prompt; Jetson: parks first, PARK=0 skips)
 	$(call confirm,Remove ALL Docker containers + images + volumes + networks on this machine (not only braco) and $(ENV_FILE)?)
+	@[ ! -f $(ENV_FILE) ] || $(MAKE) --no-print-directory _park
 	@ids=$$(docker ps -aq); [ -z "$$ids" ] || docker rm -f $$ids >/dev/null 2>&1 || true; \
 	for i in 1 2 3 4 5 6 7 8 9 10; do [ -z "$$(docker ps -aq)" ] && break; sleep 1; done; \
 	if [ -n "$$(docker ps -aq)" ]; then echo "fclean: these containers could not be removed:" >&2; docker ps -a >&2; exit 1; fi

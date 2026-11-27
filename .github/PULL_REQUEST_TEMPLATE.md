@@ -39,6 +39,7 @@ Indicate CI status and any documentation updates (e.g., README, ADR, wiring/pino
 - [ ] CI green (`host`, `ros`, `coverage`)
 - [ ] `docs/architecture/architecture.md` updated, or N/A <!-- sections listed in "Keeping this document current"; N/A when there is no change to nodes, topics, packages, folders, `make` commands or deployment -->
 - [ ] Package README and ADR (`docs/decisions/`) updated, or N/A
+- [ ] Changed documents reviewed against `docs/guides/docs-rules.md`, or N/A <!-- N/A when the PR changes no `.md`; `make lint` checks issue/PR references only, the other rules need a read -->
 
 ### Safety (Mark N/A if the real arm does not move)
 <!--

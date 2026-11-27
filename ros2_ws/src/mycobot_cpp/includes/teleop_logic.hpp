@@ -49,7 +49,7 @@ constexpr int GRIPPER_SPEED = 50;
 // ---- Step-ahead lead -------------------------------------------------------
 constexpr double LEAD_MIN_DEG = 1.0;
 
-// ---- Open-loop jog target (#93) --------------------------------------------
+// ---- Open-loop jog target --------------------------------------------------
 // The target used to be "latest measured angle + lead". The measured angle is ~200 ms old
 // (docs/architecture/timing-budget.md), so at low speed the servo saw almost no error, slowed
 // down, the stale angle stalled, the target stalled, and the joint moved in pulses (stick-slip

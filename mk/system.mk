@@ -13,7 +13,7 @@
 # Jetson: the driver and the servos. PC: Gazebo, the model and the controllers (first start loads the meshes).
 UP_TIMEOUT ?= 90
 XHOST      ?= 1
-PARK       ?= 0
+PARK       ?= 1
 
 # Sources colcon builds from (git's view: tracked and new files, minus .gitignore; plain find outside a git checkout).
 WS_SOURCES  := $(wildcard $(shell git ls-files -co --exclude-standard $(WS_SRC) 2>/dev/null \
@@ -23,7 +23,7 @@ BUILD_STAMP := $(WS_DIR)/build/.braco-built
 # Left by a build that ran while the system was up, so `up` knows to restart it.
 REBUILT     := $(WS_DIR)/build/.braco-rebuilt
 
-.PHONY: up down restart status logs web web-stop _checks _image _dev_up _xhost
+.PHONY: up down restart status logs web web-stop _checks _image _dev_up _xhost _park
 
 ##@ System (the real arm on the Jetson, the simulation on the PC)
 
@@ -32,19 +32,20 @@ up: _image | $(WS_DIRS) ## Turn on: Jetson the arm (real); PC only dev, SIM=1 al
 	@was_up=$(if $(UP_SYSTEM),$$($(COMPOSE) ps -q --status running $(UP_SYSTEM) 2>/dev/null)); \
 	had_web=$$(curl -fsS -m 2 -o /dev/null http://localhost:$(WEB_PORT)/api/status 2>/dev/null && echo 1); \
 	$(COMPOSE) up -d $(UP_SERVICES) || exit 1; \
-	if [ -n "$$was_up" ] && [ -f $(REBUILT) ]; then echo "workspace rebuilt: restarting $(UP_SYSTEM)"; $(COMPOSE) restart $(UP_SYSTEM); \
+	if [ -n "$$was_up" ] && [ -f $(REBUILT) ]; then echo "workspace rebuilt: restarting $(UP_SYSTEM)"; \
+	  $(MAKE) --no-print-directory _park || exit 1; $(COMPOSE) restart $(UP_SYSTEM); \
 	  [ "$(UP_SYSTEM)" != "$(WEB_CONTAINER)" ] || [ -z "$$had_web" ] || touch $(WEB_AGAIN); fi; \
 	rm -f $(REBUILT)
 	@$(MAKE) --no-print-directory _xhost
 	@$(if $(UP_SYSTEM),COMPOSE_PROFILES=$(ROLE) DC="$(DC)" SYSTEM=$(SYSTEM) UP_TIMEOUT=$(UP_TIMEOUT) sh -c "$$WAIT_SH",echo "dev is up: make shell   (simulation: make up SIM=1; web page: make web)")
 	@if [ -f $(WEB_AGAIN) ]; then rm -f $(WEB_AGAIN); echo "the restart stopped the web page: starting it again"; $(MAKE) --no-print-directory web; fi
 
-down: _role ## Turn the system off (PARK=1 parks the arm first; the caches are kept)
-	@if [ "$(PARK)" = 1 ] && [ "$(ROLE)" = jetson ] && [ -n "$$($(COMPOSE) ps -q --status running $(SYSTEM))" ]; then \
-	  echo "parking the arm"; $(SYS_EXEC) ros2 run braco_bringup park || exit 1; fi
+down: _role ## Turn the system off (Jetson: parks the arm first, PARK=0 skips; the caches are kept)
+	@$(MAKE) --no-print-directory _park
 	$(COMPOSE) down --remove-orphans
 
-restart: _role ## Recreate the system container (PC: dev; SIM=1: sim) and start it like up; make web again for the page
+restart: _role ## Recreate the system container (PC: dev; SIM=1: sim) and start it like up (Jetson: parks first, PARK=0 skips); make web again for the page
+	@$(MAKE) --no-print-directory _park
 	$(COMPOSE) rm -sf $(or $(UP_SYSTEM),$(DEV))
 	@$(MAKE) --no-print-directory up
 
@@ -83,7 +84,19 @@ web-stop: _role ## Stop the web page (the container and the arm keep running)
 	@[ -z "$$($(COMPOSE) ps -q --status running $(WEB_CONTAINER) 2>/dev/null)" ] || \
 	  $(COMPOSE) exec -T $(WEB_CONTAINER) bash /opt/braco/web/restart.sh stop
 
-# ---- the steps of `up` (.env is created by the rule in mk/setup.mk) ---------------------------
+# Jetson: park the arm before anything stops the `real` container (down, restart, re, fclean, up after a rebuild).
+# Stopped, arm_driver only stops the arm: the servos (own supply) stay on, holding the pose, and temperature_monitor
+# (the park on overheat) stops with it. Parking an arm that is already parked barely moves it. A failed park (STOP
+# latched, arm_driver inactive) ends the command and leaves the system running, so the arm stays watched. PARK=0 skips.
+_park: _role
+	@[ "$(ROLE)" = jetson ] && [ "$(PARK)" = 1 ] || exit 0; \
+	[ -n "$$($(COMPOSE) ps -q --status running $(SYSTEM) 2>/dev/null)" ] || exit 0; \
+	echo "parking the arm before $(SYSTEM) stops (PARK=0 skips it)"; \
+	$(SYS_EXEC) ros2 run braco_bringup park || { \
+	  echo "park failed: $(SYSTEM) keeps running. STOP latched? make resume, then try again." >&2; \
+	  echo "PARK=0 stops it anyway: the servos stay on, holding the pose, with no temperature watch." >&2; exit 1; }
+
+# ---- the steps of `up` (.env is created by the rule in mk/setup.mk)---------------------------
 _checks: _role $(ENV_FILE)
 	@QUIET=1 $(DOCTOR_RUN) || { echo "fix the [FAIL] lines above (make doctor shows every check)" >&2; exit 1; }
 

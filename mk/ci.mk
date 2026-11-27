@@ -113,16 +113,33 @@ CI_CPPCHECK_SH    := cppcheck $(CPPCHECK_FLAGS) -j"$$(nproc)" $(CPPCHECK_INCLUDE
 
 # tidy: clang-tidy (checks in ros2_ws/.clang-tidy) on the sources of ros2_ws/src, from the compile_commands.json that
 # ci-ros's build leaves in build/<pkg> (colcon-defaults.yaml exports it): run make ci-ros first. Generated code
-# (braco_interfaces) lives in build/, not src/, and is skipped. A package's failure does not stop the others; the exit status is the worst. Only the packages colcon finds
-# in src/ are checked: build/ is restored from CI's cache, and colcon never deletes the build of a removed or renamed
-# package, whose compile_commands.json still lists sources that are gone.
+# (braco_interfaces) lives in build/, not src/, and is skipped. Only the packages colcon finds in src/ are checked:
+# build/ is restored from CI's cache, and colcon never deletes the build of a removed or renamed package, whose
+# compile_commands.json still lists sources that are gone. Their databases are merged into build/.tidy, so a single
+# run-clang-tidy keeps every core busy (one run per package left cores idle while a small package finished).
+# Through ctcache (clang-tidy-cache, in the ci image) when the image has it: a file that passed before with the same
+# preprocessed source, comments included (CTCACHE_KEEP_COMMENTS, so removing a NOLINT re-checks it), config and
+# arguments is not analysed again. The cache is ros2_ws/.ctcache, next to .ccache; a failure is never cached.
+# One clang-tidy on a MoveIt or ros2_control source peaks at about 1.4 GB, so the jobs are capped by the free memory
+# (TIDY_JOB_KB each) as well as by the cores: 16 jobs on a 16-core, 14 GB laptop ran it out of memory.
+CTCACHE_PY  := /usr/local/lib/ctcache/clang_tidy_cache.py
+TIDY_JOB_KB := 1600000
 CI_TIDY_SH := dbs=""; for pkg in $$(colcon list --base-paths $(WS_BASE_PATHS) -n); do \
-                [ -f "build/$$pkg/compile_commands.json" ] && dbs="$$dbs build/$$pkg"; \
+                [ -f "build/$$pkg/compile_commands.json" ] && dbs="$$dbs build/$$pkg/compile_commands.json"; \
               done; \
               [ -n "$$dbs" ] || { echo "no build of $(WS_DIR)/src in $(WS_DIR)/build: run make ci-ros first" >&2; exit 1; }; \
-              rc=0; for dir in $$dbs; do \
-                run-clang-tidy -quiet -p "$$dir" -j "$$(nproc)" "^/ws/src/" 2>/dev/null || rc=1; \
-              done; exit $$rc
+              mkdir -p build/.tidy && python3 -c "import json, sys; \
+                json.dump([e for f in sys.argv[2:] for e in json.load(open(f))], open(sys.argv[1], \"w\"))" \
+                build/.tidy/compile_commands.json $$dbs || exit 1; \
+              tidy=clang-tidy; if command -v clang-tidy-cache >/dev/null; then \
+                tidy=clang-tidy-cache; export CTCACHE_DIR=/ws/.ctcache CTCACHE_KEEP_COMMENTS=1; \
+                python3 $(CTCACHE_PY) --zero-stats >/dev/null; \
+              fi; \
+              jobs=$$(awk -v n="$$(nproc)" '\''/^MemAvailable:/ { j = int($$2 / $(TIDY_JOB_KB)); \
+                print (j < 1 ? 1 : (j > n ? n : j)) }'\'' /proc/meminfo); \
+              rc=0; run-clang-tidy -quiet -clang-tidy-binary "$$(command -v $$tidy)" -p build/.tidy -j "$$jobs" \
+                "^/ws/src/" 2>/dev/null || rc=1; \
+              [ "$$tidy" = clang-tidy ] || python3 $(CTCACHE_PY) --show-stats | grep -F "(local)"; exit $$rc
 
 BUILDX_MISSING := docker buildx not found: the Dockerfile needs BuildKit (apt install docker-buildx, or docker-buildx-plugin from Docker's repo)
 
@@ -136,6 +153,8 @@ SHELLCHECK_FLAGS := -x -e SC1091
 SHELLCHECK_FILES = $(shell git ls-files '*.sh') $(addprefix .githooks/,commit-msg pre-push)
 HADOLINT_IMAGE   := hadolint/hadolint:v2.12.0
 HADOLINT_FLAGS   := $(addprefix --ignore ,DL3008 DL3013 DL3059 DL3006 DL3042 DL3045 SC1091 SC2086 SC2016)
+# No issue or PR numbers in the tracked .md files (docs/guides/docs-rules.md, section 3): prints file:line per hit.
+DOC_REFS_CHECK   := scripts/check-doc-refs.sh
 
 # format / format-check: clang-format (C++) and ruff (Python, .ruff.toml) on the files git tracks. The ROS 2
 # packages in $(WS_SRC) are left to ament_uncrustify and ament_flake8 (make test), except $(CPP_PKG), which has no
@@ -189,7 +208,7 @@ tidy: ## clang-tidy on the C++ packages of ros2_ws/src (ros2_ws/.clang-tidy), fr
 	@docker image inspect $(CI_IMAGE) >/dev/null 2>&1 || $(MAKE) --no-print-directory ci-image
 	$(CI_RUN) bash -c '$(CI_TIDY_SH)'
 
-lint: $(ENV_FILE) $(VENV)/.installed ## Compose files, the team's ROS domains, ruff check, shellcheck and hadolint (binaries or their docker images)
+lint: $(ENV_FILE) $(VENV)/.installed ## Compose files, the team's ROS domains, ruff check, issue refs in the docs, shellcheck and hadolint (binaries or their docker images)
 	@echo "== compose =="
 	@for r in pc jetson; do COMPOSE_PROFILES=$$r $(DC) config -q && echo "  $(COMPOSE_BASE) ($$r): ok"; done
 	@COMPOSE_PROFILES=jetson I2C_GID= INPUT_GID= $(DC) config -q && echo "  $(COMPOSE_BASE) (jetson): ok without i2c/input groups"
@@ -199,6 +218,8 @@ lint: $(ENV_FILE) $(VENV)/.installed ## Compose files, the team's ROS domains, r
 	@bash $(TESTS_DIR)/team-domain-test.sh
 	@echo "== Python =="
 	@$(VENV)/bin/ruff check -q $(PY_FILES) && echo "  ruff check: clean"
+	@echo "== docs =="
+	@bash $(DOC_REFS_CHECK) && echo "  issue/PR references: none"
 	@echo "== shell scripts =="
 	@if command -v shellcheck >/dev/null 2>&1; then shellcheck $(SHELLCHECK_FLAGS) $(SHELLCHECK_FILES) && echo "  shellcheck: clean"; \
 	else \

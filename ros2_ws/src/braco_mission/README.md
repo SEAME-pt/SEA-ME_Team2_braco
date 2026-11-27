@@ -1,9 +1,8 @@
 # braco_mission
 
 Mission layer of the braco arm: tasks such as pick-and-place and drawing with a pen, asking MoveIt 2 for motions.
-Its first node, `move_to_pose`, moves the tool centre point (`tcp`) to a Cartesian pose goal (#84) and in straight
-lines through waypoints (#85), a first step toward drawing with a pen, and picks and places an object at poses given in
-the goal (#148).
+Its first node, `move_to_pose`, moves the tool centre point (`tcp`) to a Cartesian pose goal and in straight lines
+through waypoints, a first step toward drawing with a pen, and picks and places an object at poses given in the goal.
 
 The mission never talks to the serial port: it plans and executes through MoveIt 2 (`braco_moveit_config`), so the
 same code runs in simulation and on the real arm (`real:=true`). On the real arm it also holds the control as `mission`
@@ -54,7 +53,7 @@ aborts with a message that starts with `STOP latched in arm_driver`.
 | `gripper_timeout_s` | `15.0` | longest wait for the gripper to answer and to move: the Gazebo gripper takes ~4 s to close on an object, ~9 s empty |
 | `gripper_settle_s` | `1.5` | real: wait after `/arm/set_gripper` answers, the gripper is still moving |
 
-The tolerances are a proposal for the team to agree on (#84 "Done when").
+The tolerances are a proposal: the team has not agreed on them yet.
 
 ## Straight lines: move_cartesian
 
@@ -115,9 +114,95 @@ The executed deviation is about three times the planned one: `arm_controller` la
 moves (it rises while accelerating, holds ~0.1 mm at cruise speed, and falls back as the arm stops). The real arm's
 servos will add far more.
 
+## The goal set: run_goal_set.py
+
+`scripts/run_goal_set.py` runs a fixed set of goals, the same in Gazebo and on the real arm, and reports the pose
+error of each one. The set is [`config/goal_set.yaml`](config/goal_set.yaml): a `start` pose and goals that
+are either a `line` (an end point for `/move_cartesian`, keeping the start orientation) or a full `pose` (for
+`/move_to_pose`, from `/compute_fk`). Before every goal the arm goes back to `start`, and that return is reported as
+a `start` goal too.
+
+```bash
+make run CMD='ros2 run braco_mission run_goal_set.py'                          # all goals; asks before moving
+make run CMD='ros2 run braco_mission run_goal_set.py --only line_y,pose_turn --out bags/real_1'
+```
+
+It prints one line per goal and writes `<out>/summary.csv` (one row per goal: success, position and orientation
+error, and for lines `fraction`, planned and executed deviation) and `<out>/<line>.csv/.png` as `draw_line.py` does.
+`<out>` is `bags/goal_set` by default. It stops at the first goal that does not run to the end (refused, partial
+plan, execution error); a goal outside the tolerance is reported and the set goes on. `--set` takes another YAML.
+
+On the real arm:
+- **Start from zero** (`make zero` on the Jetson), not from park: out of the folded park pose MoveIt finds no plan
+  (joint4 rests just past its 149° limit there). The script prints this hint when the first `start` has no plan.
+- **Temperatures:** before every goal it reads `/arm/servo_temperatures` and stops when a servo is at 55 °C or more
+  (`--max-temp`; "warm" in [overheating.md](../../../docs/guides/overheating.md)). The hottest servo before each
+  goal is in `summary.csv` (`max_servo_temp_c`). Gazebo publishes no temperatures, so there the check is skipped.
+- **Control:** the goals need the control free. If the web page holds it (`/arm/control_owner` is `web`), every
+  goal is refused: release it on the page and keep the page open for STOP.
+
+From `start` the tool points down, so the reachable lines go in (toward the base) and down: moving the `tcp` 50 mm
+out (+x) or up plans only 55–73 % of the path, and nothing moves. `line_z_up` (30 mm up) is at that edge: it plans
+fully in Gazebo but only 87.5 % on the real arm, where the line starts from the measured `tcp`, several mm off `start`.
+
+Checked in Gazebo (2026-11-19), `run_goal_set.py` with the default set:
+
+| Goal | Kind | Length | Reached (position, orientation) | Planned deviation | Executed deviation max |
+|---|---|---|---|---|---|
+| `start` (8 returns) | pose | | 0.32–0.43 mm, 0.04–0.15° | | |
+| `line_y` | line | 130 mm along +y | 0.35 mm, 0.08° | 0.04 mm | 0.33 mm |
+| `line_x_in` | line | 50 mm along −x | 0.19 mm, 0.04° | 0.04 mm | 0.25 mm |
+| `line_z_down` | line | 40 mm down | 0.33 mm, 0.07° | 0.04 mm | 0.33 mm |
+| `line_z_up` | line | 30 mm up | 0.35 mm, 0.09° | 0.06 mm | 0.20 mm |
+| `line_xy` | line | 89 mm, x-y diagonal | 0.17 mm, 0.04° | 0.04 mm | 0.31 mm |
+| `line_xyz` | line | 78 mm, x-y-z diagonal | 0.20 mm, 0.04° | 0.04 mm | 0.26 mm |
+| `pose_turn` | pose | | 0.32 mm, 0.13° | | |
+| `pose_tilted` | pose | | 0.42 mm, 0.14° | | |
+
+All within the tolerances (5 mm, 2°). The errors are larger than on 2026-11-11 (0.02 mm at the end of `line_y`):
+the `tcp` sits ~0.3 mm below the goal for the whole line, which looks like the simulated arm sagging under gravity.
+`line_z_down` takes the `tcp` to z = 73 mm: on the real arm, check where the table is first.
+
+On the real arm the error comes from TF, so from the angles the servos report through the URDF: it shows whether the
+joints got there, not errors of the model itself (such as `tcp_length`, still to check with a ruler in
+[urdf-sim-to-real.md](../../../docs/hardware/urdf-sim-to-real.md#open-items-need-the-hardware)).
+
+### On the real arm (2026-11-25)
+
+The default set, no load, velocity scaling 0.1, from zero, in three parts so the servos stay cool (hottest 42 °C):
+
+| Goal | Kind | Length | Reached (position, orientation) | Planned deviation | Executed deviation max / mean |
+|---|---|---|---|---|---|
+| `start` (8 returns) | pose | | 4.2–10.1 mm, 1.05–2.70° | | |
+| `line_y` | line | 130 mm along +y | 12.4 mm, 2.73° | 0.04 mm | 8.8 / 5.5 mm |
+| `line_x_in` | line | 50 mm along −x | 6.3 mm, 2.13° | 0.03 mm | 6.8 / 4.4 mm |
+| `line_z_down` | line | 40 mm down | 8.4 mm, 2.82° | 0.03 mm | 8.4 / 4.2 mm |
+| `line_z_up` | line | 30 mm up | not run: `fraction` 0.875 | 0.11 mm | |
+| `line_xy` | line | 89 mm, x-y diagonal | 8.2 mm, 2.10° | 0.04 mm | 9.3 / 5.8 mm |
+| `line_xyz` | line | 78 mm, x-y-z diagonal | 7.8 mm, 1.98° | 0.04 mm | 9.7 / 6.6 mm |
+| `pose_turn` | pose | | 7.5 mm, 2.69° | | |
+| `pose_tilted` | pose | | 12.4 mm, 3.79° | | |
+
+- The plans are the same as in Gazebo (`fraction` 1.0, planned deviation ≤ 0.04 mm): the error comes from execution.
+- The lines stay straight, diagonals included: the `tcp` runs parallel to the ideal line, 7–10 mm off it. The offset
+  builds up in the first ~8 mm and then stays flat; on `line_xyz` the `tcp` goes down in a straight line ~4 mm below
+  the ideal one. That is joints stopping short of their targets, as the servos' dead zone (~3°,
+  [urdf-sim-to-real.md](../../../docs/hardware/urdf-sim-to-real.md)) does, not a bent path.
+- Repeatable: part A (`line_y`, `line_x_in`, `line_xy`, `line_xyz`) run twice differed by at most 0.8 mm.
+- `pose_tilted`, the highest pose (z = 149 mm) with the tool tilted, has the largest error.
+
+Earlier, on 2026-11-19, `line_y` alone gave 11.1 mm, 2.51° without load and 16.4 mm, 4.13° with the gripper and
+camera (~150 g): the load lowers the `tcp` (z at `start` 106.2 mm vs 110.8 mm, goal 112.6 mm), and joint4 warmed to
+56 °C after two runs, hence the temperature check above. A third run aborted on the way to `start` with joint3 moving
+the wrong way: that was ros2_control's command limiter starting from the previous goal's command, now off on the real
+arm, not joint3.
+
+Only the first `start` is within the 5 mm / 2° tolerance. That tolerance was set from Gazebo; for the real arm it is
+for the team to agree on.
+
 ## Pick and place
 
-`/pick_and_place` (#148) picks an object at one pose and places it at another, on the same node and with the same
+`/pick_and_place` picks an object at one pose and places it at another, on the same node and with the same
 tolerances. The poses are `PoseStamped`, transformed into the planning frame like a `/move_to_pose` goal. The stages,
 also the feedback:
 
@@ -225,13 +310,14 @@ Position only: send the orientation as all zeros. Checked in Gazebo (2026-11-10)
 | `src/move_to_pose.cpp` | `main()` only |
 | `launch/move_to_pose.launch.py` | The node with the MoveIt config of the Gazebo arm, or of the real arm with `real:=true` |
 | `scripts/draw_line.py` | Draw one straight line and plot the executed `tcp` path |
+| `scripts/run_goal_set.py`, `config/goal_set.yaml` | Run the fixed goal set and report the pose error of every goal |
 
 Tests (`colcon test --packages-select braco_mission`): `test/test_pose_math.cpp`, `test/test_mission.cpp` and
 `test/test_cartesian.cpp` (every step against a fake arm: control, fallback, fraction, failures, tolerances), and
-`test/test_draw_line.py` (the script's path geometry, CSV and plot). `test/test_pick_and_place.cpp` runs the
-sequence against a fake arm that moves where it was planned and a fake gripper: stage order, straight lines above
-each pose, the control held once, a failure at every stage, a pick or place outside the tolerance. No ROS graph, no
-MoveIt.
+`test/test_draw_line.py` (the script's path geometry, CSV and plot) and `test/test_run_goal_set.py` (the goal set
+check, the package's set, the summary). `test/test_pick_and_place.cpp` runs the sequence against a fake arm that
+moves where it was planned and a fake gripper: stage order, straight lines above each pose, the control held once, a
+failure at every stage, a pick or place outside the tolerance. No ROS graph, no MoveIt.
 `test/test_move_to_pose_node.cpp` runs the node in-process with a fake `MotionGroup`: both actions, cancel, one goal
 at a time, TF frames and `/arm/take_control`, and `/pick_and_place` with a fake `gripper_action_controller`: every
 stage, default height, frames, cancel and STOP at a stage, the gripper failing. `MoveItMotionGroup` is checked in

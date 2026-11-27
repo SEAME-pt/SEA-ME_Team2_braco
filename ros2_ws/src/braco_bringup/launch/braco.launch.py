@@ -23,6 +23,9 @@ The braco system in one ROS 2 launch, on the real arm or in simulation.
                 also starts the web page. The arm is not zeroed or parked on start/stop.
                 arm_driver is not respawned: when it exits the whole launch shuts down, so
                 arm_routine.sh ends and the container stops (a driver fault is always seen).
+                arm_driver is a lifecycle node, configured and activated here (#95). A failed
+                configure, an error back to unconfigured or finalized end its process, so the
+                launch shuts down too; deactivate (a STOP) and cleanup do not.
     sim:=true   the simulated arm (PC only), what the `sim` container runs: Gazebo with the
                 braco_description model and the ros2_control controllers planned for the
                 real arm (braco_simulation's gazebo.launch.py). When Gazebo exits the launch
@@ -35,14 +38,17 @@ Also usable by hand in the dev container: ros2 launch braco_bringup braco.launch
 """
 
 from launch import LaunchDescription
-from launch.actions import (DeclareLaunchArgument, IncludeLaunchDescription, RegisterEventHandler,
-                            Shutdown)
+from launch.actions import (DeclareLaunchArgument, EmitEvent, IncludeLaunchDescription, LogInfo,
+                            RegisterEventHandler, Shutdown)
 from launch.conditions import IfCondition, UnlessCondition
 from launch.event_handlers import OnProcessExit
+from launch.events import matches_action
+from launch.events.process import ShutdownProcess
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import (AndSubstitution, Command, FindExecutable, LaunchConfiguration,
                                   NotSubstitution, PathJoinSubstitution)
-from launch_ros.actions import Node
+from launch_ros.actions import LifecycleNode, Node
+from launch_ros.event_handlers import OnStateTransition
 from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
 
@@ -74,10 +80,19 @@ def generate_launch_description():
         condition=IfCondition(AndSubstitution(sim, moveit)))
 
     # The only process that opens the serial port. Not respawned: a fault must be seen.
-    arm_driver = Node(package='braco_driver', executable='arm_driver', name='arm_driver',
-                      output='screen', condition=real,
-                      parameters=[config, {'port': port,
-                                           'baud': ParameterValue(baud, value_type=int)}])
+    arm_driver = LifecycleNode(package='braco_driver', executable='arm_driver', name='arm_driver',
+                               namespace='', output='screen', condition=real, autostart=True,
+                               parameters=[config, {'port': port,
+                                                    'baud': ParameterValue(baud, value_type=int)}])
+
+    # Ends the arm_driver process; its exit handler then shuts the launch down. A Shutdown here
+    # too would run twice, and launch_ros fails on the second one.
+    def shutdown_on(start_state, goal_state, reason):
+        stop = EmitEvent(event=ShutdownProcess(process_matcher=matches_action(arm_driver)))
+        return RegisterEventHandler(
+            OnStateTransition(target_lifecycle_node=arm_driver, start_state=start_state,
+                              goal_state=goal_state, entities=[LogInfo(msg=reason), stop]),
+            condition=real)
     # The real arm's URDF, with the braco_hardware plugin under ros2_control (ADR-0004)
     model = PathJoinSubstitution(
         [FindPackageShare('braco_description'), 'urdf', 'braco.urdf.xacro'])
@@ -87,6 +102,10 @@ def generate_launch_description():
     # spawner
     controllers = PathJoinSubstitution(
         [FindPackageShare('braco_description'), 'config', 'controllers.yaml'])
+    # Loaded after controllers.yaml: ros2_control's command limiter off (#157) and the velocity
+    # command on the real arm
+    controllers_real = PathJoinSubstitution(
+        [FindPackageShare('braco_description'), 'config', 'controllers_real.yaml'])
     return LaunchDescription([
         DeclareLaunchArgument('sim', default_value='false',
                               description='true: simulated arm, false: real arm'),
@@ -108,6 +127,10 @@ def generate_launch_description():
             OnProcessExit(target_action=arm_driver,
                           on_exit=[Shutdown(reason='arm_driver exited')]),
             condition=real),
+        # Alive but unusable is a fault too (not cleanup: cleaningup -> unconfigured)
+        shutdown_on('configuring', 'unconfigured', 'arm_driver could not configure'),
+        shutdown_on('errorprocessing', 'unconfigured', 'arm_driver failed a transition'),
+        shutdown_on(None, 'finalized', 'arm_driver finalized'),
         Node(package='braco_driver', executable='temperature_monitor',
              name='temperature_monitor', output='screen', respawn=True, condition=real,
              parameters=[config, {'lcd_bus': lcd_bus}]),
@@ -116,9 +139,10 @@ def generate_launch_description():
              output='screen', condition=real,
              parameters=[{'robot_description': robot_description}]),
         Node(package='controller_manager', executable='ros2_control_node',
-             output='screen', condition=real, parameters=[controllers]),
+             output='screen', condition=real, parameters=[controllers, controllers_real]),
         Node(package='controller_manager', executable='spawner', output='screen',
-             condition=real, arguments=['arm_controller', '--param-file', controllers]),
+             condition=real, arguments=['arm_controller', '--param-file', controllers,
+                                        '--param-file', controllers_real]),
         Node(package='braco_teleop', executable='joystick_teleop', name='joystick_teleop',
              output='screen', respawn=True, condition=real,
              parameters=[config, {'device': device}]),

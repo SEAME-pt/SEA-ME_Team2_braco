@@ -69,16 +69,23 @@ Safety rules for the arm, its gripper and its camera.
   - Release it, once the area is safe, with `make resume` or the page's **Release STOP**. Both are refused for 3 s
     after the last STOP.
   - The release does not move the arm. Take control and send a new command to move it.
+- **Deactivating `arm_driver` is a STOP**: `ros2 lifecycle set /arm_driver deactivate` stops the arm and
+  latches. Motion stays refused until `ros2 lifecycle set /arm_driver activate`, and activating does not release the
+  latch. Angles and temperatures are still read.
 - **Only one client moves the arm at a time** ([ADR-0002](../decisions/ADR-0002-unique-control.md)).
   - Who is in control: see the web page, or `ros2 topic echo /arm/control_owner`.
   - The joystick takes control from the page only if you hold **button 8 for about 1 s**.
-- **If `arm_driver` crashes,** the whole system stops. Check with `make status` and `make logs`.
+- **If `arm_driver` crashes or cannot open the serial port,** the whole system stops. Check with `make status` and
+  `make logs`.
 
 ### 6.3 Turning off the motors (free the joints)
 
 - **System running:** `make park`. It folds the arm, turns off the motors and puts it in rest mode.
 - **Never open the serial port yourself while the system runs:** only `arm_driver` may use it.
-- **System off** (`make down`): you can free the joints with pymycobot:
+- **Turning the system off:** `make down` (also `restart`, `re`, `fclean` and `systemctl stop braco`) parks the arm
+  first. Stopped without a park (`PARK=0`, `docker stop`, a crash of `arm_driver`), the motors stay on, holding the
+  pose, and nothing watches their temperature.
+- **System off without a park:** you can free the joints with pymycobot (hold the arm: it drops):
 
   ```python
   import time
@@ -92,13 +99,15 @@ Safety rules for the arm, its gripper and its camera.
 ## 7. Hot motors
 
 - **The arm is hot?** Follow [overheating.md](overheating.md).
+- **Parking on overheat needs an active `arm_driver`.** While it is inactive, a hot motor only puts the arm in rest
+  mode: the motors stay on.
 
 ## 8. Starting again after an emergency stop
 
 1. Stop the program that caused the problem.
 2. Put the arm straight up by hand.
 3. Turn the power back on.
-4. Move it to zero slowly (speed ≤ 15%) and check the angles and the camera.
+4. Move it to zero slowly (speed ≤ 15 %) and check the angles and the camera.
 
 ## 9. First MoveIt 2 motion on the real arm
 
@@ -106,13 +115,14 @@ Go/no-go checklist. If any box is not ticked, do not move the arm.
 
 ### 9.1 Before
 
-- [ ] MoveIt started with `make moveit`: its domain check passed
-  ([#103](https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/103)): real arm on domain 22, nothing else on it.
+- [ ] MoveIt started with `make moveit`, and its domain check passed: real arm on domain 22, nothing else on it.
   On FAIL `move_group` does not start.
-- [ ] Limits test green ([#99](https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/99)).
+- [ ] Limits test green: `braco_moveit_config/test/test_joint_limits.py` (the limits in `mycobot.hpp`, the URDF and
+  `joint_limits.yaml` match).
 - [ ] MoveIt velocity and acceleration scaling **≤ 0.1**: `default_velocity_scaling_factor` and
   `default_acceleration_scaling_factor` in `braco_moveit_config/config/joint_limits.yaml`, and `move_to_pose`'s
-  `velocity_scaling` / `acceleration_scaling` (ADR-0004).
+  `velocity_scaling` / `acceleration_scaling`
+  ([ADR-0004](../decisions/ADR-0004-trajectories-through-arm-driver.md)).
 - [ ] Everyone present has signed the induction (section 1).
 - [ ] Work area clear (section 3).
 - [ ] Arm at park. Goals go through `move_to_pose` with `use_control: true`: it takes the control as `mission`
@@ -133,8 +143,8 @@ Go/no-go checklist. If any box is not ticked, do not move the arm.
 ### 9.3 After
 
 - [ ] Return the arm to park.
-- [ ] Record what happened (date, people, motion, result, problems) in a comment on
-  [#101](https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/101).
+- [ ] Record what happened (date, people, motion, result, problems) in a comment on the PR that changed the motion
+  code.
 
 ### 9.4 Abort
 

@@ -3,7 +3,7 @@
 # Rules (make lint checks them): 20-29, never 22 (the real arm), 27 (the default), 28 (braco_hardware's
 # test) or 29 (the MoveIt launch test), each domain once.
 # Why this range: https://github.com/ros2/ros2_documentation/blob/rolling/source/ROS-Framework/nodes/About-Domain-ID.rst
-# Free: 26. Columns separated by tabs. Keep docker/README.md (section 6) in step.
+# Free: 26. Columns separated by tabs. The only list: docker/README.md (section 6) links here.
 # login	name	domain
 Denionline	Daniel	20
 larocqueg	Gabriel	21

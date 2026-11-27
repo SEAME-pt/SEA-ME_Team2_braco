@@ -1,4 +1,4 @@
-"""Statistics shared by the timing scripts (issue #90). No ROS, no serial: unit tested."""
+"""Statistics shared by the timing scripts. No ROS, no serial: unit tested."""
 
 import math
 
@@ -10,6 +10,20 @@ def percentile(sorted_values, p):
     return sorted_values[max(0, math.ceil(p * len(sorted_values)) - 1)]
 
 
+def load_stamps(path):
+    """Stamps (seconds) from a js_rate.py --raw CSV: a 'stamp_s' header, one stamp per line."""
+    with open(path) as f:
+        lines = f.read().split()
+    if not lines or lines[0] != 'stamp_s':
+        raise ValueError(f'{path}: not a js_rate.py --raw CSV (no stamp_s header)')
+    return [float(x) for x in lines[1:]]
+
+
+def intervals_ms(stamps_s):
+    """Intervals between consecutive stamps in ms, in time order (for a time series)."""
+    return [(b - a) * 1000.0 for a, b in zip(stamps_s, stamps_s[1:])]
+
+
 def interval_stats(stamps_s, requested_hz):
     """Statistics of the intervals between consecutive stamps (seconds), in ms and Hz.
 
@@ -17,7 +31,7 @@ def interval_stats(stamps_s, requested_hz):
     """
     if len(stamps_s) < 2:
         raise ValueError('need at least two stamps')
-    iv = sorted((b - a) * 1000.0 for a, b in zip(stamps_s, stamps_s[1:]))
+    iv = sorted(intervals_ms(stamps_s))
     total = sum(iv)
     if total <= 0:
         raise ValueError('the stamps do not advance')
@@ -37,7 +51,7 @@ def windowed_speeds(points, window_s):
     from it to the first sample at least window_s later. points: (time s, angle deg), ascending.
 
     Between two /joint_states 20-60 ms apart a slow joint moves only a few encoder steps, so a
-    one-step error looks like jitter; over ~200 ms it is small (#141).
+    one-step error looks like jitter; over ~200 ms it is small.
     """
     speeds = []
     k = 0
@@ -57,7 +71,7 @@ def settle_time(samples, t0, tol_deg, consecutive=3, rest_s=0.3):
 
     samples: (time s, [angle deg per joint]), ascending. The rest pose is the mean of the last
     rest_s seconds. Settled = `consecutive` samples in a row inside the tolerance; 0.0 if it
-    already was at t0, None if it never settles (#141: wait for this before the gripper acts).
+    already was at t0, None if it never settles (wait for this before the gripper acts).
     """
     after = [(t, a) for t, a in samples if t >= t0]
     tail = [a for t, a in after if t >= after[-1][0] - rest_s] if after else []

@@ -39,11 +39,24 @@ constexpr const char * SOURCE = "mission";   // ArmCommand.source and the contro
 // An unchanged target is still sent this long (the arm reaches it before arm_driver's 300 ms
 // watchdog), then nothing: arm_driver frees a control left unreleased after 5 s without motion
 constexpr double HOLD_S = 2.0;
-// command_speed(): gaps above this between two sends count as this long. arm_driver takes a
-// command every ~70 ms under load (docs/architecture/timing-budget.md): longer is a pause
-constexpr int64_t MAX_SPEED_DT_NS = 100'000'000;
+// The arm starts ~200 ms after a command: a faster servo catches up with the trajectory
+constexpr double SPEED_MARGIN = 1.5;
 
 }  // namespace
+
+uint8_t speed_for_velocity(
+  const JointValues & velocity, const JointValues & max_velocity, uint8_t min_speed)
+{
+  double speed = 0.0;
+  for (std::size_t i = 0; i < velocity.size(); ++i) {
+    if (std::isnan(velocity[i])) {
+      return min_speed;
+    }
+    speed = std::max(speed, std::abs(velocity[i]) / max_velocity[i] * 100.0);
+  }
+  speed = std::clamp(std::ceil(speed * SPEED_MARGIN), static_cast<double>(min_speed), 100.0);
+  return static_cast<uint8_t>(speed);
+}
 
 hardware_interface::CallbackReturn BracoSystem::on_init(
   const hardware_interface::HardwareComponentInterfaceParams & params)
@@ -62,17 +75,26 @@ hardware_interface::CallbackReturn BracoSystem::on_init(
 
 bool BracoSystem::joints_are_valid()
 {
-  // read() fills position and velocity of every joint: refuse a URDF without them
+  // read() fills both states, write() reads both commands (position and velocity)
+  const auto has_both = [](const auto & interfaces) {
+      bool has_position = false;
+      bool has_velocity = false;
+      for (const auto & interface : interfaces) {
+        has_position = has_position || interface.name == hardware_interface::HW_IF_POSITION;
+        has_velocity = has_velocity || interface.name == hardware_interface::HW_IF_VELOCITY;
+      }
+      return has_position && has_velocity;
+    };
   for (const auto & joint : get_hardware_info().joints) {
-    bool has_position = false;
-    bool has_velocity = false;
-    for (const auto & state : joint.state_interfaces) {
-      has_position = has_position || state.name == hardware_interface::HW_IF_POSITION;
-      has_velocity = has_velocity || state.name == hardware_interface::HW_IF_VELOCITY;
-    }
-    if (!has_position || !has_velocity) {
+    if (!has_both(joint.state_interfaces)) {
       RCLCPP_ERROR(
         get_logger(), "joint %s needs position and velocity state interfaces",
+        joint.name.c_str());
+      return false;
+    }
+    if (!has_both(joint.command_interfaces)) {
+      RCLCPP_ERROR(
+        get_logger(), "joint %s needs position and velocity command interfaces",
         joint.name.c_str());
       return false;
     }
@@ -85,6 +107,20 @@ bool BracoSystem::joints_are_valid()
       get_hardware_info().joints.size());
     return false;
   }
+
+  // write() scales the servo speed by each joint's max velocity: refuse a joint without one
+  const auto & limits = get_hardware_info().limits;
+  for (std::size_t i = 0; i < max_velocity_.size(); ++i) {
+    const auto & name = get_hardware_info().joints[i].name;
+    const auto limit = limits.find(name);
+    if (limit == limits.end() || !limit->second.has_velocity_limits ||
+      limit->second.max_velocity <= 0.0)
+    {
+      RCLCPP_ERROR(get_logger(), "joint %s needs a velocity limit > 0 in the URDF", name.c_str());
+      return false;
+    }
+    max_velocity_[i] = limit->second.max_velocity;
+  }
   return true;
 }
 
@@ -92,26 +128,20 @@ bool BracoSystem::load_parameters()
 {
   // Optional <param>s of the <hardware> block; without them, the defaults of the header
   const auto & params_in_urdf = get_hardware_info().hardware_parameters;
-  double rate = publish_rate_hz_;
-  int speed = speed_;
+  int min_speed = min_speed_;
   try {
-    if (params_in_urdf.count("publish_rate_hz")) {
-      rate = std::stod(params_in_urdf.at("publish_rate_hz"));
-    }
-    if (params_in_urdf.count("speed")) {
-      speed = std::stoi(params_in_urdf.at("speed"));
+    if (params_in_urdf.count("min_speed")) {
+      min_speed = std::stoi(params_in_urdf.at("min_speed"));
     }
   } catch (const std::exception &) {
-    RCLCPP_ERROR(get_logger(), "publish_rate_hz and speed must be numbers");
+    RCLCPP_ERROR(get_logger(), "min_speed must be a number");
     return false;
   }
-  if (rate <= 0.0 || speed < 1 || speed > 100) {
-    RCLCPP_ERROR(
-      get_logger(), "publish_rate_hz must be > 0 and speed 1..100 (got %.1f, %d)", rate, speed);
+  if (min_speed < 1 || min_speed > 100) {
+    RCLCPP_ERROR(get_logger(), "min_speed must be 1..100 (got %d)", min_speed);
     return false;
   }
-  publish_rate_hz_ = rate;
-  speed_ = static_cast<uint8_t>(speed);
+  min_speed_ = static_cast<uint8_t>(min_speed);
   return true;
 }
 
@@ -129,7 +159,6 @@ hardware_interface::CallbackReturn BracoSystem::on_configure(
   subscribe();
   // write() sends the controller's targets to arm_driver on its command topic (ADR-0004)
   command_pub_ = get_node()->create_publisher<ArmCommand>("/arm/command", 10);
-  last_publish_ns_ = 0;
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
@@ -180,8 +209,6 @@ hardware_interface::CallbackReturn BracoSystem::on_activate(
   stop_seen_ = false;
   lost_control_ = false;
   target_changed_ns_ = 0;   // the first target after this counts as new
-  has_sent_ = false;        // and its speed is not measured against an old goal's last target
-  sent_speed_ = std::min<uint8_t>(MIN_SPEED, speed_);
 
   // read() runs right after this, too soon for the first /joint_states to have arrived, and a
   // read() without one stops the hardware. So wait here (up to 2 s) until it arrives: the
@@ -206,19 +233,25 @@ hardware_interface::return_type BracoSystem::perform_command_mode_switch(
 {
   // Called when a controller claims or releases command interfaces. After arm_controller
   // releases ours they keep its last target, which write() must not keep sending.
-  const auto has_ours = [this](const std::vector<std::string> & interfaces) {
+  const auto has_ours = [this](const std::vector<std::string> & interfaces, const char * type) {
       for (const auto & joint : get_hardware_info().joints) {
-        const auto name = joint.name + "/" + hardware_interface::HW_IF_POSITION;
+        const auto name = joint.name + "/" + type;
         if (std::find(interfaces.begin(), interfaces.end(), name) != interfaces.end()) {
           return true;
         }
       }
       return false;
     };
-  if (has_ours(stop_interfaces)) {
+  if (has_ours(stop_interfaces, hardware_interface::HW_IF_POSITION)) {
     commanding_ = false;
   }
-  if (has_ours(start_interfaces)) {
+  if (has_ours(start_interfaces, hardware_interface::HW_IF_POSITION)) {
+    // Without the velocity command write() sends min_speed all along: the arm falls behind
+    if (!has_ours(start_interfaces, hardware_interface::HW_IF_VELOCITY)) {
+      RCLCPP_WARN(
+        get_logger(), "the controller claims no velocity command: servo speed stays at %d "
+        "(controllers_real.yaml loaded?)", min_speed_);
+    }
     commanding_ = true;
     stop_seen_ = false;   // arm_controller back: what aborted the last goal is over
     lost_control_ = false;
@@ -270,21 +303,15 @@ hardware_interface::return_type BracoSystem::write(
   if (!owner_is_mission_) {
     return hardware_interface::return_type::OK;   // not our turn: arm_driver would ignore us
   }
-  // arm_driver sends ~14 commands/s and keeps only the latest: no point publishing at the
-  // loop's 100 Hz. Skip, never sleep: a sleep here would stall read() and the controllers too.
+  // Publishes on every controller cycle: arm_driver keeps only the latest target.
   // Nanoseconds, not rclcpp::Time: the manager's clock type (steady here) would have to match.
-  if (time.nanoseconds() - last_publish_ns_ < static_cast<int64_t>(1e9 / publish_rate_hz_)) {
-    return hardware_interface::return_type::OK;
-  }
   ArmCommand msg;
   if (!make_command(msg) || target_is_idle(msg, time.nanoseconds())) {
     return hardware_interface::return_type::OK;
   }
-  msg.speed = command_speed(msg, time.nanoseconds());
   // Also when the target has not changed (for HOLD_S): arm_driver stops the arm after
   // command_timeout_ms (300 ms) without a motion command. Not clamped: arm_driver clamps.
   command_pub_->publish(msg);
-  last_publish_ns_ = time.nanoseconds();
   return hardware_interface::return_type::OK;
 }
 
@@ -297,35 +324,12 @@ bool BracoSystem::target_is_idle(const ArmCommand & msg, int64_t now_ns)
   return now_ns - target_changed_ns_ > static_cast<int64_t>(HOLD_S * 1e9);
 }
 
-uint8_t BracoSystem::command_speed(const ArmCommand & msg, int64_t now_ns)
-{
-  // The servo should reach each target about when the next one comes, as the trajectory does,
-  // not rush there at a fixed speed and wait. The fastest joint sets it: one speed for all six.
-  // An unchanged target (the arm finishing the last point) keeps the speed it was moving at.
-  uint8_t speed = sent_speed_;
-  if (has_sent_) {
-    double max_delta_deg = 0.0;
-    for (std::size_t i = 0; i < msg.angles_deg.size(); ++i) {
-      max_delta_deg = std::max(max_delta_deg, std::abs(msg.angles_deg[i] - sent_deg_[i]));
-    }
-    if (max_delta_deg > 0.0) {
-      // A long gap (the trajectory paused, or the first send after one) is not a slow target
-      const double dt_s = static_cast<double>(std::min(now_ns - sent_ns_, MAX_SPEED_DT_NS)) / 1e9;
-      speed = speed_for_velocity(max_delta_deg / RAD_TO_DEG / dt_s, speed_);
-    }
-  }
-  has_sent_ = true;
-  sent_deg_ = msg.angles_deg;
-  sent_ns_ = now_ns;
-  sent_speed_ = speed;
-  return speed;
-}
-
 bool BracoSystem::make_command(ArmCommand & msg)
 {
   msg.type = ArmCommand::ALL_ANGLES;
-  msg.source = SOURCE;   // the speed is write()'s: command_speed()
+  msg.source = SOURCE;
   const auto & joints = get_hardware_info().joints;
+  JointValues velocity{};
   for (std::size_t i = 0; i < joints.size(); ++i) {
     const double position =
       get_command(joints[i].name + "/" + hardware_interface::HW_IF_POSITION);
@@ -333,7 +337,9 @@ bool BracoSystem::make_command(ArmCommand & msg)
       return false;   // NaN until the controller writes its first target
     }
     msg.angles_deg[i] = position * RAD_TO_DEG;
+    velocity[i] = get_command(joints[i].name + "/" + hardware_interface::HW_IF_VELOCITY);
   }
+  msg.speed = speed_for_velocity(velocity, max_velocity_, min_speed_);
   return true;
 }
 

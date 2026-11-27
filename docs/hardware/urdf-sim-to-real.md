@@ -1,30 +1,28 @@
-# Arm URDF: sim-to-real validation (issue #25)
+# Arm URDF: sim-to-real validation
 
 Package: `ros2_ws/src/braco_description/` (model of the myCobot 280 with the adaptive gripper and the camera mount).
 This document says where the model came from, what was changed, what is **already validated** and what **still has to be
-measured on the hardware** (section "Open items"). Nothing below marked "to measure" was made up: those are placeholder values.
+measured on the hardware** (section "Open items"). Values marked placeholder, estimated or provisional are not measured.
+
+Measured on the real arm (Jetson Nano, Atom firmware 7.3): joint signs on 2026-10-22; zero pose, FK and joint velocity
+on 2026-10-23.
+
+**Contents:** [How to use](#how-to-use) · [Origin of the model](#origin-of-the-model-and-what-was-changed) ·
+[Frame tree](#frame-tree) · [Limits](#limits) · [Inertia](#inertia) · [Zero pose](#zero-pose) ·
+[Open items](#open-items-need-the-hardware) · [What the simulation does not reproduce](#what-the-simulation-does-not-reproduce) ·
+[Known gaps](#known-gaps)
 
 ## How to use
 
-Step by step, with the GPU, ROS domains and common problems: [Run the simulation](../../ros2_ws/src/braco_simulation/README.md#run-it).
-In short:
+Run the model in Gazebo, with the GPU, ROS domains and common problems: [Run the simulation](../../ros2_ws/src/braco_simulation/README.md#run-it).
+
+Check the model without ROS running:
 
 ```bash
-# PC: `make up SIM=1` also starts the `sim` container = braco.launch.py sim:=true (Gazebo + controllers, your PC_ROS_DOMAIN_ID)
-make up SIM=1
-# in a dev shell (make shell, already on the simulation's domain): move one joint (degrees)
-ros2 run braco_simulation move_joint.py 2 30
-
-# Put the simulated arm at given joint angles (radians, reached in 2 s)
-ros2 topic pub --once /arm_controller/joint_trajectory trajectory_msgs/msg/JointTrajectory \
-  "{joint_names: [joint1, joint2, joint3, joint4, joint5, joint6],
-    points: [{positions: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0], time_from_start: {sec: 2}}]}"
-
-# Check the model without ROS running:
 xacro urdf/braco.urdf.xacro > /tmp/braco.urdf && check_urdf /tmp/braco.urdf
 ```
 
-Tests: `make test` (`test/test_urdf.py`, 32 cases). They fail if a limit changes in `mycobot.hpp` without changing in the
+Tests: `make test` (`test/test_urdf.py`). They fail if a limit changes in `mycobot.hpp` without changing in the
 URDF, if a joint name leaves `joint1..joint6`, if a link with geometry has no positive mass/inertia, if a frame (`tool0`,
 `tcp`, `camera_optical_frame`, …) disappears, if the ros2_control plugin or `arm_controller`'s joints or tolerances change, or if the position of `tool0` in the zero pose changes by accident.
 
@@ -76,12 +74,12 @@ world -> g_base -> base_link -> link1 -> link2 -> link3 -> link4 -> link5 -> lin
   the flange's hole grid.
 - `tcp`: on the z axis of `tool0`, at `tcp_length` = 0.130 m (from `TOOL_LENGTH_MM`: flange to the tip of the closed
   gripper with camera). **Placeholder**: measure to the middle of the fingertips.
-- `camera_mount`: the camera plate, Elephant Robotics' **camera flange** (in the arm's box, `docs/hardware/inventory.md`), an
+- `camera_mount`: the camera plate, Elephant Robotics' **camera flange** (in the arm's box, [inventory.md](inventory.md)), an
   83 × 34 mm plate, 16 mm thick with the USB camera. Its LEGO hole grid goes on the flange's, and the gripper pins onto
   the same holes on its front face: **flange → camera plate → gripper** (the gripper is 16.3 mm further out than on a
   bare flange). Mesh and mount are the vendor's (`mycobot_280_pi/camera_flange.dae`,
   `mycobot_280_pi_with_camera_flange.urdf`); its direction (`tool0` +x) matches the real arm's front and back photos at
-  the zero pose (`camera_flange` photos in `docs/hardware/inventory.md`).
+  the zero pose (camera flange photos in [inventory.md](inventory.md)).
 - `camera_link`: on the lens, from the vendor mesh: **(41.5, 0, 12) mm in `tool0`**, looking along `tool0` +z like the
   gripper (`camera_link` x = `tool0` z, REP-103). The roll of the image about the viewing axis is not known from the
   model: the hand-eye calibration sets it.
@@ -235,7 +233,7 @@ against the real arm (Gazebo on this shell's `ROS_DOMAIN_ID`, e.g. 27; the real 
 
 - [x] `ros2 run tf2_tools view_frames` with Gazebo running, and attach the PDF: see "Frame tree" above.
 
-## What the simulation does not reproduce (#34)
+## What the simulation does not reproduce
 
 The simulated arm has the model above and the ros2_control controllers planned for the hardware
 (`config/controllers.yaml`), but not the firmware or `arm_driver` around the real servos. A move that works in
@@ -257,8 +255,8 @@ owner and the speed setting are only checked on the real arm (`--real` of the `b
 
 - Gripper not actuated on the real arm: the driver does not publish the finger state, so the real model keeps
   `gripper_actuated:=false` (fingers fixed open). Gazebo builds it with `gripper_actuated:=true` and drives it
-  (`gripper_action_controller`, #123); there it closes slowly, about 0.13 rad/s (6 s for the whole stroke).
-- Wrist camera: Gazebo renders it at `camera_link` with the real camera's 640×480 and 15 Hz (#123), but the real
+  (`gripper_action_controller`); there it closes slowly, about 0.13 rad/s (6 s for the whole stroke).
+- Wrist camera: Gazebo renders it at `camera_link` with the real camera's 640×480 and 15 Hz, but the real
   lens's field of view is not measured (60° horizontal assumed) and its image has no distortion. Measure the field of
   view (a ruler at a known distance) and set `horizontal_fov` in `braco.gazebo.xacro`.
 - Masses are documented totals with an estimated split; efforts are a payload-based approximation; inertias are

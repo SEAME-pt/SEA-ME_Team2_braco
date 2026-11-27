@@ -3,6 +3,7 @@
 #include "mycobot.hpp"
 
 #include <fcntl.h>
+#include <poll.h>
 #include <sys/ioctl.h>
 #include <termios.h>
 #include <unistd.h>
@@ -22,8 +23,7 @@ using namespace std::chrono_literals;
 
 namespace {
 
-constexpr auto REPLY_TIMEOUT = 500ms;  // max wait for one reply
-constexpr auto RETRY_DELAY = 100ms;    // pause between retries
+constexpr auto RETRY_DELAY = 100ms;  // pause between retries
 
 speed_t toTermiosBaud(int baud) {
     switch (baud) {
@@ -210,7 +210,7 @@ bool MyCobot280::sendAngles(const Angles& angles, int speed) {
     std::vector<uint8_t> data;
     for (double a : limited) appendInt16(data, static_cast<int16_t>(std::lround(a * 100.0)));
     data.push_back(clampSpeed(speed));
-    sendCommand(protocol::SEND_ANGLES, data);
+    sendCommand(protocol::SEND_ANGLES, data, false);  // no drain: callers pause after a move
     lastAngles_ = limited;
     return clamped;
 }
@@ -232,7 +232,7 @@ bool MyCobot280::sendAngle(int joint, double angle, int speed) {
     data.push_back(static_cast<uint8_t>(joint));
     appendInt16(data, static_cast<int16_t>(std::lround(a * 100.0)));
     data.push_back(clampSpeed(speed));
-    sendCommand(protocol::SEND_ANGLE, data);
+    sendCommand(protocol::SEND_ANGLE, data, false);  // no drain: callers pause after a move
     lastAngles_ = target;
     return clamped;
 }
@@ -247,8 +247,8 @@ std::optional<bool> MyCobot280::isMoving() {
 
 // ----------------------------------------------------------------- feedback
 
-std::optional<Angles> MyCobot280::getAngles(int retries) {
-    auto data = query(protocol::GET_ANGLES, 12, retries);
+std::optional<Angles> MyCobot280::getAngles(int retries, std::chrono::milliseconds timeout) {
+    auto data = query(protocol::GET_ANGLES, 12, retries, timeout);
     if (!data) return std::nullopt;
 
     Angles angles{};
@@ -444,7 +444,7 @@ std::optional<TempCheck> MyCobot280::checkTemps(int retries) {
 
 // ------------------------------------------------------------ serial layer
 
-void MyCobot280::sendCommand(uint8_t cmd, const std::vector<uint8_t>& data) {
+void MyCobot280::sendCommand(uint8_t cmd, const std::vector<uint8_t>& data, bool drain) {
     std::vector<uint8_t> frame = {protocol::HEADER, protocol::HEADER,
                                   static_cast<uint8_t>(data.size() + 2), cmd};
     frame.insert(frame.end(), data.begin(), data.end());
@@ -459,7 +459,8 @@ void MyCobot280::sendCommand(uint8_t cmd, const std::vector<uint8_t>& data) {
         }
         sent += static_cast<size_t>(n);
     }
-    tcdrain(fd_);  // wait until the bytes have left the UART
+    // Waits until the bytes have left the UART: on the Jetson it can take ~13 ms for 0.2 ms of data.
+    if (drain) tcdrain(fd_);
 }
 
 std::optional<std::vector<uint8_t>> MyCobot280::readReply(uint8_t cmd,
@@ -468,6 +469,12 @@ std::optional<std::vector<uint8_t>> MyCobot280::readReply(uint8_t cmd,
     const auto deadline = std::chrono::steady_clock::now() + timeout;
 
     while (std::chrono::steady_clock::now() < deadline) {
+        // Waits only until the deadline: read() alone could block 100 ms (VTIME).
+        const auto left = std::chrono::ceil<std::chrono::milliseconds>(
+            deadline - std::chrono::steady_clock::now());
+        pollfd pfd{fd_, POLLIN, 0};
+        if (poll(&pfd, 1, static_cast<int>(left.count())) <= 0) continue;
+
         uint8_t tmp[64];
         ssize_t n = read(fd_, tmp, sizeof(tmp));
         if (n < 0 && errno != EINTR && errno != EAGAIN) { throw systemError("serial read failed"); }
@@ -489,13 +496,16 @@ std::optional<std::vector<uint8_t>> MyCobot280::readReply(uint8_t cmd,
 }
 
 std::optional<std::vector<uint8_t>> MyCobot280::query(uint8_t cmd, size_t expected_size,
-                                                      int retries) {
-    for (int attempt = 0; attempt < std::max(1, retries); ++attempt) {
+                                                      int retries,
+                                                      std::chrono::milliseconds timeout) {
+    const int attempts = std::max(1, retries);
+    for (int attempt = 0; attempt < attempts; ++attempt) {
         tcflush(fd_, TCIFLUSH);  // drop stale bytes from earlier commands
         sendCommand(cmd);
-        auto data = readReply(cmd, REPLY_TIMEOUT);
+        auto data = readReply(cmd, timeout);
         if (data && data->size() == expected_size) { return data; }
-        std::this_thread::sleep_for(RETRY_DELAY);
+        // No pause after the last attempt.
+        if (attempt + 1 < attempts) { std::this_thread::sleep_for(RETRY_DELAY); }
     }
     return std::nullopt;
 }

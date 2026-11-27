@@ -55,9 +55,9 @@ Implemented in `AutoRest` ([auto_rest.hpp](../../ros2_ws/src/braco_driver/includ
 ## Confirmation
 
 - `braco_driver/test/test_control.cpp`: once per episode, 64/65 °C jitter is one episode, new episode only below 60 °C, retry after failure
-- Bench (`make bench`, step 5): simulated hot servo → arm parks, joints released, rest on, LCD warns; `make resume` → motion accepted
+- Bench (`make bench`, step 6): simulated hot servo → arm parks, joints released, rest on, LCD warns; `make resume` → motion accepted
 
 ## Links
 
-- Issue [#55](https://github.com/SEAME-pt/SEA-ME_Team2_braco/issues/55); hysteresis added after PR #64 review (2026-10-23); STOP-latch exception added in PR #135 (2026-11-13)
+- History: hysteresis added after review (2026-10-23); STOP-latch exception added with [ADR-0005](ADR-0005-stop-latch.md) (2026-11-13)
 - [ADR-0002](ADR-0002-unique-control.md), [overheating guide](../guides/overheating.md), [safety.md](../guides/safety.md)

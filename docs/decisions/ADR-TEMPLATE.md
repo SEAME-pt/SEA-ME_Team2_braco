@@ -33,6 +33,7 @@ deciders: all
 
 - ✅ <good>
 - ❌ <bad>
+- ⚠️ <trade-off to watch>
 
 ## Confirmation
 
@@ -40,5 +41,6 @@ deciders: all
 
 ## Links
 
-- <issue, PR, related ADRs and docs>
+<!-- No issue or PR numbers or links: docs/guides/docs-rules.md -->
+- <related ADRs and docs>
 - <revisit if: condition that would reopen this decision>
