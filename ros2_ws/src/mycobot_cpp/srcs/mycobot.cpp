@@ -210,7 +210,7 @@ bool MyCobot280::sendAngles(const Angles& angles, int speed) {
     std::vector<uint8_t> data;
     for (double a : limited) appendInt16(data, static_cast<int16_t>(std::lround(a * 100.0)));
     data.push_back(clampSpeed(speed));
-    sendCommand(protocol::SEND_ANGLES, data);
+    sendCommand(protocol::SEND_ANGLES, data, false);  // no drain: callers pause after a move
     lastAngles_ = limited;
     return clamped;
 }
@@ -232,7 +232,7 @@ bool MyCobot280::sendAngle(int joint, double angle, int speed) {
     data.push_back(static_cast<uint8_t>(joint));
     appendInt16(data, static_cast<int16_t>(std::lround(a * 100.0)));
     data.push_back(clampSpeed(speed));
-    sendCommand(protocol::SEND_ANGLE, data);
+    sendCommand(protocol::SEND_ANGLE, data, false);  // no drain: callers pause after a move
     lastAngles_ = target;
     return clamped;
 }
@@ -444,7 +444,7 @@ std::optional<TempCheck> MyCobot280::checkTemps(int retries) {
 
 // ------------------------------------------------------------ serial layer
 
-void MyCobot280::sendCommand(uint8_t cmd, const std::vector<uint8_t>& data) {
+void MyCobot280::sendCommand(uint8_t cmd, const std::vector<uint8_t>& data, bool drain) {
     std::vector<uint8_t> frame = {protocol::HEADER, protocol::HEADER,
                                   static_cast<uint8_t>(data.size() + 2), cmd};
     frame.insert(frame.end(), data.begin(), data.end());
@@ -459,7 +459,8 @@ void MyCobot280::sendCommand(uint8_t cmd, const std::vector<uint8_t>& data) {
         }
         sent += static_cast<size_t>(n);
     }
-    tcdrain(fd_);  // wait until the bytes have left the UART
+    // Waits until the bytes have left the UART: on the Jetson it can take ~13 ms for 0.2 ms of data.
+    if (drain) tcdrain(fd_);
 }
 
 std::optional<std::vector<uint8_t>> MyCobot280::readReply(uint8_t cmd,

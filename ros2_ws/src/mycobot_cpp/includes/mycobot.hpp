@@ -257,8 +257,8 @@ private:
     // Clamp one angle to JOINT_LIMITS of `joint` (1..6); sets `clamped`.
     static double limitAngle(int joint, double angle, bool& clamped);
 
-    // Build a frame and write it to the port.
-    void sendCommand(uint8_t cmd, const std::vector<uint8_t>& data = {});
+    // Build a frame and write it to the port; `drain`: wait until it has left the UART.
+    void sendCommand(uint8_t cmd, const std::vector<uint8_t>& data = {}, bool drain = true);
 
     // Read until a complete frame for `cmd` arrives; return its data bytes.
     std::optional<std::vector<uint8_t>> readReply(uint8_t cmd, std::chrono::milliseconds timeout);
