@@ -47,6 +47,7 @@ ros2 service call /arm/take_control braco_interfaces/srv/TakeControl "{source: s
 ```
 
 **Serial loop:** one thread owns the port. Each serial command is followed by a `command_gap_ms` (25 ms) pause.
+An angle read with no reply within 30 ms is skipped and the loop goes on.
 
 Safety: angles are clamped to `JOINT_LIMITS` of `mycobot.hpp` and poses that put the wrist or tool below the table margin are refused; a **watchdog** stops the arm when motion commands
 stop for `command_timeout_ms` (300 ms); in **rest mode** motion, gripper and power on are refused while angles and

@@ -31,6 +31,7 @@ namespace
 {
 
 constexpr int ANGLE_READ_RETRIES = 1;
+constexpr auto ANGLE_READ_TIMEOUT = 30ms;  // no reply by then: skip this read
 constexpr double DEG_TO_RAD = M_PI / 180.0;
 constexpr const char * INACTIVE =
   " refused: arm_driver inactive (ros2 lifecycle set /arm_driver activate)";
@@ -628,7 +629,7 @@ void ArmDriver::publishAngles()
   std::optional<mycobot::Angles> angles;
   {
     std::lock_guard<std::mutex> lock(serial_mutex_);
-    angles = mc_->getAngles(ANGLE_READ_RETRIES);
+    angles = mc_->getAngles(ANGLE_READ_RETRIES, ANGLE_READ_TIMEOUT);
   }
   if (!angles) {
     // No message at all: clients see the state go stale and stop.

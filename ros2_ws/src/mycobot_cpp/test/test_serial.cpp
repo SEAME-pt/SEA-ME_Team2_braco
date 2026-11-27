@@ -193,6 +193,14 @@ TEST_F(FakeArm, NoReplyGivesNothing) {
     EXPECT_FALSE(arm_->isMoving().has_value());  // 5 retries of 500 ms
 }
 
+TEST_F(FakeArm, NoReplyGivesUpAtTheTimeout) {
+    const auto start = std::chrono::steady_clock::now();
+    EXPECT_FALSE(arm_->getAngles(1, std::chrono::milliseconds(30)).has_value());
+    const auto elapsed = std::chrono::steady_clock::now() - start;
+    EXPECT_GE(elapsed, std::chrono::milliseconds(30));  // waited the whole timeout
+    EXPECT_LT(elapsed, std::chrono::milliseconds(50));  // and gave up right after it
+}
+
 // ---- PID writes -----------------------------------------------------------------
 
 TEST_F(FakeArm, SetPidOutOfBoundsSendsNothing) {
