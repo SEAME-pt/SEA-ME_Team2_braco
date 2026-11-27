@@ -1,6 +1,7 @@
 """braco: the team's web interface to the myCobot 280.
 
-Live telemetry and control of the arm, its camera, the ROS 2 graph, docs and sprints,
+Live telemetry and control of the arm, pick and place through braco_mission, its camera, the
+ROS 2 graph, docs and sprints,
 shared in real time by everybody who has the page open (see session.py).
 
     ARM_MOCK=1 uvicorn web.server.app:app --port 8000      # PC, no arm
@@ -37,8 +38,19 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from . import docs, github, ros
-from .arm import JOINT_LIMITS, POSES, GazeboArm, MockArm, RestingError, RosArm, StoppedError
+from .arm import (
+    JOINT_LIMITS,
+    POSES,
+    GazeboArm,
+    MockArm,
+    RestingError,
+    RosArm,
+    StoppedError,
+    check_awake,
+    check_not_stopped,
+)
 from .camera import BOUNDARY, Camera
+from .mission import APPROACH_DEFAULT_M, MissionBusyError, MockPickPlace, PickPlace
 from .role import machine_role
 from .ros_graph import Graph
 from .ros_health import Health
@@ -75,10 +87,33 @@ def build_arm():
 arm = build_arm()
 hub = Hub(control=arm)
 arm.on_control_lost = hub.control_lost  # RosArm: the joystick forced the control away
+mission = MockPickPlace() if isinstance(arm, MockArm) else PickPlace(ros.bridge)
+MISSION_BORROWER = 'mission'  # braco_mission's control owner name in arm_driver
 health = Health(ros.bridge)
 graph = Graph(ros.bridge)
 camera = Camera(ros.bridge)
 _latest = {}  # last health sent, for new connections and change detection
+
+
+def _mission_changed(state):
+    hub.broadcast({'type': 'mission', 'data': state})
+
+
+def _mission_done(result, by, by_id):
+    """A pick-and-place goal ended: the operator gets the control back, everybody is told."""
+    hub.give_back()
+    if result['success']:
+        action = 'pick and place done'
+    elif result.get('cancelled'):
+        action = 'pick and place cancelled at {}'.format(result['failed_stage'])
+    else:
+        action = 'pick and place failed at {}'.format(result['failed_stage'])
+    hub.log(by or 'someone', action, ok=result['success'], detail=result['message'], by=by_id)
+
+
+mission.on_change = _mission_changed
+mission.on_done = _mission_done
+hub.on_lease_end = mission.cancel  # the lease ended while braco_mission had the arm
 
 
 async def _pump():
@@ -99,6 +134,7 @@ async def _pump():
 
             if tick % HEALTH_EVERY == 0:
                 await loop.run_in_executor(None, hub.tick)  # may call /arm/take_control
+                mission.poll()
                 data = await loop.run_in_executor(None, health.snapshot)
                 text = json.dumps(data, sort_keys=True, default=str)
                 if _latest.get('health', (None,))[0] != text:
@@ -127,6 +163,8 @@ async def lifespan(_app):
     else:
         ros.bridge.error = 'ROS 2 disabled (BRACO_ROS=0)'
     arm.start()
+    if ROS_ENABLED or isinstance(mission, MockPickPlace):
+        mission.start()
     pump = asyncio.create_task(_pump())
     yield
     pump.cancel()
@@ -152,7 +190,7 @@ def command(request, action, fn, operator=True):
         return hub.run(cid, action, fn, operator=operator, ip=ip)
     except LockedError as e:
         raise HTTPException(status_code=423, detail=str(e)) from e
-    except (BusyError, RestingError, StoppedError) as e:
+    except (BusyError, MissionBusyError, RestingError, StoppedError) as e:
         raise HTTPException(status_code=409, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
@@ -297,6 +335,68 @@ def led(body: Led, request: Request):
     return {'ok': True}
 
 
+# ---- pick and place (braco_mission) --------------------------------------------------
+
+
+class Point(BaseModel):
+    """A tcp position in the planning frame (world: the table surface under the arm), metres."""
+
+    x: float
+    y: float
+    z: float
+
+
+class PickPlaceGoal(BaseModel):
+    pick: Point
+    place: Point
+    approach_m: float = APPROACH_DEFAULT_M
+
+
+@app.get('/api/pick_place')
+def pick_place_state():
+    return mission.snapshot()
+
+
+@app.post('/api/pick_place')
+def pick_place(body: PickPlaceGoal, request: Request):
+    """Pick at one point and place at the other, tool pointing down. Operator only.
+
+    Returns once braco_mission accepted the goal; the stages and the result come over /ws
+    (`mission`). arm_driver's control is lent to braco_mission until the goal ends.
+    """
+    cid, _ip = _client(request)
+    pick = (body.pick.x, body.pick.y, body.pick.z)
+    place = (body.place.x, body.place.y, body.place.z)
+
+    def run():
+        s = arm.snapshot()
+        if not s.get('connected'):
+            raise RuntimeError(s.get('error') or 'the arm is not connected')
+        check_not_stopped(s.get('stopped'))
+        check_awake(s.get('resting'))
+        hub.lend(cid, MISSION_BORROWER)
+        try:
+            mission.run(pick, place, body.approach_m, by=hub.name_of(cid), by_id=cid)
+        except Exception:
+            hub.give_back()
+            raise
+
+    mm = lambda p: '({:.0f}, {:.0f}, {:.0f}) mm'.format(*(1000 * v for v in p))  # noqa: E731
+    command(request, 'pick and place {} -> {}'.format(mm(pick), mm(place)), run)
+    return mission.snapshot()
+
+
+@app.post('/api/pick_place/cancel')
+def pick_place_cancel(request: Request):
+    """Cancel the running goal (operator only; STOP works for everybody)."""
+    cid, ip = _client(request)
+    try:
+        cancelled = hub.run(cid, 'pick and place cancel', mission.cancel, ip=ip, while_lent=True)
+    except LockedError as e:
+        raise HTTPException(status_code=423, detail=str(e)) from e
+    return {'ok': True, 'cancelled': cancelled}
+
+
 # ---- control lease ------------------------------------------------------------------
 
 
@@ -391,6 +491,7 @@ async def live(ws: WebSocket):
         for message in hub.connect(cid, hello.get('name'), ip, queue):
             await ws.send_json(message)
         await ws.send_json({'type': 'telemetry', 'data': arm.snapshot()})
+        await ws.send_json({'type': 'mission', 'data': mission.snapshot()})
         if 'health' in _latest:
             await ws.send_json({'type': 'health', 'data': _latest['health'][1]})
         hub.set_page(cid, hello.get('page'))

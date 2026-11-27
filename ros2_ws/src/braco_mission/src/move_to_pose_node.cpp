@@ -68,6 +68,8 @@ MoveToPoseNode::MoveToPoseNode(
   motion_config_.velocity_scaling = declare_parameter<double>("velocity_scaling", 0.1);
   motion_config_.acceleration_scaling = declare_parameter<double>("acceleration_scaling", 0.1);
   motion_config_.planning_time_s = declare_parameter<double>("planning_time_s", 5.0);
+  motion_config_.elbow_max_rad = declare_parameter<double>(
+    "elbow_max_deg", motion_config_.elbow_max_rad * 180.0 / M_PI) * M_PI / 180.0;
   settings_.position_tolerance_m = declare_parameter<double>("position_tolerance_m", 0.005);
   settings_.orientation_tolerance_rad =
     declare_parameter<double>("orientation_tolerance_deg", 2.0) * M_PI / 180.0;
@@ -75,6 +77,17 @@ MoveToPoseNode::MoveToPoseNode(
   tf_timeout_s_ = declare_parameter<double>("tf_timeout_s", 1.0);
   motion_config_.state_timeout_s = tf_timeout_s_;
   eef_step_m_ = declare_parameter<double>("eef_step_m", 0.005);
+  approach_height_m_ = declare_parameter<double>("approach_height_m", approach_height_m_);
+  gripper_config_.kind = declare_parameter<std::string>("gripper", gripper_config_.kind);
+  gripper_config_.joint = declare_parameter<std::string>("gripper_joint", gripper_config_.joint);
+  gripper_config_.open_position =
+    declare_parameter<double>("gripper_open_position", gripper_config_.open_position);
+  gripper_config_.closed_position =
+    declare_parameter<double>("gripper_closed_position", gripper_config_.closed_position);
+  gripper_config_.timeout_s =
+    declare_parameter<double>("gripper_timeout_s", gripper_config_.timeout_s);
+  gripper_config_.settle_s =
+    declare_parameter<double>("gripper_settle_s", gripper_config_.settle_s);
 
   if (!make_motion_group_) {
     make_motion_group_ = [](const rclcpp::Node::SharedPtr & node, const MotionConfig & config) {
@@ -91,6 +104,7 @@ MoveToPoseNode::MoveToPoseNode(
   list_controllers_client_ =
     create_client<ListControllers>("/controller_manager/list_controllers");
   switch_client_ = create_client<SwitchController>("/controller_manager/switch_controller");
+  gripper_ = make_gripper(*this, gripper_config_);   // throws on an unknown kind
 }
 
 void MoveToPoseNode::start()
@@ -114,18 +128,35 @@ void MoveToPoseNode::start()
     [this](std::shared_ptr<CartesianGoalHandle> goal) {
       std::thread([this, goal]() {run_cartesian(goal);}).detach();
     });
+  pick_server_ = rclcpp_action::create_server<PickAndPlace>(
+    this, "pick_and_place",
+    [this](const rclcpp_action::GoalUUID &, std::shared_ptr<const PickAndPlace::Goal>) {
+      return accept();
+    },
+    [this](std::shared_ptr<PickGoalHandle>) {return cancel();},
+    [this](std::shared_ptr<PickGoalHandle> goal) {
+      std::thread([this, goal]() {run_pick_and_place(goal);}).detach();
+    });
+  if (settings_.use_control) {
+    // Latched by arm_driver: the state at subscription time arrives at once
+    stopped_sub_ = create_subscription<std_msgs::msg::Bool>(
+      "/arm/stopped", rclcpp::QoS(1).transient_local(),
+      [this](const std_msgs::msg::Bool & msg) {on_stopped(msg.data);});
+  }
   RCLCPP_INFO(
     get_logger(),
-    "ready: /move_to_pose and /move_cartesian, group %s, link %s, planning frame %s, control %s",
-    motion_config_.group.c_str(), motion_config_.end_effector.c_str(),
+    "ready: /move_to_pose, /move_cartesian and /pick_and_place, group %s, link %s, "
+    "planning frame %s, control %s, gripper %s", motion_config_.group.c_str(),
+      motion_config_.end_effector.c_str(),
     motion_group_->planning_frame().c_str(),
-    settings_.use_control ? "on (real arm)" : "off (simulation)");
+    settings_.use_control ? "on (real arm)" : "off (simulation)", gripper_config_.kind.c_str());
 }
 
 void MoveToPoseNode::stop()
 {
   server_.reset();
   cartesian_server_.reset();
+  pick_server_.reset();
   motion_group_.reset();
 }
 
@@ -206,7 +237,19 @@ rclcpp_action::GoalResponse MoveToPoseNode::accept()
     RCLCPP_WARN(get_logger(), "goal rejected: another goal is running");
     return rclcpp_action::GoalResponse::REJECT;
   }
+  stop_in_goal_ = false;
   return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
+}
+
+void MoveToPoseNode::on_stopped(bool latched)
+{
+  const bool was = stopped_.exchange(latched);
+  if (!latched || was || !busy_) {return;}
+  // arm_driver already stopped the arm and drops its commands; stop the trajectory too, so
+  // the goal ends now instead of when arm_controller gives up
+  stop_in_goal_ = true;
+  RCLCPP_WARN(get_logger(), "STOP latched in arm_driver: stopping the goal");
+  motion_group_->stop();
 }
 
 rclcpp_action::CancelResponse MoveToPoseNode::cancel()
@@ -217,11 +260,13 @@ rclcpp_action::CancelResponse MoveToPoseNode::cancel()
 
 template<typename Handle, typename Result>
 void MoveToPoseNode::finish(
-  const std::shared_ptr<Handle> & goal, const std::shared_ptr<Result> & result)
+  const std::shared_ptr<Handle> & goal, const std::shared_ptr<Result> & result, bool say_why)
 {
-  if (goal->is_canceling()) {
-    result->success = false;
+  if (goal->is_canceling() || stop_in_goal_) {result->success = false;}
+  if (say_why && goal->is_canceling()) {
     result->message = "cancelled: " + result->message;
+  } else if (say_why && stop_in_goal_) {
+    result->message = "STOP latched in arm_driver: " + result->message;
   }
   RCLCPP_INFO(get_logger(), "%s", result->message.c_str());
   if (goal->is_canceling()) {
@@ -300,6 +345,51 @@ void MoveToPoseNode::run(const std::shared_ptr<GoalHandle> & goal)
     result->orientation_error_rad = std::nan("");
   }
   finish(goal, result);
+}
+
+void MoveToPoseNode::run_pick_and_place(const std::shared_ptr<PickGoalHandle> & goal)
+{
+  feedback_ = [goal](const std::string & stage) {
+      auto feedback = std::make_shared<PickAndPlace::Feedback>();
+      feedback->stage = stage;
+      goal->publish_feedback(feedback);
+    };
+  auto result = std::make_shared<PickAndPlace::Result>();
+  result->pick_position_error_m = std::nan("");
+  result->pick_orientation_error_rad = std::nan("");
+  result->place_position_error_m = std::nan("");
+  result->place_orientation_error_rad = std::nan("");
+  const auto & request = *goal->get_goal();
+
+  std::string why;
+  const std::optional<Pose> pick = in_planning_frame(request.pick, why);
+  const std::optional<Pose> place = pick ? in_planning_frame(request.place, why) : std::nullopt;
+  if (!pick || !place) {
+    result->failed_stage = stage::GOAL;
+    result->message = why;   // goal refused: no transform ...
+  } else {
+    PickPlaceRequest r;
+    r.pick = *pick;
+    r.place = *place;
+    r.approach_height_m =
+      request.approach_height_m == 0.0 ? approach_height_m_ : request.approach_height_m;
+    r.eef_step_m = eef_step_m_;
+    // Asked before every stage: a cancel, or a STOP latched while the goal runs
+    const Interrupted interrupted = [this, goal]() {
+        if (goal->is_canceling()) {return std::string("cancelled");}
+        if (stop_in_goal_) {return std::string("STOP latched in arm_driver");}
+        return std::string();
+      };
+    const PickPlaceOutcome o = pick_and_place(*this, *gripper_, r, settings_, interrupted);
+    result->success = o.success;
+    result->failed_stage = o.failed_stage;
+    result->pick_position_error_m = o.pick_error.position_m;
+    result->pick_orientation_error_rad = o.pick_error.orientation_rad;
+    result->place_position_error_m = o.place_error.position_m;
+    result->place_orientation_error_rad = o.place_error.orientation_rad;
+    result->message = o.message;
+  }
+  finish(goal, result, false);
 }
 
 std::optional<Pose> MoveToPoseNode::in_planning_frame(

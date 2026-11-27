@@ -17,6 +17,7 @@ The braco arm in Gazebo, on the PC, standing on a copy of the lab bench. It uses
 | `config/gazebo_gui.config` | The Gazebo window's first view, close to the arm |
 | `worlds/lab_bench.sdf` | The scene: floor, light, the two tables of the real bench; Bullet physics and the camera's Sensors system |
 | `models/lab_table/` | One table of the bench (static, the top collides) |
+| `models/pick_block/` | The pick-and-place demo's object: a 20 x 20 x 40 mm block of 20 g, high friction, spawned by hand at the pick pose ([braco_mission](../braco_mission/README.md#demo-in-gazebo)) |
 | `scripts/move_joint.py` | Moves one joint (`move_joint.py 2 30`: joint2 to 30°) |
 | `scripts/move_arm_example.py` | A few poses, written once: copy it to make your own |
 | `scripts/park.py` | The park pose |
@@ -97,7 +98,7 @@ them, next to the gap, facing the table top.
 | The model's `world` frame | Stays the table surface: TF, MoveIt and the table-clearance check do not change. Only the spawn pose places the arm |
 | The pedestal | Grey, only the look of `g_base` with `gazebo:=true`, as tall as the real mount (30 mm) |
 | Collisions | The table stops the arm in Gazebo and `arm_controller` ends the goal as failed (`PATH_TOLERANCE_VIOLATED` or `GOAL_TOLERANCE_VIOLATED`; through MoveIt, `CONTROL_FAILED`): within 0.3 rad of the trajectory while moving, within 0.07 rad of the last point 0.5 s after it (`constraints` in `controllers.yaml`) |
-| MoveIt knows the table | `braco_moveit_config`'s `sim.launch.py` adds the table tops to the planning scene (`lab_bench_scene.py`, read from `lab_bench.sdf` and `lab_table/model.sdf`): MoveIt refuses a goal in the table (`GOAL_STATE_INVALID`) or plans around it. Their top is the table surface, not the real arm's 20 mm margin (`TABLE_MARGIN_MM`): `arm_driver` still refuses that part |
+| MoveIt knows the table | `braco_moveit_config`'s `sim.launch.py` adds the table tops to the planning scene (`lab_bench_scene.py`, read from `lab_bench.sdf` and `lab_table/model.sdf`): MoveIt refuses a goal in the table (`GOAL_STATE_INVALID`) or plans around it. Their top is the table surface, not the real arm's 5 mm margin (`TABLE_MARGIN_MM`): `arm_driver` still refuses that part |
 | The gripper | Moves only here (`gripper_actuated:=true`, `gripper_action_controller`); Bullet Featherstone enforces its five mimic joints. On the real arm the fingers stay fixed |
 | Wrist camera | A sensor at `camera_link`, 640×480 at 15 Hz like the real one, on the real camera's topics, so the web page shows it as is. Field of view (60°) `UNMEASURED`. Renders on the GPU, also with `gui:=false` |
 | One simulation per domain | `gazebo.launch.py` (and `sim.launch.py`) refuses to start when a `/controller_manager` already runs (e.g. the `sim` container): use that one, or `make down` first |

@@ -295,7 +295,8 @@ export function render(root) {
 
   // ---- the operator's panel, mirrored -----------------------------------------
   function applyRemote(ui) {
-    remote = !operator && ui?.state ? ui : null;
+    // the Pick & place page shares its points through the same channel: not this panel's state
+    remote = !operator && ui?.state && !ui.state.view ? ui : null;
     rows.forEach((row) => row.classList.remove("remote"));
     if (!remote) return;
     const st = remote.state;

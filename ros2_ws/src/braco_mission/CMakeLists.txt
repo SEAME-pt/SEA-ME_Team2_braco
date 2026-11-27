@@ -20,20 +20,26 @@ find_package(moveit_msgs REQUIRED)
 find_package(braco_interfaces REQUIRED)
 find_package(controller_manager_msgs REQUIRED)
 find_package(lifecycle_msgs REQUIRED)
+find_package(control_msgs REQUIRED)
+find_package(std_srvs REQUIRED)
+find_package(std_msgs REQUIRED)
 
-# The steps of a goal, no ROS (mission.cpp, cartesian.cpp): the node and the tests link it
-add_library(braco_mission_core STATIC src/mission.cpp src/cartesian.cpp)
+# The steps of a goal, no ROS (mission.cpp, cartesian.cpp, pick_and_place.cpp): the node and
+# the tests link it
+add_library(braco_mission_core STATIC src/mission.cpp src/cartesian.cpp src/pick_and_place.cpp)
 target_include_directories(braco_mission_core PUBLIC include)
 
 # The node in a library, so the tests can run it in-process; the program only holds main()
-add_library(braco_mission_node STATIC src/move_to_pose_node.cpp src/moveit_motion_group.cpp)
+add_library(braco_mission_node STATIC
+  src/move_to_pose_node.cpp src/moveit_motion_group.cpp src/ros_gripper.cpp)
 target_link_libraries(braco_mission_node PUBLIC braco_mission_core
   rclcpp::rclcpp rclcpp_action::rclcpp_action ${geometry_msgs_TARGETS}
   tf2::tf2 tf2_ros::tf2_ros tf2_geometry_msgs::tf2_geometry_msgs
   moveit_ros_planning_interface::moveit_move_group_interface
   moveit_core::moveit_robot_state moveit_core::moveit_robot_trajectory
   moveit_core::moveit_trajectory_processing ${moveit_msgs_TARGETS}
-  ${braco_interfaces_TARGETS} ${controller_manager_msgs_TARGETS} ${lifecycle_msgs_TARGETS})
+  ${braco_interfaces_TARGETS} ${controller_manager_msgs_TARGETS} ${lifecycle_msgs_TARGETS}
+  ${control_msgs_TARGETS} ${std_srvs_TARGETS} ${std_msgs_TARGETS})
 
 add_executable(move_to_pose src/move_to_pose.cpp)
 target_link_libraries(move_to_pose braco_mission_node)
@@ -60,6 +66,8 @@ if(BUILD_TESTING)
   target_link_libraries(test_mission braco_mission_core)
   ament_add_gtest(test_cartesian test/test_cartesian.cpp)
   target_link_libraries(test_cartesian braco_mission_core)
+  ament_add_gtest(test_pick_and_place test/test_pick_and_place.cpp)
+  target_link_libraries(test_pick_and_place braco_mission_core)
 
   # The node with a fake MotionGroup, TF and /arm/take_control in-process; its own ROS graph
   find_package(ament_cmake_ros REQUIRED)
@@ -69,6 +77,9 @@ if(BUILD_TESTING)
   target_compile_definitions(test_move_to_pose_node PRIVATE
     MOVE_TO_POSE_EXE="$<TARGET_FILE:move_to_pose>")
   add_dependencies(test_move_to_pose_node move_to_pose)
+  # The two grippers against a fake gripper_action_controller and a fake /arm/set_gripper
+  ament_add_ros_isolated_gtest(test_ros_gripper test/test_ros_gripper.cpp TIMEOUT 60)
+  target_link_libraries(test_ros_gripper braco_mission_node)
 
   find_package(ament_cmake_pytest REQUIRED)
   # move_to_pose.launch.py's description and node parameters, without starting anything

@@ -16,6 +16,13 @@ with a `control` (the arm source), taking the lease asks arm_driver for the cont
 lease is held, and the lease ends when the lease is released or another client forces
 the control away (control_lost()).
 
+Lending the arm: braco_mission's pick and place takes arm_driver's control itself (as `mission`,
+ADR-0004). The operator lends it the control for one goal (lend()): the page's lease stays theirs
+and does not expire, every other command is refused as busy (STOP still works for everybody), the
+control is not renewed and `mission` taking it does not end the lease. give_back() takes the
+control back for the operator once the goal ends; on_lease_end() lets the mission be cancelled when
+the lease ends while it is lent.
+
 Speed is shared too: one value for everybody, changed only by the operator and
 capped at SPEED_LIMIT unless the operator explicitly unlocks the higher range.
 It stays when the lease changes hands, but the unlock does not: a released lease
@@ -30,6 +37,8 @@ import collections
 import threading
 import time
 
+GIVE_BACK_S = 2.0  # how long give_back() waits for the borrower to free arm_driver's control
+GIVE_BACK_EVERY_S = 0.2
 IDLE_TIMEOUT = 60.0  # seconds without a command or a control interaction
 RECONNECT_GRACE = 5.0  # a reload within this time keeps the lease and the presence
 ACTIVITY_LENGTH = 200
@@ -100,6 +109,9 @@ class Hub:
         self._ui = None  # last control-panel state sent by the operator
         self._speed = SPEED_DEFAULT
         self._fast = False  # the operator accepted the warning for speeds above SPEED_LIMIT
+        self._lent = None  # who borrowed arm_driver's control from the operator ("mission")
+        self.on_lease_end = None  # fn(), called when the lease ends while the control is lent
+        self.sleep = time.sleep
 
     def bind(self, loop):
         self._loop = loop
@@ -213,7 +225,7 @@ class Hub:
     def lease(self):
         with self._lock:
             if self._holder is None:
-                return {'holder': None, 'since': None, 'idle_left': None}
+                return {'holder': None, 'since': None, 'idle_left': None, 'lent': None}
             client = self._clients.get(self._holder)
             return {
                 'holder': {'id': self._holder, 'name': client.name if client else '?'},
@@ -221,6 +233,7 @@ class Hub:
                 'idle_left': max(
                     0.0, round(self.idle_timeout - (self.clock() - self._last_activity), 1)
                 ),
+                'lent': self._lent,
             }
 
     def _send_lease(self):
@@ -255,6 +268,7 @@ class Hub:
         with self._lock:
             if self._holder != cid:
                 return False
+            lent, self._lent = self._lent, None
             self._holder = self._since = self._last_activity = None
             self._ui = None
             capped = self._speed > SPEED_LIMIT
@@ -272,7 +286,11 @@ class Hub:
         )
         self._send_lease()
         self.broadcast({'type': 'ui', 'from': None, 'state': None})
-        if tell_control and self.control is not None:
+        if lent is not None:
+            # the borrower holds arm_driver's control, not the page: nothing to give back
+            if self.on_lease_end is not None:
+                self.on_lease_end()
+        elif tell_control and self.control is not None:
             self.control.release_control()
         return True
 
@@ -283,6 +301,8 @@ class Hub:
         """
         with self._lock:
             holder = self._holder
+            if self._lent is not None and owner == self._lent:
+                return  # the borrower took the control it was lent
         if holder is not None:
             self.release(holder, '{} took control'.format(owner), tell_control=False)
 
@@ -347,6 +367,9 @@ class Hub:
                 ):
                     gone.append(client)
             holder = self._holder
+            lent = self._lent is not None
+            if lent:
+                self._last_activity = now  # a running mission is not an idle operator
             idle = holder is not None and now - self._last_activity > self.idle_timeout
         if idle:
             self.release(holder, 'idle {:.0f} s'.format(self.idle_timeout))
@@ -360,7 +383,7 @@ class Hub:
         if gone:
             self._send_presence()
         holder = self._holder
-        if holder is not None and self.control is not None:
+        if holder is not None and self.control is not None and self._lent is None:
             # Keep arm_driver's control while the lease lasts (it frees an idle owner after 5 s)
             try:
                 self.control.take_control()
@@ -382,31 +405,91 @@ class Hub:
             message = dict(self._ui, type='ui')
         self.broadcast(message, exclude=cid)
 
+    # ---- lending arm_driver's control to a mission --------------------------------
+
+    @property
+    def lent(self):
+        with self._lock:
+            return self._lent
+
+    def lend(self, cid, borrower):
+        """The operator lends arm_driver's control to `borrower` (braco_mission) for one goal.
+
+        Call it from inside run(): the lease stays the operator's while the control is lent.
+        """
+        with self._lock:
+            if self._holder != cid:
+                raise LockedError('take control first')
+            if self._lent is not None:
+                raise BusyError('the arm is already lent to the {}'.format(self._lent))
+            self._lent = borrower
+        if self.control is not None:
+            self.control.release_control()
+        self._send_lease()
+
+    def give_back(self):
+        """The borrower is done: the operator's lease takes arm_driver's control back.
+
+        The borrower frees the control as its goal ends, maybe just after the goal's result:
+        the take is retried for GIVE_BACK_S. Still refused (a STOP latched, the joystick took
+        it): the lease ends, as when the control is lost. It may call a ROS service.
+        """
+        with self._lock:
+            borrower, self._lent = self._lent, None
+            holder = self._holder
+            if holder is not None:
+                self._last_activity = self.clock()
+        if borrower is not None:
+            self._send_lease()
+        if borrower is None or holder is None or self.control is None:
+            return
+        tries = max(1, int(round(GIVE_BACK_S / GIVE_BACK_EVERY_S)))
+        for attempt in range(tries):
+            if self._holder != holder or self._lent is not None:
+                return  # released, or lent again, meanwhile
+            try:
+                self.control.take_control()
+                return
+            except ControlError as e:
+                if attempt == tries - 1:
+                    self.release(holder, str(e), tell_control=False)
+                    return
+            except Exception as e:  # driver restarting: tick() takes it again
+                print('braco: taking the control back: {}'.format(e))
+                return
+            self.sleep(GIVE_BACK_EVERY_S)
+
     # ---- commands -----------------------------------------------------------------
 
-    def run(self, cid, action, fn, operator=True, ip=None):
+    def run(self, cid, action, fn, operator=True, ip=None, while_lent=False):
         """Run fn() for `cid`, logging it for everybody.
 
-        operator=True: only the lease holder, and only one command at a time.
+        operator=True: only the lease holder, and only one command at a time; refused while the
+        control is lent, unless while_lent (cancelling the mission).
         operator=False (STOP): anyone, never blocked by a running command.
         """
         who = self.name_of(cid, ip)
+        locked = False
         if operator:
             with self._lock:
-                holder = self._holder
+                holder, lent = self._holder, self._lent
             if holder is None:
                 raise LockedError('take control first')
             if holder != cid:
                 raise LockedError('the arm is controlled by {}'.format(self.name_of(holder)))
-            if not self._command_lock.acquire(blocking=False):
-                raise BusyError('another command is still running, try again')
+            if lent is not None and not while_lent:
+                raise BusyError('the arm is lent to the {}: cancel it or STOP'.format(lent))
+            if not while_lent:
+                if not self._command_lock.acquire(blocking=False):
+                    raise BusyError('another command is still running, try again')
+                locked = True
         try:
             result = fn()
         except Exception as e:
             self.log(who, action, ok=False, detail=str(e), by=cid)
             raise
         finally:
-            if operator:
+            if locked:
                 self._command_lock.release()
         self.touch(cid)
         self.log(who, action, ok=True, by=cid)

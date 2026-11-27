@@ -197,8 +197,8 @@ against the real arm (Gazebo on this shell's `ROS_DOMAIN_ID`, e.g. 27; the real 
 - [ ] **Masses** (partly done): from documented totals, no scale yet (see "Inertia"): gripper 110 g documented, arm 1.03 kg
   documented and split by mesh volume. Still to weigh: the gripper, the camera + mount, the arm.
 - [ ] **Offsets** (partly done): the camera from the vendor's camera-flange model (see "Frame tree"), no calipers
-  needed. Still to check with a ruler: `tcp_length`. The model puts the open fingertips about 125 mm from the flange
-  face (midpoint of their last 10 mm at (-0.6, 8.2, 120) mm in `tool0`); `TOOL_LENGTH_MM` says 130 closed / 110 open.
+  needed. `tcp_length` (0.130) is the measured tool length; still to check where the fingertips grip. The model puts the open fingertips about 125 mm from the flange
+  face (midpoint of their last 10 mm at (-0.6, 8.2, 120) mm in `tool0`); `TOOL_LENGTH_MM` = 130, measured: the camera plate plus the 110 mm gripper.
 - [x] **Zero pose**: `make zero` on the Jetson; on the PC, Gazebo with all joints at 0. Photos in "Zero pose" above:
   they match.
 - [x] **Sign of each joint** (`sim_to_real.py directions`): +30° on one joint, in Gazebo and on the real arm; does

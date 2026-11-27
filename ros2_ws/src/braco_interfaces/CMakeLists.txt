@@ -14,6 +14,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/TakeControl.srv"
   "action/MoveToPose.action"
   "action/MoveCartesian.action"
+  "action/PickAndPlace.action"
   DEPENDENCIES std_msgs geometry_msgs
 )
 

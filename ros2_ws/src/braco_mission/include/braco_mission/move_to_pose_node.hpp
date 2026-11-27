@@ -16,9 +16,14 @@
 //
 //   action  /move_to_pose     braco_interfaces/action/MoveToPose     point to point
 //   action  /move_cartesian   braco_interfaces/action/MoveCartesian  straight lines
+//   action  /pick_and_place   braco_interfaces/action/PickAndPlace   pick and place (#148)
 //   client  /arm/take_control (only with `use_control`, the real arm: ADR-0004)
 //   clients /controller_manager/{list_hardware_components, set_hardware_component_state,
 //           list_controllers, switch_controller} (only with `use_control`, #101)
+//   sub     /arm/stopped (only with `use_control`): a STOP latched in arm_driver while a goal
+//           runs stops MoveIt at once, like a cancel, and the goal fails (ADR-0005, #148)
+//   gripper gripper:=sim  /gripper_action_controller/gripper_cmd (ParallelGripperCommand)
+//           gripper:=real /arm/set_gripper (SetBool), see ros_gripper.hpp (#148)
 //
 // A goal is planned with MoveIt 2 (group `arm`, link `tcp`) and executed on arm_controller;
 // then the tcp is read from TF and the error reported. The steps and their order are in
@@ -31,8 +36,13 @@
 //
 // Parameters: group (arm), end_effector (tcp), use_control (false: simulation),
 // velocity_scaling / acceleration_scaling (0.1, ADR-0004), planning_time_s (5.0),
+// elbow_max_deg (20: joint3 at most this along point-to-point plans, MotionConfig),
 // position_tolerance_m (0.005), orientation_tolerance_deg (2.0), settle_s (0.5),
-// tf_timeout_s (1.0), eef_step_m (0.005: the default of a MoveCartesian goal).
+// tf_timeout_s (1.0), eef_step_m (0.005: the default of a MoveCartesian goal and the lines of
+// pick and place), approach_height_m (0.05: the default of a PickAndPlace goal),
+// gripper (sim | real, anything else: the node does not start), gripper_joint
+// (gripper_controller), gripper_open_position (0.15) / gripper_closed_position (-0.74, rad, sim),
+// gripper_timeout_s (15.0), gripper_settle_s (1.5, real).
 //
 // In a library, so tests can run it in-process; src/move_to_pose.cpp only holds main().
 // MoveIt 2 is behind MotionGroup: tests pass a fake through the factory.
@@ -50,10 +60,13 @@
 
 #include "braco_interfaces/action/move_cartesian.hpp"
 #include "braco_interfaces/action/move_to_pose.hpp"
+#include "braco_interfaces/action/pick_and_place.hpp"
 #include "braco_interfaces/srv/take_control.hpp"
 #include "braco_mission/cartesian.hpp"
 #include "braco_mission/mission.hpp"
 #include "braco_mission/motion_group.hpp"
+#include "braco_mission/pick_and_place.hpp"
+#include "braco_mission/ros_gripper.hpp"
 #include "controller_manager_msgs/srv/list_controllers.hpp"
 #include "controller_manager_msgs/srv/list_hardware_components.hpp"
 #include "controller_manager_msgs/srv/set_hardware_component_state.hpp"
@@ -61,6 +74,7 @@
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"
+#include "std_msgs/msg/bool.hpp"
 #include "tf2_ros/buffer.hpp"
 #include "tf2_ros/transform_listener.hpp"
 
@@ -74,6 +88,8 @@ public:
   using GoalHandle = rclcpp_action::ServerGoalHandle<MoveToPose>;
   using MoveCartesian = braco_interfaces::action::MoveCartesian;
   using CartesianGoalHandle = rclcpp_action::ServerGoalHandle<MoveCartesian>;
+  using PickAndPlace = braco_interfaces::action::PickAndPlace;
+  using PickGoalHandle = rclcpp_action::ServerGoalHandle<PickAndPlace>;
   using TakeControl = braco_interfaces::srv::TakeControl;
   using ListHardware = controller_manager_msgs::srv::ListHardwareComponents;
   using SetHardwareState = controller_manager_msgs::srv::SetHardwareComponentState;
@@ -114,13 +130,19 @@ public:
 private:
   rclcpp_action::GoalResponse accept();
   rclcpp_action::CancelResponse cancel();
+  // /arm/stopped: a STOP latched while a goal runs stops the arm's trajectory
+  void on_stopped(bool latched);
 
-  // Ends a goal of either action: a cancel stops the arm, so the steps report a failed
-  // execution; say why it stopped.
+  // Ends a goal of any action: a cancel or a STOP stops the arm, so the steps report a failed
+  // execution; with `say_why`, the message starts with why it stopped (pick and place says it
+  // itself, at the stage it stopped).
   template<typename Handle, typename Result>
-  void finish(const std::shared_ptr<Handle> & goal, const std::shared_ptr<Result> & result);
+  void finish(
+    const std::shared_ptr<Handle> & goal, const std::shared_ptr<Result> & result,
+    bool say_why = true);
 
   void run_cartesian(const std::shared_ptr<CartesianGoalHandle> & goal);
+  void run_pick_and_place(const std::shared_ptr<PickGoalHandle> & goal);
   void run(const std::shared_ptr<GoalHandle> & goal);
 
   // The goal in the planning frame. An empty frame_id means the planning frame already.
@@ -143,6 +165,8 @@ private:
   double settle_s_ = 0.5;
   double tf_timeout_s_ = 1.0;
   double eef_step_m_ = 0.005;
+  double approach_height_m_ = 0.05;
+  GripperConfig gripper_config_;
 
   MotionGroupFactory make_motion_group_;
   std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
@@ -153,11 +177,16 @@ private:
   rclcpp::Client<ListControllers>::SharedPtr list_controllers_client_;
   rclcpp::Client<SwitchController>::SharedPtr switch_client_;
   std::unique_ptr<MotionGroup> motion_group_;
+  std::unique_ptr<GripperBackend> gripper_;
   rclcpp_action::Server<MoveToPose>::SharedPtr server_;
   rclcpp_action::Server<MoveCartesian>::SharedPtr cartesian_server_;
+  rclcpp_action::Server<PickAndPlace>::SharedPtr pick_server_;
   // Feedback of the goal that runs (one at a time: busy_); set and used on its thread
   std::function<void(const std::string &)> feedback_;
   std::atomic<bool> busy_{false};
+  rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr stopped_sub_;
+  std::atomic<bool> stopped_{false};      // arm/stopped: STOP latched in arm_driver (ADR-0005)
+  std::atomic<bool> stop_in_goal_{false};   // a STOP came while the goal ran
 };
 
 }  // namespace braco_mission

@@ -66,8 +66,10 @@ constexpr double BASE_HEIGHT_MM = 140.0;    // table -> top of the Jetson casing
 constexpr double CASING_HEIGHT_MM = 109.7;  // Jetson casing, bottom -> top (vendor mesh); the
                                             // kinematics start at its bottom, 30.3 mm up
 constexpr double TOOL_LENGTH_MM = 130.0;    // J6 flange -> tip of camera + gripper
-                                            // (130 closed, 110 open: use the longer)
-constexpr double TABLE_MARGIN_MM = 20.0;    // lowest point must stay above this
+                                            // (measured #148: camera plate + 110 mm gripper)
+constexpr double TABLE_MARGIN_MM = 5.0;     // lowest point must stay above this. #148: the
+                                            // real tip stops ~10 mm above the model, and 20
+                                            // left a 34 mm box only ~4 mm to grip
 
 // Height above the table (mm) of the lowest of the wrist (J4, J5, J6) and the
 // tool tip, for these joint angles. Forward kinematics of the myCobot 280 Jetson

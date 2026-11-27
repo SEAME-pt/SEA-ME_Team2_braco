@@ -67,7 +67,7 @@ def test_arguments(launch):
     args = {a.name: perform_substitutions(LaunchContext(), a.default_value)
             for a in ld.entities if isinstance(a, DeclareLaunchArgument)}
     assert args == {'real': 'false', 'velocity_scaling': '0.1', 'position_tolerance_m': '0.005',
-                    'orientation_tolerance_deg': '2.0'}
+                    'orientation_tolerance_deg': '2.0', 'gripper': ''}
 
 
 def test_two_move_to_pose_nodes(launch):
@@ -125,3 +125,23 @@ def test_real_arm_parameters(launch):
     own = own_parameters(real)
     assert own['use_sim_time'] is False
     assert own['use_control'] is True
+
+
+def gripper_of(kwargs, argument):
+    """Return the gripper parameter of a node when the gripper launch argument is `argument`."""
+    context = LaunchContext()
+    context.launch_configurations['gripper'] = argument
+    return own_parameters(kwargs)['gripper'].perform(context)
+
+
+def test_gripper_follows_the_arm(launch):
+    """Drive gripper_action_controller in the simulation and /arm/set_gripper on the real arm."""
+    _, (sim, real) = launch
+    assert (gripper_of(sim, ''), gripper_of(real, '')) == ('sim', 'real')
+
+
+def test_gripper_argument_wins(launch):
+    """gripper:=sim or gripper:=real is given to both nodes as it is."""
+    _, (sim, real) = launch
+    for argument in ('sim', 'real'):
+        assert (gripper_of(sim, argument), gripper_of(real, argument)) == (argument, argument)

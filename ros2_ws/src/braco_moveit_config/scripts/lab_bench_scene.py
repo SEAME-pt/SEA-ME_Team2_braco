@@ -23,8 +23,8 @@ robot_x, robot_y, robot_z and robot_yaw parameters, the arguments of gazebo.laun
 measured table (UNMEASURED today) reaches MoveIt without a second copy of its sizes. Only the
 tops: the legs are under them, out of the arm's reach.
 
-The top's surface is z = 0, the table itself, not the 20 mm margin of the real arm's
-table-clearance check (TABLE_MARGIN_MM, mycobot.hpp): arm_driver still refuses the last 20 mm.
+The top's surface is z = 0, the table itself, not the 5 mm margin of the real arm's
+table-clearance check (TABLE_MARGIN_MM, mycobot.hpp): arm_driver still refuses the last 5 mm.
 
 sim.launch.py runs it once move_group is up; it adds the objects and exits. The scene lives in
 move_group, so after a move_group restart run it again:
