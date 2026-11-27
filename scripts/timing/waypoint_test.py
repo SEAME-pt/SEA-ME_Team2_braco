@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Few long moves instead of many micro-moves: is the arm smoother, and is the queue mode safe?
 
-Proposal (after #93): MoveIt's path has only a few vertices, but today it reaches the arm as
+Proposal: MoveIt's path has only a few vertices, but today it reaches the arm as
 hundreds of micro-targets (JTC 100 Hz -> BracoSystem -> arm_driver ~14 Hz), and the Atom replans
 on every one. This script measures, straight on the serial port, what the firmware does with
 fewer, longer moves, in its two fresh modes:

@@ -517,7 +517,7 @@ void JoystickTeleop::jog(const tl::Wanted & wanted, const mycobot::Angles & angl
   }
 
   // 6d. Moving joints: proportional speed, slowed near limits. The target advances open loop
-  // at the jog velocity, bounded by the measured angle (tl::advanceJogTarget, #93)
+  // at the jog velocity, bounded by the measured angle (tl::advanceJogTarget)
   for (const auto & [joint, motion] : wanted) {
     const double angle = angles[joint - 1];
     const auto & limit = mycobot::JOINT_LIMITS[joint - 1];

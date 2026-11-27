@@ -1,4 +1,4 @@
-"""Statistics shared by the timing scripts (issue #90). No ROS, no serial: unit tested."""
+"""Statistics shared by the timing scripts. No ROS, no serial: unit tested."""
 
 import math
 
@@ -51,7 +51,7 @@ def windowed_speeds(points, window_s):
     from it to the first sample at least window_s later. points: (time s, angle deg), ascending.
 
     Between two /joint_states 20-60 ms apart a slow joint moves only a few encoder steps, so a
-    one-step error looks like jitter; over ~200 ms it is small (#141).
+    one-step error looks like jitter; over ~200 ms it is small.
     """
     speeds = []
     k = 0
@@ -71,7 +71,7 @@ def settle_time(samples, t0, tol_deg, consecutive=3, rest_s=0.3):
 
     samples: (time s, [angle deg per joint]), ascending. The rest pose is the mean of the last
     rest_s seconds. Settled = `consecutive` samples in a row inside the tolerance; 0.0 if it
-    already was at t0, None if it never settles (#141: wait for this before the gripper acts).
+    already was at t0, None if it never settles (wait for this before the gripper acts).
     """
     after = [(t, a) for t, a in samples if t >= t0]
     tail = [a for t, a in after if t >= after[-1][0] - rest_s] if after else []

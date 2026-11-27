@@ -42,7 +42,7 @@ constexpr const char * LATCHED = " refused: STOP latched (make resume, or call a
 ArmDriver::ArmDriver(const rclcpp::NodeOptions & options)
 : LifecycleNode("arm_driver", options)
 {
-  // Declared here, read below: settable before configure (#95)
+  // Declared here, read below: settable before configure
   declare_parameter<std::string>("port", mycobot::MyCobot280::DEFAULT_PORT);
   declare_parameter<int>("baud", mycobot::MyCobot280::DEFAULT_BAUD);
   declare_parameter<double>("state_rate_hz", 20.0);
@@ -540,8 +540,7 @@ void ArmDriver::serialLoop()
 {
   auto next_state = std::chrono::steady_clock::now();
   auto next_temp = next_state;
-  // Half a period after the temperatures: two reads in one pass stalled the loop ~20 ms, a
-  // visible stop of the arm during a trajectory every temp_period_s (#93)
+  // Voltages half a period after the temperatures: two reads in one pass stall the arm ~20 ms.
   const auto temp_period = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
     temp_period_);
   auto next_volt = next_state + temp_period / 2;

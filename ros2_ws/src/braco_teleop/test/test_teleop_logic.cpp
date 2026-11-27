@@ -36,7 +36,7 @@ TEST(StickRatio, FullDeflectionIsOne)
   EXPECT_DOUBLE_EQ(tl::stickRatio(-32767), 1.0);
 }
 
-// ---- Open-loop jog target (#93) -------------------------------------------------
+// ---- Open-loop jog target -------------------------------------------------------
 
 // Blue mode, full stick: speed 15 (22.8 deg/s), lead 5. Bound: 5 + 22.8 * 0.2 = 9.56 deg.
 constexpr int SPEED = 15;
@@ -55,7 +55,7 @@ TEST(AdvanceJogTarget, StartsWithTheBreakawayStep)
     tl::advanceJogTarget(std::nullopt, 10.0, -1, SPEED, LEAD, FAR, 0.0), 10.0 - tl::BREAKAWAY_DEG);
 }
 
-// The point of #93: a stale measured angle (not moving) does not stall the target. It keeps
+// The point: a stale measured angle (not moving) does not stall the target. It keeps
 // moving at the jog velocity, the same step every tick, until the bound.
 TEST(AdvanceJogTarget, AdvancesAtTheJogVelocityWhileFeedbackIsStale)
 {

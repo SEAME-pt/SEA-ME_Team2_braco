@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Joystick-style jog, reproducible: how smooth the arm moves (issue #93).
+"""Joystick-style jog, reproducible: how smooth the arm moves.
 
 Does what joystick_teleop does with the stick held still (mycobot_cpp/includes/teleop_logic.hpp):
 every --tick it sends JOINTS for one joint with target = latest measured angle + lead, at
@@ -14,7 +14,7 @@ Metrics, on the cruise part of each segment (after 0.3 s, until the last lead of
   v_mean   mean velocity (deg/s);  expected about speed * 1.52 deg/s
   cv_v     std / mean of the velocity between two /joint_states: 0 = perfectly even
   stall    share of /joint_states intervals slower than 20 % of v_mean
-  cv_v_w   cv_v and stall over --window (default 0.2 s, #141), as cv_v_w and stall_pct_w: a slow
+  cv_v_w   cv_v and stall over --window (default 0.2 s), as cv_v_w and stall_pct_w: a slow
            joint moves only a few encoder steps between two /joint_states, so cv_v has a floor
   js_dt    /joint_states interval, median / p95 / max (ms); gaps > 250 ms counted as dropouts
 
@@ -42,7 +42,7 @@ from stats import percentile, windowed_speeds
 LIMITS = [(-166, 166), (-138, 138), (-149, 149), (-149, 149), (-153, 158), (-178, 178)]
 MARGIN_DEG = 5.0
 HOLD_SPEED = 10  # teleop_logic.hpp: the speed that pins a joint at the end of a segment
-# teleop_logic.hpp, advanceJogTarget (#93): --open-loop uses the same numbers
+# teleop_logic.hpp, advanceJogTarget: --open-loop uses the same numbers
 DEG_PER_S_PER_SPEED = 1.52
 FEEDBACK_LAG_S = 0.2
 BREAKAWAY_DEG = 3.0
@@ -76,7 +76,7 @@ def main():
     ap.add_argument(
         '--open-loop',
         action='store_true',
-        help='the #93 teleop: target advances open loop (advanceJogTarget), not measured + lead',
+        help='the open-loop teleop: target advances open loop (advanceJogTarget), not measured + lead',
     )
     ap.add_argument('--window', type=float, default=0.2, help='s, for cv_v_w and stall_pct_w')
     ap.add_argument('--out', help='JSON lines file to append the result to')

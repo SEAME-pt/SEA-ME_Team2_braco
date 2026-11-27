@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""How long the arm takes to stand still after a move, and where it stops (issue #141).
+"""How long the arm takes to stand still after a move, and where it stops.
 
 For pick and place: the gripper must act only once the arm stands still, and a fixed sleep is
 either too long (clean stop) or too short (a long move that swings). This measures both through
