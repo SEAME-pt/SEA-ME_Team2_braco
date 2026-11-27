@@ -19,11 +19,11 @@ Real arm, Jetson Nano, no desktop (`multi-user.target`), `arm_driver` alone in a
 | Serial round trip, one joint read (`getAngles`) | **9.3 ms** mean, 11.8 ms p99, 13.9 ms max, 0 failures / 2000 | Atom firmware (the wire is 0.22 ms) |
 | `/joint_states`, arm idle | **18.7 Hz** at `state_rate_hz` 20; ceiling **~45 Hz** from 60 Hz up | `sleep(10ms)` + read in the serial loop |
 | `/joint_states`, continuous commands (the plugin's `write()`) | **~27 Hz** (37 ms) since 2026-11-27 ([result 5](#5-after-the-serial-loop-change)); was ~14 Hz (70 ms) | `command_gap_ms` 25 ms + angle read ~11 ms after every motion command |
-| Command → first joint motion (J6, 5°, speed 30) | **~160 ms** p50 since 2026-11-27; was ~205 ms p50, 140 ms min, 268 ms max | Atom and servos starting the move |
+| Command → first joint motion (J6, 5°, speed 30) | **~150 ms** p50, 117 ms min, 181 ms max since 2026-11-27; was ~205 ms p50, 140 ms min, 268 ms max | Atom and servos starting the move |
 | `/joint_states` under CPU load, default vs `SCHED_FIFO` | p50 72 ms, p99 **96 ms** in both; max 108 → 100 ms | Temperature read every 2 s (p99); waiting for a core (max) |
 
 **Conclusion:** during a trajectory the real arm takes a new command and gives a new position about every **37 ms
-(~27 Hz)**, and starts moving **~160 ms** after a command (2026-11-27; before: 70 ms and ~200 ms). Neither depends on `state_rate_hz` or on the controller's
+(~27 Hz)**, and starts moving **~150 ms** after a command (2026-11-27; before: 70 ms and ~200 ms). Neither depends on `state_rate_hz` or on the controller's
 `update_rate`. Keep `update_rate: 100` and `state_rate_hz: 20`; the levers are inside `arm_driver` ([below](#what-would-change-it)).
 
 ## Serial loop of `arm_driver`
@@ -159,13 +159,15 @@ host), 660 s per run, `state_rate_hz` 20. The two runs differ only in the schedu
 | Idle | 18.4 | 54.3 | 54.0 | 61.7 | 64.8 |
 | Load 100/s, `tcdrain` after every send | 20.8 | 48.0 | 48.0 | 60.1 | 114.3 |
 | Load 100/s, no `tcdrain` after a motion command | **26.8** | 37.3 | 36.0 | 52.1 | 111.5 |
+| Same, second run | **26.8** | 37.2 | 36.0 | 52.0 | 229.7 |
 
-Latency (`latency_step.py`, 20 steps, with `tcdrain` after every send; not measured again without it):
+Latency (`latency_step.py`, 20 steps):
 
-| Load | Min ms | p50 ms | p99 ms | Max ms | Not seen |
-|---|---|---|---|---|---|
-| 20/s | 146 | 157 | 187 | 187 | 0 |
-| 100/s | 138 | 162 | 185 | 185 | 0 |
+| Load | `tcdrain` after a motion command | Min ms | p50 ms | p99 ms | Max ms | Not seen |
+|---|---|---|---|---|---|---|
+| 20/s | yes | 146 | 157 | 187 | 187 | 0 |
+| 100/s | yes | 138 | 162 | 185 | 185 | 0 |
+| 100/s | **no** | 117 | **150** | 181 | 181 | 0 |
 
 Where the time goes, under load 100/s:
 
@@ -188,7 +190,7 @@ Where the time goes, under load 100/s:
 | ADR-0004 | Setpoints are thinned to **~27 Hz** (was ~14 Hz) |
 | Watchdog | `command_timeout_ms` 300 vs 37 ms between commands under load: 8× margin |
 | `state_rate_hz` | 20 stays. Higher helps only while idle, where no client needs it |
-| Joystick `state_timeout_ms` 150 | Under commands `/joint_states` comes every ~37 ms, max ~112 ms: jogging keeps working |
+| Joystick `state_timeout_ms` 150 | Under commands `/joint_states` comes every ~37 ms, but one run had a 230 ms gap: above 150 ms a jog can pause once. Cause not confirmed (likely a lost read plus a temperature read in one pass) |
 | `SCHED_FIFO` | Not enabled: it removes the small waits for a core, not the 2 s temperature read ([below](#sched_fifo)) |
 
 ### SCHED_FIFO
