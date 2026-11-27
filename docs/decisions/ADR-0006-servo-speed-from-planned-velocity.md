@@ -34,6 +34,7 @@ deciders: all
 - Speed = largest `|velocity| / URDF max velocity × 100`, × 1.5, rounded up, clamped to [`min_speed` 5, 100]
 - `on_init` refuses a joint without a velocity command or a velocity limit
 - `write()` publishes at 25 Hz (was 20): faster than `arm_driver` sends, ~14 Hz at `COMMAND_GAP` 50 ms and ~20 Hz at 30 ms (`ros2 topic hz /joint_states` during a MoveIt goal, real arm on the Jetson Nano, Atom firmware 7.3, 2026-11-20, while tuning smooth motion; the code keeps 50 ms), so `arm_driver` always finds a fresh target and never waits; the extra ones are dropped by design (latest wins)
+- Update 2026-11-27: `write()` publishes on every controller cycle (100 Hz), no rate limit: `arm_driver` keeps only the latest, so it always takes the newest target
 
 **Why × 1.5, with the scaling ≤ 0.1 of ADR-0004:** the two set different things.
 

@@ -18,7 +18,7 @@ Real arm, Jetson Nano, no desktop (`multi-user.target`), `arm_driver` alone in a
 |---|---|---|
 | Serial round trip, one joint read (`getAngles`) | **9.3 ms** mean, 11.8 ms p99, 13.9 ms max, 0 failures / 2000 | Atom firmware (the wire is 0.22 ms) |
 | `/joint_states`, arm idle | **18.7 Hz** at `state_rate_hz` 20; ceiling **~45 Hz** from 60 Hz up | `sleep(10ms)` + read in the serial loop |
-| `/joint_states`, continuous commands (the plugin's `write()`) | **~14 Hz** (70 ms) at any `state_rate_hz` from 20 to 100 | `COMMAND_GAP` (50 ms) after every motion command |
+| `/joint_states`, continuous commands (the plugin's `write()`) | **~14 Hz** (70 ms) at any `state_rate_hz` from 20 to 100 | `command_gap_ms` after every motion command (50 ms when measured; 25 ms now) |
 | Command → first joint motion (J6, 5°, speed 30) | **~205 ms** p50, 140 ms min, 268 ms max | Atom and servos starting the move |
 | `/joint_states` under CPU load, default vs `SCHED_FIFO` | p50 72 ms, p99 **96 ms** in both; max 108 → 100 ms | Temperature read every 2 s (p99); waiting for a core (max) |
 
@@ -31,18 +31,23 @@ Real arm, Jetson Nano, no desktop (`multi-user.target`), `arm_driver` alone in a
 One thread does all serial work ([arm_driver_node.cpp](../../ros2_ws/src/braco_driver/src/arm_driver_node.cpp), `serialLoop()`):
 
 ```
-every pass:  [motion command pending?] ── yes ──► sendAngles ─► sleep COMMAND_GAP 50 ms ─┐
-                      │ no                                                                │
-                      ▼                                                                   ▼
-             [state due?] ── yes ──► getAngles (~9 ms) ─► publish /joint_states ─► [no command sent?] ─► sleep 10 ms
-             [every 2 s]  ──────────► getTemps + getVoltages (~2 × 9 ms)
+every pass:  [motion command pending?] ── yes ──► sendAngles ─► sleep command_gap_ms (25 ms) ─┐
+                      │ no                                                                     │
+                      ▼                                                                        ▼
+             [state due?] ── yes ──► getAngles ◄──────────── always right after a command ─────┘
+                                        │ no reply within 30 ms: skipped
+                                        ▼
+                                 publish /joint_states ─► [no command sent?] ─► sleep 10 ms
+             [every 2 s]  ──────────► getTemps, and half a period later getVoltages (one per pass)
 ```
+
+While idle, "state due" is every `1 / state_rate_hz` (20 Hz).
 
 | Case | Period of `/joint_states` | Measured |
 |---|---|---|
 | Idle, `state_rate_hz` low | T + ~5 ms (the loop checks the clock every ~10 ms; the next period counts from the read) | 20 Hz → 18.7 Hz |
 | Idle, ceiling | read ~9.3 ms + sleep 10 ms + overhead ≈ 22 ms | ~45 Hz |
-| Continuous commands | send + 50 ms gap + read ≈ 60 ms predicted | **70 ms**: the read after a motion command seems slower (~10 ms more); not confirmed |
+| Continuous commands | send + 25 ms gap + read ≈ 35 ms predicted | **70 ms** with the 50 ms gap: the read after a motion command seems slower (~10 ms more); not confirmed |
 
 ## Results
 
@@ -170,7 +175,8 @@ Limits of the measurement: one run each; the period is the `/joint_states` stamp
 
 Inside `arm_driver` (measure again with the same scripts):
 
-1. **`COMMAND_GAP` 50 ms**: the main cost under commands. Find the smallest gap the Atom accepts.
+1. **The command gap**, the main cost under commands. Changed on 2026-11-27: `command_gap_ms` 25 ms (was 50), angles
+   read right after every motion command, a read with no reply skipped after 30 ms.
 2. **`sleep(10ms)`** when no command was sent: half of the idle ceiling.
 3. Temperature and voltage reads every 2 s: the idle p99 / max.
 

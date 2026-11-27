@@ -128,26 +128,19 @@ bool BracoSystem::load_parameters()
 {
   // Optional <param>s of the <hardware> block; without them, the defaults of the header
   const auto & params_in_urdf = get_hardware_info().hardware_parameters;
-  double rate = publish_rate_hz_;
   int min_speed = min_speed_;
   try {
-    if (params_in_urdf.count("publish_rate_hz")) {
-      rate = std::stod(params_in_urdf.at("publish_rate_hz"));
-    }
     if (params_in_urdf.count("min_speed")) {
       min_speed = std::stoi(params_in_urdf.at("min_speed"));
     }
   } catch (const std::exception &) {
-    RCLCPP_ERROR(get_logger(), "publish_rate_hz and min_speed must be numbers");
+    RCLCPP_ERROR(get_logger(), "min_speed must be a number");
     return false;
   }
-  if (rate <= 0.0 || min_speed < 1 || min_speed > 100) {
-    RCLCPP_ERROR(
-      get_logger(), "publish_rate_hz must be > 0 and min_speed 1..100 (got %.1f, %d)", rate,
-      min_speed);
+  if (min_speed < 1 || min_speed > 100) {
+    RCLCPP_ERROR(get_logger(), "min_speed must be 1..100 (got %d)", min_speed);
     return false;
   }
-  publish_rate_hz_ = rate;
   min_speed_ = static_cast<uint8_t>(min_speed);
   return true;
 }
@@ -166,7 +159,6 @@ hardware_interface::CallbackReturn BracoSystem::on_configure(
   subscribe();
   // write() sends the controller's targets to arm_driver on its command topic (ADR-0004)
   command_pub_ = get_node()->create_publisher<ArmCommand>("/arm/command", 10);
-  last_publish_ns_ = 0;
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
@@ -311,12 +303,8 @@ hardware_interface::return_type BracoSystem::write(
   if (!owner_is_mission_) {
     return hardware_interface::return_type::OK;   // not our turn: arm_driver would ignore us
   }
-  // arm_driver sends ~14 commands/s and keeps only the latest: no point publishing at the
-  // loop's 100 Hz. Skip, never sleep: a sleep here would stall read() and the controllers too.
+  // Publishes on every controller cycle: arm_driver keeps only the latest target.
   // Nanoseconds, not rclcpp::Time: the manager's clock type (steady here) would have to match.
-  if (time.nanoseconds() - last_publish_ns_ < static_cast<int64_t>(1e9 / publish_rate_hz_)) {
-    return hardware_interface::return_type::OK;
-  }
   ArmCommand msg;
   if (!make_command(msg) || target_is_idle(msg, time.nanoseconds())) {
     return hardware_interface::return_type::OK;
@@ -324,7 +312,6 @@ hardware_interface::return_type BracoSystem::write(
   // Also when the target has not changed (for HOLD_S): arm_driver stops the arm after
   // command_timeout_ms (300 ms) without a motion command. Not clamped: arm_driver clamps.
   command_pub_->publish(msg);
-  last_publish_ns_ = time.nanoseconds();
   return hardware_interface::return_type::OK;
 }
 

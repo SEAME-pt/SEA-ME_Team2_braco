@@ -319,11 +319,11 @@ protected:
   }
   return_type read() {return system_->read(rclcpp::Time(0, 0, RCL_STEADY_TIME), 10ms);}
 
-  // write() at the next tick of the manager's clock: 60 ms later, above its 25 Hz throttle. The
-  // clock is ours, so HOLD_S passes without waiting for it.
-  return_type write()
+  // write() at the next tick of the manager's clock, `step_ns` later. The clock is ours, so
+  // HOLD_S passes without waiting for it.
+  return_type write(int64_t step_ns = 60 * MS)
   {
-    now_ns_ += 60 * MS;
+    now_ns_ += step_ns;
     return system_->write(rclcpp::Time(now_ns_, RCL_STEADY_TIME), 10ms);
   }
 
@@ -539,13 +539,12 @@ TEST_F(BracoSystemTest, InitFailsWithoutVelocityLimit)
   EXPECT_EQ(system->init(params(zero, nullptr)), CallbackReturn::ERROR);
 }
 
-// publish_rate_hz > 0 and min_speed 1..100, numbers: anything else is refused at init.
+// min_speed 1..100, a number: anything else is refused at init.
 TEST_F(BracoSystemTest, InitChecksTheParameters)
 {
   const auto info = bracoSystemInfo();
   const std::vector<std::pair<std::string, std::string>> bad = {
-    {"min_speed", "0"}, {"min_speed", "101"}, {"min_speed", "slow"}, {"publish_rate_hz", "0"},
-    {"publish_rate_hz", "often"}};
+    {"min_speed", "0"}, {"min_speed", "101"}, {"min_speed", "slow"}};
   for (const auto & [name, value] : bad) {
     auto with_param = info;
     with_param.hardware_parameters[name] = value;
@@ -555,7 +554,6 @@ TEST_F(BracoSystemTest, InitChecksTheParameters)
   }
   auto good = info;
   good.hardware_parameters["min_speed"] = "10";
-  good.hardware_parameters["publish_rate_hz"] = "10";
   auto system = loader_.createUniqueInstance("braco_hardware/BracoSystem");
   EXPECT_EQ(system->init(params(good, nullptr)), CallbackReturn::SUCCESS);
 }
@@ -593,6 +591,23 @@ TEST_F(BracoSystemTest, WriteSendsTheSpeedOfTheFastestJoint)
   }
   writeUntil([&](return_type) {return topics.commands().back().speed == 31;});
   EXPECT_EQ(topics.commands().back().speed, 31);
+}
+
+// No rate limit: a new target 10 ms apart (100 Hz) is published on every cycle.
+TEST_F(BracoSystemTest, WriteSendsOnEveryCycle)
+{
+  JointStatesPublisher joint_states(jointStates(6));
+  ArmDriverTopics topics;
+  startSending(topics);
+  const size_t before = settledCount(topics);
+
+  auto target = TARGETS_RAD;
+  for (int i = 0; i < 5; ++i) {
+    target[0] += 0.001;
+    setTargets(target);
+    write(10 * MS);
+  }
+  EXPECT_EQ(settledCount(topics), before + 5);
 }
 
 // Another client owns the arm (or nobody): write() sends nothing and reports no error.
