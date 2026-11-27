@@ -551,7 +551,8 @@ void ArmDriver::serialLoop()
       const bool sent = serviceCommands();
       const auto now = std::chrono::steady_clock::now();
 
-      if (now >= next_state) {
+      // Right after a motion command, or every state period while idle.
+      if (sent || now >= next_state) {
         publishAngles();
         next_state = now + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
           state_period_);

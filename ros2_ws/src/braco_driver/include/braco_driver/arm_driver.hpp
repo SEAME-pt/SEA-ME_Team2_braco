@@ -57,7 +57,8 @@
 // One serial thread does all the work, in this order on every pass:
 //   1. a requested stop (drops everything pending)
 //   2. one pending motion command, then command_gap_ms (25 by default)
-//   3. read the angles and publish /joint_states
+//   3. read the angles and publish /joint_states: right after a motion command, or at
+//      state_rate_hz while idle
 //   4. every temp_period_s read the servo temperatures, and half a period later the voltages
 //      (never both in one pass: that stalled the loop ~20 ms during a trajectory)
 //   5. watchdog: no new motion command for command_timeout_ms after the arm was

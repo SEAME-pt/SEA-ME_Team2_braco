@@ -433,6 +433,20 @@ TEST_F(ArmDriverTest, CommandGapPacesTheSerialCommands)
   EXPECT_TRUE(waitUntil([this] {return frames(protocol::SEND_ANGLE) == 3;}));
 }
 
+// With a 10 s state period, each motion command is still followed by an angle read.
+TEST_F(ArmDriverTest, AnglesAreReadAfterEveryCommand)
+{
+  start({rclcpp::Parameter("command_timeout_ms", 5000), rclcpp::Parameter("command_gap_ms", 50),
+      rclcpp::Parameter("state_rate_hz", 0.1)});
+  ASSERT_TRUE(take("web")->success);
+  std::this_thread::sleep_for(300ms);   // the first read, at start, is done
+  const size_t reads = frames(protocol::GET_ANGLES);
+  sendJoints("web", {target(1, 5), target(2, 5), target(3, 5)});
+  ASSERT_TRUE(waitUntil([this] {return frames(protocol::SEND_ANGLE) == 3;}));
+  EXPECT_TRUE(waitUntil([&] {return frames(protocol::GET_ANGLES) >= reads + 3;}))
+    << "a command was not followed by an angle read";
+}
+
 // ---- STOP latch (ADR-0005) --------------------------------------------------------
 
 TEST_F(ArmDriverTest, StopLatchesUntilReleasedAfterTheHold)

@@ -4,7 +4,7 @@
 
 arm_driver:
   ros__parameters:
-    state_rate_hz: 20.0       # /joint_states rate
+    state_rate_hz: 20.0       # /joint_states rate while idle; under commands, after every command
     temp_period_s: 2.0        # servo temperature read period
     command_timeout_ms: 300   # watchdog: stop the arm when motion commands stop for this long
     command_gap_ms: 25        # pause after each serial command
