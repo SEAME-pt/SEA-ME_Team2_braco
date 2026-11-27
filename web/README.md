@@ -8,7 +8,8 @@ is in sync**: who is online, who controls the arm, what each person did, and the
 |---|---|---|
 | **Home** | arm summary, who is on the page, ROS 2 node health, activity log, current sprint, shortcuts | the other pages |
 | **Arm** | 3D model, angles with soft/firmware limits, temperatures, the camera, cartesian pose, 60 s history, activity, protocol table, limits and factory PID | `/ws` + `js/specs.js` + `/api/camera/stream` |
-| **Control** | the only page that moves the arm: STOP, Park, Zero, wake up, shared speed, per-joint sliders, gripper, LED, rest mode, with the camera beside them; activity | `/ws` + `/api/camera/stream` |
+| **Control** | moves the arm joint by joint: STOP, Park, Zero, wake up, shared speed, per-joint sliders, gripper, LED, rest mode, with the camera beside them; activity | `/ws` + `/api/camera/stream` |
+| **Pick & place** | the arm seen from above with its reach (tool pointing down), the pick and the place chosen by clicking or dragging on the map, a `/pick_and_place` goal for braco_mission and its stages and result | `/ws` (`mission`) + `js/kinematics.js` |
 | **ROS 2** | *Health*: arm_driver / temperature_monitor / joystick_teleop up or missing, driver services, `/diagnostics`. *Graph*: every node, topic (with live echo and rate), service and action | the web server's ROS 2 node |
 | **Docs** | every `.md` in the repository, grouped by topic, rendered | `GET /api/docs` |
 | **Sprints** | milestone timeline, countdown, one card per `SPRINT N` issue with its sub-issues, and a page per sprint (`#/sprints/N`) | GitHub API, 5 min cache |
@@ -36,6 +37,18 @@ is in sync**: who is online, who controls the arm, what each person did, and the
   `/camera/image_raw/compressed`: the page never opens the camera. While no frames arrive (camera unplugged, node
   down, a page without ROS) it shows why and opens the stream again once they come back. *⤓ Frame* saves the
   current frame as a JPEG.
+- **Pick & place** sends one [`/pick_and_place`](../ros2_ws/src/braco_mission/README.md#pick-and-place) goal: braco_mission
+  plans and moves the arm, the page only chooses the two points. The map shows where the `tcp` reaches with the tool
+  pointing down at the chosen heights (`js/kinematics.js`: the URDF's joint chain, joint limits, the elbow at most
+  20° as braco_mission plans, the base kept clear); MoveIt still decides. It also draws the lab bench of the Gazebo
+  world (tables, the gap at y = -85 mm, nothing behind x = -70 mm) as warnings only. Coordinates are braco_mission's
+  `world` frame: the table surface under the arm, x forward, y to the left, in mm. The operator's points are
+  mirrored live to everybody; the last ones are remembered in the browser. braco_mission must be running
+  (`ros2 launch braco_mission move_to_pose.launch.py`, `real:=true` for the real arm), else *Run* stays disabled and
+  the page says why. While the goal runs the operator **lends** the arm to it: on the real arm the page gives up
+  `web` so braco_mission can take the control as `mission`, keeps the lease (it does not expire), refuses every other
+  command as busy, and takes `web` back when the goal ends. *Cancel* (operator) stops the goal; STOP works for
+  everybody; releasing the lease cancels it too. braco_mission moves at its own `velocity_scaling`, not the page's speed.
 - **Activity log**: commands, STOPs, failures, control changes, joins and leaves, for everybody (Home and Arm pages).
   Other people's actions also pop up as toasts.
 
@@ -97,6 +110,11 @@ No arm, no ROS and no network needed:
   control: taking asks it, refused while the joystick has it, kept alive every tick, lost when forced away.
 - `tests/test_server.py` also covers the camera with fake frames: online/offline, rate, staleness, snapshot and
   the MJPEG stream.
+- `tests/test_mission.py`: the goal check, the mock's stages and cancel, `PickPlace` against a fake action client
+  (world poses with the tool down, feedback, result with NaN errors, cancel, no server, a refused goal).
+- `tests/test_session.py` and `tests/test_server.py` also cover pick and place: lending the control (busy commands,
+  no expiry, `mission` taking it is expected, the joystick is not), giving it back once braco_mission frees it, the
+  routes with the mock (lease, 422, 409 while running, every stage over `/ws`, cancel, releasing the lease, STOP).
 - `tests/test_ros_arm.py`: `RosArm` with a fake bridge: joint states, bounded steps resent inside the 300 ms watchdog,
   STOP and newer commands cancel a move, timeout, park (releases and rests on arrival, not when cancelled), wake (no movement), gripper/LED,
   `source: web` on every command, take/release control, losing it ends a move without STOP, temperature levels
@@ -125,7 +143,8 @@ docker run --rm -v "$PWD":/src:ro python:3.8 bash -c 'cp -r /src /w && cd /w && 
 ```
 web/
   server/app.py         FastAPI: /api/*, the /ws live connection, static files
-  server/session.py     presence, control lease, one command at a time, activity log
+  server/session.py     presence, control lease, one command at a time, lending the arm to braco_mission, activity log
+  server/mission.py     PickPlace (/pick_and_place action client), MockPickPlace
   server/arm.py         RosArm (arm_driver), GazeboArm, MockArm
   server/ros.py         the one shared rclpy node (imported lazily: the server runs without ROS)
   server/ros_health.py  arm nodes and /diagnostics
@@ -143,7 +162,7 @@ runs **409**.
 
 | Route | Description |
 |---|---|
-| `WS /ws` | the page's connection. First message `{"type": "hello", "id", "name", "page"}`; then the server sends `telemetry` (200 ms), `presence`, `lease`, `activity`, `ui`, `speed`, `health`, `graph` (ROS page), `echo` (watched topic); the page sends `ui`, `page`, `rename`, `watch` / `unwatch` |
+| `WS /ws` | the page's connection. First message `{"type": "hello", "id", "name", "page"}`; then the server sends `telemetry` (200 ms), `presence`, `lease` (with `lent` while braco_mission has the arm), `activity`, `ui`, `speed`, `mission`, `health`, `graph` (ROS page), `echo` (watched topic); the page sends `ui`, `page`, `rename`, `watch` / `unwatch` |
 | `WS /ws/telemetry` | bare snapshot stream every 200 ms (scripts, old pages) |
 | `GET /api/status` | latest arm snapshot (`capabilities` lists what the source supports) |
 | `POST /api/control/take` · `/release` | take / release control; take answers **409** while another client has the arm or a STOP is latched |
@@ -154,6 +173,9 @@ runs **409**.
 | `POST /api/wake` | leave rest mode and power on; the arm does not move |
 | `POST /api/joint/{1-6}` `{angle}` | move one joint, inside its soft limit, at the shared speed |
 | `POST /api/speed` `{value, unlocked}` | the one speed everybody shares (1-100), **operator only**. Above 80 it needs `unlocked: true` (the page asks the operator to accept a warning); releasing control puts a speed above 80 back to 80 |
+| `GET /api/pick_place` | `{available, error, running, stage, stages, goal, by, started, finished, result}` of the pick and place; the same comes over `/ws` as `mission` |
+| `POST /api/pick_place` `{pick: {x, y, z}, place: {x, y, z}, approach_m}` | metres, `world` frame, tool pointing down; **operator only**, answers once braco_mission accepted the goal. **422** for a point that is surely wrong (z outside 20-250 mm, approach outside 20-100 mm, the same point twice), **409** while a goal runs, a STOP is latched or the arm rests, **503** without braco_mission. Every other command is **409** until the goal ends |
+| `POST /api/pick_place/cancel` | stop the running goal, **operator only** |
 | `POST /api/rest` `{on}` · `/api/gripper` `{closed}` · `/api/led` `{r, g, b}` | rest mode, gripper, Atom LED (ROS and mock sources) |
 | `GET /api/ros/health` · `/graph` | the ROS 2 panels |
 | `GET /api/camera/status` | `{online, fps, age, bytes, error}` of `/camera/image_raw/compressed` |

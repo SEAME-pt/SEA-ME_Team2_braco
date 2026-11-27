@@ -227,6 +227,9 @@ the move in progress, and no other stage starts; the message starts with the sta
 `pick_and_place.cpp`, without ROS; the gripper is `gripper_action_controller` in Gazebo and `/arm/set_gripper` on the
 real arm (`gripper` parameter).
 
+The web page's **Pick & place** view ([web/README.md](../../../web/README.md)) sends the same goal: the two points
+are chosen on a top view of the arm's reach, and the stages and the result are shown to everybody on the page.
+
 ### Demo in Gazebo
 
 A 20 x 20 x 40 mm block (`braco_simulation`'s `models/pick_block`) is spawned at the pick pose, then one goal moves it
