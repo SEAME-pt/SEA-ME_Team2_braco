@@ -76,7 +76,7 @@ def main():
     ap.add_argument(
         '--open-loop',
         action='store_true',
-        help='the open-loop teleop: target advances open loop (advanceJogTarget), not measured + lead',
+        help='open-loop teleop: the target advances on its own (advanceJogTarget)',
     )
     ap.add_argument('--window', type=float, default=0.2, help='s, for cv_v_w and stall_pct_w')
     ap.add_argument('--out', help='JSON lines file to append the result to')
