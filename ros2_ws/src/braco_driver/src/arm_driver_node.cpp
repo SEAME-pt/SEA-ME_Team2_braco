@@ -45,7 +45,7 @@ ArmDriver::ArmDriver(const rclcpp::NodeOptions & options)
   // Declared here, read below: settable before configure (#95)
   declare_parameter<std::string>("port", mycobot::MyCobot280::DEFAULT_PORT);
   declare_parameter<int>("baud", mycobot::MyCobot280::DEFAULT_BAUD);
-  declare_parameter<double>("state_rate_hz", 50.0);
+  declare_parameter<double>("state_rate_hz", 20.0);
   declare_parameter<double>("temp_period_s", 2.0);
   declare_parameter<int>("command_timeout_ms", 300);
   declare_parameter<int>("gripper_speed", 50);

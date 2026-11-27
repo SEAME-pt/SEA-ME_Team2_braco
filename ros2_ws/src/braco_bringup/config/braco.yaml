@@ -4,8 +4,7 @@
 
 arm_driver:
   ros__parameters:
-    state_rate_hz: 50.0       # /joint_states rate. Measured ~45 Hz at most; with command_gap_ms 30 the
-                              # loop keeps up better under commands (docs/architecture/timing-budget.md, #141)
+    state_rate_hz: 20.0       # /joint_states rate
     temp_period_s: 2.0        # servo temperature read period
     command_timeout_ms: 300   # watchdog: stop the arm when motion commands stop for this long
     command_gap_ms: 25        # pause after each serial command
